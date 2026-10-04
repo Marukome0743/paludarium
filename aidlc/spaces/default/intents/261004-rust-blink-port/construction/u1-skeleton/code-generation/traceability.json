@@ -1,0 +1,337 @@
+{
+  "stage": "code-generation",
+  "unit": "u1-skeleton",
+  "upstream_ids": [
+    "BR1.1",
+    "BR1.2",
+    "BR1.3",
+    "BR1.4",
+    "BR2.1",
+    "BR2.2",
+    "BR2.3",
+    "BR3.1",
+    "BR3.2",
+    "BR3.3",
+    "BR3.4",
+    "BR4.1",
+    "BR4.2",
+    "BR4.3",
+    "BR4.4",
+    "BR4.5",
+    "BR5.1",
+    "BR5.2",
+    "BR5.3",
+    "BR5.4",
+    "BR6.1",
+    "BR7.1",
+    "BR7.2",
+    "BR8.1",
+    "BR8.2",
+    "BR9.1",
+    "NFR1.1",
+    "NFR1.2",
+    "NFR2.1",
+    "NFR2.2",
+    "NFR2.3",
+    "NFR2.4",
+    "NFR3.1",
+    "NFR3.2",
+    "NFR3.3",
+    "NFR4.1",
+    "NFR4.2",
+    "NFR4.3",
+    "NFR4.4",
+    "NFR5.1",
+    "NFR6.1",
+    "NFR7.1",
+    "NFR8.1",
+    "NFR8.2",
+    "NFR8.3",
+    "NFR8.4",
+    "NFR9.1"
+  ],
+  "coverage": [
+    {
+      "id": "BR1.1",
+      "status": "OK",
+      "target": "crates/paludarium-loader/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR1.2",
+      "status": "OK",
+      "target": "crates/paludarium-loader/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR1.3",
+      "status": "OK",
+      "target": "crates/paludarium-loader/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR1.4",
+      "status": "OK",
+      "target": "crates/paludarium-loader/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR2.1",
+      "status": "OK",
+      "target": "crates/paludarium-mmu/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR2.2",
+      "status": "OK",
+      "target": "crates/paludarium-mmu/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR2.3",
+      "status": "OK",
+      "target": "crates/paludarium-mmu/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR3.1",
+      "status": "OK",
+      "target": "crates/paludarium-kernel/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR3.2",
+      "status": "OK",
+      "target": "crates/paludarium-kernel/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR3.3",
+      "status": "OK",
+      "target": "crates/paludarium-kernel/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR3.4",
+      "status": "OK",
+      "target": "crates/paludarium-kernel/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR4.1",
+      "status": "OK",
+      "target": "crates/paludarium-cpu/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR4.2",
+      "status": "OK",
+      "target": "crates/paludarium-cpu/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR4.3",
+      "status": "OK",
+      "target": "crates/paludarium-cpu/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR4.4",
+      "status": "OK",
+      "target": "crates/paludarium-harness/src/coverage.rs",
+      "notes": "66/66は先行helper実行の対応指標。最新保存済みcoverage-final.txt:46–47でhelper2件ok。本redoで新実行なし。ソース根拠片の存在指標で全operand/flags網羅率ではない。"
+    },
+    {
+      "id": "BR4.5",
+      "status": "OK",
+      "target": "crates/paludarium-cpu/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR5.1",
+      "status": "OK",
+      "target": "crates/paludarium/src/cli.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR5.2",
+      "status": "OK",
+      "target": "crates/paludarium/src/cli.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR5.3",
+      "status": "OK",
+      "target": "crates/paludarium/src/cli.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR5.4",
+      "status": "OK",
+      "target": "crates/paludarium/src/cli.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR6.1",
+      "status": "OK",
+      "target": "crates/paludarium-host/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR7.1",
+      "status": "OK",
+      "target": "crates/paludarium-harness/tests/diff_u1.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR7.2",
+      "status": "OK",
+      "target": "crates/paludarium-harness/tests/diff_u1.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "BR8.1",
+      "status": "OK",
+      "target": "docs/reports/wasm-threads.md",
+      "notes": "wasm spike既存報告の文書根拠。今回再実行、Safari/macOS環境は未検証。"
+    },
+    {
+      "id": "BR8.2",
+      "status": "OK",
+      "target": "docs/reports/wasm-threads.md",
+      "notes": "wasm spike既存報告の文書根拠。今回再実行、Safari/macOS環境は未検証。"
+    },
+    {
+      "id": "BR9.1",
+      "status": "OK",
+      "target": "fuzz/fuzz_targets/decode.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR1.1",
+      "status": "OK",
+      "target": "crates/paludarium-harness/tests/diff_u1.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR1.2",
+      "status": "OK",
+      "target": "crates/paludarium-harness/src/coverage.rs",
+      "notes": "66/66は先行helper実行の対応指標。最新保存済みcoverage-final.txt:46–47でhelper2件ok。本redoで新実行なし。ソース根拠片の存在指標で全operand/flags網羅率ではない。"
+    },
+    {
+      "id": "NFR2.1",
+      "status": "OK",
+      "target": "fuzz/fuzz_targets/syscall_args.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR2.2",
+      "status": "OK",
+      "target": ".github/workflows/nightly.yml",
+      "notes": "nightlyの対象ごと600秒を維持。U1各fuzz targetの今回実行は未検証、U2CPU/MMU ASanの結果を転用しない。"
+    },
+    {
+      "id": "NFR2.3",
+      "status": "OK",
+      "target": "Cargo.toml",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR2.4",
+      "status": "OK",
+      "target": "crates/paludarium-types/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR3.1",
+      "status": "OK",
+      "target": "Cargo.toml",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR3.2",
+      "status": "OK",
+      "target": ".github/workflows/ci.yml",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR3.3",
+      "status": "OK",
+      "target": ".github/workflows/ci.yml",
+      "notes": "最新保存済み全体測定 docs/u7/inventory/coverage-final.txt:888、lines4681/missed478/89.79%、exit0。正式skeleton fullworkspace proof4747d3c8 exit0、source34hash不一致0。先行197/94.00%は履歴。U1専用分母とは区別し80%維持。"
+    },
+    {
+      "id": "NFR4.1",
+      "status": "OK",
+      "target": "crates/paludarium-kernel/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR4.2",
+      "status": "OK",
+      "target": "crates/paludarium/src/cli.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR4.3",
+      "status": "OK",
+      "target": "crates/paludarium-kernel/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR4.4",
+      "status": "OK",
+      "target": "crates/paludarium-mmu/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR5.1",
+      "status": "N/A",
+      "target": "要件上の資源上限はなし。ELF 読み込みの安全対策は別途 Loader に実装。",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR6.1",
+      "status": "OK",
+      "target": "crates/paludarium-harness/tests/diff_u1.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR7.1",
+      "status": "OK",
+      "target": "crates/paludarium-harness/src/lib.rs",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR8.1",
+      "status": "OK",
+      "target": "deny.toml",
+      "notes": "最新docs/u7/inventory/deny-final-locked.txt末尾advisories/bans/licenses/sources全ok。現Cargo.lock hash553b2b8d7670426ed73c51f1d756b93a6a8b26bc427de87afa01a15f60264b27。旧未導入失敗は履歴保持。"
+    },
+    {
+      "id": "NFR8.2",
+      "status": "OK",
+      "target": ".github/workflows/ci.yml",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR8.3",
+      "status": "OK",
+      "target": "Cargo.lock",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR8.4",
+      "status": "OK",
+      "target": "deny.toml",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    },
+    {
+      "id": "NFR9.1",
+      "status": "OK",
+      "target": "rust-toolchain.toml",
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+    }
+  ]
+}

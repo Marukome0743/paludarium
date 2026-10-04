@@ -1,0 +1,138 @@
+//! A deterministic [`Host`] for tests and the differential harness:
+//! records standard output and error, returns fixed "random" bytes and reads
+//! standard input from a preset buffer.
+
+use std::sync::{Mutex, PoisonError};
+
+use paludarium_types::{Errno, Error};
+
+use crate::{ClockId, Host, WaitOutcome};
+
+struct Streams {
+    monotonic: u64,
+    realtime: u64,
+    interrupt_wait: bool,
+    stdin: Vec<u8>,
+    stdin_pos: usize,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+impl Default for Streams {
+    fn default() -> Self {
+        Self {
+            monotonic: 0,
+            realtime: 1_700_000_000_000_000_000,
+            interrupt_wait: false,
+            stdin: Vec::new(),
+            stdin_pos: 0,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        }
+    }
+}
+/// Records guest output in memory.
+#[derive(Default)]
+pub struct RecordingHost {
+    streams: Mutex<Streams>,
+}
+
+impl RecordingHost {
+    /// Sets a deterministic clock in nanoseconds.
+    pub fn set_clock(&self, clock: ClockId, value: u64) {
+        let mut s = self.lock();
+        match clock {
+            ClockId::Monotonic => s.monotonic = value,
+            ClockId::Realtime => s.realtime = value,
+        }
+    }
+    /// Interrupts the next wait without consulting the host clock.
+    pub fn interrupt_next_wait(&self) {
+        self.lock().interrupt_wait = true;
+    }
+    /// The value every "random" byte has.
+    pub const RANDOM_BYTE: u8 = 0xa5;
+
+    /// A host with empty standard input.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A host whose standard input yields `input`.
+    #[must_use]
+    pub fn with_stdin(input: &[u8]) -> Self {
+        let host = Self::default();
+        host.lock().stdin = input.to_vec();
+        host
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Streams> {
+        self.streams.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Everything written to standard output so far.
+    #[must_use]
+    pub fn stdout(&self) -> Vec<u8> {
+        self.lock().stdout.clone()
+    }
+
+    /// Everything written to standard error so far.
+    #[must_use]
+    pub fn stderr(&self) -> Vec<u8> {
+        self.lock().stderr.clone()
+    }
+}
+
+impl Host for RecordingHost {
+    fn clock(&self, clock: ClockId) -> Result<u64, Errno> {
+        let s = self.lock();
+        Ok(match clock {
+            ClockId::Monotonic => s.monotonic,
+            ClockId::Realtime => s.realtime,
+        })
+    }
+    fn wait_until(
+        &self,
+        clock: ClockId,
+        deadline: u64,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<WaitOutcome, Errno> {
+        let mut s = self.lock();
+        if cancel.load(std::sync::atomic::Ordering::SeqCst) || s.interrupt_wait {
+            s.interrupt_wait = false;
+            return Ok(WaitOutcome::Interrupted);
+        }
+        let current = match clock {
+            ClockId::Monotonic => s.monotonic,
+            ClockId::Realtime => s.realtime,
+        };
+        let elapsed = deadline.saturating_sub(current);
+        s.monotonic = s.monotonic.saturating_add(elapsed);
+        s.realtime = s.realtime.saturating_add(elapsed);
+        Ok(WaitOutcome::Complete)
+    }
+    fn read_stdin(&self, buf: &mut [u8]) -> Result<usize, Errno> {
+        let mut s = self.lock();
+        let start = s.stdin_pos.min(s.stdin.len());
+        let n = buf.len().min(s.stdin.len() - start);
+        buf[..n].copy_from_slice(&s.stdin[start..start + n]);
+        s.stdin_pos = start + n;
+        Ok(n)
+    }
+
+    fn write_stdout(&self, buf: &[u8]) -> Result<usize, Errno> {
+        self.lock().stdout.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn write_stderr(&self, buf: &[u8]) -> Result<usize, Errno> {
+        self.lock().stderr.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn random_bytes(&self, buf: &mut [u8]) -> Result<(), Error> {
+        buf.fill(Self::RANDOM_BYTE);
+        Ok(())
+    }
+}

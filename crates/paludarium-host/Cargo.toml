@@ -1,0 +1,21 @@
+[package]
+name = "paludarium-host"
+description = "Host abstraction (stdio, randomness) for paludarium"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+paludarium-types.workspace = true
+getrandom = "0.4"
+cap-std = "4.0.3"
+cap-fs-ext = "4.0.3"
+fs2 = "0.4.3"
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1.5", features = ["fs"] }
+
+[lints]
+workspace = true
+
+

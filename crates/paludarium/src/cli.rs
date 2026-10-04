@@ -1,0 +1,359 @@
+//! The `paludarium` command (contract C11):
+//!
+//! ```text
+//! paludarium [options] <program> [args...]
+//!   --env KEY=VALUE   add a guest environment variable (repeatable)
+//!   --no-jit          accepted; the native build has no JIT
+//!   --mount HOST:GUEST expose one explicit host directory (repeatable)
+//! ```
+//!
+//! Exit codes (BR5.2, BR5.3): the guest's exit code; 128 + signal number when
+//! the guest was killed by a signal; 2 for usage errors; 70 for errors of the
+//! emulator itself.
+
+use std::ffi::{OsStr, OsString};
+use std::io::Write;
+use std::path::Path;
+use std::sync::Arc;
+
+use paludarium_host::{Host, read_program_file};
+use paludarium_runtime::{Config, Mount, Session};
+use paludarium_types::{Error, ExitStatus};
+
+/// Exit code for command-line usage errors (BR5.3).
+pub const EXIT_USAGE: i32 = 2;
+
+/// Exit code for errors of the emulator itself (BR5.2; C11 open question,
+/// decided in U1: 70 = `EX_SOFTWARE`).
+pub const EXIT_EMULATOR_ERROR: i32 = 70;
+
+/// Usage text printed on errors and for `--help`.
+pub const USAGE: &str = "usage: paludarium [--env KEY=VALUE]... [--mount HOST:GUEST]... [--no-jit] <program> [args...]\n";
+
+/// A parsed command line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Invocation {
+    /// The program as given on the command line (host path; also argv[0]).
+    pub program: OsString,
+    /// Arguments after the program.
+    pub args: Vec<OsString>,
+    pub env: Vec<(Vec<u8>, Vec<u8>)>,
+    pub no_jit: bool,
+    pub mounts: Vec<Mount>,
+}
+
+/// What the command line asked for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Command {
+    Run(Invocation),
+    Help,
+}
+
+/// A usage error with a fixed message.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UsageError(pub &'static str);
+
+fn parse_env(value: &[u8]) -> Result<(Vec<u8>, Vec<u8>), UsageError> {
+    let eq = value
+        .iter()
+        .position(|&b| b == b'=')
+        .ok_or(UsageError("--env needs KEY=VALUE"))?;
+    if eq == 0 {
+        return Err(UsageError("--env needs a non-empty KEY"));
+    }
+    Ok((value[..eq].to_vec(), value[eq + 1..].to_vec()))
+}
+
+fn parse_mount(value: &OsStr, prefix: usize) -> Result<Mount, UsageError> {
+    let bytes = &value.as_encoded_bytes()[prefix..];
+    // The final separator preserves a Windows drive letter in HOST.
+    let colon = bytes
+        .iter()
+        .rposition(|b| *b == b':')
+        .ok_or(UsageError("--mount needs HOST:GUEST"))?;
+    let guest = &bytes[colon + 1..];
+    if colon == 0 || guest.first() != Some(&b'/') || bytes.contains(&0) {
+        return Err(UsageError(
+            "--mount needs a host directory and absolute guest path",
+        ));
+    }
+    #[cfg(unix)]
+    let host = {
+        use std::os::unix::ffi::OsStrExt;
+        std::path::PathBuf::from(OsStr::from_bytes(&bytes[..colon]))
+    };
+    #[cfg(not(unix))]
+    let host = std::path::PathBuf::from(
+        &value
+            .to_str()
+            .ok_or(UsageError("--mount host path is not valid Unicode"))?[prefix..prefix + colon],
+    );
+    Ok(Mount {
+        host,
+        guest: guest.to_vec(),
+    })
+}
+
+/// Parses the arguments after the command name.
+pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command, UsageError> {
+    let mut args = args.into_iter();
+    let mut env = Vec::new();
+    let mut no_jit = false;
+    let mut mounts = Vec::new();
+    let program = loop {
+        let Some(arg) = args.next() else {
+            return Err(UsageError("no program given"));
+        };
+        let bytes = arg.as_encoded_bytes();
+        match bytes {
+            b"--" => break args.next().ok_or(UsageError("no program given"))?,
+            b"-h" | b"--help" => return Ok(Command::Help),
+            b"--no-jit" => no_jit = true,
+            b"--env" => {
+                let value = args.next().ok_or(UsageError("--env needs KEY=VALUE"))?;
+                env.push(parse_env(value.as_encoded_bytes())?);
+            }
+            b"--mount" => {
+                let value = args.next().ok_or(UsageError("--mount needs HOST:GUEST"))?;
+                mounts.push(parse_mount(&value, 0)?);
+            }
+            _ if bytes.starts_with(b"--mount=") => {
+                mounts.push(parse_mount(&arg, 8)?);
+            }
+            _ if bytes.starts_with(b"--env=") => env.push(parse_env(&bytes[6..])?),
+            _ if bytes.starts_with(b"-") && bytes.len() > 1 => {
+                return Err(UsageError("unknown option"));
+            }
+            _ => break arg,
+        }
+    };
+    Ok(Command::Run(Invocation {
+        program,
+        args: args.collect(),
+        env,
+        no_jit,
+        mounts,
+    }))
+}
+
+/// The guest path a host program is placed at: `/<file name>` (BR5.4).
+pub fn guest_path(program: &Path) -> Result<Vec<u8>, UsageError> {
+    let name = program
+        .file_name()
+        .ok_or(UsageError("the program must name a file"))?;
+    let mut path = b"/".to_vec();
+    path.extend_from_slice(name.as_encoded_bytes());
+    Ok(path)
+}
+
+/// The command's exit code for a run result (BR5.2).
+#[must_use]
+pub fn exit_code(result: &Result<ExitStatus, Error>) -> i32 {
+    match result {
+        Ok(status) => status.command_exit_code(),
+        Err(_) => EXIT_EMULATOR_ERROR,
+    }
+}
+
+fn usage_error(stderr: &mut dyn Write, e: UsageError) -> i32 {
+    // Diagnostics are best effort: a closed stderr must not change the code.
+    let _ = write!(stderr, "paludarium: {}\n{USAGE}", e.0);
+    EXIT_USAGE
+}
+
+/// Runs the command with `args` (without the command name).
+pub fn main_with(
+    args: impl IntoIterator<Item = OsString>,
+    host: Arc<dyn Host>,
+    stderr: &mut dyn Write,
+) -> i32 {
+    let invocation = match parse(args) {
+        Ok(Command::Run(i)) => i,
+        Ok(Command::Help) => {
+            let _ = host.write_stdout(USAGE.as_bytes());
+            return 0;
+        }
+        Err(e) => return usage_error(stderr, e),
+    };
+    let program_path = Path::new(&invocation.program);
+    let guest = match guest_path(program_path) {
+        Ok(p) => p,
+        Err(e) => return usage_error(stderr, e),
+    };
+    let Ok(content) = read_program_file(program_path) else {
+        return usage_error(stderr, UsageError("cannot read the program file"));
+    };
+    let mut argv = vec![invocation.program.as_encoded_bytes().to_vec()];
+    argv.extend(
+        invocation
+            .args
+            .iter()
+            .map(|a| a.as_encoded_bytes().to_vec()),
+    );
+    let mut config = Config::new(guest.clone(), argv).with_file(guest, content);
+    config.env = invocation.env;
+    config.mounts = invocation.mounts;
+    // --no-jit is accepted and has no effect: the native build has no JIT.
+    config.jit = false;
+    let result = Session::new(config, host).and_then(|s| s.run());
+    if let Err(e) = &result {
+        let _ = writeln!(stderr, "paludarium: {e}");
+    }
+    exit_code(&result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use paludarium_host::testing::RecordingHost;
+    use paludarium_types::ErrorKind;
+
+    fn os(args: &[&str]) -> Vec<OsString> {
+        args.iter().map(OsString::from).collect()
+    }
+
+    fn run(args: &[&str]) -> (i32, String) {
+        let mut err = Vec::new();
+        let code = main_with(os(args), Arc::new(RecordingHost::new()), &mut err);
+        (code, String::from_utf8(err).unwrap())
+    }
+
+    #[test]
+    fn parses_options_program_and_guest_arguments() {
+        let parsed = parse(os(&[
+            "--env",
+            "A=1",
+            "--no-jit",
+            "--env=B=x=y",
+            "./hello",
+            "-v",
+            "--env",
+        ]));
+        assert_eq!(
+            parsed,
+            Ok(Command::Run(Invocation {
+                program: "./hello".into(),
+                args: os(&["-v", "--env"]),
+                env: vec![
+                    (b"A".to_vec(), b"1".to_vec()),
+                    (b"B".to_vec(), b"x=y".to_vec())
+                ],
+                no_jit: true,
+                mounts: vec![],
+            }))
+        );
+        assert!(matches!(parse(os(&["--", "-dash"])), Ok(Command::Run(i)) if i.program == "-dash"));
+        assert_eq!(parse(os(&["--help"])), Ok(Command::Help));
+    }
+
+    #[test]
+    fn usage_errors_exit_with_two() {
+        for args in [
+            &[][..],
+            &["--mount", "a:b", "x"],
+            &["--mount=a:b", "x"],
+            &["--bogus", "x"],
+            &["--env", "NOEQUALS", "x"],
+            &["--env", "=v", "x"],
+            &["--env"],
+            &["--"],
+        ] {
+            let (code, err) = run(args);
+            assert_eq!(code, EXIT_USAGE, "{args:?}");
+            assert!(err.contains("usage: paludarium"), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn unreadable_program_is_a_usage_error_without_the_path() {
+        let (code, err) = run(&["/definitely/not/here/prog-xyz"]);
+        assert_eq!(code, EXIT_USAGE);
+        assert!(!err.contains("prog-xyz"));
+    }
+
+    #[test]
+    fn guest_path_is_root_plus_file_name() {
+        assert_eq!(guest_path(Path::new("some/dir/hello")).unwrap(), b"/hello");
+        assert_eq!(guest_path(Path::new("hello")).unwrap(), b"/hello");
+        assert!(guest_path(Path::new("..")).is_err());
+    }
+
+    #[test]
+    fn exit_codes_follow_br5_2() {
+        assert_eq!(exit_code(&Ok(ExitStatus::Exited(7))), 7);
+        assert_eq!(exit_code(&Ok(ExitStatus::Signaled(11))), 139);
+        let err = Error::new(ErrorKind::Internal, "x");
+        assert_eq!(exit_code(&Err(err)), EXIT_EMULATOR_ERROR);
+    }
+
+    #[test]
+    fn invalid_program_file_is_an_emulator_error() {
+        let path =
+            std::env::temp_dir().join(format!("paludarium-cli-notelf-{}", std::process::id()));
+        std::fs::write(&path, b"not an elf").unwrap();
+        let (code, err) = run(&[path.to_str().unwrap()]);
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(code, EXIT_EMULATOR_ERROR);
+        assert_eq!(err, "paludarium: invalid-program: not an ELF file\n");
+    }
+    #[test]
+    fn u7_cli_mount_separate_argument() {
+        let Command::Run(i) = parse(os(&["--mount", "fixtures:/data", "prog"])).unwrap() else {
+            panic!()
+        };
+        assert_eq!(
+            i.mounts,
+            vec![Mount {
+                host: "fixtures".into(),
+                guest: b"/data".to_vec()
+            }]
+        );
+    }
+    #[test]
+    fn u7_cli_mount_equals_and_repeat() {
+        let Command::Run(i) = parse(os(&["--mount=a:/", "--mount=b:/data", "prog"])).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(i.mounts.len(), 2);
+        assert_eq!(i.mounts[0].guest, b"/");
+        assert_eq!(i.mounts[1].host, std::path::PathBuf::from("b"));
+    }
+    #[test]
+    fn u7_cli_mount_windows_drive() {
+        let Command::Run(i) = parse(os(&["--mount=C:\\fixtures:/data", "prog"])).unwrap() else {
+            panic!()
+        };
+        assert_eq!(i.mounts[0].host, std::path::PathBuf::from("C:\\fixtures"));
+    }
+    #[test]
+    fn u7_cli_mount_invalid() {
+        for args in [
+            &["--mount"][..],
+            &["--mount=x", "prog"],
+            &["--mount=:/x", "prog"],
+            &["--mount=x:relative", "prog"],
+            &["--mount=x:/bad\0", "prog"],
+        ] {
+            assert!(parse(os(args)).is_err(), "{args:?}");
+        }
+    }
+    #[test]
+    fn u7_cli_mount_after_program_is_guest_argument() {
+        let Command::Run(i) = parse(os(&["prog", "--mount=a:/x"])).unwrap() else {
+            panic!()
+        };
+        assert!(i.mounts.is_empty());
+        assert_eq!(i.args, os(&["--mount=a:/x"]));
+    }
+    #[cfg(unix)]
+    #[test]
+    fn u7_cli_mount_non_utf8() {
+        use std::os::unix::ffi::OsStringExt;
+        let value = OsString::from_vec(b"--mount=\xff:/data".to_vec());
+        let Command::Run(i) = parse([value, "prog".into()]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(i.mounts[0].host.as_os_str().as_encoded_bytes(), b"\xff");
+    }
+}

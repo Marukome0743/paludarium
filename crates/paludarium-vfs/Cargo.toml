@@ -1,0 +1,14 @@
+[package]
+name = "paludarium-vfs"
+description = "In-memory virtual file system for paludarium"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+paludarium-types.workspace = true
+paludarium-host.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,4 @@
+# Product code must not unwrap/expect/panic (NFR2.3); tests may.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

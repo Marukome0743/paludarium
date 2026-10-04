@@ -1,0 +1,99 @@
+# Nightly checks (team.md Testing Posture, Q7): fuzzing (NFR2.2, BR9.1) and
+# the wasm thread check on Node.js, Chromium, Firefox and the real Safari
+# (BR8.1, Q12). A failure opens an Issue to be fixed. Actions are pinned by
+# commit SHA; only the reporting job may write Issues (NFR8.2).
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: fuzz ${{ matrix.target }} (10 min)
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [decode, load_elf, mmu_ops, syscall_args, cpu_u2, mmu_u2, vfs_paths]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: cargo-fuzz
+      # AddressSanitizer is cargo-fuzz's default. fuzz/lsan.supp only hides
+      # iced-x86's one-time decoder tables from LeakSanitizer.
+      - name: Fuzz for 10 minutes
+        working-directory: fuzz
+        env:
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/fuzz/lsan.supp
+        run: cargo fuzz run -O ${{ matrix.target }} -- -max_total_time=600 -timeout=30 -rss_limit_mb=2048
+      - name: Keep crashing inputs (add them to the regression data)
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/
+
+  wasm-threads-linux:
+    name: wasm threads (Node.js, Chromium, Firefox)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: lts/*
+      - run: bash spikes/wasm-threads/build.sh
+      - name: Install Playwright and its browsers
+        working-directory: spikes/wasm-threads
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium firefox
+      - run: node spikes/wasm-threads/node-check.mjs
+      - run: node spikes/wasm-threads/browser-check.mjs chromium firefox
+
+  wasm-threads-safari:
+    name: wasm threads (Safari)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: lts/*
+      - run: bash spikes/wasm-threads/build.sh
+      # The real Safari through Apple's WebDriver, not a WebKit build (Q12).
+      - run: sudo safaridriver --enable
+      - run: node spikes/wasm-threads/browser-check.mjs safari
+
+  report-failure:
+    needs: [fuzz, wasm-threads-linux, wasm-threads-safari]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open an Issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Nightly checks failed ($(date -u +%Y-%m-%d))" \
+            --body "The nightly fuzzing or wasm thread check failed: $RUN_URL"
+

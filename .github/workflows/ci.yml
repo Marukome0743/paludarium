@@ -1,0 +1,115 @@
+# Pull-request gate (team.md Testing Posture, Q7): unit tests on Linux,
+# macOS and Windows, fmt, clippy (-D warnings), dependency checks, the
+# x86-64 Linux differential tests and the 80% line-coverage floor.
+# Every job must pass before merging. Actions are pinned by commit SHA and
+# the default token is read-only (NFR8.2).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # The U1 crates (unit-test-instructions.md).
+  U1_PACKAGES: >-
+    -p paludarium-types -p paludarium-decoder -p paludarium-mmu
+    -p paludarium-cpu -p paludarium-loader -p paludarium-vfs
+    -p paludarium-kernel -p paludarium-host -p paludarium-jit
+    -p paludarium-runtime -p paludarium
+
+jobs:
+  test:
+    name: unit tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # rustup installs the toolchain pinned in rust-toolchain.toml (NFR9.1).
+      - run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Unit tests (U1 crates)
+        shell: bash
+        run: cargo test --locked $U1_PACKAGES
+      - name: Harness unit tests
+        run: cargo test --locked -p paludarium-harness --lib
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: rustfmt
+        run: |
+          cargo fmt --all --check
+          cargo fmt --check --manifest-path fuzz/Cargo.toml
+          cargo fmt --check --manifest-path tests/guests/hello-rs/Cargo.toml
+      - name: clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: decoder builds for wasm32
+        run: cargo build --locked -p paludarium-decoder -p paludarium-mmu -p paludarium-cpu --target wasm32-unknown-unknown
+
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: cargo-deny
+      # Licenses compatible with Apache-2.0, crates.io only, RustSec,
+      # forbidden crates (NFR8.1, NFR8.4).
+      - run: cargo deny --locked check
+
+  differential:
+    name: differential tests (x86-64 Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # Builds the guests from source (BR7.2), runs each natively and under
+      # the emulator, compares stdout/stderr/exit status (BR7.1) and prints
+      # the run times (NFR6.1).
+      - run: cargo test --locked -p paludarium-harness --test diff_u1 --test diff_u2 --test parallel_u2 --test diff_u4 -- --nocapture
+
+  coverage:
+    name: line coverage >= 80%
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        with:
+          tool: cargo-llvm-cov
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # NFR3.3: fails below 80% of lines. The floor is never lowered.
+      - run: cargo llvm-cov --locked --workspace --fail-under-lines 80
+        env:
+          # Instrumented independent cases run serially; race cases still
+          # launch their own host workers and retain the 30-second watchdog.
+          RUST_TEST_THREADS: "1"

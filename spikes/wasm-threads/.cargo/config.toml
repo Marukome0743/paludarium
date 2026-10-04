@@ -1,0 +1,17 @@
+# Toolchain settings needed for wasm threads (recorded in
+# docs/reports/wasm-threads.md, BR8.2):
+# - target features atomics + bulk-memory + mutable-globals,
+# - core rebuilt with those features (-Z build-std, nightly + rust-src),
+# - an imported, shared memory with a fixed maximum.
+[build]
+target = "wasm32-unknown-unknown"
+rustflags = [
+    "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals",
+    "-C", "link-arg=--shared-memory",
+    "-C", "link-arg=--import-memory",
+    "-C", "link-arg=--initial-memory=1179648",
+    "-C", "link-arg=--max-memory=1179648",
+]
+
+[unstable]
+build-std = ["core", "panic_abort"]

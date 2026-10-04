@@ -1,0 +1,1 @@
+"C:\Program Files\Git\bin\bash.exe" scripts/linux-dev.sh cargo test --locked --workspace

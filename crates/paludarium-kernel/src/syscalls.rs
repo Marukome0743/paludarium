@@ -1,0 +1,729 @@
+//! System-call handlers implemented in U1 (BR3.3, plus `mprotect`, which the
+//! Rust hello world calls natively; see the U1 code summary).
+//!
+//! Every handler validates its arguments and reads or writes guest memory
+//! only through the MMU; bad pointers give `-EFAULT`.
+
+use std::collections::BTreeMap;
+
+use paludarium_cpu::CpuState;
+use paludarium_host::{ClockId, Host, WaitOutcome};
+use paludarium_mmu::{AddressSpace, MappingKind, Prot};
+use paludarium_types::{Errno, GuestAddr, USER_ADDRESS_LIMIT};
+
+use crate::{AltStack, Process, SS_DISABLE, SignalAction, signals};
+
+/// Linux x86-64 system-call numbers used by U1.
+pub mod nr {
+    pub const SETITIMER: u64 = 38;
+    pub const RT_SIGRETURN: u64 = 15;
+    pub const GETPID: u64 = 39;
+    pub const KILL: u64 = 62;
+    pub const GETTID: u64 = 186;
+    pub const TKILL: u64 = 200;
+    pub const TGKILL: u64 = 234;
+    pub const WRITE: u64 = 1;
+    pub const POLL: u64 = 7;
+    pub const NANOSLEEP: u64 = 35;
+    pub const CLOCK_GETTIME: u64 = 228;
+    pub const CLOCK_NANOSLEEP: u64 = 230;
+    pub const MMAP: u64 = 9;
+    pub const MPROTECT: u64 = 10;
+    pub const MUNMAP: u64 = 11;
+    pub const BRK: u64 = 12;
+    pub const RT_SIGACTION: u64 = 13;
+    pub const RT_SIGPROCMASK: u64 = 14;
+    pub const IOCTL: u64 = 16;
+    pub const SOCKET: u64 = 41;
+    pub const EXIT: u64 = 60;
+    pub const SIGALTSTACK: u64 = 131;
+    pub const ARCH_PRCTL: u64 = 158;
+    pub const SET_TID_ADDRESS: u64 = 218;
+    pub const EXIT_GROUP: u64 = 231;
+}
+
+pub(crate) struct Context<'a> {
+    pub files: &'a mut crate::files::Files,
+    pub host: &'a dyn Host,
+    pub process: &'a mut Process,
+    pub cpu: &'a mut CpuState,
+    pub mem: &'a mut AddressSpace,
+    pub cancellation: &'a std::sync::atomic::AtomicBool,
+    pub inbox: &'a crate::SignalInbox,
+}
+
+pub(crate) enum Outcome {
+    Return(u64),
+    Exit(i32),
+    Restored,
+    BadFrame,
+}
+
+type Handler = fn(&mut Context<'_>, [u64; 6]) -> Outcome;
+
+/// The explicit dispatch table (BR3.1). Numbers missing from it get
+/// `-ENOSYS` (BR3.2).
+pub struct SyscallTable {
+    handlers: BTreeMap<u64, Handler>,
+}
+
+impl SyscallTable {
+    /// The U1 table.
+    #[must_use]
+    pub fn u1() -> Self {
+        let entries: [(u64, Handler); 24] = [
+            (nr::SETITIMER, sys_setitimer),
+            (nr::RT_SIGRETURN, sys_rt_sigreturn),
+            (nr::GETPID, sys_getpid),
+            (nr::GETTID, sys_getpid),
+            (nr::KILL, sys_kill),
+            (nr::TKILL, sys_tkill),
+            (nr::TGKILL, sys_tgkill),
+            (nr::CLOCK_GETTIME, sys_clock_gettime),
+            (nr::NANOSLEEP, sys_nanosleep),
+            (nr::CLOCK_NANOSLEEP, sys_clock_nanosleep),
+            (nr::WRITE, sys_write),
+            (nr::POLL, sys_poll),
+            (nr::MMAP, sys_mmap),
+            (nr::MPROTECT, sys_mprotect),
+            (nr::MUNMAP, sys_munmap),
+            (nr::BRK, sys_brk),
+            (nr::RT_SIGACTION, sys_rt_sigaction),
+            (nr::RT_SIGPROCMASK, sys_rt_sigprocmask),
+            (nr::IOCTL, sys_ioctl),
+            (nr::EXIT, sys_exit),
+            (nr::SIGALTSTACK, sys_sigaltstack),
+            (nr::ARCH_PRCTL, sys_arch_prctl),
+            (nr::SET_TID_ADDRESS, sys_set_tid_address),
+            (nr::EXIT_GROUP, sys_exit_group),
+        ];
+        let mut handlers: BTreeMap<u64, Handler> = entries.into_iter().collect();
+        for number in crate::files::NUMBERS {
+            handlers.insert(*number, crate::files::dispatch);
+        }
+        SyscallTable { handlers }
+    }
+
+    pub(crate) fn get(&self, number: u64) -> Option<Handler> {
+        self.handlers.get(&number).copied()
+    }
+
+    /// Whether `number` is implemented.
+    #[must_use]
+    pub fn contains(&self, number: u64) -> bool {
+        self.handlers.contains_key(&number)
+    }
+
+    /// The implemented numbers in ascending order.
+    pub fn numbers(&self) -> impl Iterator<Item = u64> + '_ {
+        self.handlers.keys().copied()
+    }
+}
+
+fn ok(value: u64) -> Outcome {
+    Outcome::Return(value)
+}
+
+fn err(e: Errno) -> Outcome {
+    Outcome::Return(e.to_syscall_return())
+}
+
+fn clock_id(id: u64) -> Result<ClockId, Errno> {
+    match id {
+        0 => Ok(ClockId::Realtime),
+        1 => Ok(ClockId::Monotonic),
+        _ => Err(Errno::EINVAL),
+    }
+}
+fn read_timespec(mem: &AddressSpace, addr: u64) -> Result<u64, Errno> {
+    let words = read_words::<2>(mem, addr)?;
+    let sec = words[0] as i64;
+    let nsec = words[1] as i64;
+    if sec < 0 || !(0..1_000_000_000).contains(&nsec) {
+        return Err(Errno::EINVAL);
+    }
+    Ok((sec as u64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(nsec as u64)
+        .min(i64::MAX as u64))
+}
+fn write_timespec(mem: &AddressSpace, addr: u64, nanos: u64) -> Result<(), Errno> {
+    let mut bytes = [0u8; 16];
+    bytes[..8].copy_from_slice(&(nanos / 1_000_000_000).to_le_bytes());
+    bytes[8..].copy_from_slice(&(nanos % 1_000_000_000).to_le_bytes());
+    mem.write(GuestAddr(addr), &bytes)
+        .map_err(|_| Errno::EFAULT)
+}
+fn sys_clock_gettime(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let result = clock_id(a[0])
+        .and_then(|id| c.host.clock(id))
+        .and_then(|value| write_timespec(c.mem, a[1], value));
+    match result {
+        Ok(()) => ok(0),
+        Err(e) => err(e),
+    }
+}
+fn sleep(c: &mut Context<'_>, clock: ClockId, absolute: bool, req: u64, rem: u64) -> Outcome {
+    let request = match read_timespec(c.mem, req) {
+        Ok(t) => t,
+        Err(e) => return err(e),
+    };
+    let now = match c.host.clock(clock) {
+        Ok(t) => t,
+        Err(e) => return err(e),
+    };
+    let deadline = if absolute {
+        request
+    } else {
+        now.saturating_add(request).min(i64::MAX as u64)
+    };
+    loop {
+        let clock_now = match c.host.clock(clock) {
+            Ok(t) => t,
+            Err(e) => return err(e),
+        };
+        let mono_now = match c.host.clock(ClockId::Monotonic) {
+            Ok(t) => t,
+            Err(e) => return err(e),
+        };
+        signals::expire_timer(c.process, mono_now);
+        let timer_deadline = c
+            .process
+            .timer
+            .deadline
+            .and_then(|d| clock_now.checked_add(d.saturating_sub(mono_now)));
+        let next = timer_deadline.map_or(deadline, |t| deadline.min(t));
+        let result = c.host.wait_until(clock, next, c.cancellation);
+        let received = c.inbox.drain(c.process);
+        if let Ok(now) = c.host.clock(ClockId::Monotonic) {
+            signals::expire_timer(c.process, now);
+        }
+        let pending = c.process.pending.iter().any(|s| {
+            c.process.signal_mask & (1u64 << (s.number - 1)) == 0
+                && c.process.signal_actions.get(&s.number).is_none_or(|a| {
+                    a.handler != 1 && (a.handler != 0 || !matches!(s.number, 17 | 18 | 23 | 28))
+                })
+                && (c.process.signal_actions.contains_key(&s.number)
+                    || !matches!(s.number, 17 | 18 | 23 | 28))
+        });
+        match result {
+            Ok(WaitOutcome::Interrupted) if received && !pending => continue,
+            Ok(WaitOutcome::Complete) if !pending => {
+                if c.host.clock(clock).is_ok_and(|now| now < deadline) {
+                    continue;
+                }
+                return ok(0);
+            }
+            Ok(WaitOutcome::Complete) | Ok(WaitOutcome::Interrupted) => {
+                if !absolute && rem != 0 {
+                    let now = c.host.clock(clock).unwrap_or(now);
+                    if let Err(e) = write_timespec(c.mem, rem, deadline.saturating_sub(now)) {
+                        return err(e);
+                    }
+                }
+                return err(Errno(4));
+            }
+            Err(e) => return err(e),
+        }
+    }
+}
+fn read_timeval(sec: u64, usec: u64) -> Result<u64, Errno> {
+    if (sec as i64) < 0 || usec >= 1_000_000 {
+        return Err(Errno::EINVAL);
+    }
+    sec.checked_mul(1_000_000_000)
+        .and_then(|v| v.checked_add(usec * 1000))
+        .ok_or(Errno::EINVAL)
+}
+fn sys_setitimer(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    if a[0] != 0 {
+        return err(Errno::EINVAL);
+    }
+    let words = if a[1] == 0 {
+        [0; 4]
+    } else {
+        match read_words::<4>(c.mem, a[1]) {
+            Ok(w) => w,
+            Err(e) => return err(e),
+        }
+    };
+    let interval = match read_timeval(words[0], words[1]) {
+        Ok(v) => v,
+        Err(e) => return err(e),
+    };
+    let value = match read_timeval(words[2], words[3]) {
+        Ok(v) => v,
+        Err(e) => return err(e),
+    };
+    let now = match c.host.clock(ClockId::Monotonic) {
+        Ok(v) => v,
+        Err(e) => return err(e),
+    };
+    let deadline = if value == 0 {
+        None
+    } else {
+        match now.checked_add(value) {
+            Some(v) => Some(v),
+            None => return err(Errno::EINVAL),
+        }
+    };
+    if a[2] != 0 {
+        let old = c.process.timer;
+        let remaining = old.deadline.unwrap_or(now).saturating_sub(now);
+        if let Err(e) = write_words(
+            c.mem,
+            a[2],
+            &[
+                old.interval / 1_000_000_000,
+                old.interval % 1_000_000_000 / 1000,
+                remaining / 1_000_000_000,
+                remaining % 1_000_000_000 / 1000,
+            ],
+        ) {
+            return err(e);
+        }
+    }
+    c.process.timer = signals::RealTimer { deadline, interval };
+    ok(0)
+}
+fn sys_nanosleep(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    sleep(c, ClockId::Monotonic, false, a[0], a[1])
+}
+fn sys_clock_nanosleep(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let id = match clock_id(a[0]) {
+        Ok(id) => id,
+        Err(e) => return err(e),
+    };
+    if a[1] & !1 != 0 {
+        return err(Errno::EINVAL);
+    }
+    sleep(c, id, a[1] & 1 != 0, a[2], a[3])
+}
+fn sys_rt_sigreturn(c: &mut Context<'_>, _a: [u64; 6]) -> Outcome {
+    if signals::restore(c.process, c.cpu, c.mem).is_ok() {
+        Outcome::Restored
+    } else {
+        Outcome::BadFrame
+    }
+}
+fn sys_getpid(c: &mut Context<'_>, _a: [u64; 6]) -> Outcome {
+    ok(u64::from(c.process.pid))
+}
+fn send_signal(c: &mut Context<'_>, target: u64, signal: signals::PendingSignal) -> Outcome {
+    let number = signal.number;
+    if !(0..=64).contains(&number) {
+        return err(Errno::EINVAL);
+    }
+    if target != u64::from(c.process.pid) {
+        return err(Errno(3));
+    }
+    if number == 0 {
+        return ok(0);
+    }
+    signals::queue(c.process, signal);
+    ok(0)
+}
+fn sys_kill(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    send_signal(
+        c,
+        if a[0] == 0 {
+            u64::from(c.process.pid)
+        } else {
+            a[0]
+        },
+        signals::PendingSignal::user(i32::try_from(a[1]).unwrap_or(-1), 0),
+    )
+}
+fn sys_tkill(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    send_signal(
+        c,
+        a[0],
+        signals::PendingSignal::thread(i32::try_from(a[1]).unwrap_or(-1), -6),
+    )
+}
+fn sys_tgkill(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    if a[0] != u64::from(c.process.pid) {
+        return err(Errno(3));
+    }
+    send_signal(
+        c,
+        a[1],
+        signals::PendingSignal::thread(i32::try_from(a[2]).unwrap_or(-1), -6),
+    )
+}
+
+/// Linux caps one read/write at this many bytes.
+const MAX_RW_COUNT: u64 = 0x7fff_f000;
+const WRITE_CHUNK: usize = 64 * 1024;
+
+fn sys_write(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    if !c.files.uses_original_stdio(a[0]) {
+        return crate::files::dispatch(c, a);
+    }
+    let (fd, buf, count) = (a[0], a[1], a[2].min(MAX_RW_COUNT));
+    // Only stdout and stderr are connected in U1 (BR3.4).
+    let write: fn(&dyn Host, &[u8]) -> Result<usize, Errno> = match fd {
+        1 => |h, b| h.write_stdout(b),
+        2 => |h, b| h.write_stderr(b),
+        _ => return err(Errno::EBADF),
+    };
+    let mut done: u64 = 0;
+    let mut chunk = vec![0u8; WRITE_CHUNK.min(usize::try_from(count).unwrap_or(WRITE_CHUNK))];
+    while done < count {
+        let n = (count - done).min(chunk.len() as u64);
+        let n = usize::try_from(n).unwrap_or(0);
+        let addr = GuestAddr(buf.wrapping_add(done));
+        if c.mem.read(addr, &mut chunk[..n]).is_err() {
+            return if done == 0 {
+                err(Errno::EFAULT)
+            } else {
+                ok(done)
+            };
+        }
+        match write(c.host, &chunk[..n]) {
+            Ok(w) => {
+                done += w as u64;
+                // A short host write ends this guest write, including Ok(0).
+                if w < n {
+                    return ok(done);
+                }
+            }
+            Err(e) => return if done == 0 { err(e) } else { ok(done) },
+        }
+    }
+    ok(done)
+}
+
+const POLLIN: u16 = 0x1;
+const POLLOUT: u16 = 0x4;
+const POLLNVAL: u16 = 0x20;
+const MAX_POLL_FDS: u64 = 1024;
+
+fn sys_poll(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let (fds, nfds) = (a[0], a[1]);
+    if nfds > MAX_POLL_FDS {
+        return err(Errno::EINVAL);
+    }
+    let mut ready = 0u64;
+    for n in 0..nfds {
+        let at = GuestAddr(fds.wrapping_add(n * 8));
+        let mut entry = [0u8; 8];
+        if c.mem.read(at, &mut entry).is_err() {
+            return err(Errno::EFAULT);
+        }
+        let fd = i32::from_le_bytes([entry[0], entry[1], entry[2], entry[3]]);
+        let events = u16::from_le_bytes([entry[4], entry[5]]);
+        let revents = match fd {
+            fd if fd < 0 => 0,
+            0 => events & POLLIN,
+            1 | 2 => events & POLLOUT,
+            _ => POLLNVAL,
+        };
+        if c.mem
+            .write(at.wrapping_add(6), &revents.to_le_bytes())
+            .is_err()
+        {
+            return err(Errno::EFAULT);
+        }
+        if revents != 0 {
+            ready += 1;
+        }
+    }
+    ok(ready)
+}
+
+const MAP_SHARED: u64 = 0x01;
+const MAP_PRIVATE: u64 = 0x02;
+const MAP_FIXED: u64 = 0x10;
+const MAP_ANONYMOUS: u64 = 0x20;
+const MAP_FIXED_NOREPLACE: u64 = 0x10_0000;
+
+fn sys_mmap(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let (addr, len, prot, flags, fd) = (a[0], a[1], a[2], a[3], a[4] as i32);
+    let Some(prot) = Prot::from_bits(prot) else {
+        return err(Errno::EINVAL);
+    };
+    if a[5] & 4095 != 0 {
+        return err(Errno::EINVAL);
+    }
+    if len == 0 || !matches!(flags & (MAP_SHARED | MAP_PRIVATE), MAP_SHARED | MAP_PRIVATE) {
+        return err(Errno::EINVAL);
+    }
+    if flags & MAP_ANONYMOUS == 0 {
+        // No file descriptor in U1 can be mapped.
+        return err(if (0..=2).contains(&fd) {
+            Errno::ENODEV
+        } else {
+            Errno::EBADF
+        });
+    }
+    let at = GuestAddr(addr);
+    let result = if flags & (MAP_FIXED | MAP_FIXED_NOREPLACE) != 0 {
+        if at.page_offset() != 0 {
+            return err(Errno::EINVAL);
+        }
+        if flags & MAP_FIXED_NOREPLACE == 0
+            && let Err(e) = c.mem.unmap(at, len)
+        {
+            return err(e);
+        }
+        c.mem.map(Some(at), len, prot, MappingKind::Anonymous)
+    } else {
+        // Linux rounds a non-fixed hint down to its page boundary.
+        let hint = GuestAddr(addr & !4095);
+        let hinted = (hint.0 != 0)
+            .then(|| {
+                c.mem
+                    .map(Some(hint), len, prot, MappingKind::Anonymous)
+                    .ok()
+            })
+            .flatten();
+        match hinted {
+            Some(a) => Ok(a),
+            None => c.mem.map(None, len, prot, MappingKind::Anonymous),
+        }
+    };
+    match result {
+        Ok(a) => ok(a.0),
+        Err(e) => err(e),
+    }
+}
+
+fn sys_mprotect(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    // PROT_SEM (0x8) has no effect on x86-64, but Linux accepts it.
+    let Some(prot) = Prot::from_bits(a[2] & !8) else {
+        return err(Errno::EINVAL);
+    };
+    if a[1] == 0 {
+        return if GuestAddr(a[0]).page_offset() == 0 {
+            ok(0)
+        } else {
+            err(Errno::EINVAL)
+        };
+    }
+    match c.mem.protect(GuestAddr(a[0]), a[1], prot) {
+        Ok(()) => ok(0),
+        Err(e) => err(e),
+    }
+}
+
+fn sys_munmap(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    match c.mem.unmap(GuestAddr(a[0]), a[1]) {
+        Ok(()) => ok(0),
+        Err(e) => err(e),
+    }
+}
+
+fn sys_brk(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    // brk(0) and invalid requests return the current break (BR2.3).
+    ok(c.mem.set_break(GuestAddr(a[0])).0)
+}
+
+const SIGKILL: u64 = 9;
+const SIGSTOP: u64 = 19;
+const NSIG: u64 = 64;
+const SIGSET_SIZE: u64 = 8;
+
+fn unblockable() -> u64 {
+    (1 << (SIGKILL - 1)) | (1 << (SIGSTOP - 1))
+}
+
+fn read_words<const N: usize>(mem: &AddressSpace, at: u64) -> Result<[u64; N], Errno> {
+    let mut out = [0u64; N];
+    for (i, w) in out.iter_mut().enumerate() {
+        *w = mem
+            .read_u64(GuestAddr(at.wrapping_add(8 * i as u64)))
+            .map_err(|_| Errno::EFAULT)?;
+    }
+    Ok(out)
+}
+
+fn write_words(mem: &AddressSpace, at: u64, words: &[u64]) -> Result<(), Errno> {
+    let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+    mem.write(GuestAddr(at), &bytes).map_err(|_| Errno::EFAULT)
+}
+
+fn sys_rt_sigaction(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let (sig, act, oldact, size) = (a[0], a[1], a[2], a[3]);
+    if size != SIGSET_SIZE || sig == 0 || sig > NSIG {
+        return err(Errno::EINVAL);
+    }
+    if act != 0 && (sig == SIGKILL || sig == SIGSTOP) {
+        return err(Errno::EINVAL);
+    }
+    let key = i32::try_from(sig).unwrap_or(0);
+    let new = if act != 0 {
+        match read_words::<4>(c.mem, act) {
+            Ok(w) => Some(SignalAction {
+                handler: w[0],
+                flags: w[1],
+                restorer: w[2],
+                mask: w[3] & !unblockable(),
+            }),
+            Err(e) => return err(e),
+        }
+    } else {
+        None
+    };
+    if oldact != 0 {
+        let old = c
+            .process
+            .signal_actions
+            .get(&key)
+            .copied()
+            .unwrap_or_default();
+        if let Err(e) = write_words(
+            c.mem,
+            oldact,
+            &[old.handler, old.flags, old.restorer, old.mask],
+        ) {
+            return err(e);
+        }
+    }
+    if let Some(new) = new {
+        c.process.signal_actions.insert(key, new);
+    }
+    ok(0)
+}
+
+fn sys_rt_sigprocmask(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let (how, set, oldset, size) = (a[0], a[1], a[2], a[3]);
+    if size != SIGSET_SIZE {
+        return err(Errno::EINVAL);
+    }
+    let new = if set != 0 {
+        match c.mem.read_u64(GuestAddr(set)) {
+            Ok(v) => Some(v),
+            Err(_) => return err(Errno::EFAULT),
+        }
+    } else {
+        None
+    };
+    if new.is_some() && how > 2 {
+        return err(Errno::EINVAL);
+    }
+    if oldset != 0
+        && c.mem
+            .write_u64(GuestAddr(oldset), c.process.signal_mask)
+            .is_err()
+    {
+        return err(Errno::EFAULT);
+    }
+    if let Some(v) = new {
+        let mask = c.process.signal_mask;
+        c.process.signal_mask = match how {
+            0 => mask | v,
+            1 => mask & !v,
+            _ => v,
+        } & !unblockable();
+    }
+    ok(0)
+}
+
+/// `ioctl`: U1 has no terminal support, so every request on descriptors
+/// 0-2 (including `TIOCGWINSZ`, 0x5413) is `-ENOTTY` (BR3.3).
+fn sys_ioctl(_: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    if a[0] > 2 {
+        return err(Errno::EBADF);
+    }
+    err(Errno::ENOTTY)
+}
+
+fn exit_code(value: u64) -> i32 {
+    (value & 0xff) as i32
+}
+
+fn sys_exit(_: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    // One thread in U1: exit ends the process like exit_group (BR5.1).
+    Outcome::Exit(exit_code(a[0]))
+}
+
+fn sys_exit_group(_: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    Outcome::Exit(exit_code(a[0]))
+}
+
+const SS_ONSTACK: u32 = 1;
+const SS_AUTODISARM: u32 = 1 << 31;
+const MINSIGSTKSZ: u64 = 2048;
+
+fn sys_sigaltstack(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let (ss, old) = (a[0], a[1]);
+    let on_stack = signals::on_altstack(c.cpu, c.process.alt_stack);
+    if ss != 0 && on_stack {
+        return err(Errno::EPERM);
+    }
+    let new = if ss != 0 {
+        let w = match read_words::<3>(c.mem, ss) {
+            Ok(w) => w,
+            Err(e) => return err(e),
+        };
+        let flags = w[1] as u32;
+        if flags & !(SS_DISABLE | SS_AUTODISARM) != 0 {
+            return err(Errno::EINVAL);
+        }
+        if flags & SS_DISABLE == 0 && w[2] < MINSIGSTKSZ {
+            return err(Errno::ENOMEM);
+        }
+        Some(if flags & SS_DISABLE != 0 {
+            AltStack::default()
+        } else {
+            AltStack {
+                sp: w[0],
+                flags,
+                size: w[2],
+            }
+        })
+    } else {
+        None
+    };
+    if old != 0 {
+        let cur = c.process.alt_stack;
+        let flags = u64::from((cur.flags & !SS_ONSTACK) | u32::from(on_stack));
+        if let Err(e) = write_words(c.mem, old, &[cur.sp, flags, cur.size]) {
+            return err(e);
+        }
+    }
+    if let Some(new) = new {
+        c.process.alt_stack = new;
+    }
+    ok(0)
+}
+
+const ARCH_SET_GS: u64 = 0x1001;
+const ARCH_SET_FS: u64 = 0x1002;
+const ARCH_GET_FS: u64 = 0x1003;
+const ARCH_GET_GS: u64 = 0x1004;
+
+fn sys_arch_prctl(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let (code, addr) = (a[0], a[1]);
+    match code {
+        ARCH_SET_FS | ARCH_SET_GS => {
+            if addr >= USER_ADDRESS_LIMIT {
+                return err(Errno::EPERM);
+            }
+            if code == ARCH_SET_FS {
+                c.cpu.fs_base = addr;
+            } else {
+                c.cpu.gs_base = addr;
+            }
+            ok(0)
+        }
+        ARCH_GET_FS | ARCH_GET_GS => {
+            let v = if code == ARCH_GET_FS {
+                c.cpu.fs_base
+            } else {
+                c.cpu.gs_base
+            };
+            match c.mem.write_u64(GuestAddr(addr), v) {
+                Ok(()) => ok(0),
+                Err(_) => err(Errno::EFAULT),
+            }
+        }
+        _ => err(Errno::EINVAL),
+    }
+}
+
+fn sys_set_tid_address(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    c.process.clear_child_tid = a[0];
+    ok(u64::from(c.process.pid))
+}

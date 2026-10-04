@@ -1,0 +1,5 @@
+# LeakSanitizer suppressions for the fuzz targets.
+# iced-x86 builds its decoder tables once per process (lazy_static) and
+# intentionally never frees the handler objects; LSan reports them as
+# leaks. Only that one-time table construction is suppressed.
+leak:iced_x86::decoder::table_de

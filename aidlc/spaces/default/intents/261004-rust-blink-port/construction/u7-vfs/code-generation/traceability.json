@@ -1,0 +1,368 @@
+{
+  "upstream_ids": [
+    "FR2.10",
+    "FR3",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR9.1",
+    "FR9.3",
+    "NFR1",
+    "NFR2",
+    "NFR3",
+    "NFR4",
+    "NFR5",
+    "NFR6",
+    "NFR7",
+    "NFR8",
+    "NFR9",
+    "FR1",
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR1.4",
+    "FR1.5",
+    "FR1.6",
+    "FR10",
+    "FR10.1",
+    "FR2",
+    "FR2.1",
+    "FR2.2",
+    "FR2.3",
+    "FR2.4",
+    "FR2.5",
+    "FR2.6",
+    "FR2.7",
+    "FR2.8",
+    "FR2.9",
+    "FR4",
+    "FR4.1",
+    "FR4.2",
+    "FR5",
+    "FR5.1",
+    "FR5.2",
+    "FR5.3",
+    "FR5.4",
+    "FR6",
+    "FR6.1",
+    "FR6.2",
+    "FR6.3",
+    "FR6.4",
+    "FR7",
+    "FR7.1",
+    "FR7.2",
+    "FR7.3",
+    "FR7.4",
+    "FR8",
+    "FR8.1",
+    "FR8.2",
+    "FR8.3",
+    "FR9",
+    "FR9.2"
+  ],
+  "coverage": [
+    {
+      "target": "crates/paludarium-kernel/src/files.rs",
+      "id": "FR2.10",
+      "status": "OK"
+    },
+    {
+      "target": "crates/paludarium-vfs/src/lib.rs",
+      "id": "FR3",
+      "status": "OK"
+    },
+    {
+      "target": "crates/paludarium-runtime/src/lib.rs",
+      "id": "FR3.1",
+      "status": "OK"
+    },
+    {
+      "target": "crates/paludarium-host/src/native_fs.rs",
+      "id": "FR3.2",
+      "status": "OK"
+    },
+    {
+      "target": "crates/paludarium-harness/tests/diff_u7.rs",
+      "id": "FR3.3",
+      "status": "OK"
+    },
+    {
+      "target": "crates/paludarium-runtime/src/lib.rs",
+      "id": "FR3.4",
+      "status": "OK"
+    },
+    {
+      "target": "crates/paludarium-harness/tests/diff_u7.rs",
+      "id": "FR9.1",
+      "status": "OK"
+    },
+    {
+      "target": "fuzz/fuzz_targets/vfs_paths.rs",
+      "id": "FR9.3",
+      "status": "OK"
+    },
+    {
+      "target": "docs/u7/native-comparison.md",
+      "id": "NFR1",
+      "status": "OK"
+    },
+    {
+      "target": "fuzz/fuzz_targets/syscall_args.rs",
+      "id": "NFR2",
+      "status": "OK"
+    },
+    {
+      "target": "docs/u7/verification.md",
+      "id": "NFR3",
+      "status": "OK"
+    },
+    {
+      "target": "crates/paludarium-host/src/native_fs.rs",
+      "id": "NFR4",
+      "status": "OK"
+    },
+    {
+      "target": "crates/paludarium-vfs/src/operations.rs",
+      "id": "NFR5",
+      "status": "OK"
+    },
+    {
+      "target": "FR7.4とFR8.3の速度評価はU10/U14担当。U7に速度目標なし。",
+      "id": "NFR6",
+      "status": "N/A"
+    },
+    {
+      "target": "crates/paludarium-harness/tests/diff_u7.rs",
+      "id": "NFR7",
+      "status": "OK"
+    },
+    {
+      "target": "deny.toml",
+      "id": "NFR8",
+      "status": "OK"
+    },
+    {
+      "target": "rust-toolchain.toml",
+      "id": "NFR9",
+      "status": "OK"
+    },
+    {
+      "id": "FR1",
+      "target": "U7の担当外。U1/U2/U3 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR1.1",
+      "target": "U7の担当外。U1/U2/U3 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR1.2",
+      "target": "U7の担当外。U1/U2/U3 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR1.3",
+      "target": "U7の担当外。U1/U2/U3 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR1.4",
+      "target": "U7の担当外。U1/U2/U3 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR1.5",
+      "target": "U7の担当外。U1/U2/U3 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR1.6",
+      "target": "U7の担当外。U1/U2/U3 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR10",
+      "target": "U7の担当外。U15 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR10.1",
+      "target": "U7の担当外。U15 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR2",
+      "target": "U7の担当外。U1/U4 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR2.1",
+      "target": "U7の担当外。U1/U4 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR2.2",
+      "target": "U7の担当外。U1/U4 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR2.3",
+      "target": "U7の担当外。U5 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR2.4",
+      "target": "U7の担当外。U6 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR2.5",
+      "target": "U7の担当外。U6 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR2.6",
+      "target": "U7の担当外。U6 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR2.7",
+      "target": "U7の担当外。U6 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR2.8",
+      "target": "U7の担当外。U8 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR2.9",
+      "target": "U7の担当外。U1/U4 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR4",
+      "target": "U7の担当外。U9 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR4.1",
+      "target": "U7の担当外。U9 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR4.2",
+      "target": "U7の担当外。U9 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR5",
+      "target": "U7の担当外。U1/U5/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR5.1",
+      "target": "U7の担当外。U1/U5/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR5.2",
+      "target": "U7の担当外。U1/U5/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR5.3",
+      "target": "U7の担当外。U1/U5/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR5.4",
+      "target": "U7の担当外。U1/U5/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR6",
+      "target": "U7の担当外。U10/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR6.1",
+      "target": "U7の担当外。U10/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR6.2",
+      "target": "U7の担当外。U10/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR6.3",
+      "target": "U7の担当外。U10/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR6.4",
+      "target": "U7の担当外。U10/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR7",
+      "target": "U7の担当外。U10/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR7.1",
+      "target": "U7の担当外。U10/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR7.2",
+      "target": "U7の担当外。U10/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR7.3",
+      "target": "U7の担当外。U10/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR7.4",
+      "target": "U7の担当外。U10/U11/U12/U13 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR8",
+      "target": "U7の担当外。U14 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR8.1",
+      "target": "U7の担当外。U14 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR8.2",
+      "target": "U7の担当外。U14 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR8.3",
+      "target": "U7の担当外。U14 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR9",
+      "target": "U7の担当外。U1/U11 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    },
+    {
+      "id": "FR9.2",
+      "target": "U7の担当外。U1/U11 が担当（inception/units-generation/unit-of-work-story-map.md）。本Unitで実装/合格を主張しない。",
+      "status": "Deferred"
+    }
+  ],
+  "unit": "u7-vfs",
+  "stage": "code-generation"
+}
