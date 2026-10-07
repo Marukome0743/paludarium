@@ -1,1 +1,1 @@
-"C:\Program Files\Git\bin\bash.exe" scripts/linux-dev.sh cargo test --locked --workspace
+python3 aidlc/spaces/default/intents/261004-rust-blink-port/verification/verify-native-ci.py

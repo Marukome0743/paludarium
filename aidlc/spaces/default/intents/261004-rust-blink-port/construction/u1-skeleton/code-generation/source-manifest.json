@@ -127,6 +127,9 @@
       "path": "crates/paludarium-vfs/src/lib.rs"
     },
     {
+      "path": "crates/paludarium-vfs/src/u1_tests.rs"
+    },
+    {
       "path": "crates/paludarium/Cargo.toml"
     },
     {
@@ -284,6 +287,30 @@
     },
     {
       "path": "fuzz/fuzz_targets/syscall_args.rs"
+    },
+    {
+      "path": ".github/workflows/native-diagnostic.yml"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/u2_tests.rs"
+    },
+    {
+      "path": "tests/guests/u4/build.sh"
+    },
+    {
+      "path": "tests/guests/u7/build.sh"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/diff_u2.rs"
+    },
+    {
+      "path": "tests/guests/u2/observe.c"
+    },
+    {
+      "path": "crates/paludarium-host/src/native_fs.rs"
+    },
+    {
+      "path": "crates/paludarium-vfs/src/mount.rs"
     }
   ]
 }

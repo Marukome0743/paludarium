@@ -1,11 +1,15 @@
 {
-  "purpose": "U1 claimsの現在bytes。正式ライフサイクルreceiptではない。",
-  "claim_count": 94,
+  "purpose": "現在sourceの診断用SHA256。ライフサイクルreceiptではない。",
+  "claim_count": 103,
   "missing": [],
   "files": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "f957ce7c428c9cade38cac80831191bb4f65cdb0c593489f14b4890d3071edb9"
+      "sha256": "cfcae2d565698425b6f816f204a797d4aefdeae2d3777b857f027a92bf5cffe6"
+    },
+    {
+      "path": ".github/workflows/native-diagnostic.yml",
+      "sha256": "d8114986172116907c1d6440172736f29a88c3e3fcb87a4afb6884059af39276"
     },
     {
       "path": ".github/workflows/nightly.yml",
@@ -13,7 +17,7 @@
     },
     {
       "path": ".gitignore",
-      "sha256": "63d586da2824384067d137413dd61f9d73b0b965e2373b800fb2b7116cc61e1a"
+      "sha256": "dedee0caa204fec8ce2f7a75568eea632b2aaeb71e4c94f74972f4b293da0526"
     },
     {
       "path": "Cargo.lock",
@@ -24,12 +28,36 @@
       "sha256": "5894b6bac21f8a48cf856133c14f3949d3007af8c8b8c44750ed3b23d5c51780"
     },
     {
+      "path": "README.md",
+      "sha256": "26957e8cb8307bd9ed01b935223c5d7de3186b0ad114497794d985e16594d10a"
+    },
+    {
       "path": "ci/linux-dev/Dockerfile",
       "sha256": "caa76f6aa5954f7c2afbed3a6f65075fb47190c7204419b1f91ab60ef08aa449"
     },
     {
       "path": "clippy.toml",
       "sha256": "8bdbe4c5a329aba3aa92387881a7904906b488ef7b6f3cad66d40164cf6d3e5a"
+    },
+    {
+      "path": "crates/paludarium/Cargo.toml",
+      "sha256": "50fa1586728384d14c16c274df0ad97e0572c81c94ba4091bc98756a3fa2d468"
+    },
+    {
+      "path": "crates/paludarium/src/cli.rs",
+      "sha256": "5bf66265f14796b8087155a84f8fcce0eaa57f75aedb659ee6ff76398d3ebf4b"
+    },
+    {
+      "path": "crates/paludarium/src/lib.rs",
+      "sha256": "827d4970c620246477c3d4009c6f9c435a65c3e28e5bf688e37b7dc26f8336de"
+    },
+    {
+      "path": "crates/paludarium/src/main.rs",
+      "sha256": "d89ffff6cf35af97475bf535e19b9e9e18fcb1d93aaaa4b2d343f7ad3614cc96"
+    },
+    {
+      "path": "crates/paludarium/tests/command.rs",
+      "sha256": "df1298222bfbf21626f436254a4fd808dc974e0372937c117dd9f2b102bbf4de"
     },
     {
       "path": "crates/paludarium-cpu/Cargo.toml",
@@ -41,15 +69,19 @@
     },
     {
       "path": "crates/paludarium-cpu/src/exec.rs",
-      "sha256": "e5f052c58761a8d391d1bf438a7b8147b9300f9fa8c39fe1fa66f1d53ba9f4f0"
+      "sha256": "e660a4c0cc569a679e3c6dcf3511e782415196bc59786bc29eb16fc77ef1015e"
     },
     {
       "path": "crates/paludarium-cpu/src/lib.rs",
-      "sha256": "a61ae4f972dcbfa450c90b41cb26b0e43a125bea06515424b5212e8c5349c035"
+      "sha256": "a8d125e9d8e4e2de4585d7398497a361b5491de3cc46cee25584b8fe34f0144d"
     },
     {
       "path": "crates/paludarium-cpu/src/state.rs",
-      "sha256": "a024cfeb33ca06d47ebe97cb319b8411635492f06a9b889b9480e476735f8e02"
+      "sha256": "c51b9e636499ef7bea2c66ed768a8b660f98006f4fc1adfae9aec9a5f3580fb2"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/u2_tests.rs",
+      "sha256": "dc80918a12a451e743f9bb0eabd8120fb4849019db698faa6a70494607d67827"
     },
     {
       "path": "crates/paludarium-decoder/Cargo.toml",
@@ -57,7 +89,7 @@
     },
     {
       "path": "crates/paludarium-decoder/src/lib.rs",
-      "sha256": "50d689b8940adbb20e9dab188870609fbea2aa0dc88530b11b45f1984ba7414c"
+      "sha256": "0fccdc45dc22618ec591f41ae9ab7f278084a83803fdeeffa6347ff4dff4162e"
     },
     {
       "path": "crates/paludarium-harness/Cargo.toml",
@@ -65,7 +97,7 @@
     },
     {
       "path": "crates/paludarium-harness/src/coverage.rs",
-      "sha256": "1d6851a8ae5ad9f3f18c81feae1773dd1be17dce5a91bcf6af4ca87db135a000"
+      "sha256": "458f8155842d7a034571662c4d737314b97e744c546028900b1dfcd9a7c3a7cb"
     },
     {
       "path": "crates/paludarium-harness/src/lib.rs",
@@ -76,12 +108,20 @@
       "sha256": "5c6af822b41be11e5b1c5301a4eb8d9beb54f0bea1a5e6b0fe3dbacacf6bc7a3"
     },
     {
+      "path": "crates/paludarium-harness/tests/diff_u2.rs",
+      "sha256": "b8e2bbbc0b755fad7b673395a9b3b11927b6c70547ee10a138bcacdeef488d78"
+    },
+    {
       "path": "crates/paludarium-host/Cargo.toml",
       "sha256": "2459a5663be649f1802d4293317a78d37df8488c0acdb1bddf3b23a0ad9ce561"
     },
     {
       "path": "crates/paludarium-host/src/lib.rs",
-      "sha256": "45d7dad314514398e3882c937330ccab12e8faab1f64f718697432a12c069a65"
+      "sha256": "dc9bd9188aaba4c1cc6947d6a0cc677b436991cce569514e0e0579bc3ed5f3f8"
+    },
+    {
+      "path": "crates/paludarium-host/src/native_fs.rs",
+      "sha256": "c88d9d93f55e800f77418e6c32333cfeeced3a0a19fbbcf49a70a3c039751342"
     },
     {
       "path": "crates/paludarium-host/src/testing.rs",
@@ -149,7 +189,7 @@
     },
     {
       "path": "crates/paludarium-runtime/src/tests.rs",
-      "sha256": "1e06631af89743c5408b0fb1da9f2d3d14c5cac0259fca52b2e66aeb5508b5db"
+      "sha256": "a2dd3bfde97808662a55b5c2bf05bbf9ec3d2c2edbd2153e41b8411777f47c88"
     },
     {
       "path": "crates/paludarium-types/Cargo.toml",
@@ -168,24 +208,12 @@
       "sha256": "34d4632777503d7e43668a198f02a11c38441bfc1c7f0289893babaf85aa4510"
     },
     {
-      "path": "crates/paludarium/Cargo.toml",
-      "sha256": "50fa1586728384d14c16c274df0ad97e0572c81c94ba4091bc98756a3fa2d468"
+      "path": "crates/paludarium-vfs/src/mount.rs",
+      "sha256": "ef2404281592a4a4ab6e51d3a332c1d9a9636875fd24e8decadfd6081691c598"
     },
     {
-      "path": "crates/paludarium/src/cli.rs",
-      "sha256": "5bf66265f14796b8087155a84f8fcce0eaa57f75aedb659ee6ff76398d3ebf4b"
-    },
-    {
-      "path": "crates/paludarium/src/lib.rs",
-      "sha256": "827d4970c620246477c3d4009c6f9c435a65c3e28e5bf688e37b7dc26f8336de"
-    },
-    {
-      "path": "crates/paludarium/src/main.rs",
-      "sha256": "d89ffff6cf35af97475bf535e19b9e9e18fcb1d93aaaa4b2d343f7ad3614cc96"
-    },
-    {
-      "path": "crates/paludarium/tests/command.rs",
-      "sha256": "df1298222bfbf21626f436254a4fd808dc974e0372937c117dd9f2b102bbf4de"
+      "path": "crates/paludarium-vfs/src/u1_tests.rs",
+      "sha256": "490884b9a092a7c6eda1cf4e29830a139848c105e26c88a0e6baecca2fa37e7d"
     },
     {
       "path": "deny.toml",
@@ -210,6 +238,10 @@
     {
       "path": "docs/u1/census/hello-rs.mnemonics",
       "sha256": "c02c667fa55df984ee55fca5ad5edc69d12c97b8811525ec6df9d7e724b9f58c"
+    },
+    {
+      "path": "docs/u1/census/repair-20261008.md",
+      "sha256": "d17d53f48606cf6c734babbf85f6bb969cdc6c29ef58194f5e14c11d0fca177e"
     },
     {
       "path": "fuzz/Cargo.lock",
@@ -240,28 +272,16 @@
       "sha256": "0093908d3e9a8788c2936875ae16705a1b7f756f5baa52839f876077847d7e4d"
     },
     {
-      "path": "README.md",
-      "sha256": "26957e8cb8307bd9ed01b935223c5d7de3186b0ad114497794d985e16594d10a"
-    },
-    {
       "path": "rust-toolchain.toml",
       "sha256": "c0ab4a2681f5d8f2dfb9c85131cf4eb8a3177009fc3fe8372273340ae9189175"
     },
     {
       "path": "scripts/linux-dev.sh",
-      "sha256": "26b6c22643c74bfc457d3cd7d3c2ba3672a4a08280451b942b78f483492d93e1"
+      "sha256": "295201875582f0dd6d8108c241bd7c550d76f12570dcf9f2b93bb0647eda8e2f"
     },
     {
       "path": "spikes/wasm-threads/.cargo/config.toml",
       "sha256": "7876cda4cff9fd261511e04f9466e724a98e5940eaa20aa57c1c2afe22cddb07"
-    },
-    {
-      "path": "spikes/wasm-threads/browser-check.mjs",
-      "sha256": "91d49ed097e1d9fad2cb413c5dc9e02a6540f37687390d6027d22e5c46bdab5c"
-    },
-    {
-      "path": "spikes/wasm-threads/build.sh",
-      "sha256": "6d88f7f362388f3b1068226340dd2c82a794c30f7007a78b7620b3f1fb197a3c"
     },
     {
       "path": "spikes/wasm-threads/Cargo.lock",
@@ -270,6 +290,14 @@
     {
       "path": "spikes/wasm-threads/Cargo.toml",
       "sha256": "3e9c5b86cf6cfbf4ef3805141c45757db01715ab475fc6b82884240096ecad62"
+    },
+    {
+      "path": "spikes/wasm-threads/browser-check.mjs",
+      "sha256": "91d49ed097e1d9fad2cb413c5dc9e02a6540f37687390d6027d22e5c46bdab5c"
+    },
+    {
+      "path": "spikes/wasm-threads/build.sh",
+      "sha256": "6d88f7f362388f3b1068226340dd2c82a794c30f7007a78b7620b3f1fb197a3c"
     },
     {
       "path": "spikes/wasm-threads/js/check.mjs",
@@ -328,6 +356,10 @@
       "sha256": "4645b82e7df19f8a5466112abba5bb6e96828e9f42d068f8b44ce970248056f4"
     },
     {
+      "path": "tests/guests/insn/UNDEFINED.md",
+      "sha256": "6e7aa22e0e27f24c3878aebda754010d78412ca2a0e52ab2aacf4c601147d4e5"
+    },
+    {
       "path": "tests/guests/insn/alu.c",
       "sha256": "b7fcb75a1d47ebc78e05a73a440cc3ce21180655429cf417e1b2f2e32fe513f8"
     },
@@ -377,15 +409,23 @@
     },
     {
       "path": "tests/guests/insn/sse.c",
-      "sha256": "b87b9b1a00fa1d2a84ab4badfa70f3426d1c5ecd4ea52d95c4e15f1369e61bc0"
+      "sha256": "491c51e83c7c7472a9e5ddba25630989139c6acb9528a0791f55ef9576eafdad"
     },
     {
       "path": "tests/guests/insn/string.c",
       "sha256": "92264a6a57ad7488006fe18c2ab89a53254444c688a098d884a94706036f9278"
     },
     {
-      "path": "tests/guests/insn/UNDEFINED.md",
-      "sha256": "6e7aa22e0e27f24c3878aebda754010d78412ca2a0e52ab2aacf4c601147d4e5"
+      "path": "tests/guests/u2/observe.c",
+      "sha256": "afc158e8fbefb58eb632ad74dcd0b1ea471a9fa7bfec7556a5f7bd4031062b2f"
+    },
+    {
+      "path": "tests/guests/u4/build.sh",
+      "sha256": "cd5943adf40121aeac684f3785be91ad508335a774d86197078d4c865f78b3e6"
+    },
+    {
+      "path": "tests/guests/u7/build.sh",
+      "sha256": "da4bbaf56b52ec8d133874f829efe05f84b57ef936f38f59eb769e40de04e215"
     },
     {
       "path": "tools/insn-trace/insn-census.sh",

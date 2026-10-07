@@ -115,7 +115,7 @@
       "id": "BR3.4",
       "status": "OK",
       "target": "crates/paludarium-kernel/src/lib.rs",
-      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+      "notes": "既存writeのzero/partial回帰を保持し、修復後のLinux単体テストで確認。"
     },
     {
       "id": "BR4.1",
@@ -139,13 +139,13 @@
       "id": "BR4.4",
       "status": "OK",
       "target": "crates/paludarium-harness/src/coverage.rs",
-      "notes": "66/66は先行helper実行の対応指標。最新保存済みcoverage-final.txt:46–47でhelper2件ok。本redoで新実行なし。ソース根拠片の存在指標で全operand/flags網羅率ではない。"
+      "notes": "MOVQ/PUNPCKLQDQを追加し、census helperは68/68。ソース根拠片の対応であり全形式網羅率ではない。"
     },
     {
       "id": "BR4.5",
       "status": "OK",
       "target": "crates/paludarium-cpu/src/lib.rs",
-      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+      "notes": "初期U1の登録のみ仕様の対応。現在の共有KernelにはU4によるsignal配送があるため、登録のみを現在の全挙動とは主張しない。"
     },
     {
       "id": "BR5.1",
@@ -163,7 +163,7 @@
       "id": "BR5.3",
       "status": "OK",
       "target": "crates/paludarium/src/cli.rs",
-      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+      "notes": "初期U1のmount拒否仕様の対応。現在CLIはU7で正しいmount指定を受け付ける。U1の新規変更として戻さない。"
     },
     {
       "id": "BR5.4",
@@ -181,13 +181,13 @@
       "id": "BR7.1",
       "status": "OK",
       "target": "crates/paludarium-harness/tests/diff_u1.rs",
-      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+      "notes": "検証済み：最終4d52be0aのnative CI37695518927（AMD Ubuntu/Bookworm）でU1差分16件と全workspace成功。IntelはCPU等の同一bytesのe081先行実機成功。vendorモデル・maskを保持。詳細code-summary.md。"
     },
     {
       "id": "BR7.2",
       "status": "OK",
       "target": "crates/paludarium-harness/tests/diff_u1.rs",
-      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+      "notes": "検証済み：最終4d52be0aのnative CI37695518927（AMD Ubuntu/Bookworm）でU1差分16件と全workspace成功。IntelはCPU等の同一bytesのe081先行実機成功。vendorモデル・maskを保持。詳細code-summary.md。"
     },
     {
       "id": "BR8.1",
@@ -211,13 +211,13 @@
       "id": "NFR1.1",
       "status": "OK",
       "target": "crates/paludarium-harness/tests/diff_u1.rs",
-      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+      "notes": "検証済み：最終4d52be0aのnative CI37695518927（AMD Ubuntu/Bookworm）でU1差分16件と全workspace成功。IntelはCPU等の同一bytesのe081先行実機成功。vendorモデル・maskを保持。詳細code-summary.md。"
     },
     {
       "id": "NFR1.2",
       "status": "OK",
       "target": "crates/paludarium-harness/src/coverage.rs",
-      "notes": "66/66は先行helper実行の対応指標。最新保存済みcoverage-final.txt:46–47でhelper2件ok。本redoで新実行なし。ソース根拠片の存在指標で全operand/flags網羅率ではない。"
+      "notes": "新SSE native期待結果とInvalidOpcode Redを実装前に取得。REPはIntel/AMDの観測に対応する明示モデルで全0xcd5flagsを比較する。"
     },
     {
       "id": "NFR2.1",
@@ -253,13 +253,13 @@
       "id": "NFR3.2",
       "status": "OK",
       "target": ".github/workflows/ci.yml",
-      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+      "notes": "検証済み：最終lint job113046172023成功。fmt/clippy警告をエラーとして確認。"
     },
     {
       "id": "NFR3.3",
       "status": "OK",
       "target": ".github/workflows/ci.yml",
-      "notes": "最新保存済み全体測定 docs/u7/inventory/coverage-final.txt:888、lines4681/missed478/89.79%、exit0。正式skeleton fullworkspace proof4747d3c8 exit0、source34hash不一致0。先行197/94.00%は履歴。U1専用分母とは区別し80%維持。"
+      "notes": "検証済み：最終CI37695518838全体92.57%（7030/未実行522）、U1対象packages82.71%（6780/未実行1172）。両下限80%。共有crateの後続実装も分母に含む。"
     },
     {
       "id": "NFR4.1",
@@ -271,7 +271,7 @@
       "id": "NFR4.2",
       "status": "OK",
       "target": "crates/paludarium/src/cli.rs",
-      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+      "notes": "初期U1の仮想FS/mount拒否仕様の対応。現在VFS/Host/CLIはU7で明示的mountを受け付ける後続拡張がある。"
     },
     {
       "id": "NFR4.3",
@@ -307,7 +307,7 @@
       "id": "NFR8.1",
       "status": "OK",
       "target": "deny.toml",
-      "notes": "最新docs/u7/inventory/deny-final-locked.txt末尾advisories/bans/licenses/sources全ok。現Cargo.lock hash553b2b8d7670426ed73c51f1d756b93a6a8b26bc427de87afa01a15f60264b27。旧未導入失敗は履歴保持。"
+      "notes": "検証済み：最終dependencies job113046171450成功。Cargo.lock SHA256はsource snapshotへ記録、lock変更なし。"
     },
     {
       "id": "NFR8.2",

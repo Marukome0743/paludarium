@@ -1,30 +1,27 @@
+# 現在sourceの検証記録（2026-10-08）
 
-## 先行attemptの共有source確認履歴
+## 最終sourceとCI
 
-今回の変更はU1記録文書だけで、application source・README・U2成果物は変更していない。上記102件/87.11%と初回write修正のRed/Greenは先行sourceの履歴である。現在のsourceについて次の具体物を照合した。
+検証済み：4d52be0a6f3b11d6c11a62f96196985c9c280fdc、GitHub verified:true/reason:valid。CI37695518838は全7jobs、native37695518927は全4jobs成功。実行コマンド・CPU・test名・件数はverification/final-{ubuntu,bookworm,mac,windows,coverage}-4d52be0a.log。詳細とリンクはcode-summary.md。
 
-| 具体物 | 現在の観測 |
-|---|---|
-| docs/u2/repairs/r01-workspace-coverage.txt:118〜136 | 検証済み：hello_c/hello_rs/hello_rs_with_argumentsと既存13命令系、U1差分16 passed/0 failed。serial実行34.83秒はsuite合計で、各case30秒watchdogを維持 |
-| 同ファイル:564〜565 | 検証済み：tests::write_returns_partial_count_without_filling_remainder と tests::write_returns_zero_without_retrying_host はok。Kernel11 passed。有限mockはfd1/2、0/1返却とHost呼出し1回を検査 |
-| 同ファイル:670 | 検証済み：全workspace197 parent tests、lines4233/missed254/94.00%、regions90.20%、保存済み実行exit0。全体分母でありU1専用件数/coverageとは呼ばない |
-| cargo test --locked -p paludarium-harness --lib coverage::tests -- --nocapture | 今回実行exit0、2 passed/0 failed、U1 instruction coverage by differential tests:66/66。coverage_counts_missing_sources_as_uncovered/every_u1_instruction_has_a_differential_testが通過。形式・flags全入力の意味論網羅率ではない |
-| docs/u2/repairs/u2-cargo-deny.txt | 検証済み：advisories/bans/licenses/sources全ok、公式asset digest照合後のWindows --locked check exit0。先行Linux missing-command失敗から後続取得で確認済み |
+Windows Host25/Runtime25/VFS45件通過。Ubuntu/BookwormのAMD EPYC7763で全workspaceが通過し、両方の差分はU1 16/U2 38/U4 44/U7 63件。全体行coverage7030/未実行522=92.57%、U1対象11packages6780/未実行1172=82.71%。両下限80%を維持する。
 
-ドキュメント根拠：C1〜C11の現在の実装は既存provider crateに保持される。U2で共有sourceにArithmeticFault（Types/Cpu/Kernel同時更新、Kernel SIGFPE）、typed atomic/common Mmu同期、FS/GS linear address、REP continuationが加わった。これをU1の新規実装成果とは数えない。CpuはKernel/Hostを直接利用せず、MmuはCpu型に依存しない。C2乱数・C9no-op fallback・C10Session・C11CLIの既存口も維持する。上流contract-summaryは完全な現API宣言ではなく、古い型形状との差分をこの記録で開示する。
+Intel e081の全workspace成功は先行証拠。e081→最終のCPU・decoder・REP observer/fixture・SSE guestはjj diff0。最終runのIntel全workspace再実行とは呼ばない。
 
-最新CPU/MMU ASan600秒の通過はU2対象の観測であり、U1 decode/load_elf/mmu_ops/syscall_args各targetの合格へ転用していない。U1各targetの今回実行、macOS/Safari、wasm spikeの再実行、候補decoder比較の歴史的ログは未検証。nightly各600秒・80%・30秒・nightly pin・custom orderingは維持する。既存full実行と同じproductionであるため、全体検証を反復しなかった。必要な証拠が新たに不足した場合は承認済みexact U1 commandsで回収する。
+## 期待結果・修復前失敗・手元検証
 
-source-manifestは94 claims。U1独立fuzzは4ファイルへ限定し、U2専用cpu_u2/mmu_u2 targetsを所有権へ加えていない。shell/scaffolding/generator由来を含む既存U1 sourcesを保持する。記録済み回答は保持し、新しい機能回答や合格を作っていない。
-最終整合観測：traceability upstream47/coverage47、OK target実ファイル欠落0。source-manifest94 claimsはjj未追跡0。Cpu dependenciesはTypes/Decoder/Mmuのみ、MmuはTypesのみ（各Cargo.toml読取）。exec.rs SHA256=e5f052c58761a8d391d1bf438a7b8147b9300f9fa8c39fe1fa66f1d53ba9f4f0を保持。Step18〜20のチェックは今回の確認完了を表し、Step1〜17の過去試行順序の証明にはしない。
+verification/repair-implementation-results.md、host-repair-results.md、runtime-cleanup-results.md、vfs-cleanup-results.mdと各ログを参照。SSE native期待結果とRedは実装前、内部単体はtest-after。Windows修復前raw32はHost/Runtime/VFSの各strict cleanupに記録され、後片付けの失敗を実際の機能assertionの失敗と断定しない。
 
-## 2026-10-07 redo：現在のsourceと保存済み証拠の照合
+Docker限定検証の通過とQEMU oracle差による全workspace失敗を区別する。ENTER allocation faultやsignal/errno差のログは保持する。
 
-今回の新実行はファイルの実在・SHA256・jj追跡・traceability照合のみ。アプリケーションsource、共有README、他unitの成果物は変更していない。上の102件/87.11%、197件/94.00%および「今回実行」と記された66/66は各先行attemptの履歴であり、本redoの新テスト実行ではない。
+## 静的照合と所有
 
-- 検証済み（保存済み正式実行）：`.aidlc-construction-checkpoints/u1-skeleton/skeleton.json` のid `4747d3c8-ee4d-4d76-9d3e-b4046449d3c0`、command_label `"C:\Program Files\Git\bin\bash.exe" scripts/linux-dev.sh cargo test --locked --workspace`、2026-10-06T22:02:21.817Z〜22:02:50.262Z、exit0、verified:true、evidence_unchanged:true。stderr_tailはdiff_u1とKernelを含む全workspace対象を記録。stdout digest `2b834e096fec7d78d18e5f14c3cd9149a14e632c2f5ec946a1af1edbf3560322`。このテスト証拠は新attemptの人間承認の代わりにはしない。proofの末尾だけから全件数を推定しない。
-- 検証済み（最新保存測定）：`docs/u7/inventory/coverage-final.txt:888` TOTAL lines4681、missed478、89.79%（4203/4681）、80%下限を満たす。U7を含む現在の全体分母でありU1専用カバレッジではない。同ファイル:46〜47はcensus対応helper2件ok、:728〜729はwriteのゼロ/部分結果回帰2件ok。先行U1 diff16件は正式全workspaceのdiff_u1対象で再確認されている。
-- 検証済み（本redoの照合）：`docs/u7/inventory/source-bytes-final.json` の34ファイルをGet-FileHashで現在値と比較し、不一致0。現在U1 manifest94claimsを展開した98ファイルを `source-bytes-current.json` へ保存。欠落0、jj file listのWindows区切り正規化後の未追跡0。traceability47件のOK target欠落0。source-manifest SHA256 `9ad3020d09ec0ee6a512ceb4c8546d6e59914ae2fb1c0d8363d9dd853a747a1a`、source snapshot SHA256 `842ba15c913b6d6d04157249a137228e2b70f3815087f1aa9288f3e91d2b2701`。
-- 検証済み（保存済み依存検査）：`docs/u7/inventory/deny-final-locked.txt` 末尾にadvisories/bans/licenses/sources全ok。現在Cargo.lock SHA256 `553b2b8d7670426ed73c51f1d756b93a6a8b26bc427de87afa01a15f60264b27`。これは最新lockの検査記録であり、旧U2 lockに対する検査を現在へ転用していない。
-- ドキュメント根拠：C1〜C11のU1 providerと後続共有変更は保持。U2のArithmeticFault/atomic/REPに加え、U4のsignal/time/MMUとU7のVFS/Hostの現在の共有拡張をU1新実装と数えない。独立後続sourceをU1 claimsへ追加しない。
-- 未検証：wasm spike再実行、Safari/macOS、U1 decode/load_elf各fuzzの本redo実行、候補decoder比較の歴史的ログ。後続unitのfuzz合格を代用しない。既存nightly各600秒、80%下限、差分30秒watchdog、nightly pin、custom orderingは保持。承認済みStep19のとおり不足を開示し、同じproductionの全体テストは反復しなかった。
+検証済み：python3 aidlc/spaces/default/intents/261004-rust-blink-port/construction/u1-skeleton/code-generation/check-current-source.py、exit0。103claims/108files、欠落・未追跡・現在U1 snapshot不一致0。上流47/対応47・OK target欠落0、census68根拠欠落0。Cargo.lock SHA256553b2b8d7670426ed73c51f1d756b93a6a8b26bc427de87afa01a15f60264b27。
+
+U7以前のsnapshotとの差5filesはLF/Host/Runtime/VFSの関連修復。以前のsnapshotは履歴として保持し、独立後続unit成果物を作り直さない。現在のmanifest/traceabilityは実ファイルの対応であり、全quality targetの合格宣言ではない。以前の本文はevidence-before-host-repair-20261008.mdへ保持した。
+
+## 復旧と未検証
+
+検証済み：plan-approval-guardとcontinue-workflowは登録済み、bun test tools/aidlc-recovery/recovery.test.tsは9pass/0fail/37assertions。rejected reportの直前にも両方を再確認する。
+
+未検証：今回のwasm/Safari、U1各fuzz再実行、decoder候補比較の歴史的ログ。固定nightly、各600秒、coverage80%、30秒watchdog、比較maskを維持する。先行197件/94.00%等の値を現在の合格へ転用しない。
