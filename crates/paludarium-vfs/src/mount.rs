@@ -363,6 +363,10 @@ mod u7_mount_tests {
     }
     impl Drop for Fixture {
         fn drop(&mut self) {
+            drop(std::mem::replace(
+                &mut self.fs,
+                MountedFs::new(MemFs::new()),
+            ));
             std::fs::remove_dir_all(&self.root).unwrap();
         }
     }
