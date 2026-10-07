@@ -1018,6 +1018,22 @@ impl Exec<'_> {
         self.write128(dst, v, true)
     }
 
+    fn sse_movq(&mut self) -> Result<()> {
+        let dst = op(self.i, 0)?;
+        let src = op(self.i, 1)?;
+        let value = self.read(src, 8)?;
+        // Legacy MOVQ writes only a qword to GPR/memory, but clears the
+        // upper qword when its destination is an XMM register.
+        self.write(dst, 8, value)
+    }
+
+    fn sse_unpack_low_qwords(&mut self) -> Result<()> {
+        let dst = op(self.i, 0)?;
+        let low = self.read128(dst, true)? as u64;
+        let high = self.read128(op(self.i, 1)?, true)? as u64;
+        self.write128(dst, u128::from(low) | (u128::from(high) << 64), true)
+    }
+
     fn branch_target(&self) -> Result<u64> {
         let o = op(self.i, 0)?;
         self.read(o, 8)
@@ -1253,6 +1269,8 @@ pub(crate) fn execute(s: &mut CpuState, mem: &AddressSpace, i: &Instruction) -> 
         Mnemonic::Movaps | Mnemonic::Movdqa => x.sse_move(true)?,
         Mnemonic::Movups | Mnemonic::Movdqu => x.sse_move(false)?,
         Mnemonic::Pxor | Mnemonic::Xorps => x.sse_xor()?,
+        Mnemonic::Movq => x.sse_movq()?,
+        Mnemonic::Punpcklqdq => x.sse_unpack_low_qwords()?,
         _ => return Err(Stop::Invalid),
     }
     x.s.rip = GuestAddr(target.unwrap_or(next.0));

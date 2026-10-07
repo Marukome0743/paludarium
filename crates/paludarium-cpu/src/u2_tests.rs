@@ -82,16 +82,54 @@ fn u2_repeat_context_clears_on_different_instruction() {
     assert!(s.repeat_continuation.is_none());
 }
 #[test]
-fn u2_repeat_fetch_fault_restores_initial_flags_and_clears_context() {
+fn u2_repeat_fetch_fault_keeps_committed_flags_and_clears_context() {
     let (mut s, mut m) = continuation();
+    let flags = s.rflags;
     m.unmap(GuestAddr(0x10000), 4096).unwrap();
     assert!(matches!(
         step(&mut s, &m),
         Err(ExitReason::PageFault { write: false, .. })
     ));
-    assert_eq!(s.rflags, 0x8d7);
+    assert_eq!(s.rflags, flags);
     assert!(s.repeat_continuation.is_none());
     assert_eq!(s.gpr[reg::RCX], 1);
+}
+
+#[test]
+fn u2_repeat_data_fault_keeps_last_completed_comparison_flags() {
+    // Native AMD EPYC: start faults keep the input flags, whereas a fault
+    // after CMPS/SCAS iterations exposes the last completed comparison.
+    for (code, expected) in [([0xf3, 0xa6], 0x44), ([0xf2, 0xae], 0)] {
+        for completed in [0, 17, 4096] {
+            let (mut state, memory) = fixture(&code);
+            memory.write(GuestAddr(0x40000000), &[0x31; 8192]).unwrap();
+            state.rflags = 0x8d7;
+            state.gpr[reg::RAX] = 0x32;
+            state.gpr[reg::RCX] = completed + 1;
+            state.gpr[reg::RSI] = 0x40002000 - completed;
+            state.gpr[reg::RDI] = 0x40002000 - completed;
+            if completed == 4096 {
+                assert!(matches!(
+                    run(&mut state, &memory, 1),
+                    ExitReason::BudgetExhausted { .. }
+                ));
+                assert_eq!(state.rflags & 0xcd5, expected);
+                assert_eq!(state.gpr[reg::RCX], 1);
+            }
+            assert!(matches!(
+                run(&mut state, &memory, 1),
+                ExitReason::PageFault { .. }
+            ));
+            assert_eq!(
+                state.rflags & 0xcd5,
+                if completed == 0 { 0x8d5 } else { expected }
+            );
+            assert_eq!(state.gpr[reg::RCX], 1);
+            assert_eq!(state.gpr[reg::RDI], 0x40002000);
+            assert_eq!(state.rip, GuestAddr(0x10000));
+            assert!(state.repeat_continuation.is_none());
+        }
+    }
 }
 #[test]
 fn u2_code_change_invalidates_cached_repeat_context() {

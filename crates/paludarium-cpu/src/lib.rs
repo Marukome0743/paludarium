@@ -134,7 +134,6 @@ fn execute_decoded(
         state.repeat_continuation = Some(RepeatContinuation {
             instruction: *insn,
             bytes,
-            initial_flags: state.rflags,
         });
     }
     let snapshot = state.clone();
@@ -144,11 +143,11 @@ fn execute_decoded(
             state.repeat_continuation = None;
         }
     } else if let Err(stop) = result {
-        if matches!(stop, Stop::Fault(_)) && repeating {
-            if let Some(c) = state.repeat_continuation {
-                state.rflags = c.initial_flags;
-            }
-        } else if stop != Stop::Syscall {
+        // REP commits completed iterations, including comparison flags.
+        // Native AMD EPYC observations retain those flags on a later fault;
+        // an initial fault has made no updates. Intel's documented rollback
+        // behavior is not the native baseline validated by this CPU model.
+        if !(stop == Stop::Syscall || matches!(stop, Stop::Fault(_)) && repeating) {
             *state = snapshot;
         }
         state.repeat_continuation = None;
@@ -201,11 +200,7 @@ fn fetch_for_state(state: &mut CpuState, mem: &AddressSpace) -> Result<Instructi
     match fetch_and_decode(state, mem) {
         Ok(insn) => Ok(insn),
         Err(error) => {
-            if let Some(continuation) = state.repeat_continuation.take()
-                && continuation.instruction.rip == state.rip
-            {
-                state.rflags = continuation.initial_flags;
-            }
+            state.repeat_continuation = None;
             Err(error)
         }
     }
@@ -283,6 +278,34 @@ mod tests {
         assert_eq!(s.gpr[reg::RDI], 7);
         assert_eq!(s.gpr[reg::RCX], CODE + 12);
         assert_eq!(s.gpr[reg::R11], s.rflags);
+    }
+
+    #[test]
+    fn movq_clears_xmm_high_half_and_keeps_flags() {
+        let (mut state, memory) = machine(&[0x66, 0x48, 0x0f, 0x6e, 0xc0]);
+        state.gpr[reg::RAX] = 0x0123_4567_89ab_cdef;
+        state.xmm[0] = u128::MAX;
+        state.rflags = 0x8d7;
+        step(&mut state, &memory).unwrap();
+        assert_eq!(state.xmm[0], 0x0123_4567_89ab_cdef);
+        assert_eq!(state.rflags, 0x8d7);
+    }
+
+    #[test]
+    fn unpack_low_qwords_uses_original_values_for_aliasing() {
+        for source in [0, 1] {
+            let (mut state, memory) = machine(&[0x66, 0x0f, 0x6c, 0xc0 + source]);
+            state.xmm[0] = (u128::from(0xaaaa_bbbb_cccc_ddddu64) << 64) | 0x0123_4567_89ab_cdef;
+            state.xmm[1] = (u128::from(0x1111_2222_3333_4444u64) << 64) | 0xfedc_ba98_7654_3210;
+            let high = state.xmm[usize::from(source)] as u64;
+            state.rflags = 0x8d7;
+            step(&mut state, &memory).unwrap();
+            assert_eq!(
+                state.xmm[0],
+                (u128::from(high) << 64) | 0x0123_4567_89ab_cdef
+            );
+            assert_eq!(state.rflags, 0x8d7);
+        }
     }
 
     #[test]

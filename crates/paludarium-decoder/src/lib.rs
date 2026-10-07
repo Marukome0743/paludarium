@@ -75,7 +75,7 @@ mnemonics!(
     Scasd, Scasq, Rol, Ror, Rcl, Rcr, Shld, Shrd, Bsf, Bsr, Tzcnt, Lzcnt, Popcnt, Bswap, Bts, Btr,
     Btc, Xadd, Cmpxchg8b, Cmpxchg16b, Cbw, Cwde, Cwd, Clc, Stc, Cmc, Cld, Std, Lahf, Sahf, Jrcxz,
     Jecxz, Loop, Loope, Loopne, Ud2, Adcx, Adox, Andn, Bzhi, Movbe, Mulx, Pext, Rorx, Shlx, Shrx,
-    Enter, Xlatb, Pushf, Popf, Movaps, Movups, Movdqa, Movdqu, Pxor, Xorps,
+    Enter, Xlatb, Pushf, Popf, Movaps, Movups, Movdqa, Movdqu, Movq, Punpcklqdq, Pxor, Xorps,
 );
 
 fn condition(code: iced::ConditionCode) -> Option<Condition> {
@@ -737,6 +737,29 @@ mod tests {
         let i = decode(&[0x66, 0x0f, 0xef, 0xc0], RIP).unwrap();
         assert_eq!(i.mnemonic, Mnemonic::Pxor);
         assert_eq!(i.operand(1), Some(Operand::Register(Register::Xmm(0))));
+    }
+
+    #[test]
+    fn decodes_legacy_movq_and_low_qword_unpack() {
+        let i = decode(&[0x66, 0x48, 0x0f, 0x6e, 0xc0], RIP).unwrap();
+        assert_eq!(i.mnemonic, Mnemonic::Movq);
+        assert_eq!(i.operand(0), Some(Operand::Register(Register::Xmm(0))));
+        assert_eq!(
+            i.operand(1),
+            Some(Operand::Register(Register::Gpr { index: 0, size: 8 }))
+        );
+        let i = decode(&[0x66, 0x0f, 0x6c, 0xc1], RIP).unwrap();
+        assert_eq!(i.mnemonic, Mnemonic::Punpcklqdq);
+        assert_eq!(i.operand(1), Some(Operand::Register(Register::Xmm(1))));
+        // MMX and AVX remain outside the supported legacy XMM forms.
+        assert_eq!(
+            decode(&[0x0f, 0x6f, 0xc0], RIP),
+            Err(DecodeError::Unsupported)
+        );
+        assert_eq!(
+            decode(&[0xc5, 0xf9, 0x6c, 0xc1], RIP),
+            Err(DecodeError::Unsupported)
+        );
     }
 
     #[test]

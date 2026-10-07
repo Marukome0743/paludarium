@@ -8,7 +8,6 @@ use paludarium_types::{GuestAddr, InstructionBytes};
 pub struct RepeatContinuation {
     pub(crate) instruction: Instruction,
     pub(crate) bytes: InstructionBytes,
-    pub(crate) initial_flags: u64,
 }
 
 /// Indexes of the general-purpose registers in [`CpuState::gpr`].
