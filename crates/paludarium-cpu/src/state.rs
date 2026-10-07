@@ -8,6 +8,18 @@ use paludarium_types::{GuestAddr, InstructionBytes};
 pub struct RepeatContinuation {
     pub(crate) instruction: Instruction,
     pub(crate) bytes: InstructionBytes,
+    pub(crate) initial_flags: u64,
+}
+
+/// CPU model choice for a fault during a repeated comparison instruction.
+/// It is explicit guest state and never inferred from the host CPU.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RepFaultFlags {
+    /// Intel SDM behavior: restore the flags from the start of the instruction.
+    #[default]
+    RestoreInitial,
+    /// Observed AMD EPYC behavior: retain flags of completed comparisons.
+    PreserveCompleted,
 }
 
 /// Indexes of the general-purpose registers in [`CpuState::gpr`].
@@ -73,6 +85,8 @@ pub struct CpuState {
     /// xmm0 ..= xmm15.
     pub xmm: [u128; 16],
     pub mxcsr: u32,
+    /// Repeated-comparison fault behavior. Defaults to Intel's documented model.
+    pub rep_fault_flags: RepFaultFlags,
     /// Cleared on completion/fault/different instruction, retained on budget stop.
     pub repeat_continuation: Option<RepeatContinuation>,
 }
@@ -87,6 +101,7 @@ impl Default for CpuState {
             gs_base: 0,
             xmm: [0; 16],
             mxcsr: INITIAL_MXCSR,
+            rep_fault_flags: RepFaultFlags::default(),
             repeat_continuation: None,
         }
     }

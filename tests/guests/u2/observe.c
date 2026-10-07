@@ -8,6 +8,7 @@
 #include <sys/mman.h>
 #include <ucontext.h>
 #include <unistd.h>
+#include <cpuid.h>
 static const uintptr_t source = 0x40000000, destination = 0x50000000;
 static uintptr_t fault_instruction;
 static int divide_mode;
@@ -63,6 +64,11 @@ static void fault(int signal, siginfo_t *info, void *context) {
     _exit(0);
 }
 static int repetition(const char *scenario) {
+    unsigned int eax, ebx, ecx, edx;
+    char vendor[13] = {0};
+    if (!__get_cpuid(0, &eax, &ebx, &ecx, &edx)) return 6;
+    memcpy(vendor, &ebx, 4); memcpy(vendor + 4, &edx, 4); memcpy(vendor + 8, &ecx, 4);
+    fprintf(stderr, "cpu_vendor=%s\n", vendor);
     int scas = !strncmp(scenario,"scas",4);
     struct sigaction sa = {0};
     sa.sa_sigaction = fault; sa.sa_flags = SA_SIGINFO;

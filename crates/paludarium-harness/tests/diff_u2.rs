@@ -39,7 +39,7 @@ cases!(
 
 fn cmps_fault(name: &'static str, completed: u64) {
     support::bounded(name, || {
-        use paludarium_cpu::{CpuState, reg};
+        use paludarium_cpu::{CpuState, RepFaultFlags, reg};
         use paludarium_mmu::{AddressSpace, MappingKind, Prot};
         use paludarium_types::{ExitReason, GuestAddr};
         let root = paludarium_harness::workspace_root();
@@ -64,6 +64,17 @@ fn cmps_fault(name: &'static str, completed: u64) {
                 .expect("native signal observation");
         assert_eq!(native.status, paludarium::ExitStatus::Exited(0));
         println!("{name}: {}", String::from_utf8_lossy(&native.stderr));
+        // Native expectations differ by vendor. Select an explicit guest CPU
+        // model here; production execution never detects the host vendor.
+        let vendor = String::from_utf8_lossy(&native.stderr);
+        let policy = match vendor
+            .lines()
+            .find_map(|line| line.strip_prefix("cpu_vendor="))
+        {
+            Some("GenuineIntel") => RepFaultFlags::RestoreInitial,
+            Some("AuthenticAMD") => RepFaultFlags::PreserveCompleted,
+            other => panic!("unsupported native REP fault-flags baseline: {other:?}"),
+        };
         let mut memory = AddressSpace::new();
         for (address, length, protection) in [
             (0x10000, 4096, Prot::READ_EXEC),
@@ -93,6 +104,7 @@ fn cmps_fault(name: &'static str, completed: u64) {
             )
             .unwrap();
         let mut state = CpuState::new(GuestAddr(0x10000), GuestAddr(0));
+        state.rep_fault_flags = policy;
         state.rflags = 0x8d7;
         state.gpr[reg::RAX] = 0x32;
         state.gpr[reg::RCX] = completed + 1;

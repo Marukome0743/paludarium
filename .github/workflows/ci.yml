@@ -44,7 +44,9 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Unit tests (U1 crates)
         shell: bash
-        run: cargo test --locked $U1_PACKAGES
+        run: cargo test --locked $U1_PACKAGES -- --nocapture
+        env:
+          RUST_BACKTRACE: "1"
       - name: Harness unit tests
         run: cargo test --locked -p paludarium-harness --lib
 

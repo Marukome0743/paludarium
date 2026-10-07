@@ -18,7 +18,9 @@ use paludarium_mmu::AddressSpace;
 use paludarium_types::{ExitReason, GuestAddr, InstructionBytes, MAX_INSTRUCTION_LEN};
 
 pub use alu::{condition, sign_extend, size_mask};
-pub use state::{CpuState, INITIAL_MXCSR, INITIAL_RFLAGS, RepeatContinuation, flag, reg};
+pub use state::{
+    CpuState, INITIAL_MXCSR, INITIAL_RFLAGS, RepFaultFlags, RepeatContinuation, flag, reg,
+};
 
 use exec::Stop;
 
@@ -134,6 +136,7 @@ fn execute_decoded(
         state.repeat_continuation = Some(RepeatContinuation {
             instruction: *insn,
             bytes,
+            initial_flags: state.rflags,
         });
     }
     let snapshot = state.clone();
@@ -143,11 +146,13 @@ fn execute_decoded(
             state.repeat_continuation = None;
         }
     } else if let Err(stop) = result {
-        // REP commits completed iterations, including comparison flags.
-        // Native AMD EPYC observations retain those flags on a later fault;
-        // an initial fault has made no updates. Intel's documented rollback
-        // behavior is not the native baseline validated by this CPU model.
-        if !(stop == Stop::Syscall || matches!(stop, Stop::Fault(_)) && repeating) {
+        if matches!(stop, Stop::Fault(_)) && repeating {
+            if state.rep_fault_flags == RepFaultFlags::RestoreInitial
+                && let Some(continuation) = state.repeat_continuation
+            {
+                state.rflags = continuation.initial_flags;
+            }
+        } else if stop != Stop::Syscall {
             *state = snapshot;
         }
         state.repeat_continuation = None;
@@ -200,7 +205,12 @@ fn fetch_for_state(state: &mut CpuState, mem: &AddressSpace) -> Result<Instructi
     match fetch_and_decode(state, mem) {
         Ok(insn) => Ok(insn),
         Err(error) => {
-            state.repeat_continuation = None;
+            if let Some(continuation) = state.repeat_continuation.take()
+                && continuation.instruction.rip == state.rip
+                && state.rep_fault_flags == RepFaultFlags::RestoreInitial
+            {
+                state.rflags = continuation.initial_flags;
+            }
             Err(error)
         }
     }
