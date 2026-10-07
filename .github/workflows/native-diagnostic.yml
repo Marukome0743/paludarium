@@ -8,6 +8,40 @@ permissions:
   contents: read
 
 jobs:
+  expectations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Capture native instruction expectations before repair
+        shell: bash
+        run: |
+          set -o pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools binutils
+          {
+            uname -a
+            lscpu
+            dpkg-query -W musl musl-tools
+            mkdir -p target/native-expectations
+            musl-gcc -static -O1 -nostdlib -fno-stack-protector -fno-builtin -fno-asynchronous-unwind-tables -fcf-protection=none -mno-red-zone -fno-tree-loop-distribute-patterns -fno-pie -no-pie -I tests/guests/insn -o target/native-expectations/insn-sse tests/guests/insn/sse.c
+            target/native-expectations/insn-sse
+            bash tests/guests/u2/build.sh target/native-expectations
+            for scenario in cmps-start cmps-partial cmps-budget scas-start scas-partial scas-budget; do
+              echo "$scenario"
+              target/native-expectations/observe "$scenario"
+            done
+            objdump -d target/native-expectations/observe
+          } 2>&1 | tee native-expectations.log
+      - name: Retain native expectations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-expectations
+          path: native-expectations.log
+          retention-days: 7
   bookworm:
     runs-on: ubuntu-latest
     container: rust:1-bookworm
@@ -22,8 +56,10 @@ jobs:
         run: |
           uname -a
           test "$(uname -m)" = x86_64
+          lscpu
           apt-get update
           apt-get install -y --no-install-recommends musl-tools binutils
+          dpkg-query -W musl musl-tools
           rustup show active-toolchain
       - name: Compare all workspace tests on native Bookworm
         shell: bash
@@ -50,9 +86,11 @@ jobs:
         run: |
           uname -a
           test "$(uname -m)" = x86_64
+          lscpu
           rustup show active-toolchain
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends musl-tools
+          dpkg-query -W musl musl-tools
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       - name: Run unchanged workspace checks
         shell: bash
