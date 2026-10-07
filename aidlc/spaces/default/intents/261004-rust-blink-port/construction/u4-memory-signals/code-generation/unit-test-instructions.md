@@ -1,5 +1,13 @@
 # U4 単体・差分テスト手順
 
+## 2026-10-08 復旧時の実行方針
+
+下記の準備・成功値は過去実装の履歴であり、今回の現在 source の証明として自動採用しない。現在 runner と専用 test files を先に確認し、署名済み CI 4d52be0a の該当ログと現在 bytes の一致で結果を再利用する。再利用できない範囲だけ下記 exact U4 commands を実行する。新規 product defect の syscall/guest ケースは native-first、内部層は test-after。
+
+手元は macOS arm64。mise の Rust/cargo 実体を glob で解決し、nightly-2026-10-01 と --locked を維持する。差分の合否は実機 x86-64 Linux の GitHub Actions で確認する。Docker Desktop は Docker VMM を維持し、scripts/linux-dev.sh の QEMU 結果と実機の結果を混同しない。手元の失敗があれば原因と該当ケースを記録する。
+
+今回は現在 source と各 CI case を対応させる記録復旧が中心。現在ソースでの ASan syscall_args/mmu_ops 各600秒は証拠が結び付かなければ未検証/GAP として Build and Test に渡す。履歴の完走値を現在成功と記さない。件数、比較mask、30秒watchdog、coverage80%、各600秒、依存・toolchainは維持する。
+
 ## 現在の観測と準備
 
 Rust cargo test が既存 runner。直前 U2 の workspace success は保存済みの引継ぎ証拠で、U4 target/filter はまだ存在しない。今回 Part 1 では tests を実行していない。以下は承認後に bootstrap し、件数を検査して初めて runnable とする。方法は native-first syscall/guest と内部 layer test-after の custom、Standard（各 component 5〜8 件以上）。

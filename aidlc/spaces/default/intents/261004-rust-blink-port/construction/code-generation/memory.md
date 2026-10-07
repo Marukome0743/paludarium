@@ -2,6 +2,7 @@
 > This file is kept up to date automatically while the stage runs. Add observations at the review step, not by editing here directly.
 
 ## Interpretations
+- 2026-10-07T23:28:42Z — U4の現在CI証拠は107 source claimsのbytesが署名済み4d52be0aと一致する範囲で再利用した。旧37paths中15pathsが相違し、syscall_args targetとmmu_ops依存sourceが変わっているため、旧各600秒ASan完走を現在passへ流用せずFR9.3/NFR2/NFR3をGAPとして保持した。
 <!-- example: 2026-05-29T10:14:32Z — chose REST over GraphQL; the consuming team only needs CRUD, revisit if subscriptions land -->
 
 ## Deviations

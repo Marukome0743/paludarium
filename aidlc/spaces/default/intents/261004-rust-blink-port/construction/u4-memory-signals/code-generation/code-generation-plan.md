@@ -1,6 +1,6 @@
 # U4 メモリ・時刻・シグナルのコード生成計画
 
-初回 Plan Approval 前の計画。アプリケーション実装は承認後に開始する。要件にない別 Unit の機能を追加しない。
+2026-10-08 の復旧計画。Steps 1〜14 は過去実装の履歴として保持する。今回の実行対象は Steps 15〜18 のみであり、新しい計画承認後に開始する。要件にない別 Unit の機能を追加しない。
 
 ## Sources
 
@@ -33,6 +33,13 @@ Kernel が CpuState と signal 状態を所有し、Cpu は Kernel/Host を知�
 12. [x] **変更層の回帰・configuration（FR9.1、NFR3/7/8/9）**：U4 scoped commands と変更された shared contract consumer の既存 regression を実行し、全 workspace gate は別途一回実施する。fmt/clippy 警告 0、固定 nightly/Cargo.lock/crates.io/cargo-deny、SHA 固定 actions を維持する。CI に U4 differential target と syscall/memory fuzz を接続する。Linux workspace line coverage 80% を維持し、下げて通さない。
 13. [x] **fuzz（FR9.3、NFR2/3）**：`fuzz/fuzz_targets/syscall_args.rs` と `mmu_ops.rs` に U4 memory/time/signal frame 生成を足す。fake clock、bounded Cpu budget と wait により毎入力を有限にする。pinned nightly ASan の夜間各 600 秒予算を維持し、変更 source に対するローカル bounded run の具体結果を記録する。失敗再現・source revision と runner condition を保存し、別 project process を停止しない。
 14. [x] **成果物・manifest（全割当 FR/NFR）**：`docs/u4/{syscall-matrix.md,signal-abi.md,validation.md}` と unit の code-summary / traceability を完成させる。native expectation を固定 goldens にせず、実行時取得にする。source-manifest version 1 に変更/作成/削除した全 application-source を列挙し、generator/shell/scaffolding が書いた source も含める。build cache/生成 binary は除き、必要証拠は追跡可能な .txt で保存する。未達・未検証を GAP として残す。root に独立 review 用に固定して渡す。
+
+## 今回の復旧手順
+
+15. [x] **現状・runner 確認（FR2.2/2.9、NFR1/7/9）**：共有契約、既存 U4 source manifest、native ABI/inventory、専用 diff_u4 と内部 u4_ filters を確認する。過去の未作成・43件・76件・coverage/fuzz 成功を当時の source に限定し、現在ソースの対応表を作る。既存テストの一覧と実機 CI の非ゼロ件結果で readiness を確認する。
+16. [x] **現在ソースと CI の証拠照合（FR9.1、NFR1/3/8/9）**：署名済み 4d52be0a の CI 7ジョブ・native 4ジョブと手元の application/build files を照合し、U4 差分44件、内部各層、3OS、lint、依存、coverage80% gate の該当ログを対応させる。現在 bytes が一致する証拠のみ再利用する。不足は exact unit commands で追加検証し、Docker VMM/QEMU と実機 x86-64 Linux の結果を区別する。
+17. [x] **不足と修正（FR2.2/2.9/9.3、NFR2/3/7）**：製品不具合が見つかった場合に限り、syscall/guest は実機 native 期待と修正前 Red を先に記録して最小修正、内部層は test-after で検証する。U1/U2 の承認済み source を変更する必要があれば root に返し、完了証拠を無断で変えない。現在 source と結び付かない syscall_args/mmu_ops 各600秒 ASan は未検証/GAP として残し、Build and Test で回収する。30秒watchdog・80%coverage・nightly固定・各600秒を下げない。
+18. [x] **成果物と独立レビュー（全割当FR/NFR）**：現在 source の snapshot、code-summary、traceability、厳密な version1 source-manifest を整合させる。旧 evidence/source hashes/validation は履歴として保存し、旧 fuzz を現在合格へ流用しない。全必須 ID と既存 OK target を確認し、未達は GAP。独立レビュー後は対象 source と4成果物を固定し、正式検証・完了確認へ渡す。
 
 ## 予定する変更 paths と影響
 

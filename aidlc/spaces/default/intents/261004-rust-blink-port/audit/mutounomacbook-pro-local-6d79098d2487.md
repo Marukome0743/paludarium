@@ -3582,3 +3582,437 @@
 **Run floor**: STAGE_JUMPED:2026-10-07T18:53:53Z#4
 
 ---
+
+## Decision Recorded
+**Timestamp**: 2026-10-07T23:14:01Z
+**Event**: DECISION_RECORDED
+**Checkpoint**: Construction Unit Approval
+**Unit**: u2-integer-isa
+**Kind**: unit
+**Stage**: code-generation
+**Fingerprint**: sha256:66f9997e0d01fe663ecdc542bdbed2e2bddf8860d10fce4090680a98b87aebbe
+**Session**: 01a11765-2324-7c90-bd21-9ae1960cba2e
+**Options**: Approve,Request Changes
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-07T23:14:16Z
+**Event**: HUMAN_TURN
+**Session**: 01a11765-2324-7c90-bd21-9ae1960cba2e
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-07T23:14:22Z
+**Event**: GATE_APPROVED
+**Unit**: u2-integer-isa
+**Stage**: code-generation
+**Stages**: code-generation
+**Gate Stages**: code-generation
+**Gate Scope**: unit-end
+**Checkpoint**: construction-unit
+**Fingerprint**: sha256:66f9997e0d01fe663ecdc542bdbed2e2bddf8860d10fce4090680a98b87aebbe
+**Run floor**: STAGE_JUMPED:2026-10-07T18:53:53Z#4
+**Run floors**: {"code-generation":"STAGE_JUMPED:2026-10-07T18:53:53Z#4"}
+**Verification Command SHA-256**: 861ff674d6d8c5daf8b1f40fd069bbc7ded512c6f42a8c02c8c31a9b7d254b88
+**Verification Id**: 903702c2-0040-40a5-82ed-232c84ef6dd3
+**Session**: 01a11765-2324-7c90-bd21-9ae1960cba2e
+**User Input**: Approve
+
+---
+
+## Guardrail Loaded
+**Timestamp**: 2026-10-07T23:15:07Z
+**Event**: GUARDRAIL_LOADED
+**Scope**: all
+**Path**: .codex/aidlc-rules/
+**Rule count**: 7
+
+---
+
+## Health Check
+**Timestamp**: 2026-10-07T23:15:07Z
+**Event**: HEALTH_CHECKED
+**Request**: /aidlc --doctor
+**Details**: 61 passed, 0 failed
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-07T23:16:28Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-plan.md
+**Context**: construction > u4-memory-signals > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-07T23:16:29Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/unit-test-instructions.md
+**Context**: construction > u4-memory-signals > code-generation > unit-test-instructions.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-07T23:16:29Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Context**: construction > u4-memory-signals > code-generation > code-generation-questions.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-07T23:16:41Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Context**: construction > u4-memory-signals > code-generation > code-generation-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-07T23:16:42Z
+**Event**: DECISION_RECORDED
+**Stage**: code-generation
+**Decision**: Approve this exact Code Generation plan?
+**Options**: Approve Plan,Request Changes
+**Checkpoint**: Code Generation Plan Approval
+**Plan Target**: unit:u4-memory-signals
+**Intent**: 01a10456-793f-74c1-a71a-fa0e46216e7d
+**Directive Epoch**: sha256:d6d989e71ea66bb701c52067f87404195cc75c661edd91dea03ebdb535f28d70
+**Run floor**: STAGE_JUMPED:2026-10-07T18:53:53Z#4
+**Approval Fingerprint**: sha256:v3:dcf836f44a830927cf662e0469915fafba93bc7351585f950cb563c958f00d8b
+**Questions File**: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Questions SHA-256**: f2e0085760e7759301dc9dc21adabfd613fa4b9540f53323ebb92f6c309db011
+**Prompt SHA-256**: da1f98705d0b1bfd551d21ddc48f05e45024eb522f06ebc98fc3807bc99fb975
+**Session**: 01a11765-2324-7c90-bd21-9ae1960cba2e
+**Unit**: u4-memory-signals
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-07T23:16:58Z
+**Event**: HUMAN_TURN
+**Session**: 01a11765-2324-7c90-bd21-9ae1960cba2e
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-07T23:17:06Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Context**: construction > u4-memory-signals > code-generation > code-generation-questions.md
+
+---
+
+## Plan Approval Recorded
+**Timestamp**: 2026-10-07T23:17:07Z
+**Event**: PLAN_APPROVAL_RECORDED
+**Stage**: code-generation
+**Details**: Approve Plan
+**Unit**: u4-memory-signals
+**Session**: 01a11765-2324-7c90-bd21-9ae1960cba2e
+**Checkpoint**: Code Generation Plan Approval
+**Plan Target**: unit:u4-memory-signals
+**Intent**: 01a10456-793f-74c1-a71a-fa0e46216e7d
+**Directive Epoch**: sha256:d6d989e71ea66bb701c52067f87404195cc75c661edd91dea03ebdb535f28d70
+**Run floor**: STAGE_JUMPED:2026-10-07T18:53:53Z#4
+**Approval Fingerprint**: sha256:v3:dcf836f44a830927cf662e0469915fafba93bc7351585f950cb563c958f00d8b
+**Questions File**: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Questions SHA-256**: e8c0e7c39fb01605e3fe7061e5133e275c5986cef99d2d9494738c9539fe72f2
+**Prompt SHA-256**: da1f98705d0b1bfd551d21ddc48f05e45024eb522f06ebc98fc3807bc99fb975
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-07T23:17:35Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Context**: construction > u4-memory-signals > code-generation > code-generation-questions.md
+
+---
+
+## Guardrail Loaded
+**Timestamp**: 2026-10-07T23:17:56Z
+**Event**: GUARDRAIL_LOADED
+**Scope**: all
+**Path**: .codex/aidlc-rules/
+**Rule count**: 7
+
+---
+
+## Health Check
+**Timestamp**: 2026-10-07T23:17:56Z
+**Event**: HEALTH_CHECKED
+**Request**: /aidlc --doctor
+**Details**: 61 passed, 0 failed
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-07T23:17:59Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Context**: construction > u4-memory-signals > code-generation > code-generation-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-07T23:17:59Z
+**Event**: DECISION_RECORDED
+**Stage**: code-generation
+**Decision**: Approve this exact Code Generation plan?
+**Options**: Approve Plan,Request Changes
+**Checkpoint**: Code Generation Plan Approval
+**Plan Target**: unit:u4-memory-signals
+**Intent**: 01a10456-793f-74c1-a71a-fa0e46216e7d
+**Directive Epoch**: sha256:d6d989e71ea66bb701c52067f87404195cc75c661edd91dea03ebdb535f28d70
+**Run floor**: STAGE_JUMPED:2026-10-07T18:53:53Z#4
+**Approval Fingerprint**: sha256:v3:dcf836f44a830927cf662e0469915fafba93bc7351585f950cb563c958f00d8b
+**Questions File**: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Questions SHA-256**: f2c0e07aecb33be64fff4b80dde687b20506f4319686954a63c89d3c334c6870
+**Prompt SHA-256**: 00dc7a90072543a2c874e6b4505d70598019ea242e08278704da0542f48a5f7b
+**Session**: 01a11765-2324-7c90-bd21-9ae1960cba2e
+**Unit**: u4-memory-signals
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-07T23:18:26Z
+**Event**: HUMAN_TURN
+**Session**: 01a11765-2324-7c90-bd21-9ae1960cba2e
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-07T23:18:39Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Context**: construction > u4-memory-signals > code-generation > code-generation-questions.md
+
+---
+
+## Plan Approval Recorded
+**Timestamp**: 2026-10-07T23:18:40Z
+**Event**: PLAN_APPROVAL_RECORDED
+**Stage**: code-generation
+**Details**: Approve Plan
+**Unit**: u4-memory-signals
+**Session**: 01a11765-2324-7c90-bd21-9ae1960cba2e
+**Checkpoint**: Code Generation Plan Approval
+**Plan Target**: unit:u4-memory-signals
+**Intent**: 01a10456-793f-74c1-a71a-fa0e46216e7d
+**Directive Epoch**: sha256:d6d989e71ea66bb701c52067f87404195cc75c661edd91dea03ebdb535f28d70
+**Run floor**: STAGE_JUMPED:2026-10-07T18:53:53Z#4
+**Approval Fingerprint**: sha256:v3:dcf836f44a830927cf662e0469915fafba93bc7351585f950cb563c958f00d8b
+**Questions File**: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Questions SHA-256**: 7a3047c6c57c10bfaf5e4072baeedbff3261a4410caa57ed488162100f6793a2
+**Prompt SHA-256**: 00dc7a90072543a2c874e6b4505d70598019ea242e08278704da0542f48a5f7b
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-07T23:18:54Z
+**Event**: DECISION_RECORDED
+**Stage**: code-generation
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Unit**: u4-memory-signals
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-07T23:19:37Z
+**Event**: HUMAN_TURN
+**Session**: 01a11765-2324-7c90-bd21-9ae1960cba2e
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-07T23:19:56Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Context**: construction > u4-memory-signals > code-generation > code-generation-questions.md
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-07T23:19:58Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: code-generation
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-questions.md
+**Questions SHA-256**: 1e3bdd59c09d8a20ceeef76b5991d42f947adb442a43f51f77e3b11e0f1cd971
+**Hash Scope**: confirmed-content-v1
+**Unit**: u4-memory-signals
+**Summary Authorization Id**: a42b295a189ffb72d369d10abd9502adb758e6ff88fcea7bb556f94043b234ef
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-07T23:20:00Z
+**Event**: UNIT_STARTED
+**Stage**: code-generation
+**Unit**: u4-memory-signals
+**Run floor**: STAGE_JUMPED:2026-10-07T18:53:53Z#4
+
+---
+
+## Session Compacted
+**Timestamp**: 2026-10-07T23:24:07Z
+**Event**: SESSION_COMPACTED
+**Current Stage**: code-generation
+**State Validity**: valid
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-07T23:25:46Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-developer-agent
+**Agent ID**: 01a117c1-d198-78e2-861a-f6a085944e8f
+**Message**: U4 Step15〜18完了、独立レビューへ引き渡せます。\n\n107 source claimsはCI対象と一致。差分44件・内部76件、11ジョブ成功、coverage92.57%を確認しました。製品変更なし。\n\n現在sourceのASan各600秒は未検証として3項目をGAPに保持。残る作業は独立レビューです。
+
+---
+
+## Change Accepted
+**Timestamp**: 2026-10-07T23:25:48Z
+**Event**: CHANGE_ACCEPTED
+**Stage**: code-generation
+**Unit**: u2-integer-isa
+**Checkpoint**: review-receipt
+**Changed**: (paths unavailable)
+**Recorded**: 49bc7a236ecd6764e51f02a01b63aa047d1bac51394d72eab29a5c5bcffb2bd1
+**Current**: abdc7c65ca468c378b746555193b1f8a3816fe7b7afb72f7633d66db7bea9429
+**Details**: Reviewed source changed after it was reviewed. Continuing to the gate with the diff (Guard Policy: relaxed or off).
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-07T23:25:48Z
+**Event**: REVIEW_REQUESTED
+**Stage**: code-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-memory-signals
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:59491192fb107e8a9f1f7c60e4922e361aca44a76e3416682eb12332176bdad9
+**Request Id**: review:dce66daa55e94142ad435091a8bd009b
+**Source Fingerprint**: abdc7c65ca468c378b746555193b1f8a3816fe7b7afb72f7633d66db7bea9429
+**Unit Source Fingerprint**: sha256:5acfaf0c629da83e230ed1a36f7e43de808e92fd048757755b14ecd3d213dc06
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-07T23:25:58Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261004-rust-blink-port/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-07T23:28:45Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261004-rust-blink-port/construction/code-generation/memory.md
+**Context**: construction > code-generation > memory.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-07T23:28:54Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-developer-agent
+**Agent ID**: 01a117c1-d198-78e2-861a-f6a085944e8f
+**Message**: 親diaryの既存`Interpretations`へ、読取なしの`apply_patch`で観測を追記しました。成功済みです。製品・凍結成果物は変更していません。
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-07T23:29:08Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: 01a1177c-9aae-77f0-b809-5a34fe3780bc
+**Message**: **Reviewer:** aidlc-architecture-reviewer-agent\n**Verdict:** READY\n指定レビューを保存。107 source claims一致、差分44件・内部76件・CI 11ジョブ成功を独立確認。新規指摘なし。\n現在ASan各600秒は未検証。FR9.3/NFR2/NFR3のGAPはBuild and Testで解消が必要です。
+
+---
+
+## Error Logged
+**Timestamp**: 2026-10-07T23:29:19Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log review --stage code-generation --reviewer aidlc-architecture-reviewer-agent --unit u4-memory-signals --iteration 1 --verdict READY --project-dir <project-dir>
+**Error**: Refusing REVIEW_COMPLETED for "code-generation": workspace source changed after REVIEW_REQUESTED iteration 1. Restore the requested source state and re-dispatch the reviewer.
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-07T23:29:22Z
+**Event**: UNIT_COMPLETED
+**Stage**: code-generation
+**Unit**: u4-memory-signals
+**Run floor**: STAGE_JUMPED:2026-10-07T18:53:53Z#4
+
+---
+
+## Guardrail Loaded
+**Timestamp**: 2026-10-07T23:29:46Z
+**Event**: GUARDRAIL_LOADED
+**Scope**: all
+**Path**: .codex/aidlc-rules/
+**Rule count**: 7
+
+---
+
+## Health Check
+**Timestamp**: 2026-10-07T23:29:46Z
+**Event**: HEALTH_CHECKED
+**Request**: /aidlc --doctor
+**Details**: 61 passed, 0 failed
+
+---
+
+## Change Accepted
+**Timestamp**: 2026-10-07T23:30:09Z
+**Event**: CHANGE_ACCEPTED
+**Stage**: code-generation
+**Unit**: u2-integer-isa
+**Checkpoint**: review-receipt
+**Changed**: (paths unavailable)
+**Recorded**: 49bc7a236ecd6764e51f02a01b63aa047d1bac51394d72eab29a5c5bcffb2bd1
+**Current**: 7cfdee65a52e9edd8e043aee7481a20f65daddbaa2da616069e938582ea83fa9
+**Details**: Reviewed source changed after it was reviewed. Continuing to the gate with the diff (Guard Policy: relaxed or off).
+
+---
+
+## Error Logged
+**Timestamp**: 2026-10-07T23:30:09Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log review --stage code-generation --reviewer aidlc-architecture-reviewer-agent --unit u4-memory-signals --iteration 2 --project-dir <project-dir>
+**Error**: Cannot start another review for "code-generation" because iteration 1 is still waiting for a verdict. Record that verdict, or repeat the same iteration with --retry-pending if the reviewer did not run.\n{"kind":"ask","ask_type":"guard-recovery","response_route":"execute-remedy","question":"The next action for \"code-generation\" would be refused. Choose one authority-preserving recovery action.","stage":"code-generation","unit":"u4-memory-signals","reason_codes":["REVIEW_VERDICT_PENDING"],"remedies":[{"op":"request-changes","action":"Ask \"What should change?\" for stage \"code-generation\" and end the turn. After the human answers, submit Request Changes with their exact text unchanged as the report reason; that unlocks revision and a fresh review.","requiresHuman":true,"executableNow":true,"interaction":"human-input"}]}
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-07T23:30:31Z
+**Event**: DECISION_RECORDED
+**Stage**: code-generation
+**Decision**: What should change?
+**Unit**: u4-memory-signals
+
+---
