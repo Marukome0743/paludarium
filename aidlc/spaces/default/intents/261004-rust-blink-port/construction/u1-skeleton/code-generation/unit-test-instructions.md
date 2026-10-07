@@ -1,5 +1,11 @@
 # 単体テストの手順（u1-skeleton）
 
+## 新attempt Step29〜31の記録確認
+
+今回の内容確認後に本書を保存し、既存CI証拠の再照合として実行範囲を確定した。製品変更・新テスト実行なし。実際の4produces（計画・本書・code-summary・traceability）に加えてsource-manifestを保存し、未検証項目と既存exact commandsを維持する。
+
+今回の対象は3手順。承認と別の内容確認後に103claims/108filesの現在snapshotと4d52CIを照合し、同じ製品への重い再試験は追加しない。下記commandsは不足回収用。新Summary Confirmation後に本書を含む4producesを全て保存し、旧fuzz/wasm/Safari未検証を保持する。親diaryを依頼前に出力専用追記し、reviewrequestからterminalまでsource/成果物書込とjj snapshot操作を停止する。
+
 ## テストの道具と設定
 
 - 単体テストは Rust の組み込みのテスト（`cargo test`）で書く。各クレートの `src/` に `#[cfg(test)] mod tests` を置き、クレートをまたぐものは `tests/` に置く。

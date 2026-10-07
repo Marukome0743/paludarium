@@ -1,5 +1,17 @@
 # U2 現在sourceとCI証拠の照合
 
+## redo新attempt Step27〜29の新内容確認後保存
+
+u2-redo-brief全文と新Summary Confirmation/UNIT_STARTED後にread-only git show4d52/SHA256でmanifest95claims一致、snapshot95/CI対象127pathsの差異0を再確認した。保存JSON7+4jobs全success、trace44target欠落0、NFR2/NFR3/NFR2.2/NFR3.4 GAPを確認。新4produces plan/instructions/summary/traceabilityとmanifestを全保存し、現在CIの差分38/並行10と品質証拠を保持した。旧fuzzを現在600秒ASanへ転用せずwasm未検証も維持。製品変更・新tests・SCM操作なし。親diaryを依頼前に確定し、以後全書込を停止する。下記Step24〜26は先行attemptの履歴。
+
+## 新attempt Step24〜26の確認結果
+
+tool-produced verification/u2-rereview-brief.txtを全文読取し、記録済みPlan Approval/Looks correct/UNIT_STARTED後に照合した。Python hashlib.sha256とread-only git show4d52be0aで95claims一致、欠落0を確認。exec.rs/u2_tests.rsのSHA256は下記snapshotと同じ。manifest SHA256=f63868dd93dda0e9138225540f9b4967915329441dfe1d6eb35d5ab0de12b0a7。manifest/既存snapshot/traceabilityは変更を要さないため保持した。
+
+保存CI JSONのheadSha4d52be0a、7+4jobs全successを再確認。Bookworm raw475/480のREP両model内部test ok、861の差分38pass、1884の並行10passを確認した。44trace targets欠落0、NFR2/NFR3/NFR2.2/NFR3.4はGAP。旧600秒ASan/未実行wasmを現在合格へ流用しない。現在bytesが不変の製品へ新テスト/再取得/重いDocker検証を追加していない。新製品不具合なし、U1/U4凍結成果物・SCM書込みなし。
+
+日記は親construction/code-generation/memory.mdへ出力専用heading anchored追記をレビュー依頼前に完了する。rootへの引渡し後は正式レビュー結果まで全書込みとSCM snapshot操作を停止する。前回不整合の原因は未確定。下記Step20〜23の実行説明は先行attemptの履歴として保持する。80%/30秒/nightly2026-10-01/各600秒/比較mask/custom順序は変更しない。
+
 ## 実行と承認の境界
 
 今回の対象は承認済みStep20〜23。tool-produced `verification/u2-approved-brief.txt` を読取、Testing Contract hash `99564cda628189cabe9281965610721eca6225a7082fe19e37954bf0dffa1616` を維持した。conductorが現在attemptのPlan ApprovalとSummary Confirmation、UNIT_STARTEDを記録した後に照合した。新しい製品変更・テスト実行・再build・fuzz・SCM書込・lifecycle操作は行っていない。Steps1〜19のチェックは履歴。

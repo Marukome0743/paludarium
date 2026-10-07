@@ -187,7 +187,7 @@ U1 は、ネイティブの Linux で C と Rust の static-musl の hello world
 
 ## 現在の共有sourceに対するU1確認
 
-今回の再開始では、下記Step 21〜25を実行する。追加のStep 24aは3OS検証で見つかったHostの限定修復であり、新しい承認後に実行する。Step 18〜20も過去の確認履歴であり、現在の合格証拠ではない。U2のREP回帰とU4/U7のゲストビルドは、発見した失敗を直すための限定した関連修正として扱う。
+新attemptのPlan Approval・内容確認後、Step29〜31（3手順）の確認と成果物保存を完了し独立レビュー待ち。Step1〜28（24a〜24cを含む）は履歴。製品変更なし。過去の承認やレビューを新しい確認の代用にしない。
 
 Step1〜17の[x]は先行実装の履歴であり、今回の承認や最新sourceの検証完了を示さない。今回の対象は既存U1実装とU1が所有するshared sourceの再確認・文書整合である。後続U2の独立source/test/docは作り直さず、そのsourceをU1 manifestへ追加しない。記録済み機能回答・Testing Contract・80%下限・30秒watchdog・nightly pinを維持する。
 
@@ -241,3 +241,26 @@ Step1〜17の[x]は先行実装の履歴であり、今回の承認や最新sour
 
 - [x] code-summary、traceability、source-manifestと現在sourceのsnapshotを更新し、関連修復ファイルとunit所有を明記する。独立レビューへ渡す。plan-approval-guard/continue-workflowの2フックの登録と回復テストを確認し、rejected reportが必要な場合はその前に両フックを復元・検証する。過去のレビューや承認を今回へ転用しない。
 
+### Step 26：現在ソースと既存の検証結果を照合する
+
+- [x] U1の既存source-manifest、型・契約・テスト構成を読み、署名済み4d52be0aの実機CI（7+4ジョブ）と現在bytesを照合する。U1差分16件、hello world、3OS、全体/U1 coverage80% gateの証拠を現在値へ対応させる。旧失敗・旧fuzz・wasm/Safari未検証を区別する。新規ソース変更や証拠不足がなければ重いテストを重ねない（BR1.1、NFR1.1、NFR3.3）。
+
+### Step 27：レビュー用記録を整合させる
+
+- [x] code-summary/traceability/source-manifestと必要なsnapshotを現在値へ更新する。今回の作業は記録修復に限定し、製品不具合が見つかった場合のみrootへ返す。native-firstと内部test-after、30秒watchdog、各600秒fuzz、固定nightly、両coverage80%を保持する（全BR/詳細NFR）。
+
+### Step 28：現在状態を固定して独立レビューを受ける
+
+- [x] 日記・必要記録をレビュー依頼前に確定する。レビュー依頼から結果の正式記録までは成果物・sourceを固定し、jjのsnapshot/commit操作も挟まずに独立レビューを記録する。正式検証後に完了確認を受ける。U4の既存成果を保持し、後続の再レビューへ引き継ぐ。2フックを有効なまま維持する。
+
+### Step 29：新attemptのsourceと証拠を再確認する
+
+- [x] U1 manifest103claims/展開108filesと現在snapshot、署名済み4d52be0aの保存CI7+native4jobsを再照合する。別作業.gitignore差異を製品CI証拠と分け、hello world/U1差分16、3OS、全体/U1coverageを一致範囲で再利用する。新実行とは数えず、不足だけ既存exact commandsで回収する（BR1.1、NFR1.1/3.3）。
+
+### Step 30：新しい内容確認後に4成果物を保存する
+
+- [x] 今回のSummary Confirmation後にcode-summary.md、unit-test-instructions.md、source-manifest.json、traceability.jsonの全4producesを保存し、新attemptの確認との対応を明記する。意味論が正しいmanifest/traceabilityのclaimsとschemaは維持して保存する。必要snapshot/evidenceも整合し、旧fuzz/wasm/Safari未検証と80%/30秒/nightly/各600秒/masksを保持する。新製品不具合はrootへ返し、自動修正しない（全BR/NFR）。
+
+### Step 31：日記と全書込を終えてレビューへ渡す
+
+- [x] 親construction/code-generation/memory.mdへ読取なしheading anchored追記を依頼前に完了する。全source/成果物書込を終え、reviewrequestからterminal記録まで全workerとjj snapshot/commit操作を停止する。前回不整合原因を断定せず、rootの正式独立レビューへ渡す。2フックを有効のまま保持する（NFR3/9）。

@@ -435,5 +435,13 @@
       "path": "tools/insn-trace/insn-trace.c",
       "sha256": "8fd62ea2bce4648c2e47d0e02a5a1ebf5a0d15b287cf8cdb50f6d06b2e5339c3"
     }
+  ],
+  "ci_revision": "4d52be0a6f3b11d6c11a62f96196985c9c280fdc",
+  "ci_match_files": 107,
+  "ci_exceptions": [
+    {
+      "path": ".gitignore",
+      "reason": "別作業の保持済み設定変更。現行snapshotとは一致するが4d52 CIと異なり、製品動作の成功証拠へ転用しない。"
+    }
   ]
 }

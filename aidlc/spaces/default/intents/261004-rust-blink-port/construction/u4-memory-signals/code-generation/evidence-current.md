@@ -1,5 +1,17 @@
 # U4 現在sourceと保存済み実機CIの照合
 
+## redo新attempt Steps22〜24の保存
+
+u4-redo-brief全文と新Summary Confirmation/UNIT_STARTED後にread-only git show4d52/SHA256で107claims/107snapshot一致・差異0、15trace target欠落0を確認。保存JSONの4d52/7+4jobs success、Bookwormの内部76全test名ok/差分44passを再確認した。今回の4produces plan/instructions/summary/traceabilityとmanifestを保存し、既存現在証拠とFR9.3/NFR2/NFR3 ASan GAPを保持する。旧fuzz/wasm未検証を合格へ読み替えず、新source/tests/重い再検証/SCM操作なし。親diaryを依頼前に終え、以後全書込とjj snapshotを固定する。下記19〜21は履歴。
+
+## 新attempt Steps19〜21の結果
+
+tool-produced verification/u4-rereview-brief.txtを全文読取し、新Plan Approval/Looks correct/UNIT_STARTED後に確認した。Python hashlib.sha256/read-only git show4d52be0aでmanifest107claimsとsnapshot107filesの現在bytes一致、差異/欠落0。manifest SHA256=842534ed17f52424a920b8f63948c6972b1c810d5424a62a9f05c0ef2fe4a446。既存manifest/snapshot/traceabilityは正確なため変更しない。
+
+保存CI JSONはheadSha4d52be0a、7+4jobs全success。Bookworm raw1234は差分44pass。current-counts.jsonのCpu5/Host8/Kernel37/MMU10/Runtime11/Types5=76件の全test名に同rawのokが存在する。trace15target欠落0、FR9.3/NFR2/NFR3の現在ASan GAPを保持した。現在sourceの各600秒ASan/wasm/Safari未検証を旧成功で代用しない。製品不具合なし、新tests/重い検証/製品/U1/U2変更/SCM操作なし。80%/30秒/nightly2026-10-01/各600秒/masks/custom順序を保持する。
+
+親diaryをレビュー依頼前に出力専用追記し、root引渡し後は正式結果までsource/成果物とSCM snapshotを固定する。前回reviewterminal失敗原因は未確定。下記Steps15〜18の実行説明は先行attemptの履歴として保持する。
+
 ## 承認と作業範囲
 
 tool-produced `verification/u4-approved-brief.txt` を全文読取した。Testing Contract hash99564cda628189cabe9281965610721eca6225a7082fe19e37954bf0dffa1616のcustom順序と品質下限を維持。conductorの現在Plan Approval/Summary Confirmation/UNIT_STARTED後、Step15〜18だけを実行した。製品source、テスト、U1/U2記録、frameworkstate、SCM、review/lifecycleを書き換えていない。

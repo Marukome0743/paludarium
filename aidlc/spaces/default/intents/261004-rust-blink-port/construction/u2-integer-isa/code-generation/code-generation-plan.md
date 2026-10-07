@@ -1,6 +1,6 @@
 # U2 Integer ISA — Code Generation Plan
 
-Status: 現在attemptのPlan Approval待ち。Step1〜19と既存の観測・承認・証拠は履歴。今回の未実行計画はStep20〜23。承認とengineのexecution_allowed確認前はアプリケーション変更を行わない。
+Status: redo新attemptのPlan Approval・内容確認後、Step27〜29（3手順）の確認と成果物保存を完了し独立レビュー待ち。Step1〜26は履歴。製品変更なし。
 
 ## Testing Contract
 
@@ -105,7 +105,7 @@ Status: 現在attemptのPlan Approval待ち。Step1〜19と既存の観測・承
 18. [x] pinned source/lock/builder/binary receipt、aube4658/probe865分類分母と整数forms3136/696、幅/prefix/implicit operandのnativeケース対応、取得履歴・bounded trace限界を照合する。未分類または必須case証拠の欠落が見つかれば具体GAPを残す。production不変なら再取得・全実装・各10分fuzz・全体coverageを重複実行しない。新しい意味論修正が本当に必要ならnative Red先行→修正→Green、内部tests-afterというcustom順序を維持し、関係するunit限定commandsと必要な全体gate/fuzzを回収する。80%/30秒/nightly pinを変更しない（BR1.1/4.2、NFR2.2/3.1〜3.4/8.1/9.1）。
 19. [x] 承認後の確認結果をU2 code-summary/traceability/evidenceへ現在値と履歴を分けて記録し、source-manifestの全application-sourceを確認して独立reviewへ引き渡す。U1 artifacts、既存READY review、application/shared docsは不要に編集しない。macOS/wasm/U5/U10/U14や任意全入力の合格へ範囲を広げない。別projectのbackground wasm buildは停止せず、速さの測定はしない（全割当BR/詳細NFR）。
 
-## 現在attemptの復旧計画（承認後のみ）
+## 先行attemptの復旧計画（Step20〜23の履歴）
 
 Step1〜19のチェックとexec.rsの旧SHA256は過去の対象sourceに対する記録である。U1復旧で共有CPU/REPと観測fixtureが変更されたため、旧hash一致・197件/94.00%・各600秒fuzzを現在sourceの合格証拠へ転用しない。Testing Contractは上記完全JSONを保持する。stories未生成のため架空のstory/ACは作らず、既存FR/BRと固定inventoryへ各手順を対応付ける。
 
@@ -114,3 +114,18 @@ Step1〜19のチェックとexec.rsの旧SHA256は過去の対象sourceに対す
 22. [x] 現在sourceで必要な修正が見つかった場合は具体GAPと最小変更をconductorへ提示し、許可された範囲で命令native期待結果・Redを先に確定してから実装、内部層tests-afterで確認する。production変更時は必要なnative差分・全体80%gate・関係fuzzを回収する。既存各600秒ASan・nightly-2026-10-01・比較mask・30秒watchdogを弱めない。古いfuzzと未実行wasmは現在sourceでは未検証と記録する（NFR2.1〜2.2/3.1/4.1/8.1/9.1）。
 23. [x] U2 code-summary/traceability/source-manifest/evidenceを現在source snapshotと検証ログに更新する。shell/generator作成sourceと関連共有sourceの所有境界を列挙し、履歴と現在証拠・未検証を分けて独立reviewへ渡す。U1凍結artifacts/sourceと他unit機能を変更せず、取得済みinventoryの分母を縮めない（全割当FR/BR/詳細NFR）。
 
+## 先行attemptの記録再確認計画（Step24〜26の履歴）
+
+## redo新attemptの計画（承認後のみ）
+
+27. [x] 現在95claims/snapshot、固定inventory・契約・REP両modelを4d52be0aの保存CI11jobsと再照合する。一致範囲で差分38/並行10、内部非ゼロ、3OS/lint/依存/coverage証拠を再利用し新実行と数えない。不足だけ既存exact commandsで回収する（FR1.3/1.6/9.1、NFR1/3/7）。
+28. [x] 新Summary Confirmation後に実4producesであるplan/unit-test-instructions/code-summary/traceabilityとsource-manifestを全て保存する。既存claims/schemaと正確な証拠を保持し、現在各600秒ASanのNFR2/NFR3/NFR2.2/NFR3.4 GAPとwasm未検証を維持する。製品不具合はrootへ返し自動修正しない。80%/30秒/nightly2026-10-01/各600秒/masks/custom順序を保持する（全FR/BR/NFR）。
+29. [x] 親construction/code-generation/memory.mdへ読取なしheading anchored追記をレビュー前に完了する。全書込を終え、reviewrequestからterminalまでsource/成果物とjj snapshot/commit操作を停止してrootへ渡す。前回不整合原因は未確定として扱う（NFR3.4/9.1）。
+
+## Step24〜26の説明と手順（履歴）
+
+Step1〜23の完了・旧承認・reviewは履歴。製品を再実装せず、完全Testing Contractを保持し、現在証拠を新しいレビュー記録へ接続する。U1/U4凍結成果物を変更しない。
+
+24. [x] 現在U2 snapshot/manifest、固定inventory、C1/C3/C4/C5、Intel RestoreInitial／AMD PreserveCompletedのREP両modelを照合する。署名済み4d52be0aのCI7+native4jobsに現在bytesが一致する範囲でnative差分38/並行10、内部非ゼロ件数、3OS/lint/依存/coverage証拠を再利用する。新実行と区別し、不足だけ既存限定commandsで回収する（FR1.3/1.6/9.1、BR1.6/4.2、NFR1.1〜1.3/3.3/7.1）。
+25. [x] U2 code-summary/traceability/source-manifest/evidenceと必要snapshotを最小整合する。旧fuzzを現在600秒ASanの合格へ転用せず、wasm/現在fuzz未検証と取得範囲の限界を保持する。新製品不具合があればrootへ返し、自動で実装範囲を広げない。80%/30秒watchdog/nightly2026-10-01/各600秒とflags maskを保持する（全割当FR/BR/NFR）。
+26. [x] 親construction/code-generation/memory.mdへ出力専用heading anchored追記をレビュー依頼前に済ませ、記録とsourceを固定してrootへ渡す。reviewrequestからterminal記録までは全worker書込とjj snapshot/commit操作を停止する。前回不整合の原因を断定せず、rootの独立reviewへ渡す（NFR3.4/9.1）。

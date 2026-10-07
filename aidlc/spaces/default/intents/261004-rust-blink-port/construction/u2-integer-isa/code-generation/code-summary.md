@@ -1,5 +1,15 @@
 # U2 コード生成の現在source確認
 
+## redo新attempt Step27〜29
+
+検証済み：u2-redo-brief全文と新内容確認後、95claims/95snapshotとCI対象127pathsの現在bytes一致、44trace target欠落0、CI4d52の11jobs成功を再確認した。下記既存差分38/並行10・3OS品質証拠を再利用し、新実行と数えない。新Summary Confirmation後に実4produces plan/instructions/本summary/traceabilityとmanifestを全保存した。既存claims/schemaと4ASan GAP/wasm未検証を保持。製品変更・追加testsなし。親diaryをレビュー前に終え、引渡し後は全書込とSCM snapshot操作を停止する。
+
+## 新attempt Step24〜26の再確認
+
+検証済み：tool-produced u2-rereview-brief全文と現在承認後、95claimsをread-only git show4d52be0aと比較し95一致/欠落0。保存snapshotと同じexec.rs=e660a4c0…、u2_tests.rs=dc80918a…を確認した。manifest SHA256=f63868dd93dda0e9138225540f9b4967915329441dfe1d6eb35d5ab0de12b0a7、strict version1の所有範囲は変更不要。
+
+保存CI JSONは4d52be0aで7+4jobs success。Bookworm raw475/480行のREP両model内部test、861行の差分38、1884行の並行10passを確認した。traceability44件のtarget欠落0、既存NFR2/NFR3/NFR2.2/NFR3.4のGAPを保持する。現在600秒ASan/wasm未検証を合格へ転用しない。製品変更・追加テスト実行なし。Step1〜23は履歴で、今回の日記をレビュー前に確定し、rootの依頼以降はsource/成果物/SCM snapshot操作を固定する。
+
 ## 今回の結果
 
 検証済み：承認済みStep20〜23を実行し、U2の95source claimsとCI対象127pathsがproduction revision `4d52be0a6f3b11d6c11a62f96196985c9c280fdc` のbytesに一致した。今回はU2記録だけを更新し、製品・テスト・U1凍結成果物は変更していない。現在の実機CI証拠を照合して再利用し、テストを再実行したとは表現しない。

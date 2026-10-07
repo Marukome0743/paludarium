@@ -193,19 +193,19 @@
       "id": "BR8.1",
       "status": "OK",
       "target": "docs/reports/wasm-threads.md",
-      "notes": "wasm spike既存報告の文書根拠。今回再実行、Safari/macOS環境は未検証。"
+      "notes": "wasm spike既存報告の文書根拠。今回再実行、Safari/macOS環境は未検証。 Step26〜28でも新実行なし。OKは成果物対応であり現在sourceの測定合格ではない。"
     },
     {
       "id": "BR8.2",
       "status": "OK",
       "target": "docs/reports/wasm-threads.md",
-      "notes": "wasm spike既存報告の文書根拠。今回再実行、Safari/macOS環境は未検証。"
+      "notes": "wasm spike既存報告の文書根拠。今回再実行、Safari/macOS環境は未検証。 Step26〜28でも新実行なし。OKは成果物対応であり現在sourceの測定合格ではない。"
     },
     {
       "id": "BR9.1",
       "status": "OK",
       "target": "fuzz/fuzz_targets/decode.rs",
-      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。"
+      "notes": "既存実装/testへの対応。先行sourceと現在sourceの検証をcode-summary.md/evidence-current.mdで区別する。 Step26〜28でも新実行なし。OKは成果物対応であり現在sourceの測定合格ではない。"
     },
     {
       "id": "NFR1.1",
@@ -229,7 +229,7 @@
       "id": "NFR2.2",
       "status": "OK",
       "target": ".github/workflows/nightly.yml",
-      "notes": "nightlyの対象ごと600秒を維持。U1各fuzz targetの今回実行は未検証、U2CPU/MMU ASanの結果を転用しない。"
+      "notes": "nightlyの対象ごと600秒を維持。U1各fuzz targetの今回実行は未検証、U2CPU/MMU ASanの結果を転用しない。 Step26〜28でも新実行なし。OKは成果物対応であり現在sourceの測定合格ではない。"
     },
     {
       "id": "NFR2.3",

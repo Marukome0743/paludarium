@@ -1,5 +1,15 @@
 # U4 メモリ・時刻・シグナルの現在source確認
 
+## redo新attempt Steps22〜24
+
+検証済み：u4-redo-brief全文、新Summary Confirmation後に107claims/107snapshotの4d52bytes一致・差異0、15trace target欠落0、CI11jobs成功、内部76全test名ok/差分44passを再確認した。今回の実4produces plan/instructions/本summary/traceabilityとmanifestを全保存し、claims/schemaを保持した。FR9.3/NFR2/NFR3の現在600秒ASan GAPとwasm未検証、全品質下限を維持する。製品変更・追加testsなし。親diaryを最後に確定し、引渡し後は全書込とSCM snapshotを停止する。不整合原因は未確定。
+
+## 新attempt Steps19〜21の再確認
+
+検証済み：u4-rereview-brief全文と新承認/内容確認後、read-only git show4d52be0aとSHA256で107claims/107snapshotの一致・欠落0を再確認した。manifest SHA256=842534ed17f52424a920b8f63948c6972b1c810d5424a62a9f05c0ef2fe4a446。strict v1 manifest/snapshot/traceabilityは変更不要で保持した。CI JSON7+4jobs全成功、Bookworm raw1234の差分44pass、current-counts.jsonの内部76全test名が同rawでokと確認した。trace15のtarget欠落0、FR9.3/NFR2/NFR3 GAP保持。新製品変更・新testsなし。
+
+Step1〜18は履歴。今回も旧600秒ASanを現在passへ転用せず、wasm/Safari未検証と品質下限を保持した。親diaryをレビュー前に確定し、引渡し後は全source/成果物書込とjj snapshot操作を停止する。前回reviewterminal拒否の原因は未確定とする。
+
 ## 今回の結果
 
 承認済み復旧Step15〜18を実行した。検証済み：U4 manifest107claimsは欠落0、現在bytesが署名済みproduction `4d52be0a6f3b11d6c11a62f96196985c9c280fdc` のCI対象に全一致。製品source・テスト・U1/U2凍結成果物を変更せず、既存実機CI証拠を再利用した。新しいテスト実行として数えない。

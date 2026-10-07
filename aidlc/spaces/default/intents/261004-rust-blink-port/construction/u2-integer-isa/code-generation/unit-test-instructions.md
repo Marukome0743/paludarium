@@ -1,6 +1,14 @@
 # U2 Unit Test Instructions
 
-## 現在attemptの手順（macOSからの復旧）
+## redo新attempt Step27〜29
+
+新Summary Confirmation後に本書を保存して既存exact commandsと品質下限を確定した。製品bytes不変のため新testsなし、旧600秒ASanを現在成功へ転用しない。plan/本書/summary/traceabilityとmanifestの全保存後、レビュー中freezeへ渡す。
+
+対象は3手順。新承認と別の内容確認後に現在95claimsとCI証拠を再照合し、実4produces plan/instructions/summary/traceabilityとmanifestを全保存する。同一製品へ重い再試験を追加せず、以下commandsは不足回収用として保持。既存4ASan GAPとwasm未検証、全品質下限を維持する。親diaryをレビュー前に確定し、依頼からterminalまで書込とjj snapshotを停止する。以下Step24〜26は先行attemptの手順として保持する。
+
+## 新attempt Step24〜26の手順（macOSからの記録再確認）
+
+今回の対象は3手順。新attemptのPlan Approvalと別の内容確認後に既存snapshotとCI bytesを照合し、同一製品への重い再試験は追加しない。下記commandsは不足回収用として保持する。親diaryの出力専用追記をレビュー依頼前に済ませ、4成果物・manifest・sourceを確定する。reviewrequest〜terminalの間は記録/source書込とjj snapshot操作を行わない。
 
 この節が今回の実行手順であり、下記Windows/bootstrap/先行再確認の節は履歴として保存する。現在attemptのPlan Approvalとengine execution_allowed確認後にのみ実行する。macOSのmise管理ツールはインストール先globで実体を解決し、shim/mise execを使わない。Rustはrust-toolchain.tomlのnightly-2026-10-01を維持する。手元Linuxは `bash scripts/linux-dev.sh` のDocker VMMで実行し、QEMU観測を実機native期待値と呼ばない。実機x86-64 Linuxの差分期待値はfork CIの各runで生成する。
 

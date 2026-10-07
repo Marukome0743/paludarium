@@ -1,5 +1,11 @@
 # コード生成の結果（u1-skeleton）
 
+## Jump redo後のStep29〜31確認
+
+検証済み：verification/u1-redo-brief.txt全文、新Summary Confirmation/UNIT_STARTED後に103claims/108filesを現在snapshotと照合し差異0。read-only git show4d52be0a比較は107files一致、別作業.gitignoreのみ例外。manifest SHA256=33595e7b79804895bc9b311c346b6427d0ed958a278c8ce3643727a3bd363f71、47上流/47対応・OK target欠落0。保存CI11jobs、hello world/U1差分16、全体92.57%/U1対象82.71%は同じ製品bytesの既存証拠を再利用し、新実行と数えない。
+
+今回の内容確認後に実際のproducesである計画・テスト手順・本summary・traceabilityを保存し、source-manifestも保存した。claims/schemaは保持。製品変更・追加testsなし。旧fuzz/wasm/Safari未検証、80%/30秒/nightly/各600秒/masksを保持する。親diaryを依頼前に完了し、引渡し後は全書込とSCM snapshotを停止する。レビュー不整合原因は未確定。
+
 ## 修復した動作とファイル
 
 Ubuntu muslのhello-cが未対応SSEで停止し、REP比較のfault時flagsが実機vendorにより異なっていた。U4/U7の混在CRLFとDocker VMM compiler起動も修復した。3OS検証で判明したHost errno・Windowsリンク数・test cleanupを追加修復した。
@@ -50,3 +56,11 @@ Docker VMM/QEMUのENTER allocation faultは元命令の後の_exit呼出しでfa
 今回のwasm/Safari、U1各fuzz再実行、decoder候補比較の歴史的ログは未検証。後続unitのfuzzを代用しない。nightly2026-10-01、各600秒、coverage80%下限、case30秒watchdogを保持する。これらの未測定項目はBuild and Testの入力であり、manifest/traceabilityのOKは測定合格ではない。
 
 rejected reportが必要な場合、その直前にも2フックを再確認する。今回の修復中に人間のgate rejectionを捏造していない。
+
+## Step26〜28：今回の記録再確認
+
+検証済み：新attemptのPlan Approval/内容確認後、103claimsを108filesへ展開しread-only `git show 4d52be0a:<path>`とSHA256で照合した。107files一致、`.gitignore`のみ別作業の保持済み設定変更として相違。現在snapshot108filesは全一致し、manifest所有範囲は追加していない。詳細はverification/rereview-source-4d52be0a.json。`.gitignore`変更の動作検証を旧CI成功とは呼ばない。
+
+保存済みCI7+native4jobsと同じ製品bytesを再利用し、新規テスト実行として数えない。Bookworm raw524〜526行のhello_c/hello_rs/引数付きhello_rs、541行のU1差分16pass、coverage raw2187/2617行の92.57%/82.71%を確認した。上流47件/対応47件、OK target欠落0、source欠落0。新製品不具合・追加test必要性は見つからず製品修正なし。
+
+wasm/Safari・U1各targetの現在600秒ASanは未検証のまま。traceabilityのOKは実装・設定・報告の対応であり未測定項目の合格を意味しない。30秒watchdog・nightly2026-10-01・各600秒・両coverage80%を保持。2フックはrootが有効性を確認し、今回rejected reportの原因を特定したとは主張しない。日記をレビュー依頼前に確定し、以後はrootの独立レビュー記録までsource/成果物/SCM snapshot操作を停止する。

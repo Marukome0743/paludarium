@@ -2,14 +2,14 @@
 
 ## 対象
 
-`code-generation-plan.md`、そのTesting Contract、`unit-test-instructions.md`を承認対象とする。実装・検証は未開始。
+現在の再開に対する`code-generation-plan.md`（Steps 15–17）、そのTesting Contract、`unit-test-instructions.md`を承認対象とする。既存の実装と過去の記録を保持し、今回のソース照合・証拠修復は承認後に行う。
 
 ## Plan Approval
 
 Approve this exact Code Generation plan?
 
-[Approval Fingerprint]: sha256:v3:0fb3f5b66a34ce1f351c3bc74319ef8dd05145dca4cf6afc5ee181be083c3386
-[Planned Source]: c390481ddf9d18b8f8a942a6f2a3bc03e7f9770eb9f7a4753ac74c80e1910bc8
+[Approval Fingerprint]: sha256:v3:e467a1047aaf4e508844669f5493d9e484524f40dd0f8d7f2a6de2789945c9f7
+[Planned Source]: 4231b78470ca2bf497cc11a4da080afe7a4cac7b02b98b2cc1d42a844056f9eb
 
 - Approve Plan — この計画とテスト手順で実装を開始する。
 - Request Changes — 内容を修正する。
