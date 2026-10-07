@@ -1,6 +1,6 @@
 # U2 Integer ISA — Code Generation Plan
 
-Status: Plan Approval 待ち。以下は未実行の計画。アプリケーション変更は禁止。
+Status: 現在attemptのPlan Approval待ち。Step1〜19と既存の観測・承認・証拠は履歴。今回の未実行計画はStep20〜23。承認とengineのexecution_allowed確認前はアプリケーション変更を行わない。
 
 ## Testing Contract
 
@@ -61,7 +61,7 @@ Status: Plan Approval 待ち。以下は未実行の計画。アプリケーシ�
 }
 ```
 
-## 根拠・境界
+## 根拠・境界（先行attemptの履歴）
 
 ドキュメント根拠: U2 functional-design と NFR requirements の READY 設計、C1/C3/C4/C5、unit-of-work、FR1.3/1.6/9.1 を適用する。stories は生成されていないため架空の AC を作らない。原子命令・MMU indivisible operation・ホスト並列検証は U2、guest clone/futex は U5。SSE は U3、probe/aube 全体統合は U10、JIT は U14。これは probe/aube が必要とする U2 整数命令の範囲を縮める理由ではない。
 
@@ -95,7 +95,7 @@ Status: Plan Approval 待ち。以下は未実行の計画。アプリケーシ�
 
 
 
-## 新しい確認の計画
+## 先行attemptの再確認計画（Step17〜19の履歴）
 
 上記Step1〜16、初期source観測、旧Plan Approvalと実装証拠は先行attemptの履歴である。今回の対象は現在のU2 source・固定inventory・保存済み検証の対応を再確認し、新しい承認の後に独立reviewへ渡すことである。初期の『未作成』『DivideError』『未取得』は計画作成当時の状態で、現在の状態とは区別する。U1とU2の既存READY成果物、application sourceは今回のPart1では変更しない。
 
@@ -104,4 +104,13 @@ Status: Plan Approval 待ち。以下は未実行の計画。アプリケーシ�
 17. [x] 現在のsourceと検証器の準備を確認する。U2 manifest claimsと既存source、C1/C3/C4/C5 consumer、FS/GS全atomic linear address、REP continuationを保存済み最終証拠と照合する。docs/u2/repairs/r01-workspace-coverage.txtのU2差分38/host parallel10/CPU31、全体197/94.00%、各nativeケース30秒watchdogとrunner存在を確認。旧実行を今回の新実行とは表現しない（FR1.3/1.6/9.1、NFR1.1〜1.3/3.3/7.1）。
 18. [x] pinned source/lock/builder/binary receipt、aube4658/probe865分類分母と整数forms3136/696、幅/prefix/implicit operandのnativeケース対応、取得履歴・bounded trace限界を照合する。未分類または必須case証拠の欠落が見つかれば具体GAPを残す。production不変なら再取得・全実装・各10分fuzz・全体coverageを重複実行しない。新しい意味論修正が本当に必要ならnative Red先行→修正→Green、内部tests-afterというcustom順序を維持し、関係するunit限定commandsと必要な全体gate/fuzzを回収する。80%/30秒/nightly pinを変更しない（BR1.1/4.2、NFR2.2/3.1〜3.4/8.1/9.1）。
 19. [x] 承認後の確認結果をU2 code-summary/traceability/evidenceへ現在値と履歴を分けて記録し、source-manifestの全application-sourceを確認して独立reviewへ引き渡す。U1 artifacts、既存READY review、application/shared docsは不要に編集しない。macOS/wasm/U5/U10/U14や任意全入力の合格へ範囲を広げない。別projectのbackground wasm buildは停止せず、速さの測定はしない（全割当BR/詳細NFR）。
+
+## 現在attemptの復旧計画（承認後のみ）
+
+Step1〜19のチェックとexec.rsの旧SHA256は過去の対象sourceに対する記録である。U1復旧で共有CPU/REPと観測fixtureが変更されたため、旧hash一致・197件/94.00%・各600秒fuzzを現在sourceの合格証拠へ転用しない。Testing Contractは上記完全JSONを保持する。stories未生成のため架空のstory/ACは作らず、既存FR/BRと固定inventoryへ各手順を対応付ける。
+
+20. [x] 承認後、全U2設計/NFR/契約/unitsと現在sourceを読み、固定inventory・C1/C3/C4/C5 consumer・manifest claims・source bytesを照合する。REPfaultの明示policy（Intel RestoreInitial既定、AMD PreserveCompleted）とvendor選択を行うnative差分fixture、start/partial/budget/fetch回帰を、U2のBR1.6・NFR1.1〜1.2へ接続する。旧Step10の一律flags復元は当時の設計記録として保持し、現在の両modelの検証事実と区別する。runner/filtersの非ゼロ件数と30秒watchdogを確認する（FR1.3/1.6/9.1、BR1.1〜1.7/2.1〜2.5/4.2）。
+21. [x] 直近production CI source `4d52be0a6f3b11d6c11a62f96196985c9c280fdc` の11job成功ログを実際のsource bytesと照合し、native U2 diff38/parallel10、3OS・lint・依存・全体/U1 coverageの証拠を適用範囲付きで再利用する。現在の内部filter件数は承認後に確認し、旧CPU31などを現在件数と推定しない。不足がある場合だけunit-test-instructionsのexact限定回帰を実行する。Docker VMM/QEMUの観測は実機native期待値と分ける（NFR1.1〜1.3/3.2〜3.4/7.1〜7.2/8.1）。
+22. [x] 現在sourceで必要な修正が見つかった場合は具体GAPと最小変更をconductorへ提示し、許可された範囲で命令native期待結果・Redを先に確定してから実装、内部層tests-afterで確認する。production変更時は必要なnative差分・全体80%gate・関係fuzzを回収する。既存各600秒ASan・nightly-2026-10-01・比較mask・30秒watchdogを弱めない。古いfuzzと未実行wasmは現在sourceでは未検証と記録する（NFR2.1〜2.2/3.1/4.1/8.1/9.1）。
+23. [x] U2 code-summary/traceability/source-manifest/evidenceを現在source snapshotと検証ログに更新する。shell/generator作成sourceと関連共有sourceの所有境界を列挙し、履歴と現在証拠・未検証を分けて独立reviewへ渡す。U1凍結artifacts/sourceと他unit機能を変更せず、取得済みinventoryの分母を縮めない（全割当FR/BR/詳細NFR）。
 

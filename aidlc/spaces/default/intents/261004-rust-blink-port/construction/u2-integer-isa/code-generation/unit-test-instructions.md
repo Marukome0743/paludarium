@@ -1,5 +1,36 @@
 # U2 Unit Test Instructions
 
+## 現在attemptの手順（macOSからの復旧）
+
+この節が今回の実行手順であり、下記Windows/bootstrap/先行再確認の節は履歴として保存する。現在attemptのPlan Approvalとengine execution_allowed確認後にのみ実行する。macOSのmise管理ツールはインストール先globで実体を解決し、shim/mise execを使わない。Rustはrust-toolchain.tomlのnightly-2026-10-01を維持する。手元Linuxは `bash scripts/linux-dev.sh` のDocker VMMで実行し、QEMU観測を実機native期待値と呼ばない。実機x86-64 Linuxの差分期待値はfork CIの各runで生成する。
+
+現在sourceと直近11job成功CI（production revision `4d52be0a6f3b11d6c11a62f96196985c9c280fdc`）のsource bytes/logを照合して再利用する。native diff38/parallel10は当該runの期待件数であり、内部filterの現在件数は承認後に確認する。旧exec.rs hashと197件/94.00%、旧600秒fuzzは変更後sourceの証拠へ転用しない。
+
+不足がある場合のみ次のunit限定コマンドを直列実行する。0件・skip・timeout・mismatchを成功にしない。
+
+```bash
+bash scripts/linux-dev.sh cargo test --locked -p paludarium-harness --test diff_u2 -- --nocapture
+bash scripts/linux-dev.sh cargo test --locked -p paludarium-harness --test parallel_u2 -- --nocapture
+bash scripts/linux-dev.sh cargo test --locked -p paludarium-cpu --lib u2_ -- --nocapture
+bash scripts/linux-dev.sh cargo test --locked -p paludarium-decoder --lib u2_ -- --nocapture
+bash scripts/linux-dev.sh cargo test --locked -p paludarium-mmu --lib u2_ -- --nocapture
+bash scripts/linux-dev.sh cargo test --locked -p paludarium-types --lib u2_ -- --nocapture
+bash scripts/linux-dev.sh cargo test --locked -p paludarium-kernel --lib u2_ -- --nocapture
+bash scripts/linux-dev.sh cargo test --locked -p paludarium-harness --test diff_u2 u2_segment_atomic_forms -- --exact --nocapture
+bash scripts/linux-dev.sh cargo test --locked -p paludarium-harness --test diff_u2 u2_atomic_gs_ -- --nocapture
+```
+
+REPの両vendor policyの現在exact内部test名とnative6ケース名は承認後にsourceで確認して記録し、未知vendorを推定・除外して通過させない。Runtimeの存在しないu2 filterは要求しない。共有consumerの既存3OS suiteは一致する直近CI証拠で確認する。lint不足時は次の限定コマンドを使う。
+
+```bash
+bash scripts/linux-dev.sh cargo fmt -p paludarium-types -p paludarium-decoder -p paludarium-mmu -p paludarium-cpu -p paludarium-kernel -p paludarium-harness -- --check
+bash scripts/linux-dev.sh cargo clippy --locked -p paludarium-types -p paludarium-decoder -p paludarium-mmu -p paludarium-cpu -p paludarium-kernel -p paludarium-harness --all-targets -- -D warnings
+```
+
+全体行coverage80%以上は独立overall CI gateでありunit filterで代替しない。新しいproduction修正時は必要なnative回帰・coverage・関係する各600秒ASanをconductorと確定して回収する。現在sourceのfuzz/wasm未検証を明記し、未実行を合格としない。30秒watchdog・mask・nightly pin・各600秒予算を保持する。linux-dev.sh同期は/work/target以外を除去するため同volumeのfuzz・実行と並行しない。性能評価は今回行わない。
+
+## 先行Windows/bootstrap手順（履歴）
+
 以下のコマンドは、この Windows workspace の Git Bash で実行する。native cargo の実体を使うため、最初に次の関数を定義する（shim と mise exec を通さない）。`scripts/linux-dev.sh` のコマンドは同スクリプトが用意する Linux 環境で cargo を実行する。
 
 ```bash
@@ -60,7 +91,7 @@ Linux workspace coverage 80% と cargo-deny/CI 全体 gates は別 overall gate�
 初回CPU fuzzはexit1：No such file or directory: fuzz/corpus/cpu_u2 とASan suppressions file読取失敗。途中に証拠回収用linux-dev.sh同期を呼んだ。同scriptは/work/target以外を除去する実装だが、失敗時点との直接因果は推測/未検証。失敗ログを `r01-cpu-fuzz-sync-failure.txt` に保持し、同期終了後の単一直接docker runnerで両600秒を最初から回収した。後続では同期/compile/traceを重ねなかった。
 検証対象production exec.rs SHA256=e5f052c58761a8d391d1bf438a7b8147b9300f9fa8c39fe1fa66f1d53ba9f4f0。CPU内部test source SHA256=4b2680bdc99b5c3263f2472a6b4000b030810df0958fd76d82e896f529865d7f。閾値、watchdog、nightly予算、Testing Contractは変更していない。
 
-## 今回のU2再確認手順
+## 先行attemptのU2再確認手順（履歴）
 
 既存のbootstrap説明・過去の189件/93.64%は当時の観測である。保存済み最終productionの証拠はdocs/u2/repairs/r01-workspace-coverage.txt（U2 diff38、parallel10、CPU31、全workspace197、94.00%）、r01-cpu-fuzz-final.txt（1276258 runs）、r01-mmu-fuzz-final.txt（1706799 runs、各601秒）、u2-cargo-deny.txt（4項目ok）。今回はまだ再実行していない。exec.rs hash一致とclaims/receipt照合でsource不変が確認できたら、これらを再確認の根拠に使い、全体suite/fuzzの反復を要求しない。
 
