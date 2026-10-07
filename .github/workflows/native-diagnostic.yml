@@ -1,0 +1,39 @@
+name: Native x86-64 diagnostic
+
+on:
+  push:
+    branches: [codex/native-x86-diagnostic]
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Confirm native x86-64 runner
+        run: |
+          uname -a
+          test "$(uname -m)" = x86_64
+          rustup show active-toolchain
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Run unchanged workspace checks
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked --workspace 2>&1 | tee native-workspace.log
+      - name: Retain diagnostic log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-workspace-log
+          path: native-workspace.log
+          retention-days: 7
