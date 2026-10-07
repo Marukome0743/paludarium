@@ -161,6 +161,8 @@ fn u7_runtime_mount() {
         .write(b"world")
         .unwrap();
     assert_eq!(std::fs::read(path.join("b")).unwrap(), b"world");
+    drop(fs);
+    drop(s);
     std::fs::remove_dir_all(path).unwrap();
 }
 #[test]
