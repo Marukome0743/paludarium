@@ -8,6 +8,8 @@
 //! This is the only crate where `unsafe` is permitted (NFR3.1). The U1
 //! implementation does not need any.
 
+#![cfg_attr(windows, feature(windows_by_handle))]
+
 use std::io::{self, Read, Write};
 use std::path::Path;
 

@@ -116,3 +116,7 @@ jobs:
           # Instrumented independent cases run serially; race cases still
           # launch their own host workers and retain the 30-second watchdog.
           RUST_TEST_THREADS: "1"
+      - name: U1 package line coverage >= 80%
+        run: cargo llvm-cov --locked $U1_PACKAGES --fail-under-lines 80
+        env:
+          RUST_TEST_THREADS: "1"
