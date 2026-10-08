@@ -1,6 +1,81 @@
 //! U3 runner bootstrap. Semantic cases follow native observations.
 use super::{CpuState, INITIAL_MXCSR};
 use paludarium_types::GuestAddr;
+#[path = "../../../tests/guests/u3/native-contract.rs"]
+mod native_contract;
+
+fn sha_memory_contract(opcode: u8, crossing: bool) {
+    use paludarium_mmu::{AddressSpace, MappingKind, Prot};
+    let mut memory = AddressSpace::new();
+    memory
+        .map(
+            Some(GuestAddr(0x40000)),
+            8192,
+            Prot::READ_WRITE,
+            MappingKind::Anonymous,
+        )
+        .unwrap();
+    let address = if crossing { 0x40fe8 } else { 0x40001 };
+    let initial_memory = [0xa5; 8192];
+    memory.write(GuestAddr(0x40000), &initial_memory).unwrap();
+    if crossing {
+        memory
+            .protect(GuestAddr(0x41000), 4096, Prot::NONE)
+            .unwrap();
+    }
+    let mut state = CpuState::new(GuestAddr(0x10000), GuestAddr(0x80000));
+    for (n, value) in state.gpr.iter_mut().enumerate() {
+        *value = 0x1234_5678_0000_0000 + n as u64;
+    }
+    state.gpr[2] = address;
+    for (n, value) in state.xmm.iter_mut().enumerate() {
+        *value = u128::MAX - n as u128;
+    }
+    state.rflags = 0x8d7;
+    let before = state.clone();
+    let instruction =
+        paludarium_decoder::decode(&[0x0f, 0x38, opcode, 0x42, 0x10], state.rip).unwrap();
+    assert!(matches!(
+        super::exec::execute(&mut state, &memory, &instruction),
+        Err(super::exec::Stop::GeneralProtection)
+    ));
+    assert_eq!(state.gpr, before.gpr);
+    assert_eq!(state.xmm, before.xmm);
+    assert_eq!(state.rip, before.rip);
+    assert_eq!(state.mxcsr, before.mxcsr);
+    assert_eq!(state.rflags, before.rflags);
+    memory
+        .protect(GuestAddr(0x40000), 8192, Prot::READ_WRITE)
+        .unwrap();
+    let mut after = [0; 8192];
+    memory.read(GuestAddr(0x40000), &mut after).unwrap();
+    assert_eq!(after, initial_memory);
+}
+
+#[test]
+fn sha_memory_contract_rnds2_accessible() {
+    sha_memory_contract(0xcb, false);
+}
+#[test]
+fn sha_memory_contract_rnds2_crossing() {
+    sha_memory_contract(0xcb, true);
+}
+#[test]
+fn sha_memory_contract_msg1_accessible() {
+    sha_memory_contract(0xcc, false);
+}
+#[test]
+fn sha_memory_contract_msg1_crossing() {
+    sha_memory_contract(0xcc, true);
+}
+#[test]
+fn sha_memory_contract_msg2_accessible() {
+    sha_memory_contract(0xcd, false);
+}
+#[test]
+fn sha_memory_contract_msg2_crossing() {
+    sha_memory_contract(0xcd, true);
+}
 
 #[test]
 fn runner_bootstrap_preserves_existing_state_layout() {
@@ -221,6 +296,12 @@ fn packed_crypto_movement_fault_replay() {
             .collect()
     }
     let path = std::env::var("PALUDARIUM_U3_NATIVE_FAULTS").expect("native fault path");
+    let cpuid = std::fs::read_to_string(
+        std::env::var("PALUDARIUM_U3_NATIVE_CPUID").expect("native CPU profile path"),
+    )
+    .unwrap();
+    let amd = native_contract::amd_profile(&cpuid);
+    let mut differences = std::collections::BTreeSet::new();
     let full = std::env::var_os("PALUDARIUM_U3_FULL_REPLAY").is_some();
     let mut count = 0;
     for row in std::fs::read_to_string(path).unwrap().lines() {
@@ -308,7 +389,25 @@ fn packed_crypto_movement_fault_replay() {
         state.gpr[0] = 0x8000_0001_7fff_0011;
         state.gpr[2] = address.0;
         state.rflags = 0x8d7;
+        let original = state.clone();
         let result = super::exec::execute(&mut state, &memory, &instruction);
+        if native_contract::amd_sha_difference(&f, amd) {
+            assert!(differences.insert((f[0].to_owned(), scenario)));
+            assert!(matches!(result, Err(Stop::GeneralProtection)));
+            assert_eq!(state.gpr, original.gpr);
+            assert_eq!(state.xmm, original.xmm);
+            assert_eq!(state.rip, original.rip);
+            assert_eq!(state.mxcsr, original.mxcsr);
+            assert_eq!(state.rflags, original.rflags);
+            memory
+                .protect(GuestAddr(0x40000), 8192, Prot::READ_WRITE)
+                .unwrap();
+            let mut after = [0; 512];
+            memory.read(address, &mut after).unwrap();
+            assert_eq!(after.as_slice(), before);
+            count += 1;
+            continue;
+        }
         let signal: u32 = f[2].parse().unwrap();
         let trap: u32 = f[5].parse().unwrap();
         match (signal, trap, result) {
@@ -376,6 +475,9 @@ fn packed_crypto_movement_fault_replay() {
         count += 1;
     }
     assert!(count > 500, "fault boundary case count {count}");
+    if amd {
+        assert_eq!(differences.len(), 6);
+    }
     println!("native packed/crypto/movement fault boundary cases compared: {count}");
 }
 

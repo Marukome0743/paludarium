@@ -16,10 +16,12 @@ fn u3_saved_observation_replay() {
             .unwrap();
     let fault =
         std::fs::read_to_string(std::env::var("PALUDARIUM_U3_NATIVE_FAULTS").unwrap()).unwrap();
+    let cpuid =
+        std::fs::read_to_string(std::env::var("PALUDARIUM_U3_NATIVE_CPUID").unwrap()).unwrap();
     println!(
         "normal:{} fault:{}",
         oracle::compare(&normal, false),
-        oracle::compare(&fault, true)
+        oracle::compare_profile(&fault, true, Some(&cpuid))
     );
 }
 
@@ -37,17 +39,24 @@ fn u3_fresh_native_differential() {
                 .unwrap()
                 .success()
         );
+        let cpuid =
+            paludarium_harness::run_native(&output.join("cpuid-observe"), "cpuid", &[]).unwrap();
+        assert_eq!(cpuid.status, paludarium::ExitStatus::Exited(0));
+        assert!(cpuid.stderr.is_empty());
+        std::fs::write(output.join("cpuid-observe.native"), &cpuid.stdout).unwrap();
         for (name, fault) in [("observe", false), ("fault-observe", true)] {
             let observation =
                 paludarium_harness::run_native(&output.join(name), name, &[]).unwrap();
             assert_eq!(observation.status, paludarium::ExitStatus::Exited(0));
             assert!(observation.stderr.is_empty());
             std::fs::write(output.join(format!("{name}.native")), &observation.stdout).unwrap();
-            let rows = oracle::compare(std::str::from_utf8(&observation.stdout).unwrap(), fault);
+            let rows = oracle::compare_profile(
+                std::str::from_utf8(&observation.stdout).unwrap(),
+                fault,
+                Some(std::str::from_utf8(&cpuid.stdout).unwrap()),
+            );
             println!("{name}: {rows} freshly generated native states agree");
         }
-        let cpuid =
-            paludarium_harness::run_native(&output.join("cpuid-observe"), "cpuid", &[]).unwrap();
         assert_eq!(cpuid.status, paludarium::ExitStatus::Exited(0));
         assert_eq!(
             cpuid

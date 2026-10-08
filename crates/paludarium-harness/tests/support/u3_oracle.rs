@@ -2,6 +2,8 @@
 use paludarium_cpu::{CpuState, step};
 use paludarium_mmu::{AddressSpace, MappingKind, Prot};
 use paludarium_types::{ExitReason, GuestAddr};
+#[path = "../../../../tests/guests/u3/native-contract.rs"]
+mod native_contract;
 
 fn bytes(text: &str) -> Vec<u8> {
     assert!(text.len().is_multiple_of(2));
@@ -12,6 +14,16 @@ fn bytes(text: &str) -> Vec<u8> {
 }
 
 pub fn compare(text: &str, fault_rows: bool) -> usize {
+    compare_profile(text, fault_rows, None)
+}
+
+pub fn compare_profile(text: &str, fault_rows: bool, cpuid: Option<&str>) -> usize {
+    let amd = if fault_rows {
+        native_contract::amd_profile(cpuid.expect("fresh native CPU profile required"))
+    } else {
+        false
+    };
+    let mut differences = std::collections::BTreeSet::new();
     let mut count = 0;
     for row in text.lines().filter(|row| !row.is_empty()) {
         let f: Vec<_> = row.split('|').collect();
@@ -83,7 +95,35 @@ pub fn compare(text: &str, fault_rows: bool) -> usize {
         state.gpr[0] = 0x8000_0001_7fff_0011;
         state.gpr[2] = address.0;
         state.rflags = 0x8d7;
+        let original = state.clone();
         let result = step(&mut state, &memory);
+        if fault_rows && native_contract::amd_sha_difference(&f, amd) {
+            assert!(
+                differences.insert((f[0], scenario)),
+                "duplicate AMD SHA disposition"
+            );
+            assert_eq!(
+                result,
+                Err(ExitReason::GeneralProtection { rip: original.rip })
+            );
+            assert_eq!(state.gpr, original.gpr);
+            assert_eq!(state.xmm, original.xmm);
+            assert_eq!(state.rip, original.rip);
+            assert_eq!(state.mxcsr, original.mxcsr);
+            assert_eq!(state.rflags, original.rflags);
+            memory
+                .protect(GuestAddr(0x40000), 8192, Prot::READ_WRITE)
+                .unwrap();
+            let mut observed = [0; 512];
+            memory.read(address, &mut observed).unwrap();
+            assert_eq!(observed.as_slice(), before);
+            println!(
+                "explicit virtual Intel alignment contract: {} scenario{}; observed AMD native identity differs",
+                f[0], scenario
+            );
+            count += 1;
+            continue;
+        }
         if fault_rows {
             let signal = f[2].parse::<u32>().unwrap();
             let trap = f[5].parse::<u32>().unwrap();
@@ -156,5 +196,8 @@ pub fn compare(text: &str, fault_rows: bool) -> usize {
         count += 1;
     }
     assert!(count > 0, "zero differential cases");
+    if fault_rows && amd {
+        assert_eq!(differences.len(), 6, "exact six SHA dispositions required");
+    }
     count
 }

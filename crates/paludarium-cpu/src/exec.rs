@@ -1046,11 +1046,7 @@ impl Exec<'_> {
             Operand::Memory(m) if m.size <= 16 => {
                 let address = self.linear(&m);
                 // Legacy packed arithmetic requires alignment before page access.
-                let unaligned = matches!(
-                    self.i.mnemonic,
-                    Mnemonic::Sha256rnds2 | Mnemonic::Sha256msg1 | Mnemonic::Sha256msg2
-                );
-                if m.size == 16 && !unaligned && !address.0.is_multiple_of(16) {
+                if m.size == 16 && !address.0.is_multiple_of(16) {
                     return Err(Stop::GeneralProtection);
                 }
                 let mut bytes = [0; 16];
