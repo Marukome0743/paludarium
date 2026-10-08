@@ -13,9 +13,10 @@ static sigjmp_buf jump;
 static unsigned char captured[280];
 static volatile sig_atomic_t caught;
 static volatile intptr_t rip_delta;
+static volatile sig_atomic_t caught_code;
+static volatile uint64_t caught_trap,caught_error,caught_address;
 static const unsigned char *instruction;
 static void handler(int number,siginfo_t *info,void *context) {
-    (void)info;
     ucontext_t *u=context;
     const unsigned char *fp=(const unsigned char *)u->uc_mcontext.fpregs;
     /* Linux x86-64 signal fpstate begins with the architectural FXSAVE area. */
@@ -25,6 +26,10 @@ static void handler(int number,siginfo_t *info,void *context) {
     memcpy(captured+272,fp+24,4);
     rip_delta=(intptr_t)u->uc_mcontext.gregs[REG_RIP]-(intptr_t)instruction;
     caught=number;
+    caught_code=info->si_code;
+    caught_trap=(uint64_t)u->uc_mcontext.gregs[REG_TRAPNO];
+    caught_error=(uint64_t)u->uc_mcontext.gregs[REG_ERR];
+    caught_address=(uint64_t)(uintptr_t)info->si_addr;
     siglongjmp(jump,1);
 }
 static void hex(const unsigned char *p,size_t n) { for(size_t i=0;i<n;i++) printf("%02x",p[i]); }
@@ -52,10 +57,13 @@ int main(void) {
         if(scenario==0&&mprotect(pages,8192,PROT_NONE)) return 5;
         if(scenario==1&&mprotect(pages,8192,PROT_READ)) return 5;
         if(scenario==2&&mprotect(pages+4096,4096,PROT_NONE)) return 5;
-        caught=0; rip_delta=0; instruction=cases[i].op; memset(captured,0,sizeof(captured));
+        caught=0; caught_code=0; caught_trap=0; caught_error=0; caught_address=0;
+        rip_delta=0; instruction=cases[i].op; memset(captured,0,sizeof(captured));
         if(!sigsetjmp(jump,1)) cases[i].run(captured,input,memory);
         if(mprotect(pages,8192,PROT_READ|PROT_WRITE)) return 6;
-        printf("%s|%u|%d|%ld|",cases[i].name,scenario,caught,(long)rip_delta);
+        printf("%s|%u|%d|%ld|%d|%llu|%llu|%lld|",cases[i].name,scenario,caught,(long)rip_delta,caught_code,
+               (unsigned long long)caught_trap,(unsigned long long)caught_error,
+               caught_address?(long long)(caught_address-(uintptr_t)(caught_trap==19||caught_trap==6?instruction:memory)):0LL);
         hex(cases[i].op,(size_t)(cases[i].end-cases[i].op)); putchar('|'); hex(input,sizeof(input)); putchar('|');
         hex(before,sizeof(before)); putchar('|'); hex(captured,sizeof(captured)); putchar('|'); hex(memory,512); putchar('\n');
     }
