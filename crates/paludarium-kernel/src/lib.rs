@@ -119,6 +119,13 @@ impl Kernel {
         }
     }
 
+    /// Explicit virtual terminal dimensions override Host dimensions on stdio.
+    #[must_use]
+    pub fn with_terminal_size(mut self, columns: u16, rows: u16) -> Self {
+        self.files.terminal_size = Some((columns, rows));
+        self
+    }
+
     /// Connects the filesystem shared with the loader.
     pub fn with_file_system(mut self, fs: Arc<dyn paludarium_vfs::FileSystem>) -> Self {
         self.files.fs = fs;
@@ -360,3 +367,6 @@ impl Kernel {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod u9_tests;

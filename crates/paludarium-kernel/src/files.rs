@@ -16,6 +16,7 @@ struct Descriptor {
     cloexec: bool,
 }
 pub struct Files {
+    pub terminal_size: Option<(u16, u16)>,
     pub fs: Arc<dyn FileSystem>,
     fds: BTreeMap<u32, Descriptor>,
     cwd: Vec<u8>,
@@ -26,6 +27,7 @@ impl Default for Files {
         let fs = MemFs::new();
         let _ = fs.mkdir(b"/tmp", 0o1777);
         Self {
+            terminal_size: None,
             fs: Arc::new(fs),
             fds: BTreeMap::new(),
             cwd: b"/".to_vec(),
@@ -50,6 +52,9 @@ impl Files {
             );
         }
         files
+    }
+    pub(crate) fn stdio_channel(&self, fd: u64) -> Result<Option<u32>, Errno> {
+        Ok(self.descriptor(fd)?.file.stdio_channel())
     }
     pub fn uses_original_stdio(&self, fd: u64) -> bool {
         self.descriptor(fd)

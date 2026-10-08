@@ -24,7 +24,7 @@ jobs:
         run: |
           set -o pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends musl-tools binutils
+          sudo apt-get install -y --no-install-recommends musl-tools binutils python3
           {
             uname -a
             lscpu
@@ -76,7 +76,7 @@ jobs:
           test "$(uname -m)" = x86_64
           lscpu
           apt-get update
-          apt-get install -y --no-install-recommends musl-tools binutils
+          apt-get install -y --no-install-recommends musl-tools binutils python3
           dpkg-query -W musl musl-tools
           rustup show active-toolchain
       - name: Compare all workspace tests on native Bookworm

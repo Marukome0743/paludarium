@@ -23,8 +23,64 @@ pub use native_fs::NativeFs;
 pub mod testing;
 pub use clock::{ClockId, WaitOutcome};
 
+/// Standard stream identity remains attached to duplicated guest descriptors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StreamId {
+    Stdin,
+    Stdout,
+    Stderr,
+}
+impl StreamId {
+    #[must_use]
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Stdin => 0,
+            Self::Stdout => 1,
+            Self::Stderr => 2,
+        }
+    }
+}
+/// Linux guest terminal attributes, independent of the host's libc layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TerminalAttributes {
+    pub input_flags: u32,
+    pub output_flags: u32,
+    pub control_flags: u32,
+    pub local_flags: u32,
+    pub line: u8,
+    pub control_chars: [u8; 19],
+}
+impl Default for TerminalAttributes {
+    fn default() -> Self {
+        Self {
+            input_flags: 0x500,
+            output_flags: 5,
+            control_flags: 0xbf,
+            local_flags: 0x8a3b,
+            line: 0,
+            control_chars: [
+                3, 28, 127, 21, 4, 0, 1, 0, 17, 19, 26, 0, 18, 15, 23, 22, 0, 0, 0,
+            ],
+        }
+    }
+}
+/// `None` from Host means a non-terminal; a zero size is still a terminal.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TerminalInfo {
+    pub attributes: TerminalAttributes,
+    pub columns: u16,
+    pub rows: u16,
+    pub x_pixels: u16,
+    pub y_pixels: u16,
+}
+
 /// Facilities the emulator needs from its host.
 pub trait Host: Send + Sync {
+    /// Queries one standard stream; guest ioctl numbers never cross this boundary.
+    fn terminal_info(&self, _stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+        Ok(None)
+    }
+
     fn mount_fs(&self, _root: &Path) -> Result<std::sync::Arc<dyn HostFs>, Errno> {
         Err(Errno::ENOSYS)
     }
@@ -83,6 +139,10 @@ impl NativeHost {
 }
 
 impl Host for NativeHost {
+    fn terminal_info(&self, stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+        native_terminal_info(stream)
+    }
+
     fn mount_fs(&self, root: &Path) -> Result<std::sync::Arc<dyn HostFs>, Errno> {
         Ok(std::sync::Arc::new(NativeFs::new(root)?))
     }
@@ -196,3 +256,63 @@ mod tests {
 
 #[cfg(test)]
 mod u4_tests;
+
+// Linux x86-64 kernel ABI, not libc's larger `struct termios`.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn native_terminal_info(stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+    unsafe extern "C" {
+        fn ioctl(fd: i32, request: usize, ...) -> i32;
+    }
+    let fd = stream.index() as i32;
+    let mut attributes = [0u8; 36];
+    // SAFETY: TCGETS writes exactly the 36-byte Linux x86-64 kernel termios
+    // into this live buffer. fd is one of the host's standard descriptors;
+    // no guest pointer or request number is forwarded.
+    let result = unsafe { ioctl(fd, 0x5401, attributes.as_mut_ptr()) };
+    if result < 0 {
+        let error = io::Error::last_os_error();
+        if error.raw_os_error() == Some(25) {
+            return Ok(None);
+        }
+        return Err(Errno(error.raw_os_error().unwrap_or(5)));
+    }
+    let mut size = [0u8; 8];
+    // SAFETY: TIOCGWINSZ writes the 8-byte Linux winsize into this live buffer.
+    let result = unsafe { ioctl(fd, 0x5413, size.as_mut_ptr()) };
+    if result < 0 {
+        return Err(Errno(
+            io::Error::last_os_error().raw_os_error().unwrap_or(5),
+        ));
+    }
+    let flag = |i| {
+        u32::from_ne_bytes([
+            attributes[i],
+            attributes[i + 1],
+            attributes[i + 2],
+            attributes[i + 3],
+        ])
+    };
+    let mut control_chars = [0; 19];
+    control_chars.copy_from_slice(&attributes[17..36]);
+    Ok(Some(TerminalInfo {
+        attributes: TerminalAttributes {
+            input_flags: flag(0),
+            output_flags: flag(4),
+            control_flags: flag(8),
+            local_flags: flag(12),
+            line: attributes[16],
+            control_chars,
+        },
+        rows: u16::from_ne_bytes([size[0], size[1]]),
+        columns: u16::from_ne_bytes([size[2], size[3]]),
+        x_pixels: u16::from_ne_bytes([size[4], size[5]]),
+        y_pixels: u16::from_ne_bytes([size[6], size[7]]),
+    }))
+}
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+fn native_terminal_info(_stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+    Ok(None)
+}
+
+#[cfg(test)]
+mod u9_tests;

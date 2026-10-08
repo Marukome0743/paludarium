@@ -95,7 +95,7 @@ jobs:
       # Builds the guests from source (BR7.2), runs each natively and under
       # the emulator, compares stdout/stderr/exit status (BR7.1) and prints
       # the run times (NFR6.1).
-      - run: cargo test --locked -p paludarium-harness --test diff_u1 --test diff_u2 --test parallel_u2 --test diff_u4 -- --nocapture
+      - run: cargo test --locked -p paludarium-harness --test diff_u1 --test diff_u2 --test parallel_u2 --test diff_u4 --test diff_u9 -- --nocapture
 
   coverage:
     name: line coverage >= 80%
@@ -120,3 +120,17 @@ jobs:
         run: cargo llvm-cov --locked $U1_PACKAGES --fail-under-lines 80
         env:
           RUST_TEST_THREADS: "1"
+
+      - name: U9 target crates line coverage >= 80%
+        run: |
+          cargo llvm-cov --locked -p paludarium-host -p paludarium-kernel -p paludarium-runtime -p paludarium -p paludarium-harness --lib --test diff_u9 --test command --ignore-filename-regex 'paludarium-(cpu|decoder|mmu|loader|types|vfs|jit|harness)/' --fail-under-lines 80 --lcov --output-path target/u9-coverage.lcov
+          cargo llvm-cov report --ignore-filename-regex 'paludarium-(cpu|decoder|mmu|loader|types|vfs|jit|harness)/'
+        env:
+          RUST_TEST_THREADS: "1"
+      - name: Retain U9 coverage line observations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u9-coverage-lcov
+          path: target/u9-coverage.lcov
+          retention-days: 7

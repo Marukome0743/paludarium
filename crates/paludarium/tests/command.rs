@@ -121,3 +121,31 @@ fn u7_cli_mount_missing_root_is_emulator_error() {
     assert!(out.stdout.is_empty());
     assert!(!out.stderr.is_empty());
 }
+
+#[test]
+fn u9_cli_forward_stdout_stderr() {
+    let path = write_guest("u9-streams", &GUEST, b"outERR");
+    let out = binary().arg(&path).output().unwrap();
+    assert_eq!(out.stdout, b"out");
+    assert_eq!(out.stderr, b"ER");
+    assert_eq!(out.status.code(), Some(5));
+    std::fs::remove_file(path).unwrap();
+}
+#[test]
+fn u9_cli_empty_argument_is_preserved() {
+    let code = vec![
+        0x48, 0x8b, 0x74, 0x24, 0x10, 0xb8, 1, 0, 0, 0, 0xbf, 1, 0, 0, 0, 0xba, 1, 0, 0, 0, 0x0f,
+        0x05, 0xb8, 60, 0, 0, 0, 0xbf, 0, 0, 0, 0, 0x0f, 0x05,
+    ];
+    let path = write_guest("u9-empty", &code, b"");
+    let out = binary()
+        .arg(&path)
+        .arg("")
+        .arg("two words")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(out.stdout, [0]);
+    assert!(out.stderr.is_empty());
+    std::fs::remove_file(path).unwrap();
+}

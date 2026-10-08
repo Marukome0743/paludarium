@@ -203,6 +203,9 @@ impl Session {
         let mut kernel = Kernel::new(Arc::clone(&self.host))
             .with_file_system(fs)
             .with_signal_inbox(Arc::clone(&self.signal_inbox));
+        if let Some(tty) = self.config.tty {
+            kernel = kernel.with_terminal_size(tty.columns, tty.rows);
+        }
         let mut thread = kernel.spawn_initial(&image);
         let mut decode_cache = DecodeCache::new();
 
@@ -265,3 +268,6 @@ impl Session {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod u9_tests;

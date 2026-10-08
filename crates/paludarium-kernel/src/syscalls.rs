@@ -620,13 +620,62 @@ fn sys_rt_sigprocmask(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
     ok(0)
 }
 
-/// `ioctl`: U1 has no terminal support, so every request on descriptors
-/// 0-2 (including `TIOCGWINSZ`, 0x5413) is `-ENOTTY` (BR3.3).
-fn sys_ioctl(_: &mut Context<'_>, a: [u64; 6]) -> Outcome {
-    if a[0] > 2 {
-        return err(Errno::EBADF);
+/// Only known terminal queries are interpreted, never forwarded to Host.
+fn sys_ioctl(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let run = || -> Result<u64, Errno> {
+        let stream = match c.files.stdio_channel(a[0])? {
+            Some(0) => paludarium_host::StreamId::Stdin,
+            Some(1) => paludarium_host::StreamId::Stdout,
+            Some(2) => paludarium_host::StreamId::Stderr,
+            _ => return Err(Errno::ENOTTY),
+        };
+        if !matches!(a[1], 0x5401 | 0x5413) {
+            return Err(Errno::ENOTTY);
+        }
+        let host_info = c.host.terminal_info(stream)?;
+        let info = if let Some((columns, rows)) = c.files.terminal_size {
+            paludarium_host::TerminalInfo {
+                columns,
+                rows,
+                ..host_info.unwrap_or_default()
+            }
+        } else {
+            host_info.ok_or(Errno::ENOTTY)?
+        };
+        let mut bytes = [0u8; 36];
+        let len = if a[1] == 0x5401 {
+            for (i, flag) in [
+                info.attributes.input_flags,
+                info.attributes.output_flags,
+                info.attributes.control_flags,
+                info.attributes.local_flags,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                bytes[i * 4..i * 4 + 4].copy_from_slice(&flag.to_le_bytes());
+            }
+            bytes[16] = info.attributes.line;
+            bytes[17..36].copy_from_slice(&info.attributes.control_chars);
+            36
+        } else {
+            for (i, value) in [info.rows, info.columns, info.x_pixels, info.y_pixels]
+                .into_iter()
+                .enumerate()
+            {
+                bytes[i * 2..i * 2 + 2].copy_from_slice(&value.to_le_bytes());
+            }
+            8
+        };
+        c.mem
+            .write(GuestAddr(a[2]), &bytes[..len])
+            .map_err(|_| Errno::EFAULT)?;
+        Ok(0)
+    };
+    match run() {
+        Ok(v) => ok(v),
+        Err(e) => err(e),
     }
-    err(Errno::ENOTTY)
 }
 
 fn exit_code(value: u64) -> i32 {
