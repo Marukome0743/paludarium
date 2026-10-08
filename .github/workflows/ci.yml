@@ -8,7 +8,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, codex/native-x86-diagnostic]
+    branches: [main, codex/native-x86-diagnostic, codex/u2-asan-diagnostic]
 
 permissions:
   contents: read
@@ -27,6 +27,37 @@ env:
     -p paludarium-runtime -p paludarium
 
 jobs:
+  production-wasm:
+    name: production wasm (shared Rust heap, nested Workers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - run: rustup component add rust-src --toolchain nightly-2026-10-01
+      - name: Generate and execute fresh native fixtures
+        run: |
+          mkdir -p target/production-wasm-evidence
+          python3 packages/paludarium-wasm/tests/generate-guests.py --check
+          python3 scripts/wasm-native-guests.py > target/production-wasm-evidence/native-results.json
+      - name: Build actual production Session module
+        run: bash scripts/build-wasm.sh
+      - name: Compare production wasm with native results
+        run: |
+          node --test packages/paludarium-wasm/tests/import-check.mjs
+          node packages/paludarium-wasm/tests/node-check.mjs packages/paludarium-wasm/paludarium.wasm target/production-wasm-evidence/native-results.json > target/production-wasm-evidence/node-report.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: production-wasm-evidence
+          path: |
+            target/production-wasm-evidence/
+            packages/paludarium-wasm/paludarium.wasm
+          retention-days: 7
   test:
     name: unit tests (${{ matrix.os }})
     strategy:

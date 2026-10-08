@@ -85,7 +85,6 @@ aidlc/diagnostics/
 # concurrent appends — there is intentionally NO .gitattributes merge=union,
 # which was proven to corrupt the multi-line audit blocks) ·
 # aidlc/spaces/*/intents/*/<phase>/<stage>/*.md (artifacts + diary).
-.claude/settings.local.json
 # END AI-DLC:gitignore
 
 # Rust build output. Cargo.lock is committed (NFR8.3).
@@ -97,6 +96,7 @@ aidlc/diagnostics/
 /tests/guests/hello-rs/target/
 /spikes/wasm-threads/target/
 /spikes/wasm-threads/pkg/
+/packages/paludarium-wasm/paludarium.wasm
 *.profraw
 
 # Codex workflow tooling, generated locally by AI-DLC.

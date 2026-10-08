@@ -1,0 +1,27 @@
+name: U2 production sanitizers
+on:
+  push:
+    branches: [codex/u2-asan-diagnostic]
+permissions:
+  contents: read
+jobs:
+  fuzz:
+    name: ASan and LSan ${{ matrix.target }} (600 seconds)
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [cpu_u2, mmu_u2, decode, load_elf]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0
+        with:
+          tool: cargo-fuzz
+      - name: Run fixed sanitizer budget
+        working-directory: fuzz
+        env:
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/fuzz/lsan.supp
+        run: cargo fuzz run -O ${{ matrix.target }} -- -max_total_time=600 -timeout=30 -rss_limit_mb=2048

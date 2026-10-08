@@ -10,16 +10,24 @@
 
 #![cfg_attr(windows, feature(windows_by_handle))]
 
-use std::io::{self, Read, Write};
+use std::io;
+#[cfg(not(target_arch = "wasm32"))]
+use std::io::{Read, Write};
 use std::path::Path;
 
 use paludarium_types::{Errno, Error, ErrorKind};
 
 mod clock;
 pub mod fs;
+#[cfg(not(target_arch = "wasm32"))]
 mod native_fs;
 pub use fs::{DirectoryEntry, FileHandle, FileStat, HostFs};
+#[cfg(not(target_arch = "wasm32"))]
 pub use native_fs::NativeFs;
+#[cfg(target_arch = "wasm32")]
+mod wasm;
+#[cfg(target_arch = "wasm32")]
+pub use wasm::WasmHost;
 pub mod testing;
 pub use clock::{ClockId, WaitOutcome};
 
@@ -118,6 +126,7 @@ pub fn errno_from_io(err: &io::Error) -> Errno {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn write_through(out: &mut dyn Write, buf: &[u8]) -> Result<usize, Errno> {
     out.write_all(buf).map_err(|e| errno_from_io(&e))?;
     out.flush().map_err(|e| errno_from_io(&e))?;
@@ -138,6 +147,7 @@ impl NativeHost {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Host for NativeHost {
     fn terminal_info(&self, stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
         native_terminal_info(stream)
@@ -309,7 +319,10 @@ fn native_terminal_info(stream: StreamId) -> Result<Option<TerminalInfo>, Errno>
         y_pixels: u16::from_ne_bytes([size[6], size[7]]),
     }))
 }
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
 fn native_terminal_info(_stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
     Ok(None)
 }
