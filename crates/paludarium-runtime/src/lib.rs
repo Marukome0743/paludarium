@@ -32,10 +32,22 @@ pub struct Mount {
 }
 
 /// Terminal size given to the guest. Used from U9.
+/// ```compile_fail
+/// use paludarium_runtime::TerminalInfo;
+/// let _ = TerminalInfo { columns: 80, rows: 24 };
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TerminalInfo {
     pub columns: u16,
     pub rows: u16,
+}
+impl TerminalInfo {
+    /// Creates the explicit guest terminal size, including zero dimensions.
+    #[must_use]
+    pub const fn new(columns: u16, rows: u16) -> Self {
+        Self { columns, rows }
+    }
 }
 
 /// Configuration of one run (C10 `Config`, entities.md SessionConfig).

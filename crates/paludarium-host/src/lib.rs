@@ -49,7 +49,15 @@ impl StreamId {
     }
 }
 /// Linux guest terminal attributes, independent of the host's libc layout.
+///
+/// External callers construct this extensible type with [`Self::new`].
+/// ```compile_fail
+/// use paludarium_host::TerminalAttributes;
+/// let _ = TerminalAttributes { input_flags: 0, output_flags: 0,
+///     control_flags: 0, local_flags: 0, line: 0, control_chars: [0; 19] };
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TerminalAttributes {
     pub input_flags: u32,
     pub output_flags: u32,
@@ -57,6 +65,27 @@ pub struct TerminalAttributes {
     pub local_flags: u32,
     pub line: u8,
     pub control_chars: [u8; 19],
+}
+impl TerminalAttributes {
+    /// Preserves every Linux guest attribute exactly as supplied.
+    #[must_use]
+    pub const fn new(
+        input_flags: u32,
+        output_flags: u32,
+        control_flags: u32,
+        local_flags: u32,
+        line: u8,
+        control_chars: [u8; 19],
+    ) -> Self {
+        Self {
+            input_flags,
+            output_flags,
+            control_flags,
+            local_flags,
+            line,
+            control_chars,
+        }
+    }
 }
 impl Default for TerminalAttributes {
     fn default() -> Self {
@@ -73,13 +102,38 @@ impl Default for TerminalAttributes {
     }
 }
 /// `None` from Host means a non-terminal; a zero size is still a terminal.
+/// ```compile_fail
+/// use paludarium_host::{TerminalAttributes, TerminalInfo};
+/// let _ = TerminalInfo { attributes: TerminalAttributes::default(),
+///     columns: 0, rows: 0, x_pixels: 0, y_pixels: 0 };
+/// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TerminalInfo {
     pub attributes: TerminalAttributes,
     pub columns: u16,
     pub rows: u16,
     pub x_pixels: u16,
     pub y_pixels: u16,
+}
+impl TerminalInfo {
+    /// Creates terminal information without changing zero sizes or attributes.
+    #[must_use]
+    pub const fn new(
+        attributes: TerminalAttributes,
+        columns: u16,
+        rows: u16,
+        x_pixels: u16,
+        y_pixels: u16,
+    ) -> Self {
+        Self {
+            attributes,
+            columns,
+            rows,
+            x_pixels,
+            y_pixels,
+        }
+    }
 }
 
 /// Facilities the emulator needs from its host.

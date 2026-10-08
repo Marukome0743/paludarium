@@ -634,11 +634,10 @@ fn sys_ioctl(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
         }
         let host_info = c.host.terminal_info(stream)?;
         let info = if let Some((columns, rows)) = c.files.terminal_size {
-            paludarium_host::TerminalInfo {
-                columns,
-                rows,
-                ..host_info.unwrap_or_default()
-            }
+            let mut info = host_info.unwrap_or_default();
+            info.columns = columns;
+            info.rows = rows;
+            info
         } else {
             host_info.ok_or(Errno::ENOTTY)?
         };

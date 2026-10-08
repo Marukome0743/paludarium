@@ -1,0 +1,50 @@
+name: U3 native DBI coverage
+on:
+  push:
+    branches: [codex/u2-asan-diagnostic]
+    paths: [.github/workflows/u3-native-coverage.yml, diagnostics/u3-native-coverage/**]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Fixed binary and diagnostic tool
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p target/u3-native-coverage/input
+          gh run download 37783098684 --repo Marukome0743/paludarium --name u3-pinned-aube-inventory --dir target/u3-native-coverage/input
+          echo '5a095cbc28a31b8103a5f6c1b90c0ef68c440e4574c4b0816c8d163fd5fb3028  target/u3-native-coverage/input/aube' | sha256sum -c -
+          chmod +x target/u3-native-coverage/input/aube
+          curl -fL https://github.com/DynamoRIO/dynamorio/releases/download/cronbuild-11.91.20727/DynamoRIO-Linux-11.91.20727.tar.gz -o target/u3-native-coverage/tool.tar.gz
+          echo '632abee70e5d8431a6340f106cb0e50e0bd1b4e69abb82bcb0a861e82d68064c  target/u3-native-coverage/tool.tar.gz' | sha256sum -c -
+          tar -xzf target/u3-native-coverage/tool.tar.gz -C target/u3-native-coverage
+          sha256sum target/u3-native-coverage/tool.tar.gz > target/u3-native-coverage/tool.sha256
+          find target/u3-native-coverage/DynamoRIO-Linux-* -maxdepth 1 -iname '*license*' -exec cp {} target/u3-native-coverage/ \;
+          target/u3-native-coverage/DynamoRIO-Linux-*/bin64/drrun -version > target/u3-native-coverage/tool-version.txt 2>&1
+          uname -a > target/u3-native-coverage/host.txt
+      - name: Four bounded native DBI workloads
+        run: python3 diagnostics/u3-native-coverage/observe.py
+      - name: Preserve results and tool license
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u3-native-dbi-coverage
+          path: |
+            target/u3-native-coverage/results.json
+            target/u3-native-coverage/host.txt
+            target/u3-native-coverage/tool.sha256
+            target/u3-native-coverage/tool-version.txt
+            target/u3-native-coverage/*LICENSE*
+            target/u3-native-coverage/*license*
+            target/u3-native-coverage/version/
+            target/u3-native-coverage/install/
+            target/u3-native-coverage/frozen/
+            target/u3-native-coverage/list/
+          retention-days: 7

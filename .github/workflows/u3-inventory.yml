@@ -1,0 +1,53 @@
+name: U3 controlled old-date aube inventory
+on:
+  push:
+    branches: [codex/u2-asan-diagnostic]
+    paths: [.github/workflows/u3-inventory.yml, diagnostics/u3-inventory/**]
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: aubepkg/aube
+          ref: bd94e42f54d3b5e3dd102716b7197f316cb5f4ed
+          path: target/u3-aube-source
+          persist-credentials: false
+      - name: Pinned source and original builder reproduction
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u3-inventory target/u3-cache
+          uname -a | tee target/u3-inventory/host.txt
+          test "$(uname -m)" = x86_64
+          python3 diagnostics/u3-inventory/investigate.py source
+          docker pull rust@sha256:a96ea6d18d4062e38f16cfbadd8b4541d622f2527dd0a5eca1fb36d301da4e88
+          docker image inspect rust@sha256:a96ea6d18d4062e38f16cfbadd8b4541d622f2527dd0a5eca1fb36d301da4e88 > target/u3-inventory/builder-image.json
+          set +e
+          docker run --rm --platform linux/amd64 -v "$PWD/target/u3-aube-source:/src/aube:ro" -v "$PWD/target/u3-cache:/cache" -w /src/aube rust@sha256:a96ea6d18d4062e38f16cfbadd8b4541d622f2527dd0a5eca1fb36d301da4e88 sh -c 'set -eu; apk add --no-cache musl-dev perl make cmake; rustc -Vv; cargo -V; mkdir -p /cache/date-wrapper; printf "#!/bin/sh\nif [ \"\$1\" = -u ] && [ \"\$2\" = +%%Y-%%m-%%d ]; then echo wrapper-invoked >&2; echo 2026-10-05; else exec /bin/date \"\$@\"; fi\n" > /cache/date-wrapper/date; chmod +x /cache/date-wrapper/date; export PATH=/cache/date-wrapper:$PATH; date -u +%Y-%m-%d; : > /cache/empty-primer.rkyv.zst; AUBE_PRIMER_PATH=/cache/empty-primer.rkyv.zst cargo build --release --locked --target x86_64-unknown-linux-musl -p aube --bin aube --target-dir /cache/aube' 2>&1 | tee target/u3-inventory/build.log
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "$code" > target/u3-inventory/build-exit.txt
+          python3 diagnostics/u3-inventory/investigate.py source-after
+          test "$code" = 0
+          cp target/u3-cache/aube/x86_64-unknown-linux-musl/release/aube target/u3-inventory/aube
+          sha256sum target/u3-inventory/aube > target/u3-inventory/binary.sha256
+      - name: Native observations and executable-section candidate classification
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gdb binutils
+          python3 diagnostics/u3-inventory/investigate.py observe
+      - name: Preserve all results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u3-pinned-aube-inventory
+          path: target/u3-inventory/
+          retention-days: 7

@@ -56,13 +56,7 @@ impl Fixture {
 use paludarium_host::{StreamId, TerminalInfo};
 use paludarium_types::{Errno, GuestAddr};
 fn tty() -> TerminalInfo {
-    TerminalInfo {
-        columns: 101,
-        rows: 37,
-        x_pixels: 7,
-        y_pixels: 9,
-        ..TerminalInfo::default()
-    }
+    TerminalInfo::new(Default::default(), 101, 37, 7, 9)
 }
 #[test]
 fn u9_winsize_guest_layout() {

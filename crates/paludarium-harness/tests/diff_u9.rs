@@ -56,20 +56,13 @@ fn case(name: &'static str, id: usize) {
             control_chars[6] = 1;
             host.set_terminal_info(
                 StreamId::Stdin,
-                Some(TerminalInfo {
-                    rows: 37,
-                    columns: 101,
-                    x_pixels: 0,
-                    y_pixels: 0,
-                    attributes: TerminalAttributes {
-                        input_flags: 0,
-                        output_flags: 0,
-                        control_flags: 0xbf,
-                        local_flags: 0,
-                        line: 0,
-                        control_chars,
-                    },
-                }),
+                Some(TerminalInfo::new(
+                    TerminalAttributes::new(0, 0, 0xbf, 0, 0, control_chars),
+                    101,
+                    37,
+                    0,
+                    0,
+                )),
             );
         }
         let binary = std::fs::read(out.join(format!("io-{id}"))).unwrap();
