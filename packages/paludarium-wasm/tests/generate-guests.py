@@ -12,10 +12,35 @@ CODES = {
     "infinite": "ebfe",
 }
 
+# U3 instruction forms execute through the production Session/launcher. These
+# bytes are inputs only; native output and signal expectations are regenerated.
+U3_OPS = {
+    "u3-packed": "660f3804c1",  # PMADDUBSW: signed saturation and lane pairing
+    "u3-sha": "0f38cbc10f38ccc10f38cdc1",
+    "u3-aes": "660f38dcc1660f38ddc1",
+    "u3-pclmul": "660f3a44c100660f3a44c111",
+    "u3-float": "660f58c1f20f59c1f20f51c0",  # ADDPD, MULSD, SQRTSD
+    "u3-fault": "f20f51c0",  # SQRTSD negative finite operand: SIGFPE
+}
+for name, operation in U3_OPS.items():
+    load = "48b80020400000000000f30f6f00f30f6f4810"
+    # Unmask invalid only for the explicit fault fixture.
+    control = "0fae9040000000" if name == "u3-fault" else ""
+    store = "f30f7f8020000000"
+    write_exit = "b801000000bf0100000048be2020400000000000ba100000000f05b83c00000031ff0f05"
+    CODES[name] = load + control + operation + store + write_exit
+CODES["u3-cpuid"] = "b80100000031c90fa248bf20204000000000008907895f04894f0889570cb801000000bf0100000048be2020400000000000ba100000000f05b83c00000031ff0f05"
+
 
 def guest(name):
     code = bytes.fromhex(CODES[name])
     data = bytes(64) if name in ("stdin", "infinite") else b"hello\n"
+    if name.startswith("u3-"):
+        data = bytearray(80)
+        if name in ("u3-float", "u3-fault"):
+            struct.pack_into("<dddd", data, 0, -1.0 if name == "u3-fault" else 1.5, 2.0, 2.25, 3.5)
+        else:
+            data[:32] = bytes((n * 17 + 3) & 255 for n in range(32))
     ident = b"\x7fELF\x02\x01\x01" + bytes(9)
     header = ident + struct.pack("<HHIQQQIHHHHHH", 2, 62, 1, 0x401000, 64, 0, 0, 64, 56, 2, 0, 0, 0)
     code_segment = struct.pack("<IIQQQQQQ", 1, 5, 4096, 0x401000, 0x401000, len(code), len(code), 4096)
@@ -42,4 +67,4 @@ if __name__ == "__main__":
         else:
             path.write_bytes(image)
             path.chmod(0o755)
-    print("All six deterministic ELF fixtures match" if args.check else "Generated six ELF fixtures")
+    print(f"All {len(CODES)} deterministic ELF fixtures match" if args.check else f"Generated {len(CODES)} ELF fixtures")

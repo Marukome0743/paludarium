@@ -21,13 +21,16 @@ export async function runChecks({ wasmUrl, readGuest, native }) {
   const runtime = await createPaludarium({ wasmUrl }); const results = [];
   try {
     const expected = new Map(native.map(row => [row.name, row]));
-    for (const name of ["hello", "integer", "atomic", "divide_fault"]) {
+    for (const name of ["hello", "integer", "atomic", "divide_fault", ...native.map(row => row.name).filter(name => name.startsWith("u3-"))]) {
       const bytes = await readGuest(name), row = expected.get(name);
       check(row && !row.timed_out && await digest(bytes) === row.sha256, `${name}: native source mismatch`);
       const observed = await observe(runtime, bytes);
       const desired = row.returncode < 0 ? { kind: "signaled", signal: -row.returncode } : { kind: "exited", code: row.returncode };
       check(JSON.stringify(observed.status) === JSON.stringify(desired), `${name}: exit/signal mismatch`);
-      check(observed.stdout === row.stdout && observed.stderr === row.stderr, `${name}: streams mismatch`);
+      // CPUID is a deliberately virtual identity/features contract. The native
+      // host row proves fixture execution/provenance, not identity equivalence.
+      const desiredStdout = name === "u3-cpuid" ? "00".repeat(16) : row.stdout;
+      check(observed.stdout === desiredStdout && observed.stderr === row.stderr, `${name}: streams mismatch`);
       results.push({ case: name, pass: true, ...observed });
     }
     for (const [name, options] of [["unsupported-tty", { tty: { columns: 80, rows: 24 } }], ["unsupported-jit", { jit: true }]]) {

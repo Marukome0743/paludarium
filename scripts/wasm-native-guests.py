@@ -9,7 +9,8 @@ import time
 assert platform.system() == 'Linux' and platform.machine() == 'x86_64'
 root = pathlib.Path(__file__).resolve().parents[1] / 'packages/paludarium-wasm/tests/guests'
 rows = []
-for name in ('atomic', 'divide_fault', 'hello', 'infinite', 'integer', 'stdin'):
+for name in ('atomic', 'divide_fault', 'hello', 'infinite', 'integer', 'stdin',
+             *sorted(path.name for path in root.iterdir() if path.name.startswith('u3-'))):
     guest = root / name
     guest.chmod(0o755)
     if name == 'infinite':
@@ -27,6 +28,8 @@ for name in ('atomic', 'divide_fault', 'hello', 'infinite', 'integer', 'stdin'):
         result = subprocess.run([str(guest)], input=b'input\n' if name == 'stdin' else b'',
                                 capture_output=True, timeout=30, check=False)
         stdout, stderr, code = result.stdout, result.stderr, result.returncode
+    if name.startswith('u3-'):
+        assert code == (-8 if name == 'u3-fault' else 0), f'{name}: native feature/fixture failed, exit {code}'
     rows.append(dict(name=name, sha256=hashlib.sha256(guest.read_bytes()).hexdigest(),
                      returncode=code, stdout=stdout.hex(), stderr=stderr.hex(), timed_out=False))
 print(json.dumps(rows, indent=2))
