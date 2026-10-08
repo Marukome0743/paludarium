@@ -98,7 +98,7 @@ jobs:
           roots=[pathlib.Path('target/u3-deterministic-aube-'+str(i)) for i in [1,2]]
           sha=[hashlib.sha256((p/'aube').read_bytes()).hexdigest() for p in roots]
           proof={'binary_sha256':sha,'binary_identical':sha[0]==sha[1],'primer_mtime':1791158400,'build_date':'2026-10-05'}
-          for name in ['environment.txt','packages.txt','rustc.txt','cargo.txt','build-date.txt','build-inputs.sha256']:
+          for name in ['environment.txt','packages.txt','rustc.txt','cargo.txt','build-date.txt','build-inputs.sha256','compiler-date-macros.txt']:
               proof[name]=[(p/name).read_text() for p in roots]
               assert proof[name][0]==proof[name][1], name
           for p in roots:

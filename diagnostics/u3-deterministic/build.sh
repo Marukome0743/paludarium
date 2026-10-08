@@ -15,6 +15,9 @@ DATE
 chmod +x /cache/date-wrapper/date
 export PATH=/cache/date-wrapper:$PATH
 export AUBE_PRIMER_PATH=/cache/empty-primer.rkyv.zst
+export SOURCE_DATE_EPOCH=1791158400
+# GCC expands C __DATE__/__TIME__ from this build-only epoch.
+printf '__DATE__ __TIME__\n' | cc -E -P -x c - > /cache/compiler-date-macros.txt
 : > "$AUBE_PRIMER_PATH"
 touch -d @1791158400 "$AUBE_PRIMER_PATH"
 test "$(stat -c %Y "$AUBE_PRIMER_PATH")" = 1791158400
