@@ -633,27 +633,52 @@ mod u7_tests {
             .unwrap();
         let stop = Arc::new(AtomicBool::new(false));
         let exchanges = Arc::new(AtomicU64::new(0));
+        let sharing_conflicts = Arc::new(AtomicU64::new(0));
         let barrier = Arc::new(Barrier::new(2));
         let done = Arc::clone(&stop);
         let count = Arc::clone(&exchanges);
+        let conflicts = Arc::clone(&sharing_conflicts);
         let ready = Arc::clone(&barrier);
         let attacker = std::thread::spawn(move || -> std::io::Result<()> {
+            fn retry_sharing(
+                deadline: std::time::Instant,
+                conflicts: &AtomicU64,
+                mut operation: impl FnMut() -> std::io::Result<()>,
+            ) -> std::io::Result<()> {
+                loop {
+                    match operation() {
+                        Ok(()) => return Ok(()),
+                        Err(error) if error.raw_os_error() == Some(32) => {
+                            conflicts.fetch_add(1, Ordering::Relaxed);
+                            if std::time::Instant::now() >= deadline {
+                                return Err(error);
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(1));
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
+            }
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
             ready.wait();
             while !done.load(Ordering::Acquire) {
                 // Windows can temporarily deny renaming an open directory.
                 // Count only complete real directory/symlink exchanges.
-                if std::fs::rename(root.join("pivot"), root.join("held")).is_err() {
-                    std::thread::yield_now();
-                    continue;
-                }
+                retry_sharing(deadline, &conflicts, || {
+                    std::fs::rename(root.join("pivot"), root.join("held"))
+                })?;
                 let link = std::os::windows::fs::symlink_dir(&outside, root.join("pivot"));
                 if let Err(error) = link {
                     std::fs::rename(root.join("held"), root.join("pivot"))?;
                     return Err(error);
                 }
                 std::thread::yield_now();
-                std::fs::remove_dir(root.join("pivot"))?;
-                std::fs::rename(root.join("held"), root.join("pivot"))?;
+                retry_sharing(deadline, &conflicts, || {
+                    std::fs::remove_dir(root.join("pivot"))
+                })?;
+                retry_sharing(deadline, &conflicts, || {
+                    std::fs::rename(root.join("held"), root.join("pivot"))
+                })?;
                 count.fetch_add(1, Ordering::Release);
             }
             Ok(())
@@ -692,6 +717,10 @@ mod u7_tests {
         assert!(!base.exists());
         println!(
             "U7_WINDOWS_RACE iterations=1000 exchanges={exchanges} outside_unchanged=true cleanup=true"
+        );
+        println!(
+            "U7_WINDOWS_SHARING_CONFLICTS={}",
+            sharing_conflicts.load(Ordering::Relaxed)
         );
     }
 }

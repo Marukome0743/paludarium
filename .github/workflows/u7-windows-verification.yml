@@ -1,3 +1,4 @@
+# Retry Windows sharing violations only; preserve initial run37764175990 failure evidence.
 name: U7 Windows fixture verification
 on:
   push:
