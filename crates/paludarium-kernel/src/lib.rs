@@ -274,6 +274,18 @@ impl Kernel {
                     synchronous: true,
                 })
             }
+            ExitReason::FloatingPointFault { rip, code } => {
+                thread.cpu.rip = rip;
+                Some(signals::PendingSignal {
+                    target: signals::PendingTarget::Thread,
+                    number: signal::SIGFPE,
+                    code: i32::from(code),
+                    addr: rip.0,
+                    trap: 19,
+                    error: 0,
+                    synchronous: true,
+                })
+            }
             ExitReason::GeneralProtection { rip } | ExitReason::Halt { rip } => {
                 thread.cpu.rip = rip;
                 Some(signals::PendingSignal {
@@ -298,7 +310,9 @@ impl Kernel {
             | ExitReason::GeneralProtection { .. }
             | ExitReason::Halt { .. } => self.terminate(signal::SIGSEGV),
             ExitReason::InvalidOpcode { .. } => self.terminate(signal::SIGILL),
-            ExitReason::ArithmeticFault { .. } => self.terminate(signal::SIGFPE),
+            ExitReason::ArithmeticFault { .. } | ExitReason::FloatingPointFault { .. } => {
+                self.terminate(signal::SIGFPE)
+            }
             ExitReason::BudgetExhausted { .. } => self.checkpoint(thread, mem),
             // Later units add stop reasons; until then they end the process.
             _ => self.terminate(signal::SIGSEGV),

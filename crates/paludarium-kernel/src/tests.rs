@@ -224,6 +224,24 @@ fn u2_arithmetic_fault_terminates_with_sigfpe() {
 }
 
 #[test]
+fn u3_floating_point_fault_codes_terminate_with_sigfpe() {
+    for code in [3, 4, 5, 6, 7] {
+        let mut f = fixture();
+        assert_eq!(
+            f.kernel.handle(
+                &mut f.thread,
+                &mut f.mem,
+                ExitReason::FloatingPointFault {
+                    rip: GuestAddr(0x1000),
+                    code
+                }
+            ),
+            Next::Exit(ExitStatus::Signaled(signal::SIGFPE))
+        );
+    }
+}
+
+#[test]
 fn signal_registration_is_recorded_but_not_delivered() {
     let mut f = fixture();
     // act = { handler 0x1234, flags 0x04000000, restorer 0x5678, mask 0x100 }

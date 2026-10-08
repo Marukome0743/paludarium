@@ -18,6 +18,7 @@ pub(crate) enum Stop {
     Halt,
     GeneralProtection,
     ArithmeticFault,
+    FloatingPointFault(u8),
     /// `syscall` executed; the state already points past it.
     Syscall,
 }
@@ -1038,6 +1039,366 @@ impl Exec<'_> {
         let o = op(self.i, 0)?;
         self.read(o, 8)
     }
+
+    fn sse_operand(&self, o: Operand) -> Result<u128> {
+        match o {
+            Operand::Register(Register::Xmm(n)) => Ok(self.s.xmm[usize::from(n)]),
+            Operand::Memory(m) if m.size <= 16 => {
+                let address = self.linear(&m);
+                // Legacy packed arithmetic requires alignment before page access.
+                let unaligned = matches!(
+                    self.i.mnemonic,
+                    Mnemonic::Sha256rnds2 | Mnemonic::Sha256msg1 | Mnemonic::Sha256msg2
+                );
+                if m.size == 16 && !unaligned && !address.0.is_multiple_of(16) {
+                    return Err(Stop::GeneralProtection);
+                }
+                let mut bytes = [0; 16];
+                self.mem.read(address, &mut bytes[..usize::from(m.size)])?;
+                Ok(u128::from_le_bytes(bytes))
+            }
+            Operand::Immediate(v) => Ok(u128::from(v)),
+            _ => Err(Stop::Invalid),
+        }
+    }
+
+    fn packed(&mut self) -> Result<()> {
+        let dst = op(self.i, 0)?;
+        let Operand::Register(Register::Xmm(n)) = dst else {
+            return Err(Stop::Invalid);
+        };
+        let a = self.s.xmm[usize::from(n)];
+        // Check membership before reading memory for an unsupported instruction.
+        if crate::sse::packed(self.i.mnemonic, 0, 0, 0, 0).is_none()
+            && crate::crypto::execute(self.i.mnemonic, 0, 0, 0, 0).is_none()
+        {
+            return Err(Stop::Invalid);
+        }
+        let b = self.sse_operand(op(self.i, 1)?)?;
+        let imm = match self.i.operand(2) {
+            Some(Operand::Immediate(v)) => v as u8,
+            _ => match self.i.operand(1) {
+                Some(Operand::Immediate(v)) => v as u8,
+                _ => 0,
+            },
+        };
+        let value = crate::sse::packed(self.i.mnemonic, a, b, imm, self.s.xmm[0])
+            .or_else(|| crate::crypto::execute(self.i.mnemonic, a, b, self.s.xmm[0], imm))
+            .ok_or(Stop::Invalid)?;
+        self.s.xmm[usize::from(n)] = value;
+        Ok(())
+    }
+
+    fn sse_misc(&mut self) -> Result<()> {
+        use Mnemonic as M;
+        let m = self.i.mnemonic;
+        let dst = op(self.i, 0)?;
+        if m == M::Ldmxcsr {
+            let value = self.read(dst, 4)? as u32;
+            if value & !0xffff != 0 {
+                return Err(Stop::GeneralProtection);
+            }
+            self.s.mxcsr = value;
+            return Ok(());
+        }
+        if m == M::Stmxcsr {
+            return self.write(dst, 4, u64::from(self.s.mxcsr));
+        }
+        let src = op(self.i, 1)?;
+        if matches!(m, M::Movapd | M::Movupd | M::Lddqu) {
+            return self.sse_move(m == M::Movapd);
+        }
+        if m == M::Movd {
+            let value = self.read(src, 4)?;
+            return self.write(dst, 4, value);
+        }
+        if matches!(
+            m,
+            M::Movss
+                | M::MovsdSse
+                | M::Movlps
+                | M::Movlpd
+                | M::Movhps
+                | M::Movhpd
+                | M::Movhlps
+                | M::Movlhps
+                | M::Movddup
+        ) {
+            let width = if m == M::Movss { 4 } else { 8 };
+            let mut value = self.read(src, width)?;
+            if m == M::Movhlps {
+                value = (self.read128(src, false)? >> 64) as u64;
+            }
+            let high = matches!(m, M::Movhps | M::Movhpd | M::Movlhps);
+            if let Operand::Register(Register::Xmm(n)) = dst {
+                let old = self.s.xmm[usize::from(n)];
+                let mask = u128::from(size_mask(width));
+                let value = u128::from(value);
+                self.s.xmm[usize::from(n)] = if m == M::Movddup {
+                    value | (value << 64)
+                } else if high {
+                    (old & u128::from(u64::MAX)) | (value << 64)
+                } else if matches!(m, M::Movss | M::MovsdSse) && matches!(src, Operand::Memory(_)) {
+                    value
+                } else {
+                    (old & !mask) | value
+                };
+                return Ok(());
+            }
+            if high {
+                value = (self.read128(src, false)? >> 64) as u64;
+            }
+            return self.write(dst, width, value);
+        }
+        if matches!(m, M::Movmskps | M::Movmskpd | M::Pmovmskb) {
+            let value = self.read128(src, false)?;
+            let bits = match m {
+                M::Movmskps => 32,
+                M::Movmskpd => 64,
+                _ => 8,
+            };
+            let mut mask = 0;
+            for n in 0..128 / bits {
+                mask |= ((value >> (n * bits + bits - 1)) as u64 & 1) << n;
+            }
+            return self.write(dst, 4, mask);
+        }
+        if m == M::Ptest {
+            let a = self.sse_operand(dst)?;
+            let b = self.sse_operand(src)?;
+            let flags =
+                if a & b == 0 { flag::ZF } else { 0 } | if !a & b == 0 { flag::CF } else { 0 };
+            self.set_status(flag::STATUS, flags);
+            return Ok(());
+        }
+        if matches!(
+            m,
+            M::Pextrb
+                | M::Pextrw
+                | M::Pextrd
+                | M::Pextrq
+                | M::Pinsrb
+                | M::Pinsrw
+                | M::Pinsrd
+                | M::Pinsrq
+        ) {
+            let bits = match m {
+                M::Pextrb | M::Pinsrb => 8,
+                M::Pextrw | M::Pinsrw => 16,
+                M::Pextrd | M::Pinsrd => 32,
+                _ => 64,
+            };
+            let Operand::Immediate(imm) = op(self.i, 2)? else {
+                return Err(Stop::Invalid);
+            };
+            let shift = (imm & (128 / bits - 1)) * bits;
+            let mask = (1u128 << bits) - 1;
+            if matches!(m, M::Pextrb | M::Pextrw | M::Pextrd | M::Pextrq) {
+                let value = ((self.read128(src, false)? >> shift) & mask) as u64;
+                let width = if matches!(dst, Operand::Register(_)) {
+                    if bits == 64 { 8 } else { 4 }
+                } else {
+                    (bits / 8) as u8
+                };
+                return self.write(dst, width, value);
+            }
+            let value = u128::from(self.read(src, (bits / 8) as u8)?);
+            let old = self.read128(dst, false)?;
+            return self.write128(
+                dst,
+                (old & !(mask << shift)) | ((value & mask) << shift),
+                false,
+            );
+        }
+        if crate::sse::packed(m, 0, 0, 0, 0).is_some()
+            || crate::crypto::execute(m, 0, 0, 0, 0).is_some()
+        {
+            self.packed()
+        } else {
+            self.floating()
+        }
+    }
+
+    fn fp_status(&mut self, flags: u32) -> Result<()> {
+        let unmasked = flags & !(self.s.mxcsr >> 7) & 63;
+        // Input-class exceptions precede numeric-result exceptions, including
+        // precision from another packed lane.
+        let flags = if unmasked & 7 != 0 { flags & 7 } else { flags };
+        self.s.mxcsr |= flags;
+        if unmasked == 0 {
+            return Ok(());
+        }
+        let code = if unmasked & 1 != 0 {
+            7
+        } else if unmasked & 2 != 0 {
+            5
+        } else if unmasked & 4 != 0 {
+            3
+        } else if unmasked & 8 != 0 {
+            4
+        } else if unmasked & 16 != 0 {
+            5
+        } else {
+            6
+        };
+        Err(Stop::FloatingPointFault(code))
+    }
+
+    fn floating(&mut self) -> Result<()> {
+        use crate::softfloat::{self as fp, F32, F64, Operation as O};
+        use Mnemonic as M;
+        let m = self.i.mnemonic;
+        let supported = matches!(
+            m,
+            M::Addpd
+                | M::Addps
+                | M::Addsd
+                | M::Subpd
+                | M::Subsd
+                | M::Mulpd
+                | M::Mulsd
+                | M::Divpd
+                | M::Divsd
+                | M::Divss
+                | M::Sqrtps
+                | M::Sqrtsd
+                | M::Minsd
+                | M::Maxsd
+                | M::CmpsdSse
+                | M::Comisd
+                | M::Ucomisd
+                | M::Ucomiss
+                | M::Cvtdq2ps
+                | M::Cvtsi2sd
+                | M::Cvtss2sd
+                | M::Cvttps2dq
+                | M::Cvttsd2si
+                | M::Cvttss2si
+        );
+        if !supported {
+            return Err(Stop::Invalid);
+        }
+        let dst = op(self.i, 0)?;
+        let src = op(self.i, 1)?;
+        let single = matches!(
+            m,
+            M::Addps
+                | M::Divss
+                | M::Sqrtps
+                | M::Ucomiss
+                | M::Cvttss2si
+                | M::Cvttps2dq
+                | M::Cvtdq2ps
+        );
+        let format = if single { F32 } else { F64 };
+        let width = format.fraction + if single { 9 } else { 12 };
+        let scalar = !matches!(
+            m,
+            M::Addpd
+                | M::Addps
+                | M::Subpd
+                | M::Mulpd
+                | M::Divpd
+                | M::Sqrtps
+                | M::Cvtdq2ps
+                | M::Cvttps2dq
+        );
+        let b = if m == M::Cvtsi2sd {
+            u128::from(self.read(src, Self::size_of(src, None))?)
+        } else {
+            self.sse_operand(src)?
+        };
+        if matches!(m, M::Cvttsd2si | M::Cvttss2si) {
+            let size = Self::size_of(dst, None);
+            let (result, flags) =
+                fp::to_integer(format, b as u64, u32::from(size) * 8, self.s.mxcsr);
+            self.fp_status(flags)?;
+            return self.write(dst, size, result);
+        }
+        let a = self.read128(dst, false)?;
+        if matches!(m, M::Comisd | M::Ucomisd | M::Ucomiss) {
+            let (order, status) =
+                fp::compare(format, a as u64, b as u64, self.s.mxcsr, m == M::Comisd);
+            self.fp_status(status)?;
+            self.set_status(
+                flag::STATUS,
+                match order {
+                    None => flag::CF | flag::ZF | flag::PF,
+                    Some(-1) => flag::CF,
+                    Some(0) => flag::ZF,
+                    _ => 0,
+                },
+            );
+            return Ok(());
+        }
+        if m == M::CmpsdSse {
+            let Operand::Immediate(predicate) = op(self.i, 2)? else {
+                return Err(Stop::Invalid);
+            };
+            let predicate = predicate & 7;
+            let (order, status) = fp::compare(
+                F64,
+                a as u64,
+                b as u64,
+                self.s.mxcsr,
+                matches!(predicate, 1 | 2 | 5 | 6),
+            );
+            let yes = match predicate {
+                0 => order == Some(0),
+                1 => order == Some(-1),
+                2 => matches!(order, Some(-1 | 0)),
+                3 => order.is_none(),
+                4 => order != Some(0),
+                5 => order != Some(-1),
+                6 => !matches!(order, Some(-1 | 0)),
+                _ => order.is_some(),
+            };
+            self.fp_status(status)?;
+            return self.write128(
+                dst,
+                (a & !(u128::from(u64::MAX))) | if yes { u128::from(u64::MAX) } else { 0 },
+                false,
+            );
+        }
+        let count = if scalar { 1 } else { 128 / width };
+        let mut result = if scalar { a } else { 0 };
+        let mask = (1u128 << width) - 1;
+        let mut flags = 0;
+        for lane in 0..count {
+            let av = ((a >> (lane * width)) & mask) as u64;
+            let bv = ((b >> (lane * width)) & mask) as u64;
+            let (value, status) = match m {
+                M::Cvtsi2sd => {
+                    let size = Self::size_of(src, None);
+                    fp::from_integer(F64, sign_extend(b as u64, size) as i64, self.s.mxcsr)
+                }
+                M::Cvtss2sd => fp::convert(F32, F64, b as u32 as u64, self.s.mxcsr),
+                M::Cvtdq2ps => fp::from_integer(F32, i64::from(bv as u32 as i32), self.s.mxcsr),
+                M::Cvttps2dq => fp::to_integer(F32, bv, 32, self.s.mxcsr),
+                M::Sqrtps | M::Sqrtsd => fp::arithmetic(format, O::Sqrt, bv, 0, self.s.mxcsr),
+                _ => fp::arithmetic(
+                    format,
+                    match m {
+                        M::Addpd | M::Addps | M::Addsd => O::Add,
+                        M::Subpd | M::Subsd => O::Sub,
+                        M::Mulpd | M::Mulsd => O::Mul,
+                        M::Divpd | M::Divsd | M::Divss => O::Div,
+                        M::Minsd => O::Min,
+                        M::Maxsd => O::Max,
+                        _ => return Err(Stop::Invalid),
+                    },
+                    av,
+                    bv,
+                    self.s.mxcsr,
+                ),
+            };
+            flags |= status;
+            result = (result & !(mask << (lane * width)))
+                | ((u128::from(value) & mask) << (lane * width));
+        }
+        self.fp_status(flags)?;
+        self.write128(dst, result, false)
+    }
 }
 
 /// Executes `i` on `s`. On success `s.rip` points at the next instruction to
@@ -1271,7 +1632,16 @@ pub(crate) fn execute(s: &mut CpuState, mem: &AddressSpace, i: &Instruction) -> 
         Mnemonic::Pxor | Mnemonic::Xorps => x.sse_xor()?,
         Mnemonic::Movq => x.sse_movq()?,
         Mnemonic::Punpcklqdq => x.sse_unpack_low_qwords()?,
-        _ => return Err(Stop::Invalid),
+        Mnemonic::Cpuid => {
+            let values = crate::cpuid::values(x.s.gpr[reg::RAX] as u32, x.s.gpr[reg::RCX] as u32);
+            for (index, value) in [reg::RAX, reg::RBX, reg::RCX, reg::RDX]
+                .into_iter()
+                .zip(values)
+            {
+                x.s.gpr[index] = u64::from(value);
+            }
+        }
+        _ => x.sse_misc()?,
     }
     x.s.rip = GuestAddr(target.unwrap_or(next.0));
     Ok(())

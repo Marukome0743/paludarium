@@ -1,0 +1,105 @@
+//! U3 runner bootstrap. Native instruction cases are populated in Step3.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[path = "support/u3.rs"]
+mod support;
+
+#[path = "support/u3_oracle.rs"]
+mod oracle;
+
+#[test]
+#[ignore = "diagnostic replay requires explicitly supplied native observations"]
+fn u3_saved_observation_replay() {
+    let normal =
+        std::fs::read_to_string(std::env::var("PALUDARIUM_U3_NATIVE_OBSERVATIONS").unwrap())
+            .unwrap();
+    let fault =
+        std::fs::read_to_string(std::env::var("PALUDARIUM_U3_NATIVE_FAULTS").unwrap()).unwrap();
+    println!(
+        "normal:{} fault:{}",
+        oracle::compare(&normal, false),
+        oracle::compare(&fault, true)
+    );
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn u3_fresh_native_differential() {
+    support::bounded("u3_fresh_native_differential", || {
+        let root = paludarium_harness::workspace_root();
+        let output = root.join("target/u3-guests");
+        assert!(
+            std::process::Command::new("bash")
+                .arg(root.join("tests/guests/u3/build.sh"))
+                .arg(&output)
+                .status()
+                .unwrap()
+                .success()
+        );
+        for (name, fault) in [("observe", false), ("fault-observe", true)] {
+            let observation =
+                paludarium_harness::run_native(&output.join(name), name, &[]).unwrap();
+            assert_eq!(observation.status, paludarium::ExitStatus::Exited(0));
+            assert!(observation.stderr.is_empty());
+            std::fs::write(output.join(format!("{name}.native")), &observation.stdout).unwrap();
+            let rows = oracle::compare(std::str::from_utf8(&observation.stdout).unwrap(), fault);
+            println!("{name}: {rows} freshly generated native states agree");
+        }
+        let cpuid =
+            paludarium_harness::run_native(&output.join("cpuid-observe"), "cpuid", &[]).unwrap();
+        assert_eq!(cpuid.status, paludarium::ExitStatus::Exited(0));
+        assert_eq!(
+            cpuid
+                .stdout
+                .split(|byte| *byte == b'\n')
+                .filter(|line| !line.is_empty())
+                .count(),
+            12
+        );
+        std::fs::write(output.join("cpuid-observe.native"), &cpuid.stdout).unwrap();
+    });
+}
+
+#[test]
+fn u3_runner_bootstrap() {
+    assert!(
+        paludarium_harness::workspace_root()
+            .join("tests/guests/u3/build.sh")
+            .is_file()
+    );
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+#[ignore = "Explicit native-only collection; does not assert emulator agreement"]
+fn u3_native_observation() {
+    support::bounded("u3_native_observation", || {
+        let root = paludarium_harness::workspace_root();
+        let output = root.join("target/u3-guests");
+        assert!(
+            std::process::Command::new("bash")
+                .arg(root.join("tests/guests/u3/build.sh"))
+                .arg(&output)
+                .status()
+                .expect("build native U3 fixtures")
+                .success()
+        );
+        for name in ["observe", "cpuid-observe", "fault-observe"] {
+            let observation = paludarium_harness::run_native(&output.join(name), name, &[])
+                .expect("bounded native observation");
+            assert_eq!(observation.status, paludarium::ExitStatus::Exited(0));
+            let rows = observation
+                .stdout
+                .split(|b| *b == b'\n')
+                .filter(|line| !line.is_empty())
+                .count();
+            assert!(rows > 0, "zero native rows: {name}");
+            std::fs::write(output.join(format!("{name}.native")), &observation.stdout)
+                .expect("save fresh native observations");
+            std::fs::write(output.join(format!("{name}.stderr")), &observation.stderr)
+                .expect("save native stderr");
+            println!("{name}: {rows} fresh native rows; emulator agreement not measured");
+        }
+    });
+}

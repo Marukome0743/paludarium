@@ -126,7 +126,14 @@ jobs:
       # Builds the guests from source (BR7.2), runs each natively and under
       # the emulator, compares stdout/stderr/exit status (BR7.1) and prints
       # the run times (NFR6.1).
-      - run: cargo test --locked -p paludarium-harness --test diff_u1 --test diff_u2 --test parallel_u2 --test diff_u4 --test diff_u9 -- --nocapture
+      - run: cargo test --locked -p paludarium-harness --test diff_u1 --test diff_u2 --test parallel_u2 --test diff_u4 --test diff_u9 --test diff_u3 -- --nocapture
+      - name: Retain fresh U3 architectural observations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u3-differential-observations
+          path: target/u3-guests/
+          retention-days: 7
 
   coverage:
     name: line coverage >= 80%
@@ -158,6 +165,19 @@ jobs:
           cargo llvm-cov report --ignore-filename-regex 'paludarium-(cpu|decoder|mmu|loader|types|vfs|jit|harness)/'
         env:
           RUST_TEST_THREADS: "1"
+      - name: U3 CPU and Decoder line coverage >= 80%
+        run: |
+          cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder -p paludarium-harness --lib --test diff_u3 --ignore-filename-regex 'paludarium-(types|mmu|host|kernel|loader|vfs|jit|runtime|harness)/' --fail-under-lines 80 --lcov --output-path target/u3-coverage.lcov
+          cargo llvm-cov report --ignore-filename-regex 'paludarium-(types|mmu|host|kernel|loader|vfs|jit|runtime|harness)/'
+        env:
+          RUST_TEST_THREADS: "1"
+      - name: Retain U3 coverage observations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u3-coverage-lcov
+          path: target/u3-coverage.lcov
+          retention-days: 7
       - name: Retain U9 coverage line observations
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
