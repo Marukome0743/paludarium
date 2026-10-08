@@ -1,0 +1,73 @@
+name: U7 Windows fixture verification
+on:
+  push:
+    branches: [codex/u2-asan-diagnostic]
+    paths: [.github/workflows/u7-windows-verification.yml]
+permissions:
+  contents: read
+jobs:
+  windows-fixture:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-01
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Record environment and source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force target/u7-windows-evidence | Out-Null
+          $e = 'target/u7-windows-evidence'
+          Get-Date -AsUTC -Format o | Set-Content "$e/start.txt"
+          "CI_HEAD=$env:GITHUB_SHA" | Set-Content "$e/environment.log"
+          [System.Environment]::OSVersion.VersionString | Add-Content "$e/environment.log"
+          whoami | Add-Content "$e/environment.log"
+          rustup toolchain install nightly-2026-10-01 --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'fixed nightly installation failed' }
+          rustc -Vv | Add-Content "$e/environment.log"
+          cargo -V | Add-Content "$e/environment.log"
+          $paths = @(Get-ChildItem crates,tests,packages,scripts,fuzz/fuzz_targets -File -Recurse | ForEach-Object { $_.FullName }) + @('Cargo.toml','Cargo.lock','rust-toolchain.toml','fuzz/Cargo.toml','fuzz/lsan.supp')
+          $paths | Sort-Object | ForEach-Object { $relative = [IO.Path]::GetRelativePath($pwd.Path, (Resolve-Path $_).Path).Replace('\','/'); "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $relative" } | Set-Content "$e/source-before.sha256"
+      - name: Build exact host test binary
+        shell: pwsh
+        run: |
+          $e = 'target/u7-windows-evidence'
+          cargo +nightly-2026-10-01 test --locked -p paludarium-host --lib --no-run --message-format=json 2> "$e/build.stderr.log" | Set-Content "$e/build.jsonl"
+          $code = $LASTEXITCODE
+          $code | Set-Content "$e/build-exit.txt"
+          if ($code -ne 0) { throw "host test build failed: $code" }
+          $messages = Get-Content "$e/build.jsonl" | ForEach-Object { $_ | ConvertFrom-Json }
+          $binary = @($messages | Where-Object { $_.reason -eq 'compiler-artifact' -and $_.profile.test -and $_.executable })[-1].executable
+          if (-not $binary) { throw 'test executable missing' }
+          $binary | Set-Content "$e/binary-path.txt"
+          Get-FileHash $binary -Algorithm SHA256 | Format-List | Out-String | Set-Content "$e/binary-sha256.txt"
+          & $binary --list | Set-Content "$e/tests.txt"
+          if (-not (Select-String -Path "$e/tests.txt" -SimpleMatch 'native_fs::u7_tests::u7_native_windows_symlink_rename_race: test')) { throw 'required Windows test missing' }
+      - name: Execute fixture regression with whole-child watchdog
+        shell: pwsh
+        run: |
+          $e = 'target/u7-windows-evidence'
+          cargo +nightly-2026-10-01 test --locked -p paludarium-host --lib native_fs::u7_tests::u7_native_windows_symlink_rename_race -- --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$e/test.log"
+          $code = $LASTEXITCODE
+          $code | Set-Content "$e/exit.txt"
+          Get-Date -AsUTC -Format o | Set-Content "$e/end.txt"
+          $paths = @(Get-ChildItem crates,tests,packages,scripts,fuzz/fuzz_targets -File -Recurse | ForEach-Object { $_.FullName }) + @('Cargo.toml','Cargo.lock','rust-toolchain.toml','fuzz/Cargo.toml','fuzz/lsan.supp')
+          $paths | Sort-Object | ForEach-Object { $relative = [IO.Path]::GetRelativePath($pwd.Path, (Resolve-Path $_).Path).Replace('\','/'); "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $relative" } | Set-Content "$e/source-after.sha256"
+          $difference = Compare-Object (Get-Content "$e/source-before.sha256") (Get-Content "$e/source-after.sha256")
+          $difference | Out-String | Set-Content "$e/source-compare.log"
+          if ($difference) { 1 | Set-Content "$e/source-compare-exit.txt"; throw 'source bytes changed' }
+          0 | Set-Content "$e/source-compare-exit.txt"
+          if ($code -ne 0) { throw "fixture test failed: $code" }
+          $log = Get-Content "$e/test.log" -Raw
+          if ($log -notmatch 'U7_WINDOWS_RACE iterations=1000 exchanges=[1-9][0-9]* outside_unchanged=true cleanup=true') { throw 'actual fixture metrics missing; no skip allowed' }
+          if ($log -notmatch 'U7_WINDOWS_SYMLINK_PERMISSION=true' -or $log -notmatch 'U7_WINDOWS_WATCHDOG') { throw 'permission or watchdog evidence missing' }
+      - name: Preserve every result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u7-windows-fixture
+          path: target/u7-windows-evidence/
+          retention-days: 7

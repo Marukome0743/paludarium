@@ -579,4 +579,119 @@ mod u7_tests {
             );
         }
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn u7_native_windows_symlink_rename_race() {
+        use std::sync::{Barrier, atomic::AtomicBool};
+        const NAME: &str = "native_fs::u7_tests::u7_native_windows_symlink_rename_race";
+        if std::env::var_os("PALUDARIUM_U7_WINDOWS_RACE_CHILD").is_none() {
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", NAME, "--nocapture"])
+                .env("PALUDARIUM_U7_WINDOWS_RACE_CHILD", "1")
+                .spawn()
+                .unwrap();
+            let start = std::time::Instant::now();
+            loop {
+                if let Some(status) = child.try_wait().unwrap() {
+                    assert!(status.success(), "Windows fixture child failed: {status}");
+                    println!(
+                        "U7_WINDOWS_WATCHDOG elapsed_ms={} child_exit={status}",
+                        start.elapsed().as_millis()
+                    );
+                    return;
+                }
+                if start.elapsed() >= std::time::Duration::from_secs(30) {
+                    child.kill().unwrap();
+                    let status = child.wait().unwrap();
+                    panic!("Windows fixture exceeded 30 seconds; killed/reaped: {status}");
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+
+        // Every ambient operation below is confined to this newly created fixture.
+        let x = Fixture::new();
+        let root = x.base.join("root");
+        let outside = x.base.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("sentinel"), b"outside").unwrap();
+        std::os::windows::fs::symlink_dir(&outside, root.join("permission-probe"))
+            .expect("Windows fixture directory symlink permission is required; no skip");
+        assert!(
+            std::fs::symlink_metadata(root.join("permission-probe"))
+                .unwrap()
+                .is_symlink()
+        );
+        std::fs::remove_dir(root.join("permission-probe")).unwrap();
+        println!("U7_WINDOWS_SYMLINK_PERMISSION=true");
+        x.fs().mkdir(b"pivot", 0o700).unwrap();
+        x.fs()
+            .open(b"pivot/sentinel", 66, 0o600)
+            .unwrap()
+            .write(b"inside")
+            .unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let exchanges = Arc::new(AtomicU64::new(0));
+        let barrier = Arc::new(Barrier::new(2));
+        let done = Arc::clone(&stop);
+        let count = Arc::clone(&exchanges);
+        let ready = Arc::clone(&barrier);
+        let attacker = std::thread::spawn(move || -> std::io::Result<()> {
+            ready.wait();
+            while !done.load(Ordering::Acquire) {
+                // Windows can temporarily deny renaming an open directory.
+                // Count only complete real directory/symlink exchanges.
+                if std::fs::rename(root.join("pivot"), root.join("held")).is_err() {
+                    std::thread::yield_now();
+                    continue;
+                }
+                let link = std::os::windows::fs::symlink_dir(&outside, root.join("pivot"));
+                if let Err(error) = link {
+                    std::fs::rename(root.join("held"), root.join("pivot"))?;
+                    return Err(error);
+                }
+                std::thread::yield_now();
+                std::fs::remove_dir(root.join("pivot"))?;
+                std::fs::rename(root.join("held"), root.join("pivot"))?;
+                count.fetch_add(1, Ordering::Release);
+            }
+            Ok(())
+        });
+        barrier.wait();
+        for _ in 0..1000 {
+            if let Ok(file) = x.fs().open(b"pivot/sentinel", 2, 0) {
+                let _ = file.write(b"inside");
+            }
+            let _ = x.fs().metadata(b"pivot/sentinel", true);
+            let _ = x.fs().read_dir(b"pivot");
+            let _ = x.fs().open(b"pivot/new", 66, 0o600);
+            let _ = x.fs().link(b"pivot/sentinel", b"pivot/link");
+            let _ = x.fs().rename(b"pivot/new", b"pivot/renamed");
+            let _ = x.fs().unlink(b"pivot/renamed", false);
+            let _ = x.fs().unlink(b"pivot/link", false);
+        }
+        stop.store(true, Ordering::Release);
+        attacker
+            .join()
+            .expect("fixture exchange thread panicked")
+            .expect("fixture exchange failed");
+        let exchanges = exchanges.load(Ordering::Acquire);
+        assert!(exchanges > 0, "no real Windows exchange occurred");
+        assert_eq!(
+            std::fs::read(x.base.join("outside/sentinel")).unwrap(),
+            b"outside"
+        );
+        let listing: Vec<_> = std::fs::read_dir(x.base.join("outside"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(listing, [std::ffi::OsString::from("sentinel")]);
+        let base = x.base.clone();
+        drop(x); // Closes NativeFs directory handle before strict fixture deletion.
+        assert!(!base.exists());
+        println!(
+            "U7_WINDOWS_RACE iterations=1000 exchanges={exchanges} outside_unchanged=true cleanup=true"
+        );
+    }
 }
