@@ -46,6 +46,20 @@ jobs:
           name: native-expectations-${{ matrix.os }}
           path: native-expectations.log
           retention-days: 7
+      - name: Capture U9 native expectations before implementation
+        shell: bash
+        run: |
+          set -o pipefail
+          test "$(uname -m)" = x86_64
+          bash tests/guests/u9/build.sh target/guests/u9
+          python3 tests/guests/u9/oracle.py target/guests/u9 2>&1 | tee native-u9-expectations.log
+      - name: Retain U9 native expectations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-u9-expectations-${{ matrix.os }}
+          path: native-u9-expectations.log
+          retention-days: 7
   bookworm:
     runs-on: ubuntu-latest
     container: rust:1-bookworm
