@@ -80,6 +80,18 @@ export async function runChecks({ wasmUrl, readGuest, native }) {
       check(repeated.stdout === expected.get("hello").stdout && repeated.status.kind === "exited" && repeated.status.code === 0, "second independent runtime initialization failed");
       results.push({ case: "initialize-twice", pass: true, ...repeated });
     } finally { await second.dispose(); }
+    const disposing = await createPaludarium({ wasmUrl });
+    const blocked = disposing.run({ program: "/guest", files: { "/guest": await readGuest("stdin") } });
+    const settled = Promise.allSettled([blocked.exited, collect(blocked.stdout), collect(blocked.stderr)]);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const started = performance.now();
+    await Promise.all([disposing.dispose(), disposing.dispose()]);
+    const outcomes = await settled;
+    check(performance.now() - started < 2000 && outcomes.every(row => row.status === "rejected" && row.reason instanceof PaludariumError && row.reason.kind === "host"), "dispose left an active stdin guest or output stream unsettled");
+    let disposedError;
+    try { disposing.run({ program: "/guest" }); } catch (cause) { disposedError = cause; }
+    check(disposedError instanceof PaludariumError && disposedError.kind === "host", "disposed factory accepted another guest");
+    results.push({ case: "dispose-active-stdin-session", pass: true, settled: outcomes.length, elapsed_ms: performance.now() - started });
     return { pass: true, caseCount: results.length, results, productionLauncher: true, sharedMemory: true };
   } finally { await runtime.dispose(); }
 }

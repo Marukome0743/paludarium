@@ -22,19 +22,23 @@ export async function createPaludarium({ wasmUrl }) {
   const module = await WebAssembly.compile(await moduleBytes(wasmUrl));
   const memory = new WebAssembly.Memory({ initial: 128, maximum: 16384, shared: true });
   const coordinator = await spawnWorker(new URL("coordinator.mjs", import.meta.url));
-  const pending = new Map(); let next = 1, closed = false, readyResolve, readyReject, disposeResolve;
+  const pending = new Map(); let next = 1, closed = false, failed = false, readyResolve, readyReject, disposeResolve, disposal, disposeTimer;
   const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const initTimer = setTimeout(() => void failAll(new PaludariumError("host", "30 second launcher initialization watchdog")), 30000);
+  function rejectPending(error) {
+    for (const job of pending.values()) { clearTimeout(job.timer); job.reject(error); job.stdout?.error(error); job.stderr?.error(error); job.stdin?.error(error); }
+    pending.clear();
+  }
   async function failAll(error) {
-    if (closed) return;
-    closed = true; clearTimeout(initTimer); readyReject(error);
-    for (const job of pending.values()) { clearTimeout(job.timer); job.reject(error); job.stdout?.error(error); job.stderr?.error(error); }
-    pending.clear(); await stopWorker(coordinator); disposeResolve?.();
+    if (failed) return;
+    failed = true; closed = true; clearTimeout(initTimer); clearTimeout(disposeTimer); readyReject(error);
+    rejectPending(error);
+    await stopWorker(coordinator); disposeResolve?.();
   }
   listen(coordinator, report => {
     if (report.type === "fatal") { void failAll(new PaludariumError(report.error.kind, report.error.message)); return; }
     if (report.type === "ready") { clearTimeout(initTimer); readyResolve(report); return; }
-    if (report.type === "disposed") { void stopWorker(coordinator); disposeResolve?.(); return; }
+    if (report.type === "disposed") { clearTimeout(disposeTimer); void stopWorker(coordinator).then(() => disposeResolve?.()); return; }
     const job = pending.get(report.id);
     if (!job) { if (report.type === "failed" && report.id === undefined) void failAll(new PaludariumError(report.error.kind, report.error.message)); return; }
     if (report.type === "output") job[report.stream]?.enqueue(report.bytes);
@@ -59,7 +63,8 @@ export async function createPaludarium({ wasmUrl }) {
       pending.set(id, job);
       coordinator.postMessage({ type: "run", id, options });
       const stdin = new WritableStream({
-        write(bytes) { if (!(bytes instanceof Uint8Array)) throw new TypeError("stdin requires Uint8Array"); if (!closed) coordinator.postMessage({ type: "stdin", id, bytes }); },
+        start(controller) { job.stdin = controller; },
+        write(bytes) { if (!(bytes instanceof Uint8Array)) throw new TypeError("stdin requires Uint8Array"); if (closed) throw new PaludariumError("host", "Launcher is closed"); coordinator.postMessage({ type: "stdin", id, bytes }); },
         close() { if (!closed) coordinator.postMessage({ type: "stdin-close", id }); },
         abort() { if (!closed) coordinator.postMessage({ type: "kill", id }); },
       });
@@ -71,9 +76,17 @@ export async function createPaludarium({ wasmUrl }) {
       return new Promise((resolve, reject) => { const timer = setTimeout(() => void failAll(new PaludariumError("host", "diagnostics watchdog")), 30000); pending.set(id, { resolve, reject, timer }); coordinator.postMessage({ type: "diagnostics", id }); });
     },
     async dispose() {
+      if (disposal) return disposal;
       if (closed) return;
       closed = true;
-      await new Promise(resolve => { disposeResolve = resolve; coordinator.postMessage({ type: "dispose" }); setTimeout(() => { void stopWorker(coordinator); resolve(); }, 1000).unref?.(); });
+      rejectPending(new PaludariumError("host", "Launcher disposed"));
+      disposal = new Promise(resolve => {
+        disposeResolve = resolve;
+        coordinator.postMessage({ type: "dispose" });
+        // Graceful kill gets one second; forced termination discards this entire heap.
+        disposeTimer = setTimeout(() => void failAll(new PaludariumError("host", "Launcher disposal watchdog")), 1000);
+      });
+      return disposal;
     },
   };
 }
