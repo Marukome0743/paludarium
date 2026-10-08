@@ -1,0 +1,26 @@
+name: U5 native expectations
+on:
+  push:
+    branches: [codex/u5-native-diagnostic]
+permissions:
+  contents: read
+jobs:
+  native-first:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - name: Build native guest cases
+        run: bash tests/guests/u5/build.sh target/guests/u5
+      - name: Run finite native-first cases
+        run: python3 scripts/u5-native-observe.py --out target/u5-native-first
+      - name: Retain raw observations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u5-native-first
+          path: target/u5-native-first
+          retention-days: 7
