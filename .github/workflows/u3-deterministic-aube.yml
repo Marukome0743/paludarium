@@ -1,0 +1,117 @@
+name: U3 deterministic aube double build
+on:
+  push:
+    branches: [codex/u2-asan-diagnostic]
+    paths: [.github/workflows/u3-deterministic-aube.yml, diagnostics/u3-deterministic/**]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          bash diagnostics/u3-deterministic/bootstrap/build.sh target/u3-bootstrap
+          python3 - <<'PY'
+          import subprocess,time,signal,os,json,pathlib,hashlib
+          started=time.monotonic()
+          p=subprocess.Popen(['target/u3-bootstrap/runner'],start_new_session=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+          timeout=False
+          try:
+              stdout,stderr=p.communicate(timeout=30)
+          except subprocess.TimeoutExpired:
+              timeout=True
+              os.killpg(p.pid,signal.SIGKILL)
+              stdout,stderr=p.communicate()
+          proof={'exit':p.returncode,'timeout':timeout,'reaped':True,'watchdog_seconds':30,'elapsed_seconds':time.monotonic()-started,'stdout':stdout.hex(),'stderr':stderr.hex(),'binary_sha256':hashlib.sha256(pathlib.Path('target/u3-bootstrap/runner').read_bytes()).hexdigest()}
+          pathlib.Path('target/u3-bootstrap/proof.json').write_text(json.dumps(proof,indent=2)+'\n')
+          assert p.returncode==0 and not timeout and not stdout and not stderr
+          PY
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u3-bootstrap-native
+          path: target/u3-bootstrap/
+  build:
+    needs: bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        independent: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: aubepkg/aube
+          ref: bd94e42f54d3b5e3dd102716b7197f316cb5f4ed
+          path: target/u3-aube-source
+          persist-credentials: false
+      - name: Independent fixed-input build
+        run: |
+          set -euo pipefail
+          mkdir -p target/u3-inventory target/u3-cache
+          test "$(uname -m)" = x86_64
+          uname -a > target/u3-inventory/host.txt
+          python3 diagnostics/u3-inventory/investigate.py source
+          docker pull rust@sha256:a96ea6d18d4062e38f16cfbadd8b4541d622f2527dd0a5eca1fb36d301da4e88
+          docker image inspect rust@sha256:a96ea6d18d4062e38f16cfbadd8b4541d622f2527dd0a5eca1fb36d301da4e88 > target/u3-inventory/builder-image.json
+          set +e
+          docker run --rm --hostname u3-builder --platform linux/amd64 -v "$PWD/target/u3-aube-source:/src/aube:ro" -v "$PWD/target/u3-cache:/cache" -v "$PWD/diagnostics/u3-deterministic:/diagnostic:ro" -w /src/aube rust@sha256:a96ea6d18d4062e38f16cfbadd8b4541d622f2527dd0a5eca1fb36d301da4e88 sh /diagnostic/build.sh 2>&1 | tee target/u3-inventory/build.log
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "$code" > target/u3-inventory/build-exit.txt
+          cp target/u3-cache/*.txt target/u3-cache/*.stat target/u3-cache/*.sha256 target/u3-inventory/ || true
+          python3 diagnostics/u3-inventory/investigate.py source-after
+          test "$code" = 0
+          cp target/u3-cache/aube/x86_64-unknown-linux-musl/release/aube target/u3-inventory/aube
+          sha256sum target/u3-inventory/aube > target/u3-inventory/binary.sha256
+      - name: Four bounded native workloads and inventory
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gdb binutils
+          python3 diagnostics/u3-inventory/investigate.py observe
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u3-deterministic-aube-${{ matrix.independent }}
+          path: target/u3-inventory/
+          retention-days: 7
+  compare:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --pattern 'u3-deterministic-aube-*' --dir target
+          python3 - <<'PY'
+          import hashlib,json,pathlib
+          roots=[pathlib.Path('target/u3-deterministic-aube-'+str(i)) for i in [1,2]]
+          sha=[hashlib.sha256((p/'aube').read_bytes()).hexdigest() for p in roots]
+          proof={'binary_sha256':sha,'binary_identical':sha[0]==sha[1],'primer_mtime':1791158400,'build_date':'2026-10-05'}
+          for name in ['environment.txt','packages.txt','rustc.txt','cargo.txt','build-date.txt','build-inputs.sha256']:
+              proof[name]=[(p/name).read_text() for p in roots]
+              assert proof[name][0]==proof[name][1], name
+          for p in roots:
+              assert json.loads((p/'source.json').read_text())['all_match']
+              assert json.loads((p/'source-after.json').read_text())['all_match']
+              assert json.loads((p/'source-before-after.json').read_text())['unchanged']
+              assert (p/'build-exit.txt').read_text().strip()=='0'
+          pathlib.Path('target/double-build-proof.json').write_text(json.dumps(proof,indent=2)+'\n')
+          assert proof['binary_identical'], 'independent binary mismatch'
+          PY
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u3-deterministic-double-build-proof
+          path: target/double-build-proof.json
+          retention-days: 7
