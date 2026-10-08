@@ -1,0 +1,47 @@
+name: U3 SHA memory diagnostic
+on:
+  push:
+    branches: [codex/u2-asan-diagnostic]
+    paths: [.github/workflows/u3-sha-memory-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        instance: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build and observe identical memory cases three times
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u3-sha-diagnostic
+          evidence=target/u3-sha-diagnostic
+          uname -a > "$evidence/uname.txt"
+          lscpu > "$evidence/cpu.txt"
+          cat /proc/cpuinfo > "$evidence/cpuinfo.txt"
+          printf '%s\n' "$GITHUB_SHA" > "$evidence/head.txt"
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          sha256sum tests/guests/u3/* > "$evidence/source-before.sha256"
+          bash tests/guests/u3/build.sh "$evidence/guests"
+          "$evidence/guests/cpuid-observe" > "$evidence/cpuid.txt"
+          for repeat in 1 2 3; do
+            timeout --signal=KILL 30 "$evidence/guests/fault-observe" > "$evidence/fault-$repeat.native"
+            echo "$?" > "$evidence/exit-$repeat.txt"
+            awk -F'|' '$1 ~ /^sha256/ && $2 < 4 {print $1"|"$2"|"$3"|"$4"|"$5"|"$6"|"$7"|"$8"|"$9}' "$evidence/fault-$repeat.native" | tee "$evidence/sha-$repeat.txt"
+          done
+          sha256sum tests/guests/u3/* > "$evidence/source-after.sha256"
+          cmp "$evidence/source-before.sha256" "$evidence/source-after.sha256"
+          sha256sum "$evidence/guests/fault-observe" > "$evidence/binary.sha256"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: u3-sha-memory-${{ matrix.instance }}
+          path: target/u3-sha-diagnostic/
