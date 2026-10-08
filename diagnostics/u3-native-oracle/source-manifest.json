@@ -1,0 +1,25 @@
+{
+  "rows": [
+    {
+      "path": "observe.c",
+      "sha256": "27eccb4ddaeb5ee6d5fb0fa6f6df05eb391665584406294b07c2ee47d50ed866"
+    },
+    {
+      "path": "generate.py",
+      "sha256": "34cf2a3c4bb6c6fcdb5c591192be3a9aca685674087d1ac1339d4208a792f841"
+    },
+    {
+      "path": "build.sh",
+      "sha256": "606a792950603523b76fd011b71496ab95ce091dce2432bade52ee5c5d30d89e"
+    },
+    {
+      "path": "runner.S",
+      "sha256": "28d94c8d8691f2d1756f19e6974739a48a4b0d39e63b119838a5f311fffeedf9"
+    },
+    {
+      "path": "cpuid-observe.c",
+      "sha256": "4168acd5cfd8ee865e2db54919e83b1bd2c37241b583406bc5c86e4ed70c5637"
+    }
+  ],
+  "role": "native test fixture only; no product semantics"
+}

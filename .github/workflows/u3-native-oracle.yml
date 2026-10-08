@@ -1,0 +1,52 @@
+name: U3 native instruction observations
+on:
+  push:
+    branches: [codex/u2-asan-diagnostic]
+    paths: [.github/workflows/u3-native-oracle.yml, diagnostics/u3-native-oracle/**]
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build native-only instruction fixtures
+        run: |
+          mkdir -p target/u3-native-oracle
+          uname -a > target/u3-native-oracle/host.txt
+          lscpu > target/u3-native-oracle/cpu.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          musl-gcc --version > target/u3-native-oracle/compiler.txt
+          bash diagnostics/u3-native-oracle/guest/build.sh target/u3-native-oracle 2>&1 | tee target/u3-native-oracle/build.log
+      - name: Bounded fresh native expectations
+        run: |
+          python3 - <<'PY'
+          import pathlib,subprocess,json,time,os,signal,hashlib
+          root=pathlib.Path('target/u3-native-oracle')
+          results={}
+          for name in ['observe','cpuid-observe']:
+              started=time.monotonic()
+              with (root/(name+'.stdout')).open('wb') as out,(root/(name+'.stderr')).open('wb') as err:
+                  p=subprocess.Popen([str(root/name)],stdout=out,stderr=err,start_new_session=True)
+                  timeout=False
+                  try:p.wait(timeout=30)
+                  except subprocess.TimeoutExpired:
+                      timeout=True
+                      os.killpg(p.pid,signal.SIGKILL)
+                      p.wait()
+              results[name]={'exit':p.returncode,'timeout':timeout,'reaped':True,'elapsed_seconds':time.monotonic()-started,'watchdog_seconds':30,'binary_sha256':hashlib.sha256((root/name).read_bytes()).hexdigest(),'rows':sum(1 for _ in (root/(name+'.stdout')).open('rb'))}
+          (root/'native-proof.json').write_text(json.dumps(results,indent=2)+'\n')
+          assert all(v['exit']==0 and not v['timeout'] and v['rows']>0 for v in results.values())
+          PY
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u3-native-instruction-oracle
+          path: |
+            target/u3-native-oracle/
+            diagnostics/u3-native-oracle/source-manifest.json
+          retention-days: 7
