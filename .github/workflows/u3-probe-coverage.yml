@@ -1,0 +1,43 @@
+name: U3 probe native DBI coverage
+on:
+  push:
+    branches: [codex/u2-asan-diagnostic]
+    paths: [.github/workflows/u3-probe-coverage.yml, diagnostics/u3-probe-coverage/**]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p target/u3-probe-coverage/input
+          gh run download 37786749479 --repo Marukome0743/paludarium --name u3-repinned-probe-inventory --dir target/u3-probe-coverage/input
+          echo '29916d90ae1e6609a7b9019181df855ce3547366527a01137c88a894739e6ebd  target/u3-probe-coverage/input/probe' | sha256sum -c -
+          chmod +x target/u3-probe-coverage/input/probe
+          curl -fL https://github.com/DynamoRIO/dynamorio/releases/download/cronbuild-11.91.20727/DynamoRIO-Linux-11.91.20727.tar.gz -o target/u3-probe-coverage/tool.tar.gz
+          echo '632abee70e5d8431a6340f106cb0e50e0bd1b4e69abb82bcb0a861e82d68064c  target/u3-probe-coverage/tool.tar.gz' | sha256sum -c -
+          tar -xzf target/u3-probe-coverage/tool.tar.gz -C target/u3-probe-coverage
+          sha256sum target/u3-probe-coverage/tool.tar.gz > target/u3-probe-coverage/tool.sha256
+          find target/u3-probe-coverage/DynamoRIO-Linux-* -maxdepth 1 -iname '*license*' -exec cp {} target/u3-probe-coverage/ \;
+          target/u3-probe-coverage/DynamoRIO-Linux-*/bin64/drrun -version > target/u3-probe-coverage/tool-version.txt 2>&1
+          uname -a > target/u3-probe-coverage/host.txt
+      - run: python3 diagnostics/u3-probe-coverage/observe.py
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u3-probe-dbi-coverage
+          path: |
+            target/u3-probe-coverage/results.json
+            target/u3-probe-coverage/*.txt
+            target/u3-probe-coverage/*.sha256
+            target/u3-probe-coverage/*LICENSE*
+            target/u3-probe-coverage/native/
+            target/u3-probe-coverage/observed/
+          retention-days: 7

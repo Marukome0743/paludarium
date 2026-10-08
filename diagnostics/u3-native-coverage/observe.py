@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import signal
@@ -18,6 +19,8 @@ fixture = out / 'fixture'
 for name, version in [('app/filedep', '1.0.0'), ('outside/linked', '2.0.0')]:
     (fixture / name / 'package.json').write_text(json.dumps(dict(name=name.split('/')[-1], version=version)))
 results = {}
+def normalize_elapsed(data):
+    return re.sub(rb'(?<= in \x1b\[2m)[0-9]+(?:\.[0-9]+)?(?:ms|s)(?=\x1b\[0m)', b'<elapsed>', data)
 initial = out / 'fixture-initial'
 shutil.copytree(fixture, initial)
 native = out / 'paired-native'
@@ -63,7 +66,7 @@ for name, args in [('version', ['--version']), ('install', ['install']), ('froze
     # Preserve both raw outputs and report the exact normalization separately.
     old_root = b'/home/runner/work/paludarium/paludarium/target/u3-inventory/fixture/app'
     normalized_reference = reference.replace(old_root, str(fixture / 'app').encode())
-    results[name] = dict(command=command, exit=child.returncode, timeout=timeout, reaped=True, elapsed_seconds=time.monotonic()-started, watchdog_seconds=30, stdout_matches_uninstrumented=reference == (logs / 'stdout').read_bytes(), application_stderr_matches_uninstrumented=(native / (name+'.stderr')).read_bytes() == (logs / 'application.stderr').read_bytes(), stdout_matches_after_exact_fixture_path_substitution=normalized_reference == (logs / 'stdout').read_bytes(), fixture_path_substitution=dict(before=old_root.decode(), after=str(fixture / 'app')), coverage_files=[p.name for p in logs.glob('drcov*')])
+    results[name] = dict(command=command, exit=child.returncode, timeout=timeout, reaped=True, elapsed_seconds=time.monotonic()-started, watchdog_seconds=30, stdout_matches_uninstrumented=reference == (logs / 'stdout').read_bytes(), application_stderr_matches_uninstrumented=(native / (name+'.stderr')).read_bytes() == (logs / 'application.stderr').read_bytes(), application_stderr_matches_duration_only_normalization=normalize_elapsed((native / (name+'.stderr')).read_bytes()) == normalize_elapsed((logs / 'application.stderr').read_bytes()), stdout_matches_after_exact_fixture_path_substitution=normalized_reference == (logs / 'stdout').read_bytes(), fixture_path_substitution=dict(before=old_root.decode(), after=str(fixture / 'app')), coverage_files=[p.name for p in logs.glob('drcov*')])
 (out / 'results.json').write_text(json.dumps(dict(binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(), mode='native dynamic binary instrumentation basic-block coverage; not hardware PT or architectural state oracle', native_results=native_results, results=results), indent=2)+'\n')
-if any(r['exit'] != 0 or r['timeout'] for r in native_results.values()) or any(r['exit'] != 0 or r['timeout'] or not r['stdout_matches_uninstrumented'] or not r['application_stderr_matches_uninstrumented'] or not r['coverage_files'] for r in results.values()):
+if any(r['exit'] != 0 or r['timeout'] for r in native_results.values()) or any(r['exit'] != 0 or r['timeout'] or not r['stdout_matches_uninstrumented'] or not r['application_stderr_matches_duration_only_normalization'] or not r['coverage_files'] for r in results.values()):
     raise SystemExit('DBI workload or coverage validation failed; preserve raw evidence')
