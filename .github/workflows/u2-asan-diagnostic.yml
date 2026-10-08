@@ -42,3 +42,4 @@ jobs:
           name: u2-native-guests
           path: target/u2-native-guests/
           retention-days: 7
+# Step44: regenerate native expectations before production wasm semantics.
