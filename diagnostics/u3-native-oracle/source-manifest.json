@@ -10,7 +10,7 @@
     },
     {
       "path": "fault-observe.c",
-      "sha256": "39b24727ae105666efc31e3ed1334f02156437667cb48244cabc15eeb2a6be7d"
+      "sha256": "9e1ada4d051b1b9ef201bbdc34115784e60b53e5d1b6c9fad73e8232064571cb"
     },
     {
       "path": "build.sh",

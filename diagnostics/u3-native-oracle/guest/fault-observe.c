@@ -39,14 +39,22 @@ int main(void) {
     if(sigaction(SIGSEGV,&sa,0)||sigaction(SIGFPE,&sa,0)||sigaction(SIGILL,&sa,0)) return 2;
     unsigned char *pages=mmap(0,8192,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
     if(pages==MAP_FAILED) return 3;
-    for(volatile size_t i=0;i<sizeof(cases)/sizeof(cases[0]);i++) for(volatile unsigned scenario=0;scenario<6;scenario++) {
+    for(volatile size_t i=0;i<sizeof(cases)/sizeof(cases[0]);i++) for(volatile unsigned scenario=0;scenario<10;scenario++) {
         if(scenario<4&&!cases[i].memory) continue;
         if(scenario==5&&strncmp(cases[i].name,"ldmxcsr",7)) continue;
+        if(scenario==6&&strncmp(cases[i].name,"divsd",5)) continue;
+        if((scenario==7||scenario==8)&&strncmp(cases[i].name,"mulsd",5)) continue;
+        if(scenario==9&&strncmp(cases[i].name,"addsd",5)) continue;
         unsigned char input[512],before[512];
         for(unsigned k=0;k<sizeof(input);k++) input[k]=(unsigned char)(k*17+3);
         static const uint64_t special[]={0x7ff0000000000001ULL,0x3ff0000000000000ULL,1,0};
         if(scenario==4) for(unsigned k=0;k<32;k++) memcpy(input+k*8,&special[k%4],8);
-        uint32_t mxcsr=scenario==4?0:0x1f80; memcpy(input+256,&mxcsr,4);
+        if(scenario>=6) {
+            uint64_t left=scenario==7?0x7fefffffffffffffULL:scenario==8?0x0010000000000000ULL:0x3ff0000000000000ULL;
+            uint64_t right=scenario==6?0:scenario==7?0x4000000000000000ULL:scenario==8?0x3fb999999999999aULL:0x3ca0000000000000ULL;
+            for(unsigned k=0;k<32;k++) memcpy(input+k*8,(k/2)&1?&right:&left,8);
+        }
+        uint32_t mxcsr=scenario==4||scenario>=6?0:0x1f80; memcpy(input+256,&mxcsr,4);
         if(mprotect(pages,8192,PROT_READ|PROT_WRITE)) return 4;
         memset(pages,0x51,8192);
         unsigned offset=scenario==2?4096-24:scenario==3?1:0;
