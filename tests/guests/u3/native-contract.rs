@@ -21,7 +21,7 @@ pub fn amd_profile(cpuid: &str) -> bool {
     );
     match (vendor.as_slice(), signature) {
         (b"AuthenticAMD", 0x00a00f11 | 0x00a10f11 | 0x00b00f21) => true,
-        (b"GenuineIntel", 0x000c06f2) => false,
+        (b"GenuineIntel", 0x000c06f2 | 0x000a06d1) => false,
         _ => panic!(
             "unobserved native SHA profile: {:?} signature {signature:08x}",
             String::from_utf8_lossy(&vendor)
