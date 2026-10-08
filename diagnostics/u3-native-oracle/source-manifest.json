@@ -2,15 +2,19 @@
   "rows": [
     {
       "path": "observe.c",
-      "sha256": "27eccb4ddaeb5ee6d5fb0fa6f6df05eb391665584406294b07c2ee47d50ed866"
+      "sha256": "680a9238dc7082e33a8becb423d6971639693a64e283af412de4a07d46aef3fe"
     },
     {
       "path": "generate.py",
-      "sha256": "34cf2a3c4bb6c6fcdb5c591192be3a9aca685674087d1ac1339d4208a792f841"
+      "sha256": "17551188915463b5881c594d1277b376927b599f3f81f628fcc4f025f79925d3"
+    },
+    {
+      "path": "fault-observe.c",
+      "sha256": "4f09376a9ff6a387c7fc81ca07a954b0fd0090e35e71b7352e21b958264f9c23"
     },
     {
       "path": "build.sh",
-      "sha256": "606a792950603523b76fd011b71496ab95ce091dce2432bade52ee5c5d30d89e"
+      "sha256": "a945edb7dfa3c1f11c443afb07b892b129aa182d2d246853cea976c7d593202d"
     },
     {
       "path": "runner.S",

@@ -10,8 +10,8 @@ cases = []
 for name in names:
     insn = f'{name} xmm0, xmm1'
     if name in ('lddqu','movhpd','movhps','movlpd','movlps'):
-        insn = f'{name} xmm0, [rsi+16]'
-    elif name == 'ldmxcsr': insn = 'ldmxcsr [rsi+256]'
+        insn = f'{name} xmm0, [rdx+16]'
+    elif name == 'ldmxcsr': insn = 'ldmxcsr [rdx+256]'
     elif name in ('movmskpd','movmskps','pmovmskb'): insn = f'{name} eax, xmm1'
     elif name in ('movd','movq'): insn = f'{name} xmm0, {"eax" if name == "movd" else "rax"}'
     elif name.startswith('pextr'): insn = f'{name} {"rax" if name == "pextrq" else "eax"}, xmm1, 3'
@@ -27,10 +27,30 @@ for name in names:
     cases.append((name,insn))
 cases.extend((n,f'{n} xmm0, xmm1') for n in ['sha256rnds2','sha256msg1','sha256msg2','aesenc','aesenclast'])
 cases.extend((f'pclmulqdq_{i:02x}',f'pclmulqdq xmm0, xmm1, {i}') for i in [0,17,128,238])
+# Distinct high registers, aliasing, and memory forms are native cases first.
+base_cases=list(cases)
+for name,insn in base_cases:
+    if 'xmm0' in insn:
+        cases.append((name+'_high',insn.replace('xmm0','xmm8').replace('xmm1','xmm9')))
+    if 'xmm0' in insn and 'xmm1' in insn:
+        cases.append((name+'_alias',insn.replace('xmm1','xmm0')))
+    if 'xmm1' in insn and not name.startswith(('pextr','movmsk','pmovmskb','movhlps','movlhps')):
+        cases.append((name+'_memory',insn.replace('xmm1','[rdx+16]')))
+    if name in ('movd','movq'):
+        gpr='eax' if name=='movd' else 'rax'
+        cases.append((name+'_reverse',f'{name} {gpr}, xmm1'))
+        cases.append((name+'_memory_load',f'{name} xmm0, [rdx+16]'))
+        cases.append((name+'_memory_store',f'{name} [rdx+16], xmm1'))
+    if name in ('movaps','movups','movapd','movupd','movdqa','movdqu','movss','movsd','movlps','movhps','movlpd','movhpd'):
+        cases.append((name+'_store',f'{name} [rdx+16], xmm0'))
+    if name in ('psllw','pslld','psllq','psrlw','psrld','psrlq','psraw','psrad'):
+        for amount in [0,15,16,31,32,63,64,255]:
+            cases.append((name+f'_imm{amount}',f'{name} xmm0, {amount}'))
+cases.append(('stmxcsr','stmxcsr [rdx+256]'))
 assembly=['.intel_syntax noprefix','.text']; declarations=[]
 for i,(name,insn) in enumerate(cases):
     label=f'u3_case_{i}'
-    declarations.append(f'extern void {label}(void *, const void *); extern unsigned char {label}_op[], {label}_end[];')
+    declarations.append(f'extern void {label}(void *, const void *, void *); extern unsigned char {label}_op[], {label}_end[];')
     assembly += [f'.global {label}, {label}_op, {label}_end',f'{label}:']
     assembly += [f'movdqu xmm{k}, [rsi+{k*16}]' for k in range(16)]
     assembly += ['ldmxcsr [rsi+256]','movabs rax, 0x800000017fff0011','push 0x8d7','popfq',f'{label}_op:',insn,f'{label}_end:']
@@ -39,6 +59,6 @@ for i,(name,insn) in enumerate(cases):
 assembly += ['.section .note.GNU-stack,"",@progbits']
 (output/'cases.S').write_text('\n'.join(assembly)+'\n')
 header='\n'.join(declarations)+'\nstatic const struct u3_case cases[] = {\n'
-header+='\n'.join(f'{{"{n}",u3_case_{i},u3_case_{i}_op,u3_case_{i}_end}},' for i,(n,_) in enumerate(cases))
+header+='\n'.join(f'{{"{n}",u3_case_{i},u3_case_{i}_op,u3_case_{i}_end,{int("[rdx" in insn)}}},' for i,(n,insn) in enumerate(cases))
 (output/'cases.h').write_text(header+'\n};\n')
 print(f'Generated {len(cases)} native observers; expected values not yet measured.')

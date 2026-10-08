@@ -28,7 +28,7 @@ jobs:
           import pathlib,subprocess,json,time,os,signal,hashlib
           root=pathlib.Path('target/u3-native-oracle')
           results={}
-          for name in ['observe','cpuid-observe']:
+          for name in ['observe','cpuid-observe','fault-observe']:
               started=time.monotonic()
               with (root/(name+'.stdout')).open('wb') as out,(root/(name+'.stderr')).open('wb') as err:
                   p=subprocess.Popen([str(root/name)],stdout=out,stderr=err,start_new_session=True)
