@@ -27,7 +27,7 @@ void test_main(u64 *stack){
 #elif CASE == 10
  fd=sc(32,0,0,0);
 #elif CASE == 11
- fd=sc(2,(u64)"/dev/null",0,0);
+ fd=sc(2,stack[2],0,0);
 #elif CASE == 12
  sc(3,0,0,0);
 #elif CASE == 13

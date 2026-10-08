@@ -9,6 +9,7 @@ import struct
 import subprocess
 import sys
 import termios
+import tempfile
 
 
 def run(directory, case):
@@ -22,11 +23,18 @@ def run(directory, case):
                              [0, 0, termios.CS8 | termios.CREAD | termios.B38400,
                               0, termios.B38400, termios.B38400, cc])
             fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 37, 101, 0, 0))
-        result = subprocess.run(["u9", "", "two words"],
+        arguments = ["u9", "", "two words"]
+        with tempfile.TemporaryDirectory(prefix="paludarium-u9-") as fixture:
+            if case == 11:
+                file = Path(fixture) / "regular"
+                file.write_bytes(b"fixture")
+                arguments[1] = str(file)
+            streams = ({"stdin": slave} if slave is not None else
+                       {"input": b"abc" if case == 1 else b""})
+            result = subprocess.run(arguments,
                                 executable=str(Path(directory).resolve() / f"io-{case}"),
                                 env={"U9_TEST": "value with spaces"},
-                                stdin=slave if slave is not None else subprocess.PIPE,
-                                input=None if slave is not None else (b"abc" if case == 1 else b""),
+                                **streams,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
         print(f"{case}|{result.returncode}|{result.stdout.hex()}|{result.stderr.hex()}", flush=True)
     finally:
