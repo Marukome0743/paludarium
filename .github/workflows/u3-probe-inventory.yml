@@ -1,0 +1,43 @@
+name: U3 repinned probe inventory
+on:
+  push:
+    branches: [codex/u2-asan-diagnostic]
+    paths: [.github/workflows/u3-probe-inventory.yml, diagnostics/u3-probe/**]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Reviewed immutable eight-source build
+        run: |
+          mkdir -p target/u3-probe/cache
+          python3 diagnostics/u3-probe/observe.py before
+          set +e
+          docker run --rm --platform linux/amd64 -v "$PWD/diagnostics/u3-probe/source:/src/probe:ro" -v "$PWD/target/u3-probe/cache:/cache" -w /src/probe rust@sha256:a96ea6d18d4062e38f16cfbadd8b4541d622f2527dd0a5eca1fb36d301da4e88 sh -c 'set -eu; apk add --no-cache musl-dev; rustc -Vv; cargo -V; cargo build --release --locked --target x86_64-unknown-linux-musl --manifest-path /src/probe/Cargo.toml --target-dir /cache/probe' 2>&1 | tee target/u3-probe/build.log
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "$code" > target/u3-probe/build-exit.txt
+          python3 diagnostics/u3-probe/observe.py after
+          test "$code" = 0
+          cp target/u3-probe/cache/probe/x86_64-unknown-linux-musl/release/probe target/u3-probe/probe
+          docker image inspect rust@sha256:a96ea6d18d4062e38f16cfbadd8b4541d622f2527dd0a5eca1fb36d301da4e88 > target/u3-probe/builder-image.json
+          uname -a > target/u3-probe/host.txt
+      - name: Native eight checks and executable section inventory
+        run: python3 diagnostics/u3-probe/observe.py run
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u3-repinned-probe-inventory
+          path: |
+            target/u3-probe/*.json
+            target/u3-probe/*.txt
+            target/u3-probe/*.log
+            target/u3-probe/*.stdout
+            target/u3-probe/*.stderr
+            target/u3-probe/probe
+          retention-days: 7

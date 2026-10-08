@@ -47,4 +47,5 @@ jobs:
             target/u3-native-coverage/install/
             target/u3-native-coverage/frozen/
             target/u3-native-coverage/list/
+            target/u3-native-coverage/paired-native/
           retention-days: 7
