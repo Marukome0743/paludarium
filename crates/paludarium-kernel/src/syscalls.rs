@@ -554,7 +554,14 @@ fn sys_mmap(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
         }
     };
     match result {
-        Ok(a) => ok(a.0),
+        Ok(a) => {
+            if flags & MAP_SHARED != 0
+                && let Err(error) = c.mem.mark_shared(a, len)
+            {
+                return err(error);
+            }
+            ok(a.0)
+        }
         Err(e) => err(e),
     }
 }

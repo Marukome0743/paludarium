@@ -2,7 +2,7 @@
 use paludarium_cpu::{DecodeCache, reg, run_cached};
 use paludarium_host::{ClockId, Host, ThreadHandle};
 use paludarium_jit::CodeCache;
-use paludarium_kernel::{Kernel, Next, SignalInbox, Thread, ThreadGroup};
+use paludarium_kernel::{Kernel, Next, Processes, SignalInbox, Thread, ThreadGroup};
 use paludarium_mmu::AddressSpace;
 use paludarium_types::{Error, ErrorKind, ExitReason, ExitStatus, signal};
 use std::sync::{
@@ -14,6 +14,7 @@ pub(crate) struct Execution {
     host: Arc<dyn Host>,
     mem: Arc<AddressSpace>,
     group: Arc<ThreadGroup>,
+    processes: Arc<Processes>,
     kill: Arc<AtomicBool>,
     inbox: Arc<SignalInbox>,
     stopped: Arc<AtomicBool>,
@@ -29,6 +30,7 @@ impl Execution {
         host: Arc<dyn Host>,
         mem: Arc<AddressSpace>,
         group: Arc<ThreadGroup>,
+        processes: Arc<Processes>,
         kill: Arc<AtomicBool>,
         inbox: Arc<SignalInbox>,
         stopped: Arc<AtomicBool>,
@@ -40,6 +42,7 @@ impl Execution {
             host,
             mem,
             group,
+            processes,
             kill,
             inbox,
             stopped,
@@ -51,30 +54,50 @@ impl Execution {
         }
     }
     pub fn execute(self: &Arc<Self>, mut kernel: Kernel, mut thread: Thread) {
+        let memory = self.mem.clone();
+        self.execute_memory(&mut kernel, &mut thread, memory);
+    }
+    fn execute_memory(
+        self: &Arc<Self>,
+        kernel: &mut Kernel,
+        thread: &mut Thread,
+        mut memory: Arc<AddressSpace>,
+    ) {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.run(&mut kernel, &mut thread)
+            self.run(kernel, thread, &mut memory)
         }))
         .unwrap_or_else(|_| Err(Error::new(ErrorKind::Host, "execution worker panicked")));
         if result.is_err() {
-            self.group.stop(ExitStatus::Signaled(signal::SIGKILL));
+            self.processes
+                .stop_all(ExitStatus::Signaled(signal::SIGKILL));
         }
-        kernel.finish_thread(&thread, &self.mem);
-        self.results
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(result);
+        kernel.finish_thread(thread, &memory);
+        kernel.complete_process(
+            result
+                .as_ref()
+                .copied()
+                .unwrap_or(ExitStatus::Signaled(signal::SIGKILL)),
+        );
+        if kernel.process().pid == 1 || result.is_err() {
+            self.results
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(result);
+        }
     }
     fn run(
         self: &Arc<Self>,
         kernel: &mut Kernel,
         thread: &mut Thread,
+        memory: &mut Arc<AddressSpace>,
     ) -> Result<ExitStatus, Error> {
         let mut decode = DecodeCache::new();
         loop {
             if self.kill.load(Ordering::SeqCst) {
-                self.group.stop(ExitStatus::Signaled(signal::SIGKILL));
+                self.processes
+                    .stop_all(ExitStatus::Signaled(signal::SIGKILL));
             }
-            match kernel.checkpoint(thread, &self.mem) {
+            match kernel.checkpoint(thread, memory) {
                 Next::Exit(status) => return Ok(status),
                 Next::Stopped => {
                     self.stopped.store(true, Ordering::SeqCst);
@@ -85,33 +108,39 @@ impl Execution {
             }
             let reason = self
                 .cache
-                .try_run(&mut thread.cpu, &self.mem)
-                .unwrap_or_else(|| {
-                    run_cached(&mut thread.cpu, &self.mem, self.budget, &mut decode)
-                });
-            let next = kernel.handle(thread, &self.mem, reason);
-            if let Some((child, child_thread)) = kernel.take_child() {
+                .try_run(&mut thread.cpu, memory)
+                .unwrap_or_else(|| run_cached(&mut thread.cpu, memory, self.budget, &mut decode));
+            let next = kernel.handle(thread, memory, reason);
+            if let Some(replacement) = kernel.take_exec_memory() {
+                *memory = replacement;
+                decode = DecodeCache::new();
+            }
+            if let Some((mut child, mut child_thread)) = kernel.take_child() {
                 let tid = child_thread.tid;
+                let pid = child.process().pid;
+                let child_memory = child.take_spawn_memory().unwrap_or_else(|| memory.clone());
                 let execution = self.clone();
-                match self
-                    .host
-                    .spawn_thread(Box::new(move || execution.execute(*child, child_thread)))
-                {
+                match self.host.spawn_thread(Box::new(move || {
+                    execution.execute_memory(&mut child, &mut child_thread, child_memory)
+                })) {
                     Ok(handle) => self
                         .handles
                         .lock()
                         .unwrap_or_else(PoisonError::into_inner)
                         .push(handle),
                     Err(error) => {
-                        kernel.abandon_thread(tid);
+                        kernel.abandon_child(pid, tid);
                         thread.cpu.gpr[reg::RAX] = error.to_syscall_return();
                     }
+                }
+                if let Err(error) = kernel.wait_vfork(&self.kill) {
+                    thread.cpu.gpr[reg::RAX] = error.to_syscall_return();
                 }
             }
             match next {
                 Next::Resume | Next::Stopped => {}
                 Next::Exit(status) => {
-                    if !matches!(reason, ExitReason::Syscall { .. }) {
+                    if !matches!(reason, ExitReason::Syscall { .. }) && kernel.process().pid == 1 {
                         *self
                             .last_stop
                             .lock()
@@ -145,12 +174,14 @@ impl Execution {
     }
     pub fn finish(&self) -> Result<ExitStatus, Error> {
         let mut host_error = None;
-        while self.group.active_threads() != 0 {
+        while self.processes.active_threads() != 0 {
             if self.kill.load(Ordering::SeqCst) {
-                self.group.stop(ExitStatus::Signaled(signal::SIGKILL));
+                self.processes
+                    .stop_all(ExitStatus::Signaled(signal::SIGKILL));
             }
             if let Err(error) = self.pause() {
-                self.group.stop(ExitStatus::Signaled(signal::SIGKILL));
+                self.processes
+                    .stop_all(ExitStatus::Signaled(signal::SIGKILL));
                 host_error.get_or_insert(error);
             }
         }

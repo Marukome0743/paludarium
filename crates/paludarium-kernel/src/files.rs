@@ -39,6 +39,18 @@ impl Default for Files {
     }
 }
 impl Files {
+    pub(crate) fn exec_path(&self, path: Vec<u8>) -> Result<Vec<u8>, Errno> {
+        self.path((-100i32) as u64, path)
+    }
+    pub(crate) fn for_exec(&self) -> Self {
+        let child = self.for_clone(false, false);
+        child
+            .fds
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|_, descriptor| !descriptor.cloexec);
+        child
+    }
     pub(crate) fn install(
         &mut self,
         file: Arc<dyn FileHandle>,

@@ -29,3 +29,23 @@ jobs:
           name: u8-native-first
           path: target/u8-native-first
           retention-days: 7
+  differential:
+    needs: native-first
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - run: rustup toolchain install nightly-2026-10-01 --profile minimal --component clippy,rustfmt
+      - name: U8 internal component tests
+        run: cargo test --locked -p paludarium-mmu -p paludarium-kernel -p paludarium-runtime --lib u8_tests::
+      - name: Fresh native versus emulated U8 and Rust Command
+        run: cargo test --locked -p paludarium-harness --test diff_u8 u8_ -- --nocapture
+      - name: U5 and U6 internal regression
+        run: |
+          cargo test --locked -p paludarium-kernel -p paludarium-runtime --lib u5_tests::
+          cargo test --locked -p paludarium-kernel --lib u6_tests::
+      - name: U5 and U6 differential regression
+        run: cargo test --locked -p paludarium-harness --test diff_u5 --test diff_u6 u -- --nocapture

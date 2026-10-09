@@ -8,8 +8,10 @@ pub fn bounded(name: &str, run: impl FnOnce()) {
         return;
     }
     let mut command = Command::new(std::env::current_exe().expect("test executable"));
-    command.args(["--exact", name, "--nocapture"])
-        .env("PALUDARIUM_U8_CHILD", name).stdin(Stdio::null());
+    command
+        .args(["--exact", name, "--nocapture"])
+        .env("PALUDARIUM_U8_CHILD", name)
+        .stdin(Stdio::null());
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -24,7 +26,9 @@ pub fn bounded(name: &str, run: impl FnOnce()) {
         }
         if start.elapsed() >= Duration::from_secs(60) {
             #[cfg(unix)]
-            let _ = Command::new("kill").args(["-KILL", "--", &format!("-{}", child.id())]).status();
+            let _ = Command::new("kill")
+                .args(["-KILL", "--", &format!("-{}", child.id())])
+                .status();
             let _ = child.kill();
             let _ = child.wait();
             panic!("{name}: outer 60-second process-group watchdog expired");

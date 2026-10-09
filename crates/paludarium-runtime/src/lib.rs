@@ -226,6 +226,7 @@ impl Session {
             Arc::clone(&self.host),
             Arc::new(mem),
             kernel.thread_group(),
+            kernel.processes(),
             Arc::clone(&self.kill_requested),
             Arc::clone(&self.signal_inbox),
             Arc::clone(&self.stopped),
@@ -246,3 +247,6 @@ mod u9_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod u5_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod u8_tests;

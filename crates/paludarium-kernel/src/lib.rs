@@ -16,9 +16,11 @@ mod epoll;
 mod events;
 mod files;
 mod futex;
+mod processes;
 mod sockets;
 mod syscalls;
 mod threads;
+pub use processes::Processes;
 pub use threads::ThreadGroup;
 
 use std::collections::BTreeMap;
@@ -130,12 +132,19 @@ pub struct Kernel {
     inbox: Arc<SignalInbox>,
     group: Arc<ThreadGroup>,
     pending_child: Option<(Box<Kernel>, Thread)>,
+    processes: Arc<Processes>,
+    spawn_memory: Option<Arc<AddressSpace>>,
+    exec_memory: Option<Arc<AddressSpace>>,
+    vfork_release: Option<Arc<AtomicBool>>,
+    vfork_wait: Option<Arc<AtomicBool>>,
 }
 
 impl Kernel {
     /// Creates a kernel that performs host I/O through `host` (BR6.1).
     pub fn new(host: Arc<dyn Host>) -> Self {
         let files = files::Files::with_host(Arc::clone(&host));
+        let group = Arc::new(ThreadGroup::default());
+        let processes = Arc::new(Processes::new(group.clone()));
         Kernel {
             host,
             process: Process { pid: 1 },
@@ -143,8 +152,13 @@ impl Kernel {
             files,
             cancellation: Arc::new(AtomicBool::new(false)),
             inbox: Arc::new(SignalInbox::default()),
-            group: Arc::new(ThreadGroup::default()),
+            group,
             pending_child: None,
+            processes,
+            spawn_memory: None,
+            exec_memory: None,
+            vfork_release: None,
+            vfork_wait: None,
         }
     }
 
@@ -404,6 +418,9 @@ impl Kernel {
             thread.cpu.gpr[reg::R8],
             thread.cpu.gpr[reg::R9],
         ];
+        if let Some(next) = self.process_syscall(thread, mem, number, args) {
+            return next;
+        }
         if let Some(next) = self.thread_syscall(thread, mem, number, args) {
             return next;
         }
@@ -479,3 +496,6 @@ mod u5_tests;
 
 #[cfg(test)]
 mod u6_tests;
+
+#[cfg(test)]
+mod u8_tests;

@@ -16,7 +16,7 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{
-    Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
 
 use paludarium_types::{Errno, GuestAddr, PAGE_SIZE, USER_ADDRESS_LIMIT};
@@ -145,14 +145,14 @@ impl Access {
 /// allocated on the first write; until then the page reads as zeros.
 struct Page {
     prot: Prot,
-    frame: OnceLock<Box<[AtomicU8]>>,
+    frame: Arc<OnceLock<Box<[AtomicU8]>>>,
 }
 
 impl Page {
     fn new(prot: Prot) -> Self {
         Page {
             prot,
-            frame: OnceLock::new(),
+            frame: Arc::new(OnceLock::new()),
         }
     }
 
@@ -185,6 +185,14 @@ impl PageTable {
 /// The upper level: a sparse map from directory index to page table.
 type Directory = BTreeMap<u64, PageTable>;
 
+type Frame = Arc<OnceLock<Box<[AtomicU8]>>>;
+#[derive(Clone)]
+struct SharedMapping {
+    end: u64,
+    frames: Arc<Mutex<BTreeMap<u64, Frame>>>,
+    generation: Arc<AtomicU64>,
+}
+
 static NEXT_ADDRESS_SPACE_ID: AtomicU64 = AtomicU64::new(1);
 
 /// One process's guest address space (entities.md AddressSpace).
@@ -202,6 +210,7 @@ struct AddressSpaceData {
     initial_break: GuestAddr,
     current_break: GuestAddr,
     mmap_top: u64,
+    shared: BTreeMap<u64, SharedMapping>,
 }
 
 impl Default for AddressSpaceData {
@@ -272,6 +281,7 @@ impl AddressSpaceData {
         AddressSpaceData {
             id: NEXT_ADDRESS_SPACE_ID.fetch_add(1, Ordering::Relaxed),
             directory: RwLock::new(BTreeMap::new()),
+            shared: BTreeMap::new(),
             code_generation: AtomicU64::new(0),
             mappings: BTreeMap::new(),
             initial_break: GuestAddr(0),
@@ -291,7 +301,74 @@ impl AddressSpaceData {
     /// under one value stay valid while the value is unchanged.
     #[must_use]
     pub fn code_generation(&self) -> u64 {
-        self.code_generation.load(Ordering::Acquire)
+        self.shared.values().fold(
+            self.code_generation.load(Ordering::Acquire),
+            |value, shared| value.wrapping_add(shared.generation.load(Ordering::Acquire)),
+        )
+    }
+
+    fn shared_at(&self, page: u64) -> Option<&SharedMapping> {
+        self.shared
+            .range(..=page)
+            .next_back()
+            .map(|(_, mapping)| mapping)
+            .filter(|mapping| page < mapping.end)
+    }
+    fn page(&self, page: u64, prot: Prot) -> Page {
+        let frame = self.shared_at(page).map(|mapping| {
+            mapping
+                .frames
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .entry(page)
+                .or_default()
+                .clone()
+        });
+        Page {
+            prot,
+            frame: frame.unwrap_or_default(),
+        }
+    }
+    fn fork(&self) -> Self {
+        let mut copy = Self::new();
+        copy.mappings = self.mappings.clone();
+        copy.shared = self.shared.clone();
+        copy.initial_break = self.initial_break;
+        copy.current_break = self.current_break;
+        copy.mmap_top = self.mmap_top;
+        let mut directory = BTreeMap::new();
+        for (&index, table) in self.read_directory().iter() {
+            let mut cloned = PageTable::new();
+            for (slot, page) in table.pages.iter().enumerate() {
+                if let Some(page) = page {
+                    let address = (index * ENTRIES_PER_TABLE + slot as u64) * PAGE_SIZE;
+                    let new = if self.shared_at(address).is_some() {
+                        Page {
+                            prot: page.prot,
+                            frame: page.frame.clone(),
+                        }
+                    } else {
+                        let new = Page::new(page.prot);
+                        if let Some(frame) = page.frame.get() {
+                            let _ = new.frame.set(
+                                frame
+                                    .iter()
+                                    .map(|byte| AtomicU8::new(byte.load(Ordering::Relaxed)))
+                                    .collect(),
+                            );
+                        }
+                        new
+                    };
+                    cloned.pages[slot] = Some(new);
+                }
+            }
+            directory.insert(index, cloned);
+        }
+        *copy
+            .directory
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner) = directory;
+        copy
     }
 
     fn bump_code_generation(&mut self) {
@@ -379,7 +456,7 @@ impl AddressSpaceData {
                 let (dir, slot) = page_index(page);
                 let table = directory.entry(dir).or_insert_with(PageTable::new);
                 if let Some(entry) = table.pages.get_mut(slot) {
-                    *entry = Some(Page::new(prot));
+                    *entry = Some(self.page(page, prot));
                 }
             }
         }
@@ -400,6 +477,9 @@ impl AddressSpaceData {
     fn store(&self, directory: &Directory, addr: GuestAddr, buf: &[u8]) {
         for (page, offset, range) in chunks(addr, buf.len()) {
             if let Some(p) = lookup(directory, page) {
+                if let Some(mapping) = self.shared_at(page) {
+                    mapping.generation.fetch_add(1, Ordering::Release);
+                }
                 if p.prot.contains(Prot::EXEC) {
                     // Code may have changed: decoded instructions are stale.
                     self.code_generation.fetch_add(1, Ordering::Release);
@@ -442,7 +522,7 @@ impl AddressSpaceData {
             let (dir, slot) = page_index(page);
             let table = directory.entry(dir).or_insert_with(PageTable::new);
             if let Some(entry) = table.pages.get_mut(slot) {
-                *entry = Some(Page::new(prot));
+                *entry = Some(self.page(page, prot));
             }
         }
         self.store(&directory, addr, buf);
@@ -611,6 +691,27 @@ impl AddressSpaceData {
     /// Unmaps `[addr, addr+len)`. Unmapped holes inside the range are fine.
     pub fn unmap(&mut self, addr: GuestAddr, len: u64) -> Result<(), Errno> {
         let end = checked_range(addr, len)?;
+        let affected: Vec<_> = self
+            .shared
+            .iter()
+            .filter(|(start, mapping)| **start < end && mapping.end > addr.0)
+            .map(|(&start, mapping)| (start, mapping.clone()))
+            .collect();
+        for (start, mapping) in affected {
+            self.shared.remove(&start);
+            if start < addr.0 {
+                self.shared.insert(
+                    start,
+                    SharedMapping {
+                        end: addr.0,
+                        ..mapping.clone()
+                    },
+                );
+            }
+            if mapping.end > end {
+                self.shared.insert(end, mapping);
+            }
+        }
         self.split_at(addr.0);
         self.split_at(end);
         let doomed: Vec<u64> = self
@@ -765,7 +866,27 @@ pub struct AtomicResult {
 /// implementation never calls back through this public wrapper (no reentry).
 pub struct AddressSpace {
     data: Mutex<AddressSpaceData>,
+    serialization: Arc<Mutex<()>>,
 }
+
+struct AddressSpaceGuard<'a> {
+    data: MutexGuard<'a, AddressSpaceData>,
+    _serialization: MutexGuard<'a, ()>,
+}
+impl std::ops::Deref for AddressSpaceGuard<'_> {
+    type Target = AddressSpaceData;
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+impl std::ops::DerefMut for AddressSpaceGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
+}
+
+#[cfg(test)]
+mod u8_tests;
 
 #[cfg(test)]
 mod u5_tests;
@@ -779,10 +900,67 @@ impl AddressSpace {
     pub fn new() -> Self {
         Self {
             data: Mutex::new(AddressSpaceData::new()),
+            serialization: Arc::default(),
         }
     }
-    fn locked(&self) -> MutexGuard<'_, AddressSpaceData> {
-        self.data.lock().unwrap_or_else(PoisonError::into_inner)
+    fn locked(&self) -> AddressSpaceGuard<'_> {
+        let serialization = self
+            .serialization
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        AddressSpaceGuard {
+            data: self.data.lock().unwrap_or_else(PoisonError::into_inner),
+            _serialization: serialization,
+        }
+    }
+    /// Private pages are copied; sparse MAP_SHARED pages retain backing. A shared
+    /// serialization lock keeps cross-process memory operations indivisible.
+    #[must_use]
+    pub fn fork(&self) -> Self {
+        Self {
+            data: Mutex::new(self.locked().fork()),
+            serialization: self.serialization.clone(),
+        }
+    }
+    /// Marks a newly created mapping as Linux MAP_SHARED, independently of VM sharing.
+    pub fn mark_shared(&self, addr: GuestAddr, len: u64) -> Result<(), Errno> {
+        let end = checked_range(addr, len)?;
+        let mut data = self.locked();
+        if !data
+            .mappings
+            .values()
+            .any(|mapping| mapping.start.0 == addr.0 && mapping.end() == end)
+        {
+            return Err(Errno::EINVAL);
+        }
+        let frames = data
+            .read_directory()
+            .iter()
+            .flat_map(|(&index, table)| {
+                table
+                    .pages
+                    .iter()
+                    .enumerate()
+                    .filter_map(move |(slot, page)| {
+                        page.as_ref().map(|page| {
+                            (
+                                (index * ENTRIES_PER_TABLE + slot as u64) * PAGE_SIZE,
+                                page.frame.clone(),
+                            )
+                        })
+                    })
+            })
+            .filter(|(page, _)| *page >= addr.0 && *page < end)
+            .collect();
+        data.shared.insert(
+            addr.0,
+            SharedMapping {
+                end,
+                frames: Arc::new(Mutex::new(frames)),
+                generation: Arc::default(),
+            },
+        );
+        Ok(())
     }
     #[must_use]
     pub fn id(&self) -> u64 {

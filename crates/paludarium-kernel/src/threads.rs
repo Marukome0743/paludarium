@@ -11,12 +11,11 @@ use std::{
     collections::BTreeMap,
     sync::{
         Arc, Mutex, PoisonError,
-        atomic::{AtomicU32, AtomicU64, Ordering},
+        atomic::{AtomicU64, Ordering},
     },
 };
 
 pub struct ThreadGroup {
-    next: AtomicU32,
     stopped: std::sync::atomic::AtomicBool,
     members: Mutex<BTreeMap<u32, Arc<SignalInbox>>>,
     status: Mutex<Option<ExitStatus>>,
@@ -29,7 +28,6 @@ pub struct ThreadGroup {
 impl Default for ThreadGroup {
     fn default() -> Self {
         Self {
-            next: AtomicU32::new(2),
             stopped: std::sync::atomic::AtomicBool::new(false),
             members: Mutex::new(BTreeMap::new()),
             status: Mutex::new(None),
@@ -42,6 +40,36 @@ impl Default for ThreadGroup {
     }
 }
 impl ThreadGroup {
+    pub(crate) fn fork(&self) -> Self {
+        Self {
+            actions: Mutex::new(
+                self.actions
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone(),
+            ),
+            ..Self::default()
+        }
+    }
+    pub(crate) fn notify_child(&self) {
+        let _ = self
+            .process_inbox
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .send(17);
+    }
+    pub(crate) fn send_process(&self, number: i32) -> Result<(), Errno> {
+        self.process_inbox
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .send(number)
+    }
+    pub(crate) fn exec_actions(&self) {
+        self.actions
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|_, action| action.handler == 1);
+    }
     pub(crate) fn sync_timer(&self, local: &mut ThreadState) {
         local.timer = self
             .process_pending
@@ -327,7 +355,7 @@ impl Kernel {
         {
             return Err(Errno::EPERM);
         }
-        let tid = self.group.next.fetch_add(1, Ordering::SeqCst);
+        let tid = self.processes.allocate()?;
         if tid > i32::MAX as u32 {
             return Err(Errno::EAGAIN);
         }
@@ -356,6 +384,11 @@ impl Kernel {
             inbox: inbox.clone(),
             group: self.group.clone(),
             pending_child: None,
+            processes: self.processes.clone(),
+            spawn_memory: None,
+            exec_memory: None,
+            vfork_release: self.vfork_release.clone(),
+            vfork_wait: None,
         };
         self.group.register(tid, inbox);
         // Linux ignores unsuccessful parent/child TID stores (native case 23).

@@ -4,30 +4,55 @@ mod support;
 
 #[test]
 fn u8_runner_ready() {
-    assert!(cfg!(all(target_os = "linux", target_arch = "x86_64")),
-        "U8 native oracle requires x86-64 Linux; unsupported platform is not a zero-test PASS");
-    assert!(std::process::Command::new("musl-gcc").arg("--version").status().unwrap().success());
-    let status = std::process::Command::new("timeout").args(["--kill-after=1s", "0.1s", "sleep", "2"]).status().unwrap();
-    assert_eq!(status.code(), Some(124), "watchdog must interrupt blocked guests");
+    assert!(
+        cfg!(all(target_os = "linux", target_arch = "x86_64")),
+        "U8 native oracle requires x86-64 Linux; unsupported platform is not a zero-test PASS"
+    );
+    assert!(
+        std::process::Command::new("musl-gcc")
+            .arg("--version")
+            .status()
+            .unwrap()
+            .success()
+    );
+    let status = std::process::Command::new("timeout")
+        .args(["--kill-after=1s", "0.1s", "sleep", "2"])
+        .status()
+        .unwrap();
+    assert_eq!(
+        status.code(),
+        Some(124),
+        "watchdog must interrupt blocked guests"
+    );
     support::bounded("u8_runner_ready", || {});
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod linux {
     use super::support;
-    use paludarium_harness::{Outcome, compare, run_native, workspace_root};
     use paludarium::{Config, Session, testing::RecordingHost};
+    use paludarium_harness::{Outcome, compare, run_native, workspace_root};
     use std::sync::{Arc, Mutex, OnceLock};
     use std::time::Instant;
 
     fn case(test: &str, mode: &str, binary: &str) {
         static FIXTURE: Mutex<()> = Mutex::new(());
-        let _fixture = FIXTURE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _fixture = FIXTURE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = workspace_root().join("target/guests/u8");
         if std::env::var("PALUDARIUM_U8_CHILD").is_err() {
             static BUILT: OnceLock<()> = OnceLock::new();
-            BUILT.get_or_init(|| assert!(std::process::Command::new("bash")
-                .arg(workspace_root().join("tests/guests/u8/build.sh")).arg(&dir).status().unwrap().success()));
+            BUILT.get_or_init(|| {
+                assert!(
+                    std::process::Command::new("bash")
+                        .arg(workspace_root().join("tests/guests/u8/build.sh"))
+                        .arg(&dir)
+                        .status()
+                        .unwrap()
+                        .success()
+                )
+            });
         }
         support::bounded(test, || {
             let program = dir.join(binary);
@@ -35,14 +60,34 @@ mod linux {
             let args = [mode.to_owned(), self_path.clone()];
             let native = run_native(&program, binary, &args).unwrap();
             let bytes = std::fs::read(&program).unwrap();
-            let config = Config::new(format!("/{binary}"), vec![binary.as_bytes().to_vec(), mode.as_bytes().to_vec(), self_path.as_bytes().to_vec()])
-                .with_file(format!("/{binary}"), bytes.clone()).with_file(self_path, bytes);
+            let config = Config::new(
+                format!("/{binary}"),
+                vec![
+                    binary.as_bytes().to_vec(),
+                    mode.as_bytes().to_vec(),
+                    self_path.as_bytes().to_vec(),
+                ],
+            )
+            .with_file(format!("/{binary}"), bytes.clone())
+            .with_file(self_path, bytes);
             let host = Arc::new(RecordingHost::new());
             let session = Session::new(config, host.clone()).unwrap();
             let start = Instant::now();
             let status = session.run().unwrap();
-            let emulated = Outcome {stdout:host.stdout(), stderr:host.stderr(),status,elapsed:start.elapsed()};
-            println!("{mode}: native {:?} {:?}, emulated {:?} {:?}; stop {:?}", native.status, native.stdout, emulated.status, emulated.stdout, session.termination_detail());
+            let emulated = Outcome {
+                stdout: host.stdout(),
+                stderr: host.stderr(),
+                status,
+                elapsed: start.elapsed(),
+            };
+            println!(
+                "{mode}: native {:?} {:?}, emulated {:?} {:?}; stop {:?}",
+                native.status,
+                native.stdout,
+                emulated.status,
+                emulated.stdout,
+                session.termination_detail()
+            );
             compare(&native, &emulated).unwrap();
         });
     }
