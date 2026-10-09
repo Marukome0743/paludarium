@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <pthread.h>
+#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,10 @@
 static void result(const char *name, long value) { printf("%s=%ld\n", name, value); }
 static pid_t child(void) { return syscall(SYS_fork); }
 static int thread_ready[2], thread_block[2];
+static volatile sig_atomic_t received;
+static void interrupted(int number) { (void)number; received++; }
+static int vm_value;
+static int vm_child(void *unused) { (void)unused; vm_value = 23; return 4; }
 static void *blocked_sibling(void *unused) {
     (void)unused;
     char byte;
@@ -30,7 +35,24 @@ static void finish(pid_t pid) {
 int main(int argc, char **argv) {
     if (argc < 3) return 99;
     const char *mode = argv[1], *self = argv[2];
+    if (!strcmp(mode, "clone-vm")) {
+        char *stack = mmap(NULL, 65536, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+        if (stack == MAP_FAILED) return 80;
+        int parent_tid = 0, child_tid = 0;
+        pid_t pid = clone(vm_child, stack + 65536, CLONE_VM|CLONE_PARENT_SETTID|CLONE_CHILD_SETTID|SIGCHLD, NULL, &parent_tid, NULL, &child_tid);
+        if (pid < 0) return 79;
+        finish(pid);
+        result("vm", vm_value == 23);
+        result("parent-tid", parent_tid == pid);
+        result("child-tid", child_tid == pid);
+        return 0;
+    }
     if (!strcmp(mode, "exec-thread-child")) {
+        if (argc != 5) return 77;
+        close(atoi(argv[4]));
+        signal(SIGPIPE, SIG_IGN);
+        errno = 0;
+        result("sibling-gone", write(atoi(argv[3]), "x", 1) == -1 && errno == EPIPE);
         result("replacement", 1);
         return 0;
     }
@@ -39,7 +61,10 @@ int main(int argc, char **argv) {
         if (pipe(thread_ready) || pipe(thread_block) || pthread_create(&sibling, NULL, blocked_sibling, NULL)) return 83;
         char byte;
         if (read(thread_ready[0], &byte, 1) != 1) return 82;
-        char *args[] = { "u8-process", "exec-thread-child", (char *)self, NULL };
+        char writer[16], reader[16];
+        snprintf(writer, sizeof writer, "%d", thread_block[1]);
+        snprintf(reader, sizeof reader, "%d", thread_block[0]);
+        char *args[] = { "u8-process", "exec-thread-child", (char *)self, writer, reader, NULL };
         char *env[] = { NULL };
         execve(self, args, env);
         return 81;
@@ -108,6 +133,25 @@ int main(int argc, char **argv) {
     }
     fflush(NULL);
     pid_t parent = getpid();
+    if (!strcmp(mode, "wait-interrupt") || !strcmp(mode, "wait-restart")) {
+        struct sigaction action = {0};
+        action.sa_handler = interrupted;
+        action.sa_flags = !strcmp(mode, "wait-restart") ? SA_RESTART : 0;
+        sigaction(SIGUSR1, &action, NULL);
+        pid_t pid = child();
+        if (pid < 0) return 78;
+        if (!pid) { usleep(100000); kill(parent, SIGUSR1); usleep(100000); _exit(5); }
+        int status = 0;
+        errno = 0;
+        pid_t waited = waitpid(pid, &status, 0);
+        int error = errno;
+        result("signal", received == 1);
+        result("interrupted", waited == -1 && error == EINTR);
+        if (waited == -1) waited = waitpid(pid, &status, 0);
+        result("wait", waited == pid);
+        result("status", status);
+        return 0;
+    }
     int vf = !strcmp(mode, "vfork-exec") || !strcmp(mode, "vfork-exit");
     pid_t pid = vf ? vfork() : child();
     if (pid < 0) return 93;

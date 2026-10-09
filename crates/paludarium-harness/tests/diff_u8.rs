@@ -93,7 +93,13 @@ mod linux {
                 emulated.stdout,
                 session.termination_detail()
             );
-            compare(&native, &emulated).unwrap();
+            if let Err(error) = compare(&native, &emulated) {
+                eprintln!(
+                    "{mode}: emulated stderr: {}",
+                    String::from_utf8_lossy(&emulated.stderr)
+                );
+                panic!("{error}");
+            }
         });
     }
     macro_rules! cases {($($name:ident => ($mode:literal,$binary:literal)),* $(,)?) => {$(#[test] fn $name(){case(concat!("linux::",stringify!($name)),$mode,$binary);})*};}
@@ -106,6 +112,9 @@ mod linux {
         u8_vfork_exit => ("vfork-exit","u8-process"),
         u8_exec => ("exec","u8-process"),
         u8_exec_thread => ("exec-thread","u8-process"),
+        u8_clone_vm => ("clone-vm","u8-process"),
+        u8_wait_interrupt => ("wait-interrupt","u8-process"),
+        u8_wait_restart => ("wait-restart","u8-process"),
         u8_enoent => ("enoent","u8-process"),
         u8_exec_fault => ("exec-fault","u8-process"),
         u8_bad_elf => ("bad-elf","u8-process"),

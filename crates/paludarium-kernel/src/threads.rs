@@ -555,3 +555,66 @@ impl Kernel {
         }
     }
 }
+
+#[cfg(test)]
+mod u8_exec_thread_tests {
+    use super::*;
+    fn group() -> ThreadGroup {
+        let group = ThreadGroup::default();
+        group.register(1, Arc::default());
+        group.register(2, Arc::default());
+        group
+    }
+    #[test]
+    fn retires_only_sibling() {
+        let group = group();
+        group.begin_exec(1).unwrap();
+        assert!(!group.retired(1));
+        assert!(group.retired(2));
+        assert_eq!(group.status(), None);
+    }
+    #[test]
+    fn retirement_wakes_blocked_sibling() {
+        let group = group();
+        let inbox = group.members.lock().unwrap().get(&2).unwrap().clone();
+        group.begin_exec(1).unwrap();
+        assert!(inbox.drain(&mut ThreadState::default()).interrupted);
+    }
+    #[test]
+    fn racing_exec_has_one_owner() {
+        let group = group();
+        group.begin_exec(1).unwrap();
+        assert_eq!(group.begin_exec(2), Err(Errno(4)));
+    }
+    #[test]
+    fn late_clone_is_retired() {
+        let group = group();
+        group.begin_exec(1).unwrap();
+        group.register(3, Arc::default());
+        assert!(group.retired(3));
+    }
+    #[test]
+    fn failed_validation_does_not_retire() {
+        let group = group();
+        assert!(!group.retired(2));
+        assert_eq!(group.exec_owner.load(Ordering::SeqCst), 0);
+    }
+    #[test]
+    fn nonleader_becomes_leader() {
+        let group = group();
+        group.begin_exec(2).unwrap();
+        group.members.lock().unwrap().remove(&1);
+        group.end_exec(2, 1, Arc::default());
+        assert!(!group.retired(1));
+        assert_eq!(group.active_threads(), 1);
+        assert!(group.members.lock().unwrap().contains_key(&1));
+    }
+    #[test]
+    fn subsequent_exec_can_acquire_owner() {
+        let group = group();
+        group.begin_exec(1).unwrap();
+        group.members.lock().unwrap().remove(&2);
+        group.end_exec(1, 1, Arc::default());
+        assert_eq!(group.begin_exec(1), Ok(()));
+    }
+}

@@ -8,6 +8,9 @@
   },
   "cases": [
     {"name":"fork","binary":"u8-process"},
+    {"name":"clone-vm","binary":"u8-process"},
+    {"name":"wait-interrupt","binary":"u8-process"},
+    {"name":"wait-restart","binary":"u8-process"},
     {"name":"private","binary":"u8-process"},
     {"name":"shared","binary":"u8-process"},
     {"name":"offset","binary":"u8-process"},
