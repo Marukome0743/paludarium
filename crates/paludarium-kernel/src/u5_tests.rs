@@ -22,11 +22,23 @@ fn timer_receipt_survives_process_dispatch_and_owner_acknowledges_kind() {
     assert!(receipt.timer_changed && receipt.interrupted && receipt.signals);
     let receipt = inbox.drain(&mut other);
     assert!(!receipt.timer_changed && !receipt.interrupted && !receipt.signals);
+    std::thread::scope(|scope| {
+        let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(0);
+        let inbox = &inbox;
+        scope.spawn(move || {
+            ack_rx.recv().unwrap();
+            inbox.timer_changed();
+            inbox.send_thread(12).unwrap();
+        });
+        ack_tx.send(()).unwrap();
+    });
+    let receipt = inbox.drain(&mut other);
+    assert!(receipt.timer_changed && receipt.signals && !receipt.interrupted);
 }
 #[test]
 fn preentry_timer_metadata_keeps_sleep_deadline_but_real_interrupt_wins() {
     use paludarium_host::{ClockId, Host};
-    for (changes, interrupted) in [(1, false), (2, false), (8, false), (2, true)] {
+    for (changes, mode) in [(1, 0), (2, 0), (8, 0), (2, 1), (2, 2), (2, 3), (2, 4)] {
         let host = Arc::new(paludarium_host::testing::RecordingHost::new());
         let inbox = Arc::new(SignalInbox::default());
         let mut k = Kernel::new(host.clone()).with_signal_inbox(inbox.clone());
@@ -43,29 +55,49 @@ fn preentry_timer_metadata_keeps_sleep_deadline_but_real_interrupt_wins() {
         })
         .join()
         .unwrap();
-        if interrupted {
+        if mode == 1 {
             inbox.interrupt();
         }
         assert!(inbox.wake_token().load(Ordering::SeqCst));
         let mut t = thread();
+        match mode {
+            2 => {
+                t.state.signal_mask = 1 << 9;
+                inbox.send_thread(10).unwrap();
+            }
+            3 => {
+                t.state.signal_actions.insert(
+                    10,
+                    SignalAction {
+                        handler: 1,
+                        ..SignalAction::default()
+                    },
+                );
+                inbox.send_thread(10).unwrap();
+            }
+            4 => k.group.stop(ExitStatus::Signaled(9)),
+            _ => {}
+        }
         let m = memory();
         m.write(GuestAddr(DATA + 8), &200_000_000u64.to_le_bytes())
             .unwrap();
         t.cpu.gpr[reg::RAX] = syscalls::nr::NANOSLEEP;
         t.cpu.gpr[reg::RDI] = DATA;
-        assert!(matches!(
-            k.handle(
-                &mut t,
-                &m,
-                ExitReason::Syscall {
-                    rip: GuestAddr(0x400000)
-                }
-            ),
-            Next::Resume
-        ));
+        let next = k.handle(
+            &mut t,
+            &m,
+            ExitReason::Syscall {
+                rip: GuestAddr(0x400000),
+            },
+        );
+        if mode == 4 {
+            assert!(matches!(next, Next::Exit(ExitStatus::Signaled(9))));
+            continue;
+        }
+        assert!(matches!(next, Next::Resume));
         assert_eq!(
             t.cpu.gpr[reg::RAX],
-            if interrupted {
+            if mode == 1 {
                 Errno(4).to_syscall_return()
             } else {
                 0
@@ -73,7 +105,7 @@ fn preentry_timer_metadata_keeps_sleep_deadline_but_real_interrupt_wins() {
         );
         assert_eq!(
             host.clock(ClockId::Monotonic).unwrap(),
-            if interrupted { 0 } else { 200_000_000 }
+            if mode == 1 { 0 } else { 200_000_000 }
         );
     }
 }
