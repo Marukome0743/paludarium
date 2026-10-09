@@ -309,6 +309,9 @@ impl Kernel {
             | 0x80000
             | 0x100000
             | 0x200000
+            // musl's pthread clone retains this obsolete, ignored Linux bit.
+            // U6 Tokio native trace observes it on both worker creations.
+            | 0x400000
             | 0x1000000;
         if flags & THREAD != 0 && flags & SIGHAND == 0 || flags & SIGHAND != 0 && flags & VM == 0 {
             return Err(Errno::EINVAL);

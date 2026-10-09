@@ -12,11 +12,11 @@
 mod inbox;
 mod signals;
 pub use inbox::SignalInbox;
-mod files;
-mod events;
 mod epoll;
-mod sockets;
+mod events;
+mod files;
 mod futex;
+mod sockets;
 mod syscalls;
 mod threads;
 pub use threads::ThreadGroup;

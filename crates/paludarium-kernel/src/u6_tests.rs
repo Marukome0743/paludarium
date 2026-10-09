@@ -6,6 +6,29 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 const DATA: u64 = 0x600000;
 #[test]
+fn u6_tokio_musl_clone_accepts_ignored_detached_bit() {
+    let mut f = Fixture::new();
+    let flags = 0x100
+        | 0x200
+        | 0x400
+        | 0x800
+        | 0x10000
+        | 0x40000
+        | 0x80000
+        | 0x100000
+        | 0x200000
+        | 0x400000;
+    let tid = f.ret(
+        56,
+        [flags, DATA + 0x2000, DATA + 32, DATA + 40, DATA + 64, 0],
+    );
+    assert!((2..i32::MAX as u64).contains(&tid));
+    assert_eq!(f.mem.read_u64(GuestAddr(DATA + 32)).unwrap(), tid);
+    let (_, child) = f.kernel.pending_child.take().unwrap();
+    assert_eq!(child.cpu.fs_base, DATA + 64);
+    assert_eq!(child.state.clear_child_tid, DATA + 40);
+}
+#[test]
 fn u6_blocking_socket_write_retries_after_host_entry_and_metadata() {
     use paludarium_host::FileHandle;
     for metadata in [false, true] {
