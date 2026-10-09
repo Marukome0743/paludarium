@@ -50,6 +50,13 @@ jobs:
           assert len(rows)==211
           assert all(a['sha256']==r['signed_ci_sha256'] for a,r in zip(rows,b['rows']))
           PY
+      - name: Generate fresh native expectations before replay
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          cargo test --locked -p paludarium-harness --test diff_u3 u3_native_observation -- --ignored --exact --nocapture > target/u3-filter-coverage-evidence/native-collection.log 2>&1
+          cp -R target/u3-guests target/u3-filter-coverage-evidence/native
       - name: Run exact listed command from empty profiles
         id: measure
         shell: bash
