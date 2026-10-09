@@ -16,10 +16,10 @@ def main():
     args = parser.parse_args()
     manifest = json.loads((args.observations / 'manifest.json').read_text())
     expected = {row['case']: row for row in manifest}
-    assert set(expected) == {*range(79), 'timer', 'unix'} and len(manifest) == 81
+    assert set(expected) == {*range(82), 'timer', 'unix'} and len(manifest) == 84
     rows = json.loads(args.base_native.read_text())
     args.destination.mkdir(parents=True, exist_ok=True)
-    for case in [*range(66), *range(67, 79), 'unix']:
+    for case in [*range(66), *range(67, 82), 'unix']:
         source = args.guests / (f'event-{case}' if isinstance(case, int) else 'u6-unix')
         binary = source.read_bytes()
         native = expected[case]['native']
@@ -36,7 +36,7 @@ def main():
             row['policy_stdout'] = struct.pack('<qqqq', -97, 0, 0, 0).hex()
         rows.append(row)
     args.out.write_text(json.dumps(rows, indent=2)+'\n')
-    print('Packaged 79 freshly observed U6 nonthreaded inputs; Tokio/backpressure guest threads remain U11 boundary')
+    print('Packaged 82 freshly observed U6 nonthreaded inputs; Tokio/backpressure guest threads remain U11 boundary')
 
 
 if __name__ == '__main__':

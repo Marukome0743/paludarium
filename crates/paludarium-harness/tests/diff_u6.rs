@@ -114,6 +114,8 @@ cases!(
     pwait_temporary_unblock_handler=>73, pwait_normal_signal=>74,
     pwait_masked_signal=>75, pwait_ignored_signal=>76,
     pwait_ready_restores_mask=>77, pwait_invalid_restores_mask=>78,
+    event_et_output_read=>79, socket_et_output_partial_drain=>80,
+    socket_et_output_write_boundaries=>81,
 );
 #[test]
 fn tokio_timer() {

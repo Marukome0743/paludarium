@@ -44,6 +44,14 @@ static I fill_stream(int fd,I *partial,U *queued) {
 }
 static I run(I *o) {
  U x=0;struct Ev out[4]={{0,0}};I fd=-1,e=-1,d=-1;int p[2]={-1,-1};char b[8]={0};int id=CASE;
+ if(CASE>=79) {
+  e=ep();
+  if(CASE==79){fd=event(2,NB|1);ctl(e,1,fd,4|ET,79);o[0]=wait(e,out,1,0);get(fd,&x);o[1]=wait(e,out,1,0);o[2]=x;o[3]=wait(e,out,1,0);return 0;}
+  sc(53,1,1|NB,0,(U)p,0,0);ctl(e,1,p[0],4|ET,80);o[0]=wait(e,out,1,0);
+  S(1,p[0],"abc",3);
+  if(CASE==80){o[1]=wait(e,out,1,0);S(0,p[1],b,1);o[2]=wait(e,out,1,0);S(0,p[1],b,2);o[3]=wait(e,out,1,0);return 0;}
+  S(1,p[0],"de",2);wait(e,out,1,0);S(0,p[1],b,3);o[1]=wait(e,out,1,0);S(0,p[1],b,1);o[2]=wait(e,out,1,0);S(0,p[1],b,1);o[3]=wait(e,out,1,0);return 0;
+ }
  if(CASE>=67) {
   e=ep();
   if(CASE<=69) {
