@@ -13,13 +13,36 @@ def static_elf(data):
         raise ValueError('not ELF64 little endian')
     if struct.unpack_from('<H', data, 18)[0] != 62:
         raise ValueError('not x86-64')
+    if struct.unpack_from('<H', data, 16)[0] not in (2, 3):
+        raise ValueError('not executable or static PIE')
     offset = struct.unpack_from('<Q', data, 32)[0]
     size, count = struct.unpack_from('<HH', data, 54)
     if size < 56 or count == 0 or offset + size * count > len(data):
         raise ValueError('invalid program headers')
-    types = [struct.unpack_from('<I', data, offset + i * size)[0] for i in range(count)]
-    if 2 in types or 3 in types or 1 not in types:
-        raise ValueError('dynamic/interpreted or missing load segment')
+    headers = [struct.unpack_from('<IIQQQQQQ', data, offset + i * size) for i in range(count)]
+    types = [header[0] for header in headers]
+    if 3 in types or 1 not in types:
+        raise ValueError('interpreter or missing load segment')
+    # Rust/musl static PIE uses PT_DYNAMIC for its own relocations. It is
+    # static iff no external interpreter or DT_NEEDED library is required.
+    for header in headers:
+        if header[2] + header[5] > len(data):
+            raise ValueError('segment extends outside binary')
+        if header[0] != 2:
+            continue
+        start, length = header[2], header[5]
+        if length == 0 or length % 16:
+            raise ValueError('malformed dynamic table')
+        terminated = False
+        for position in range(start, start + length, 16):
+            tag, _ = struct.unpack_from('<qQ', data, position)
+            if tag == 1:
+                raise ValueError('DT_NEEDED external library')
+            if tag == 0:
+                terminated = True
+                break
+        if not terminated:
+            raise ValueError('unterminated dynamic table')
     return True
 
 
