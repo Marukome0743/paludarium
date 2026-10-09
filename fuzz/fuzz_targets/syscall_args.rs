@@ -78,10 +78,7 @@ fuzz_target!(|data: &[u8]| {
         waits: std::sync::atomic::AtomicUsize::new(0),
     }))
     .with_file_system(Arc::new(fs));
-    let mut thread = Thread {
-        tid: 1,
-        cpu: CpuState::default(),
-    };
+    let mut thread = Thread::new(1, CpuState::default());
     thread.cpu.gpr[reg::RSP] = AREA + AREA_LEN;
     // Keep one valid file description reachable by the subsequent sequence.
     let _ = mem.write(GuestAddr(AREA + 0x3000), b"/u7\0");
@@ -90,7 +87,7 @@ fuzz_target!(|data: &[u8]| {
     thread.cpu.gpr[reg::RSI] = 2;
     let _ = kernel.handle(
         &mut thread,
-        &mut mem,
+        &mem,
         ExitReason::Syscall {
             rip: GuestAddr(0x1000),
         },
@@ -129,7 +126,7 @@ fuzz_target!(|data: &[u8]| {
         thread.cpu.gpr[reg::RAX] = number;
         let _ = kernel.handle(
             &mut thread,
-            &mut mem,
+            &mem,
             ExitReason::Syscall {
                 rip: GuestAddr(0x1000),
             },
@@ -138,7 +135,7 @@ fuzz_target!(|data: &[u8]| {
     // A syscall/handler context is also finite when fuzzed bytes decode as
     // loops or repeated strings. No host wait occurs inside CPU execution.
     thread.cpu.rip = GuestAddr(AREA);
-    if !kernel.process().stopped && kernel.process().exit_status.is_none() {
+    if !thread.state.stopped && thread.state.exit_status.is_none() {
         let _ = paludarium_cpu::run(&mut thread.cpu, &mem, 64);
     }
 });

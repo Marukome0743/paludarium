@@ -73,3 +73,17 @@ path = "fuzz_targets/vfs_paths.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "kernel_threads_u5"
+path = "fuzz_targets/kernel_threads_u5.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kernel_futex_u5"
+path = "fuzz_targets/kernel_futex_u5.rs"
+test = false
+doc = false
+bench = false
