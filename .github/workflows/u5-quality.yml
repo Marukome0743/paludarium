@@ -107,6 +107,7 @@ jobs:
       - run: ln -s "$GITHUB_WORKSPACE" /work
       - run: rustup toolchain install nightly-2026-10-01 --profile minimal
       - run: cargo install --locked --version 0.13.2 cargo-fuzz
+      - run: cargo check --locked --manifest-path fuzz/Cargo.toml --bins
       - name: ASan and LSan, 600 seconds per target
         shell: bash
         run: |
@@ -114,6 +115,7 @@ jobs:
           cd /work
           mkdir -p target/u5-fuzz
           rustc -Vv > target/u5-fuzz/toolchain.txt
+          sha256sum fuzz/Cargo.lock > target/u5-fuzz/lock-before.sha256
           date -u > target/u5-fuzz/start.txt
           set +e
           cargo fuzz run --fuzz-dir fuzz --sanitizer address '${{ matrix.target }}' -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048 2>&1 | tee target/u5-fuzz/raw.log
@@ -121,6 +123,8 @@ jobs:
           set -e
           printf '%s\n' "$status" > target/u5-fuzz/exit.txt
           date -u > target/u5-fuzz/end.txt
+          sha256sum fuzz/Cargo.lock > target/u5-fuzz/lock-after.sha256
+          cmp target/u5-fuzz/lock-before.sha256 target/u5-fuzz/lock-after.sha256
           test "$status" = 0
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

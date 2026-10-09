@@ -17,7 +17,7 @@ impl SignalInbox {
         self.send_pending(signals::PendingSignal::user(number, 0))
     }
     pub(crate) fn send_thread(&self, number: i32) -> Result<(), Errno> {
-        self.send_pending(signals::PendingSignal::thread(number, 0))
+        self.send_pending(signals::PendingSignal::thread(number, -6))
     }
     fn send_pending(&self, signal: signals::PendingSignal) -> Result<(), Errno> {
         let number = signal.number;

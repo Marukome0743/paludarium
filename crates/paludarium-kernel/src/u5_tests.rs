@@ -179,3 +179,30 @@ fn futex_timeout_wins_once() {
     assert_eq!(f.wake(&m, DATA, true, 1, 1), Ok(0));
     assert_eq!(f.finish(&m, DATA, true, &a, 3), 2);
 }
+
+#[test]
+fn tkill_transport_preserves_code_and_thread_target() {
+    for number in [200, 234] {
+        let mut k = kernel();
+        let mut t = thread();
+        let m = memory();
+        t.state.signal_mask = 1 << 35;
+        t.cpu.gpr[reg::RAX] = number;
+        t.cpu.gpr[reg::RDI] = 1;
+        t.cpu.gpr[reg::RSI] = if number == 200 { 36 } else { 1 };
+        t.cpu.gpr[reg::RDX] = 36;
+        assert_eq!(
+            k.handle(
+                &mut t,
+                &m,
+                ExitReason::Syscall {
+                    rip: GuestAddr(0x400000)
+                }
+            ),
+            Next::Resume
+        );
+        assert_eq!(t.state.pending.len(), 1);
+        assert_eq!(t.state.pending[0].target, signals::PendingTarget::Thread);
+        assert_eq!(t.state.pending[0].code, -6);
+    }
+}
