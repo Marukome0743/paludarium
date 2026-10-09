@@ -8,6 +8,14 @@ mod fd {
     #[test]
     fn pipe_pointer_fault() {
         let (mut k, mut t, m) = setup();
+        m.write(GuestAddr(DATA), b"/dev/null\0").unwrap();
+        let fd = syscall(&mut k, &mut t, &m, 2, [DATA, 0x80000, 0, 0, 0, 0]);
+        assert!(fd < 1024);
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 0, [fd, DATA + 64, 8, 0, 0, 0]),
+            0
+        );
+        assert!(k.files.for_exec().descriptor(fd).is_err());
         assert_eq!(
             syscall(&mut k, &mut t, &m, 293, [1, 0, 0, 0, 0, 0]),
             Errno::EFAULT.to_syscall_return()

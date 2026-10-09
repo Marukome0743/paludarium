@@ -248,6 +248,7 @@ impl Kernel {
             .remove(&tid);
     }
     pub fn finish_thread(&mut self, thread: &Thread, mem: &AddressSpace) {
+        self.files.release_descriptors();
         let addr = thread.state.clear_child_tid;
         if addr != 0 && mem.write(GuestAddr(addr), &0u32.to_le_bytes()).is_ok() {
             let _ = self.group.futexes.wake(mem, addr, false, 1, u32::MAX);
@@ -594,10 +595,13 @@ mod u8_exec_thread_tests {
         assert!(group.retired(3));
     }
     #[test]
-    fn failed_validation_does_not_retire() {
-        let group = group();
-        assert!(!group.retired(2));
-        assert_eq!(group.exec_owner.load(Ordering::SeqCst), 0);
+    fn single_thread_exec_keeps_process_live() {
+        let group = ThreadGroup::default();
+        group.register(1, Arc::default());
+        group.begin_exec(1).unwrap();
+        assert!(!group.retired(1));
+        assert_eq!(group.active_threads(), 1);
+        assert_eq!(group.status(), None);
     }
     #[test]
     fn nonleader_becomes_leader() {

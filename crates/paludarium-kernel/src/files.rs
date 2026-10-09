@@ -39,6 +39,11 @@ impl Default for Files {
     }
 }
 impl Files {
+    pub(crate) fn release_descriptors(&mut self) {
+        // Detach this worker's table reference without closing a table still
+        // shared by live CLONE_FILES siblings.
+        self.fds = Arc::new(Mutex::new(BTreeMap::new()));
+    }
     pub(crate) fn exec_path(&self, path: Vec<u8>) -> Result<Vec<u8>, Errno> {
         self.path((-100i32) as u64, path)
     }
@@ -327,7 +332,11 @@ pub(crate) fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno
             if flags & 3 == 3 {
                 return Err(Errno::EINVAL);
             }
-            let f = c.files.fs.open(&p, flags, (mode as u32) & !c.files.umask)?;
+            let f: Arc<dyn FileHandle> = if p == b"/dev/null" {
+                Arc::new(crate::null::NullFile::new(flags))
+            } else {
+                c.files.fs.open(&p, flags, (mode as u32) & !c.files.umask)?
+            };
             c.files
                 .allocate(
                     Descriptor {
