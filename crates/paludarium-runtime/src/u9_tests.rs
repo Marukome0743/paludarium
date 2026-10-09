@@ -40,11 +40,7 @@ fn query(host: Arc<RecordingHost>, tty: Option<TerminalInfo>, request: u32) -> V
     host.stdout()
 }
 fn terminal() -> HostTerminal {
-    HostTerminal {
-        columns: 101,
-        rows: 37,
-        ..HostTerminal::default()
-    }
+    HostTerminal::new(Default::default(), 101, 37, 0, 0)
 }
 #[test]
 fn u9_runtime_uses_host_size() {
