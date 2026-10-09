@@ -5,7 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from comparison import compare, normalized, reproduced
+from comparison import compare, normalized, probe_pass, reproduced
 
 
 class ComparisonTests(unittest.TestCase):
@@ -24,6 +24,9 @@ class ComparisonTests(unittest.TestCase):
             rows[name][stream] = rows[name][stream].splitlines()[0] + '\n'
             with self.assertRaises(ValueError):
                 reproduced(rows)
+        for stdout in ('', 'FAIL fs-basic\n', 'PASS fs-basic\nPASS fs-basic\n'):
+            with self.assertRaises(ValueError):
+                probe_pass({'stdout': stdout, 'exit': 0, 'timed_out': False}, ['fs-basic'])
 
     def test_actual_versions_rejected(self):
         rows = self.rows()
@@ -38,6 +41,8 @@ class ComparisonTests(unittest.TestCase):
                 rows[name][field] = value
                 with self.assertRaises(ValueError):
                     reproduced(rows)
+                with self.assertRaises(ValueError):
+                    compare(self.rows()[name], rows[name], '/native', '/guest')
 
     def test_ansi_report_reproduces(self):
         rows = self.rows()

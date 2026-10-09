@@ -42,3 +42,32 @@ jobs:
             target/guests/u10/aube
             target/u10/native/
           retention-days: 7
+  differential:
+    needs: native-first
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: u10-native-first
+          path: target
+      - run: chmod +x target/guests/u10/probe target/guests/u10/aube
+      - run: rustup toolchain install nightly-2026-10-01 --profile minimal
+      - name: Compile C10 harness before network isolation
+        run: cargo +nightly-2026-10-01 test --locked -p paludarium-harness --test diff_u10 --no-run
+      - name: Fresh native oracle then bounded C10 differential without network
+        run: |
+          u10_cargo="$(rustup which --toolchain nightly-2026-10-01 cargo)"
+          u10_rustc="$(rustup which --toolchain nightly-2026-10-01 rustc)"
+          u10_bin="$(dirname "$u10_cargo")"
+          sudo unshare --net env PATH="$u10_bin:$PATH" RUSTC="$u10_rustc" "$u10_cargo" test --locked --offline -p paludarium-harness --test diff_u10 -- --nocapture
+      - name: Retain differential observations and watchdog failure records
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u10-differential
+          path: target/u10/differential/
+          retention-days: 7
