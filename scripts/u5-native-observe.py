@@ -10,12 +10,12 @@ import struct
 import subprocess
 
 
-def run(command, prefix):
+def run(command, prefix, timeout=30):
     child = subprocess.Popen(command, start_new_session=True, stdin=subprocess.DEVNULL,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     timed_out = False
     try:
-        stdout, stderr = child.communicate(timeout=30)
+        stdout, stderr = child.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         timed_out = True
         os.killpg(child.pid, signal.SIGKILL)

@@ -15,6 +15,8 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
       - name: Build native guest cases
         run: bash tests/guests/u5/build.sh target/guests/u5
+      - name: Verify bounded runner
+        run: python3 scripts/u5-runner-test.py
       - name: Run finite native-first cases
         run: python3 scripts/u5-native-observe.py --out target/u5-native-first
       - name: Retain raw observations
