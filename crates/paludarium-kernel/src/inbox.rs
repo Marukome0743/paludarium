@@ -2,7 +2,7 @@
 use crate::{ThreadState, signals};
 use paludarium_types::Errno;
 use std::sync::{
-    Arc, Mutex, PoisonError,
+    Arc, Mutex, PoisonError, Weak,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -10,6 +10,7 @@ use std::sync::{
 pub struct SignalInbox {
     queue: Mutex<Vec<signals::PendingSignal>>,
     wake: Arc<AtomicBool>,
+    listeners: Mutex<Vec<Weak<AtomicBool>>>,
 }
 impl SignalInbox {
     /// Queues a signal for the single guest process (U4).
@@ -34,11 +35,38 @@ impl SignalInbox {
         }
         queue.push(signal);
         self.wake.store(true, Ordering::SeqCst);
+        self.notify_listeners();
         Ok(())
+    }
+    pub(crate) fn subscribe(&self, wake: &Arc<AtomicBool>) {
+        let mut listeners = self
+            .listeners
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        listeners.retain(|listener| listener.strong_count() != 0);
+        let listener = Arc::downgrade(wake);
+        if !listeners.iter().any(|existing| existing.ptr_eq(&listener)) {
+            listeners.push(listener);
+        }
+    }
+    fn notify_listeners(&self) {
+        let mut listeners = self
+            .listeners
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        listeners.retain(|listener| {
+            if let Some(wake) = listener.upgrade() {
+                wake.store(true, Ordering::SeqCst);
+                true
+            } else {
+                false
+            }
+        });
     }
     /// Interrupts a native wait without modifying CPU or guest memory.
     pub fn interrupt(&self) {
-        self.wake.store(true, Ordering::SeqCst)
+        self.wake.store(true, Ordering::SeqCst);
+        self.notify_listeners();
     }
     #[must_use]
     pub fn wake_token(&self) -> Arc<AtomicBool> {
@@ -53,6 +81,19 @@ impl SignalInbox {
         // Sender stores while holding this same mutex, preventing a lost wake.
         self.wake.store(false, Ordering::SeqCst);
         received
+    }
+    /// Process dispatch must leave directed signals in their owning thread inbox.
+    pub(crate) fn drain_process(&self, process: &mut ThreadState) {
+        let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        queue.retain(|signal| {
+            if signal.target == signals::PendingTarget::Process {
+                signals::queue(process, *signal);
+                false
+            } else {
+                true
+            }
+        });
+        self.wake.store(!queue.is_empty(), Ordering::SeqCst);
     }
 }
 

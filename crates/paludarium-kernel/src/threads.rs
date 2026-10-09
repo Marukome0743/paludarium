@@ -65,10 +65,19 @@ impl ThreadGroup {
         self.drain_process(local);
     }
     pub(crate) fn register(&self, tid: u32, inbox: Arc<SignalInbox>) {
-        self.members
+        let wake = inbox.wake_token();
+        let new = self
+            .members
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .insert(tid, inbox);
+            .insert(tid, inbox)
+            .is_none();
+        if new {
+            self.process_inbox
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .subscribe(&wake);
+        }
     }
     pub fn status(&self) -> Option<ExitStatus> {
         *self.status.lock().unwrap_or_else(PoisonError::into_inner)
@@ -121,7 +130,7 @@ impl ThreadGroup {
         self.process_inbox
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .drain(&mut pending);
+            .drain_process(&mut pending);
         if pending.pending.iter().any(|s| s.number == 18) {
             self.stopped.store(false, Ordering::SeqCst);
         }

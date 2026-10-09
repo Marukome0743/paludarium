@@ -206,3 +206,40 @@ fn tkill_transport_preserves_code_and_thread_target() {
         assert_eq!(t.state.pending[0].code, -6);
     }
 }
+
+#[test]
+fn process_dispatch_does_not_steal_initial_thread_signal() {
+    let inbox = Arc::new(SignalInbox::default());
+    let k = kernel().with_signal_inbox(inbox.clone());
+    let mut child = ThreadState::default();
+    inbox.send_thread(36).unwrap();
+    inbox.send(35).unwrap();
+    k.group.drain_process(&mut child);
+    assert_eq!(child.pending.len(), 1);
+    assert_eq!(child.pending[0].number, 35);
+    let mut initial = ThreadState::default();
+    inbox.drain(&mut initial);
+    assert_eq!(initial.pending.len(), 1);
+    assert_eq!(initial.pending[0].number, 36);
+    assert_eq!(initial.pending[0].target, signals::PendingTarget::Thread);
+    assert_eq!(initial.pending[0].code, -6);
+}
+
+#[test]
+fn process_signal_interrupts_registered_child_wait_token() {
+    let inbox = Arc::new(SignalInbox::default());
+    let k = kernel().with_signal_inbox(inbox.clone());
+    let child = Arc::new(SignalInbox::default());
+    k.group.register(2, child.clone());
+    inbox.send(35).unwrap();
+    assert!(child.wake_token().load(Ordering::SeqCst));
+    let mut child_state = ThreadState::default();
+    child.drain(&mut child_state);
+    k.group.drain_process(&mut child_state);
+    assert_eq!(child_state.pending.len(), 1);
+    assert_eq!(child_state.pending[0].number, 35);
+    assert_eq!(
+        child_state.pending[0].target,
+        signals::PendingTarget::Process
+    );
+}

@@ -334,6 +334,7 @@ fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
                             return Err(Errno(4));
                         }
                         c.inbox.drain(c.process);
+                        c.group.drain_process(c.process);
                         if crate::signals::next_pending(c.process, true).is_some() {
                             return Err(Errno(4));
                         }

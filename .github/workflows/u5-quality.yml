@@ -14,7 +14,7 @@ jobs:
           persist-credentials: false
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
-      - run: cargo test --locked -p paludarium-harness --test diff_u1 --test diff_u2 --test parallel_u2 --test diff_u4 --test diff_u9 --test diff_u3 -- --nocapture
+      - run: cargo test --locked -p paludarium-harness --test diff_u1 --test diff_u2 --test parallel_u2 --test diff_u4 --test diff_u7 --test diff_u9 --test diff_u3 -- --nocapture
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -60,6 +60,8 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --locked -p paludarium-host -p paludarium-kernel -p paludarium-mmu -p paludarium-runtime --lib
+      - run: cargo test --locked -p paludarium-vfs --lib
+      - run: cargo test --locked -p paludarium --test command
       - run: cargo install --locked cargo-deny
       - run: cargo deny check
   coverage:
