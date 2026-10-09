@@ -36,6 +36,8 @@ jobs:
             target/guests/u10/build-receipt.json
             target/guests/u10/*-build.log
             target/guests/u10/*-dependencies.log
+            target/guests/u10/aube-deny.toml
+            target/guests/u10/licenses/
             target/guests/u10/probe
             target/guests/u10/aube
             target/u10/native/

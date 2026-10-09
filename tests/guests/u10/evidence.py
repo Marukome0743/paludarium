@@ -3,6 +3,35 @@ import hashlib
 import pathlib
 import struct
 
+LICENSE_EXCEPTION = {'crate': 'webpki-root-certs@1.0.9', 'allow': ['CDLA-Permissive-2.0']}
+LICENSE_SUFFIX = b'\n[[licenses.exceptions]]\ncrate = "webpki-root-certs@1.0.9"\nallow = ["CDLA-Permissive-2.0"]\n'
+
+
+def guest_policy(root_bytes, exception):
+    if exception != LICENSE_EXCEPTION:
+        raise ValueError('unapproved guest license exception')
+    return root_bytes + LICENSE_SUFFIX
+
+
+def policy_receipt_valid(directory, receipt, root_bytes):
+    policy = receipt['license_policy']
+    if policy['exception'] != LICENSE_EXCEPTION:
+        raise ValueError('unapproved guest license exception')
+    if hashlib.sha256(root_bytes).hexdigest() != policy['root_config_sha256']:
+        raise ValueError('root policy changed')
+    config = directory / 'aube-deny.toml'
+    if config.read_bytes() != guest_policy(root_bytes, policy['exception']):
+        raise ValueError('guest config does not inherit exact root policy')
+    if digest(config) != policy['guest_config_sha256']:
+        raise ValueError('guest config hash differs')
+    license_file = directory / 'licenses/webpki-root-certs-1.0.9-CDLA-Permissive-2.0.txt'
+    if digest(license_file) != policy['license_sha256']:
+        raise ValueError('license text hash differs')
+    if policy['crate_source'] != 'registry+https://github.com/rust-lang/crates.io-index':
+        raise ValueError('certificate crate source is not crates.io')
+    if receipt['audits'] != {'probe': 0, 'aube': 0}:
+        raise ValueError('full guest dependency audits did not pass')
+
 
 def digest(path):
     return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
@@ -54,6 +83,18 @@ def validate(directory, receipt):
         if digest(binary) != receipt['binaries'][name]['sha256']:
             raise ValueError('binary hash differs')
         static_elf(binary.read_bytes())
+    root_bytes = (pathlib.Path(__file__).resolve().parents[3] / 'deny.toml').read_bytes()
+    policy_receipt_valid(directory, receipt, root_bytes)
+
+
+def record_source_after(upstream, receipt):
+    if 'source_before' not in receipt:
+        return
+    receipt['source_after'] = snapshot(upstream)
+    receipt['source_unchanged'] = receipt['source_after'] == receipt['source_before']
+    if not receipt['source_unchanged']:
+        receipt['exit'] = 1
+        receipt['source_error'] = 'upstream source changed during build or audit'
 
 
 def snapshot(directory):
