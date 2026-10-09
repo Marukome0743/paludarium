@@ -700,6 +700,18 @@ fn sys_rt_sigprocmask(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
 /// Only known terminal queries are interpreted, never forwarded to Host.
 fn sys_ioctl(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
     let run = || -> Result<u64, Errno> {
+        if a[1] == 0x5421 {
+            let descriptor = c.files.descriptor(a[0])?;
+            let mut bytes = [0; 4];
+            c.mem
+                .read(GuestAddr(a[2]), &mut bytes)
+                .map_err(|_| Errno::EFAULT)?;
+            let enabled = i32::from_le_bytes(bytes) != 0;
+            let flags = (descriptor.file.flags() & !crate::events::NONBLOCK)
+                | if enabled { crate::events::NONBLOCK } else { 0 };
+            descriptor.file.set_flags(flags)?;
+            return Ok(0);
+        }
         let stream = match c.files.stdio_channel(a[0])? {
             Some(0) => paludarium_host::StreamId::Stdin,
             Some(1) => paludarium_host::StreamId::Stdout,

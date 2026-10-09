@@ -34,6 +34,25 @@ mod fd {
             1
         );
         assert!(k.files.for_exec().descriptor(fd as u64).is_err());
+        m.write(GuestAddr(DATA + 64), &1i32.to_le_bytes()).unwrap();
+        assert_eq!(
+            syscall(
+                &mut k,
+                &mut t,
+                &m,
+                16,
+                [fd as u64, 0x5421, DATA + 64, 0, 0, 0]
+            ),
+            0
+        );
+        assert_eq!(
+            k.files.descriptor(fd as u64).unwrap().file.flags() & 0x800,
+            0x800
+        );
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 16, [fd as u64, 0x5421, 1, 0, 0, 0]),
+            Errno::EFAULT.to_syscall_return()
+        );
     }
     #[test]
     fn vector_table_fault() {

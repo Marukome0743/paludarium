@@ -236,6 +236,9 @@ impl Kernel {
 
     /// Delivers an unblocked pending signal at a CPU/Kernel boundary.
     pub fn checkpoint(&mut self, thread: &mut Thread, mem: &AddressSpace) -> Next {
+        if self.group.retired(thread.tid) {
+            return Next::Exit(ExitStatus::Exited(0));
+        }
         self.group.register(thread.tid, Arc::clone(&self.inbox));
         if let Some(status) = self.group.status() {
             return Next::Exit(status);

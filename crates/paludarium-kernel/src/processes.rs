@@ -402,6 +402,23 @@ impl Kernel {
                 _ => Errno(8),
             },
         )?;
+        // All validation precedes retirement. Old siblings must stop touching
+        // their image and shared descriptors before the replacement is visible.
+        self.group.begin_exec(thread.tid)?;
+        while self.group.active_threads() > 1 {
+            if self.group.status().is_some() {
+                return Err(Errno(4));
+            }
+            let now = self.host.clock(ClockId::Monotonic)?;
+            self.host.wait_until(
+                ClockId::Monotonic,
+                now.saturating_add(10_000_000),
+                &self.cancellation,
+            )?;
+        }
+        self.group
+            .end_exec(thread.tid, self.process.pid, Arc::clone(&self.inbox));
+        thread.tid = self.process.pid;
         self.files = self.files.for_exec();
         self.group.exec_actions();
         thread.cpu = CpuState::new(image.entry_point, image.initial_stack_pointer);

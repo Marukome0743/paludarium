@@ -8,14 +8,16 @@ use paludarium_host::{ClockId, WaitOutcome};
 use paludarium_mmu::AddressSpace;
 use paludarium_types::{Errno, ExitStatus, GuestAddr};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{
         Arc, Mutex, PoisonError,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU32, AtomicU64, Ordering},
     },
 };
 
 pub struct ThreadGroup {
+    exec_owner: AtomicU32,
+    retired: Mutex<BTreeSet<u32>>,
     stopped: std::sync::atomic::AtomicBool,
     members: Mutex<BTreeMap<u32, Arc<SignalInbox>>>,
     status: Mutex<Option<ExitStatus>>,
@@ -28,6 +30,8 @@ pub struct ThreadGroup {
 impl Default for ThreadGroup {
     fn default() -> Self {
         Self {
+            exec_owner: AtomicU32::new(0),
+            retired: Mutex::new(BTreeSet::new()),
             stopped: std::sync::atomic::AtomicBool::new(false),
             members: Mutex::new(BTreeMap::new()),
             status: Mutex::new(None),
@@ -40,6 +44,36 @@ impl Default for ThreadGroup {
     }
 }
 impl ThreadGroup {
+    pub(crate) fn retired(&self, tid: u32) -> bool {
+        self.retired
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains(&tid)
+    }
+    pub(crate) fn begin_exec(&self, tid: u32) -> Result<(), Errno> {
+        self.exec_owner
+            .compare_exchange(0, tid, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| Errno(4))?;
+        let members = self.members.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut retired = self.retired.lock().unwrap_or_else(PoisonError::into_inner);
+        for (&other, inbox) in members.iter() {
+            if other != tid {
+                retired.insert(other);
+                inbox.interrupt();
+            }
+        }
+        Ok(())
+    }
+    pub(crate) fn end_exec(&self, old_tid: u32, pid: u32, inbox: Arc<SignalInbox>) {
+        let mut members = self.members.lock().unwrap_or_else(PoisonError::into_inner);
+        members.remove(&old_tid);
+        members.insert(pid, inbox);
+        self.retired
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&pid);
+        self.exec_owner.store(0, Ordering::SeqCst);
+    }
     pub(crate) fn fork(&self) -> Self {
         Self {
             actions: Mutex::new(
@@ -110,12 +144,17 @@ impl ThreadGroup {
     }
     pub(crate) fn register(&self, tid: u32, inbox: Arc<SignalInbox>) {
         let wake = inbox.wake_token();
-        let new = self
-            .members
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(tid, inbox)
-            .is_none();
+        let mut members = self.members.lock().unwrap_or_else(PoisonError::into_inner);
+        let owner = self.exec_owner.load(Ordering::SeqCst);
+        if owner != 0 && owner != tid {
+            self.retired
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(tid);
+            inbox.interrupt();
+        }
+        let new = members.insert(tid, inbox).is_none();
+        drop(members);
         if new {
             self.process_inbox
                 .lock()
