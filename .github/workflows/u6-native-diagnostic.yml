@@ -1,0 +1,33 @@
+name: U6 native expectations
+on:
+  push:
+    branches: [codex/u6-native-diagnostic]
+permissions:
+  contents: read
+jobs:
+  native-first:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools strace
+      - run: rustup target add x86_64-unknown-linux-musl
+      - name: Build all native guest cases
+        run: bash tests/guests/u6/build.sh target/guests/u6
+      - name: Verify bounded runner
+        run: python3 scripts/u6-runner-test.py
+      - name: Observe all finite cases before product implementation
+        run: python3 scripts/u6-native-observe.py --out target/u6-native-first
+      - name: Trace target syscall use with bounded execution
+        run: |
+          timeout --kill-after=2s 30s strace -f -o target/u6-native-first/timer.strace target/guests/u6/u6-timer
+          timeout --kill-after=2s 30s strace -f -o target/u6-native-first/unix.strace target/guests/u6/u6-unix
+      - name: Retain raw observations and syscall traces
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u6-native-first
+          path: target/u6-native-first
+          retention-days: 7
