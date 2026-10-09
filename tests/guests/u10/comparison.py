@@ -26,5 +26,11 @@ def probe_pass(result, items):
 
 def reproduced(rows):
     for name in ('frozen', 'list'):
-        if rows[name]['exit'] != 0 or rows[name]['timed_out'] or '0.0.0' not in rows[name]['stdout']:
+        row = rows[name]
+        # aube install writes its dependency report to stderr; list writes
+        # its tree to stdout. Require both fixture dependencies in each.
+        report = re.sub(r'\x1b\[[0-9;]*m', '', row['stderr'] if name == 'frozen' else row['stdout'])
+        patterns = (r'^\+ filedep@0\.0\.0$', r'^\+ linked@0\.0\.0$') if name == 'frozen' else (
+            r'^├── filedep 0\.0\.0$', r'^└── linked 0\.0\.0$')
+        if row['exit'] != 0 or row['timed_out'] or not all(re.search(p, report, re.MULTILINE) for p in patterns):
             raise ValueError('#1645 not reproduced on native ' + name)

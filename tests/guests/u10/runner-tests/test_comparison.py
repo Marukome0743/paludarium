@@ -1,0 +1,60 @@
+"""Comparison rejects incomplete or failed #1645 reproductions."""
+import copy
+import pathlib
+import sys
+import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from comparison import compare, normalized, reproduced
+
+
+class ComparisonTests(unittest.TestCase):
+    def rows(self):
+        return {'frozen': {'stdout': '', 'stderr': '+ filedep@0.0.0\n+ linked@0.0.0\n',
+                           'exit': 0, 'timed_out': False},
+                'list': {'stdout': '├── filedep 0.0.0\n└── linked 0.0.0\n', 'stderr': '',
+                         'exit': 0, 'timed_out': False}}
+
+    def test_correct_streams_reproduce(self):
+        reproduced(self.rows())
+
+    def test_missing_dependency_rejected(self):
+        for name, stream in [('frozen', 'stderr'), ('list', 'stdout')]:
+            rows = self.rows()
+            rows[name][stream] = rows[name][stream].splitlines()[0] + '\n'
+            with self.assertRaises(ValueError):
+                reproduced(rows)
+
+    def test_actual_versions_rejected(self):
+        rows = self.rows()
+        rows['frozen']['stderr'] = '+ filedep@1.0.0\n+ linked@2.0.0\n'
+        with self.assertRaises(ValueError):
+            reproduced(rows)
+
+    def test_failure_or_timeout_rejected(self):
+        for name in ('frozen', 'list'):
+            for field, value in [('exit', 1), ('timed_out', True)]:
+                rows = self.rows()
+                rows[name][field] = value
+                with self.assertRaises(ValueError):
+                    reproduced(rows)
+
+    def test_ansi_report_reproduces(self):
+        rows = self.rows()
+        rows['frozen']['stderr'] = '\x1b[32m' + rows['frozen']['stderr'] + '\x1b[0m'
+        reproduced(rows)
+
+    def test_normalization_is_narrow(self):
+        self.assertEqual(normalized('\x1b[32m/tmp/root in 12ms\x1b[0m FAIL\n', '/tmp/root'),
+                         '<FIXTURE> in <ELAPSED> FAIL\n')
+
+    def test_stdout_mismatch_remains_failure(self):
+        expected = self.rows()['list']
+        actual = copy.deepcopy(expected)
+        actual['stdout'] = actual['stdout'].replace('0.0.0', '1.0.0')
+        with self.assertRaises(ValueError):
+            compare(expected, actual, '/native', '/guest')
+
+
+if __name__ == '__main__':
+    unittest.main()
