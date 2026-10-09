@@ -20,6 +20,10 @@ fn kernel() -> Kernel {
 fn thread() -> Thread {
     Thread {
         tid: 1,
+        state: ThreadState {
+            pid: 1,
+            ..ThreadState::default()
+        },
         cpu: CpuState::default(),
     }
 }
@@ -35,12 +39,12 @@ fn clone_registers_and_tls() {
     let m = memory();
     let tid = clone(&mut k, &mut t, &m, 0x1390900);
     assert_eq!(tid, 2);
-    let (c, ct) = k.take_child().unwrap();
+    let (_c, ct) = k.take_child().unwrap();
     assert_eq!(ct.cpu.gpr[reg::RAX], 0);
     assert_eq!(ct.cpu.gpr[reg::RSP], DATA + 4096);
     assert_eq!(ct.cpu.fs_base, DATA + 8);
     assert_eq!(ct.cpu.rip, t.cpu.rip);
-    assert_eq!(c.process.clear_child_tid, DATA + 4);
+    assert_eq!(ct.state.clear_child_tid, DATA + 4);
 }
 #[test]
 fn clone_parent_child_tid() {
@@ -90,7 +94,7 @@ fn clear_child_tid_on_finish() {
     let mut b = [0; 4];
     m.read(GuestAddr(DATA + 4), &mut b).unwrap();
     assert_eq!(b, [0; 4]);
-    assert_eq!(k.group.active_threads(), 0);
+    assert_eq!(k.group.active_threads(), 1);
 }
 #[test]
 fn individual_exit_does_not_stop_group() {

@@ -11,7 +11,7 @@ use paludarium_host::{ClockId, Host, WaitOutcome};
 use paludarium_mmu::{AddressSpace, MappingKind, Prot};
 use paludarium_types::{Errno, GuestAddr, USER_ADDRESS_LIMIT};
 
-use crate::{AltStack, Process, SS_DISABLE, SignalAction, signals};
+use crate::{AltStack, SS_DISABLE, SignalAction, ThreadState, signals};
 
 /// Linux x86-64 system-call numbers used by U1.
 pub mod nr {
@@ -45,11 +45,12 @@ pub mod nr {
 pub(crate) struct Context<'a> {
     pub files: &'a mut crate::files::Files,
     pub host: &'a dyn Host,
-    pub process: &'a mut Process,
+    pub process: &'a mut ThreadState,
     pub cpu: &'a mut CpuState,
     pub mem: &'a AddressSpace,
     pub cancellation: &'a std::sync::atomic::AtomicBool,
     pub inbox: &'a crate::SignalInbox,
+    pub group: &'a crate::ThreadGroup,
 }
 
 pub(crate) enum Outcome {
@@ -186,7 +187,7 @@ fn sleep(c: &mut Context<'_>, clock: ClockId, absolute: bool, req: u64, rem: u64
             Ok(t) => t,
             Err(e) => return err(e),
         };
-        signals::expire_timer(c.process, mono_now);
+        c.group.expire_timer(c.process, mono_now);
         let timer_deadline = c
             .process
             .timer
@@ -196,7 +197,7 @@ fn sleep(c: &mut Context<'_>, clock: ClockId, absolute: bool, req: u64, rem: u64
         let result = c.host.wait_until(clock, next, c.cancellation);
         let received = c.inbox.drain(c.process);
         if let Ok(now) = c.host.clock(ClockId::Monotonic) {
-            signals::expire_timer(c.process, now);
+            c.group.expire_timer(c.process, now);
         }
         let pending = c.process.pending.iter().any(|s| {
             c.process.signal_mask & (1u64 << (s.number - 1)) == 0

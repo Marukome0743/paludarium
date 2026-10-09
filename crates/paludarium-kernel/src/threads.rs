@@ -1,7 +1,7 @@
 //! Shared process termination, signal dispositions, registry and futex queues.
 //! Each worker owns its Kernel thread context; no process lock spans CPU/I/O/wait.
 use crate::{
-    AltStack, Kernel, Next, Process, SignalAction, SignalInbox, Thread, futex::Futexes, signals,
+    AltStack, Kernel, Next, SignalAction, SignalInbox, Thread, ThreadState, futex::Futexes, signals,
 };
 use paludarium_cpu::reg;
 use paludarium_host::{ClockId, WaitOutcome};
@@ -22,7 +22,7 @@ pub struct ThreadGroup {
     status: Mutex<Option<ExitStatus>>,
     actions: Mutex<BTreeMap<i32, SignalAction>>,
     process_inbox: Mutex<Arc<SignalInbox>>,
-    process_pending: Mutex<Process>,
+    process_pending: Mutex<ThreadState>,
     pub(crate) futexes: Futexes,
 }
 impl Default for ThreadGroup {
@@ -34,12 +34,36 @@ impl Default for ThreadGroup {
             status: Mutex::new(None),
             actions: Mutex::new(BTreeMap::new()),
             process_inbox: Mutex::new(Arc::new(SignalInbox::default())),
-            process_pending: Mutex::new(Process::default()),
+            process_pending: Mutex::new(ThreadState::default()),
             futexes: Futexes::default(),
         }
     }
 }
 impl ThreadGroup {
+    pub(crate) fn sync_timer(&self, local: &mut ThreadState) {
+        local.timer = self
+            .process_pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .timer;
+    }
+    pub(crate) fn set_timer(&self, timer: signals::RealTimer) {
+        self.process_pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .timer = timer;
+    }
+    pub(crate) fn expire_timer(&self, local: &mut ThreadState, now: u64) {
+        {
+            let mut pending = self
+                .process_pending
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            signals::expire_timer(&mut pending, now);
+            local.timer = pending.timer;
+        }
+        self.drain_process(local);
+    }
     pub(crate) fn register(&self, tid: u32, inbox: Arc<SignalInbox>) {
         self.members
             .lock()
@@ -89,7 +113,7 @@ impl ThreadGroup {
     pub(crate) fn job_continue(&self) {
         self.stopped.store(false, Ordering::SeqCst);
     }
-    pub(crate) fn drain_process(&self, local: &mut Process) {
+    pub(crate) fn drain_process(&self, local: &mut ThreadState) {
         let mut pending = self
             .process_pending
             .lock()
@@ -132,7 +156,7 @@ impl Kernel {
             .remove(&tid);
     }
     pub fn finish_thread(&mut self, thread: &Thread, mem: &AddressSpace) {
-        let addr = self.process.clear_child_tid;
+        let addr = thread.state.clear_child_tid;
         if addr != 0 && mem.write(GuestAddr(addr), &0u32.to_le_bytes()).is_ok() {
             let _ = self.group.futexes.wake(mem, addr, false, 1, u32::MAX);
         }
@@ -142,14 +166,14 @@ impl Kernel {
             .unwrap_or_else(PoisonError::into_inner)
             .remove(&thread.tid);
     }
-    pub(crate) fn sync_actions(&mut self) {
+    pub(crate) fn sync_actions(&mut self, thread: &mut Thread) {
         let shared = self
             .group
             .actions
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         for (&n, &a) in shared.iter() {
-            self.process.signal_actions.insert(n, a);
+            thread.state.signal_actions.insert(n, a);
         }
     }
     pub(crate) fn thread_syscall(
@@ -163,7 +187,7 @@ impl Kernel {
             56 => self.clone_thread(thread, mem, a),
             186 => Ok(u64::from(thread.tid)),
             218 => {
-                self.process.clear_child_tid = a[0];
+                thread.state.clear_child_tid = a[0];
                 Ok(u64::from(thread.tid))
             }
             60 => {
@@ -171,11 +195,11 @@ impl Kernel {
             }
             231 => {
                 let status = ExitStatus::Exited((a[0] & 255) as i32);
-                self.process.exit_status = Some(status);
+                thread.state.exit_status = Some(status);
                 self.group.stop(status);
                 return Some(Next::Exit(status));
             }
-            202 => self.futex_wait(mem, a),
+            202 => self.futex_wait(thread, mem, a),
             62 => {
                 if a[1] > 64 {
                     Err(Errno::EINVAL)
@@ -265,16 +289,17 @@ impl Kernel {
         if flags & 0x80000 != 0 {
             cpu.fs_base = a[4];
         }
-        let mut process: Process = self.process.clone();
-        process.pending.clear();
-        process.frames.clear();
-        process.alt_stack = AltStack::default();
-        process.exit_status = None;
-        process.clear_child_tid = if flags & 0x200000 != 0 { a[3] } else { 0 };
+        let mut state = parent.state.clone();
+        state.timer = signals::RealTimer::default();
+        state.pending.clear();
+        state.frames.clear();
+        state.alt_stack = AltStack::default();
+        state.exit_status = None;
+        state.clear_child_tid = if flags & 0x200000 != 0 { a[3] } else { 0 };
         let inbox = Arc::new(SignalInbox::default());
         let child = Kernel {
             host: self.host.clone(),
-            process,
+            process: self.process.clone(),
             table: crate::SyscallTable::u1(),
             files: self.files.for_clone(flags & 0x400 != 0, flags & 0x200 != 0),
             cancellation: inbox.wake_token(),
@@ -290,10 +315,15 @@ impl Kernel {
         if flags & 0x1000000 != 0 {
             let _ = mem.write(GuestAddr(a[3]), &tid.to_le_bytes());
         }
-        self.pending_child = Some((Box::new(child), Thread { tid, cpu }));
+        self.pending_child = Some((Box::new(child), Thread { tid, cpu, state }));
         Ok(u64::from(tid))
     }
-    fn futex_wait(&mut self, mem: &AddressSpace, a: [u64; 6]) -> Result<u64, Errno> {
+    fn futex_wait(
+        &mut self,
+        thread: &mut Thread,
+        mem: &AddressSpace,
+        a: [u64; 6],
+    ) -> Result<u64, Errno> {
         let op = a[1] & !128;
         let private = a[1] & 128 != 0;
         let mask = if matches!(op, 9 | 10 | 265) {
@@ -352,14 +382,20 @@ impl Kernel {
                     Err(Errno(if state == 2 { 110 } else { 4 }))
                 };
             }
-            self.group.drain_process(&mut self.process);
-            self.inbox.drain(&mut self.process);
+            self.group.drain_process(&mut thread.state);
+            self.inbox.drain(&mut thread.state);
             if let Ok(now) = self.host.clock(ClockId::Monotonic) {
-                signals::expire_timer(&mut self.process, now);
+                self.group.expire_timer(&mut thread.state, now);
             }
-            let now = self.host.clock(clock)?;
+            let now = match self.host.clock(clock) {
+                Ok(now) => now,
+                Err(error) => {
+                    self.group.futexes.finish(mem, a[0], private, &waiter, 3);
+                    return Err(error);
+                }
+            };
             let result = if self.group.status().is_some()
-                || signals::next_pending(&self.process, true).is_some()
+                || signals::next_pending(&thread.state, true).is_some()
             {
                 3
             } else if deadline.is_some_and(|end| now >= end) {
@@ -376,12 +412,19 @@ impl Kernel {
             let end = deadline
                 .unwrap_or(u64::MAX)
                 .min(now.saturating_add(10_000_000));
-            if self
-                .host
-                .wait_on(&waiter.token, 0, Some((clock, end)), &self.cancellation)?
-                == WaitOutcome::Interrupted
-            {
-                self.inbox.drain(&mut self.process);
+            let outcome =
+                match self
+                    .host
+                    .wait_on(&waiter.token, 0, Some((clock, end)), &self.cancellation)
+                {
+                    Ok(outcome) => outcome,
+                    Err(error) => {
+                        self.group.futexes.finish(mem, a[0], private, &waiter, 3);
+                        return Err(error);
+                    }
+                };
+            if outcome == WaitOutcome::Interrupted {
+                self.inbox.drain(&mut thread.state);
             }
         }
     }

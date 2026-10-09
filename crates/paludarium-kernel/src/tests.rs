@@ -26,6 +26,10 @@ fn fixture() -> Fixture {
     mem.set_initial_break(GuestAddr(0x20_0000));
     let thread = Thread {
         tid: 1,
+        state: ThreadState {
+            pid: 1,
+            ..ThreadState::default()
+        },
         cpu: CpuState::default(),
     };
     Fixture {
@@ -163,10 +167,7 @@ fn exit_and_exit_group_keep_low_eight_bits() {
         f.call(nr::EXIT_GROUP, &[0x1_2345]),
         Next::Exit(ExitStatus::Exited(0x45))
     );
-    assert_eq!(
-        f.kernel.process().exit_status,
-        Some(ExitStatus::Exited(0x45))
-    );
+    assert_eq!(f.thread.state.exit_status, Some(ExitStatus::Exited(0x45)));
     let mut f = fixture();
     assert_eq!(
         f.call(nr::EXIT, &[u64::MAX]),
@@ -253,7 +254,7 @@ fn signal_registration_is_recorded_but_not_delivered() {
     assert_eq!(f.mem.read_u64(GuestAddr(DATA + 0x100)).unwrap(), 0); // old = SIG_DFL
     assert_eq!(f.ret(nr::RT_SIGACTION, &[11, 0, DATA + 0x100, 8]), 0);
     assert_eq!(f.mem.read_u64(GuestAddr(DATA + 0x100)).unwrap(), 0x1234);
-    assert_eq!(f.kernel.process().signal_actions[&11].handler, 0x1234);
+    assert_eq!(f.thread.state.signal_actions[&11].handler, 0x1234);
     assert_eq!(
         f.ret(nr::RT_SIGACTION, &[9, DATA, 0, 8]),
         errno(Errno::EINVAL)
@@ -275,10 +276,10 @@ fn signal_registration_is_recorded_but_not_delivered() {
         .write_u64(GuestAddr(DATA), (1 << 8) | (1 << 9))
         .unwrap();
     assert_eq!(f.ret(nr::RT_SIGPROCMASK, &[0, DATA, 0, 8]), 0);
-    assert_eq!(f.kernel.process().signal_mask, 1 << 9);
+    assert_eq!(f.thread.state.signal_mask, 1 << 9);
     assert_eq!(f.ret(nr::RT_SIGPROCMASK, &[1, DATA, DATA + 8, 8]), 0);
     assert_eq!(f.mem.read_u64(GuestAddr(DATA + 8)).unwrap(), 1 << 9);
-    assert_eq!(f.kernel.process().signal_mask, 0);
+    assert_eq!(f.thread.state.signal_mask, 0);
     assert_eq!(
         f.ret(nr::RT_SIGPROCMASK, &[7, DATA, 0, 8]),
         errno(Errno::EINVAL)
@@ -337,7 +338,7 @@ fn process_setup_syscalls() {
     );
     assert_eq!(f.ret(nr::ARCH_PRCTL, &[0x9999, 0]), errno(Errno::EINVAL));
     assert_eq!(f.ret(nr::SET_TID_ADDRESS, &[DATA]), 1);
-    assert_eq!(f.kernel.process().clear_child_tid, DATA);
+    assert_eq!(f.thread.state.clear_child_tid, DATA);
     assert_eq!(f.ret(nr::IOCTL, &[1, 0x5413, DATA]), errno(Errno::ENOTTY));
     assert_eq!(f.ret(nr::IOCTL, &[5, 0x5413, DATA]), errno(Errno::EBADF));
 }
@@ -373,7 +374,7 @@ fn poll_and_sigaltstack() {
             .unwrap();
     }
     assert_eq!(f.ret(nr::SIGALTSTACK, &[DATA + 0x300, 0]), 0);
-    assert_eq!(f.kernel.process().alt_stack.size, 8192);
+    assert_eq!(f.thread.state.alt_stack.size, 8192);
     f.mem.write_u64(GuestAddr(DATA + 0x310), 100).unwrap();
     assert_eq!(
         f.ret(nr::SIGALTSTACK, &[DATA + 0x300, 0]),

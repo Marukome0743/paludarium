@@ -189,7 +189,7 @@ fn u4_signal_write_restart_frame_matches_native_context() {
         f.kernel = Kernel::new(Arc::new(InterruptedWriteHost));
         f.thread.cpu.rip = GuestAddr(0x400002);
         f.thread.cpu.gpr[reg::RSP] = DATA + 0x2000;
-        f.kernel.process.signal_actions.insert(
+        f.thread.state.signal_actions.insert(
             10,
             SignalAction {
                 handler: 0x400100,
@@ -198,7 +198,7 @@ fn u4_signal_write_restart_frame_matches_native_context() {
                 mask: 0,
             },
         );
-        f.kernel.queue_signal(10).unwrap();
+        f.kernel.queue_signal(&mut f.thread, 10).unwrap();
         assert_eq!(f.call(nr::WRITE, &[1, DATA, 1]), Next::Resume);
         let mut bytes = [0; 8];
         let base = f.thread.cpu.gpr[reg::RSP];
@@ -217,7 +217,7 @@ fn signal_fixture() -> Fixture {
     let mut f = fixture();
     f.thread.cpu.rip = GuestAddr(0x400000);
     f.thread.cpu.gpr[reg::RSP] = DATA + 0x2000;
-    f.kernel.process.signal_actions.insert(
+    f.thread.state.signal_actions.insert(
         10,
         SignalAction {
             handler: 0x400100,
@@ -231,20 +231,20 @@ fn signal_fixture() -> Fixture {
 #[test]
 fn u4_signal_blocked_queue_delivers_after_unmask() {
     let mut f = signal_fixture();
-    f.kernel.process.signal_mask = 1 << 9;
-    f.kernel.queue_signal(10).unwrap();
+    f.thread.state.signal_mask = 1 << 9;
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
     assert_eq!(f.kernel.checkpoint(&mut f.thread, &f.mem), Next::Resume);
     assert_eq!(f.thread.cpu.rip, GuestAddr(0x400000));
-    f.kernel.process.signal_mask = 0;
+    f.thread.state.signal_mask = 0;
     assert_eq!(f.kernel.checkpoint(&mut f.thread, &f.mem), Next::Resume);
     assert_eq!(f.thread.cpu.rip, GuestAddr(0x400100));
 }
 #[test]
 fn u4_signal_standard_queue_coalesces() {
     let mut f = signal_fixture();
-    f.kernel.queue_signal(10).unwrap();
-    f.kernel.queue_signal(10).unwrap();
-    assert_eq!(f.kernel.process.pending.len(), 1);
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
+    assert_eq!(f.thread.state.pending.len(), 1);
 }
 #[test]
 fn u4_signal_frame_fault_does_not_change_registers_or_memory() {
@@ -252,7 +252,7 @@ fn u4_signal_frame_fault_does_not_change_registers_or_memory() {
     f.thread.cpu.gpr[reg::RSP] = 0x70000000;
     let before = f.thread.cpu.clone();
     f.mem.write(GuestAddr(DATA), &[41]).unwrap();
-    f.kernel.queue_signal(10).unwrap();
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
     assert_eq!(
         f.kernel.checkpoint(&mut f.thread, &f.mem),
         Next::Exit(ExitStatus::Signaled(11))
@@ -267,20 +267,20 @@ fn u4_signal_return_preserves_registers_sse_and_mask() {
     f.thread.cpu.xmm[3] = 0x123456789;
     f.thread.cpu.fs_base = 0x100;
     f.thread.cpu.gs_base = 0x200;
-    f.kernel.process.signal_mask = 1 << 11;
+    f.thread.state.signal_mask = 1 << 11;
     let before = f.thread.cpu.clone();
-    f.kernel.queue_signal(10).unwrap();
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
     assert_eq!(f.kernel.checkpoint(&mut f.thread, &f.mem), Next::Resume);
     f.thread.cpu.gpr[reg::RSP] += 8;
     assert_eq!(f.call(nr::RT_SIGRETURN, &[]), Next::Resume);
     assert_eq!(f.thread.cpu, before);
-    assert_eq!(f.kernel.process.signal_mask, 1 << 11);
+    assert_eq!(f.thread.state.signal_mask, 1 << 11);
 }
 #[test]
 fn u4_signal_frame_ignores_privileged_flag_edits() {
     let mut f = signal_fixture();
     let flags = f.thread.cpu.rflags;
-    f.kernel.queue_signal(10).unwrap();
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
     f.kernel.checkpoint(&mut f.thread, &f.mem);
     let base = f.thread.cpu.gpr[reg::RSP];
     f.mem
@@ -293,7 +293,7 @@ fn u4_signal_frame_ignores_privileged_flag_edits() {
 #[test]
 fn u4_signal_bad_fp_pointer_rejects_context() {
     let mut f = signal_fixture();
-    f.kernel.queue_signal(10).unwrap();
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
     f.kernel.checkpoint(&mut f.thread, &f.mem);
     let base = f.thread.cpu.gpr[reg::RSP];
     f.mem
@@ -308,24 +308,24 @@ fn u4_signal_bad_fp_pointer_rejects_context() {
 #[test]
 fn u4_signal_timer_periodic_coalesces_and_advances() {
     let mut f = signal_fixture();
-    f.kernel.process.timer = signals::RealTimer {
+    f.thread.state.timer = signals::RealTimer {
         deadline: Some(10),
         interval: 5,
     };
-    signals::expire_timer(&mut f.kernel.process, 26);
-    assert_eq!(f.kernel.process.timer.deadline, Some(30));
-    assert_eq!(f.kernel.process.pending.len(), 1);
-    signals::expire_timer(&mut f.kernel.process, 31);
-    assert_eq!(f.kernel.process.pending.len(), 1);
+    signals::expire_timer(&mut f.thread.state, 26);
+    assert_eq!(f.thread.state.timer.deadline, Some(30));
+    assert_eq!(f.thread.state.pending.len(), 1);
+    signals::expire_timer(&mut f.thread.state, 31);
+    assert_eq!(f.thread.state.pending.len(), 1);
 }
 #[test]
 fn u4_signal_realtime_queue_has_no_invented_quota() {
     let mut f = signal_fixture();
     for _ in 0..2048 {
-        f.kernel.queue_signal(32).unwrap();
+        f.kernel.queue_signal(&mut f.thread, 32).unwrap();
     }
-    assert_eq!(f.kernel.process.pending.len(), 2048);
-    f.kernel.queue_signal(9).unwrap();
+    assert_eq!(f.thread.state.pending.len(), 2048);
+    f.kernel.queue_signal(&mut f.thread, 9).unwrap();
     assert_eq!(
         f.kernel.checkpoint(&mut f.thread, &f.mem),
         Next::Exit(ExitStatus::Signaled(9))
@@ -336,17 +336,17 @@ fn u4_signal_realtime_queue_has_no_invented_quota() {
 fn u4_signal_realtime_selection_keeps_fifo_and_masks() {
     let mut f = signal_fixture();
     // Native same-process kill then sigqueue yielded si_code 0 then -1.
-    signals::queue(&mut f.kernel.process, signals::PendingSignal::user(36, 0));
-    signals::queue(&mut f.kernel.process, signals::PendingSignal::user(35, 0));
-    signals::queue(&mut f.kernel.process, signals::PendingSignal::user(35, -1));
-    f.kernel.process.signal_mask = 1 << 34;
-    assert_eq!(signals::next_pending(&f.kernel.process, false), Some(0));
-    f.kernel.process.signal_mask = 0;
-    let first = signals::next_pending(&f.kernel.process, false).unwrap();
-    assert_eq!(f.kernel.process.pending.remove(first).code, 0);
-    let second = signals::next_pending(&f.kernel.process, false).unwrap();
-    assert_eq!(f.kernel.process.pending.remove(second).code, -1);
-    assert_eq!(f.kernel.process.pending[0].number, 36);
+    signals::queue(&mut f.thread.state, signals::PendingSignal::user(36, 0));
+    signals::queue(&mut f.thread.state, signals::PendingSignal::user(35, 0));
+    signals::queue(&mut f.thread.state, signals::PendingSignal::user(35, -1));
+    f.thread.state.signal_mask = 1 << 34;
+    assert_eq!(signals::next_pending(&f.thread.state, false), Some(0));
+    f.thread.state.signal_mask = 0;
+    let first = signals::next_pending(&f.thread.state, false).unwrap();
+    assert_eq!(f.thread.state.pending.remove(first).code, 0);
+    let second = signals::next_pending(&f.thread.state, false).unwrap();
+    assert_eq!(f.thread.state.pending.remove(second).code, -1);
+    assert_eq!(f.thread.state.pending[0].number, 36);
 }
 
 #[test]
@@ -358,38 +358,38 @@ fn u4_signal_pending_targets_keep_number_order_fifo_and_coalescing() {
         signals::PendingSignal::thread(35, -6),
         signals::PendingSignal::thread(35, -1),
     ] {
-        signals::queue(&mut f.kernel.process, pending);
+        signals::queue(&mut f.thread.state, pending);
     }
     for code in [-6, -1] {
-        let index = signals::next_pending(&f.kernel.process, false).unwrap();
-        let selected = f.kernel.process.pending.remove(index);
+        let index = signals::next_pending(&f.thread.state, false).unwrap();
+        let selected = f.thread.state.pending.remove(index);
         assert_eq!(
             (selected.target, selected.number, selected.code),
             (signals::PendingTarget::Thread, 35, code)
         );
     }
-    f.kernel.process.signal_mask = 1 << 35;
-    let index = signals::next_pending(&f.kernel.process, false).unwrap();
+    f.thread.state.signal_mask = 1 << 35;
+    let index = signals::next_pending(&f.thread.state, false).unwrap();
     assert_eq!(
-        f.kernel.process.pending[index].target,
+        f.thread.state.pending[index].target,
         signals::PendingTarget::Process
     );
-    f.kernel.process.pending.clear();
+    f.thread.state.pending.clear();
     for _ in 0..2 {
-        signals::queue(&mut f.kernel.process, signals::PendingSignal::user(10, 0));
+        signals::queue(&mut f.thread.state, signals::PendingSignal::user(10, 0));
         signals::queue(
-            &mut f.kernel.process,
+            &mut f.thread.state,
             signals::PendingSignal::thread(10, -6),
         );
     }
-    assert_eq!(f.kernel.process.pending.len(), 2);
+    assert_eq!(f.thread.state.pending.len(), 2);
     assert_eq!(
-        f.kernel.process.pending[signals::next_pending(&f.kernel.process, false).unwrap()].code,
+        f.thread.state.pending[signals::next_pending(&f.thread.state, false).unwrap()].code,
         -6
     );
-    signals::queue(&mut f.kernel.process, signals::PendingSignal::user(9, 0));
+    signals::queue(&mut f.thread.state, signals::PendingSignal::user(9, 0));
     assert_eq!(
-        f.kernel.process.pending[signals::next_pending(&f.kernel.process, false).unwrap()].number,
+        f.thread.state.pending[signals::next_pending(&f.thread.state, false).unwrap()].number,
         9
     );
 }
@@ -397,12 +397,12 @@ fn u4_signal_pending_targets_keep_number_order_fifo_and_coalescing() {
 #[test]
 fn u4_signal_synchronous_fault_selects_thread_pending_queue() {
     let mut f = signal_fixture();
-    let action = f.kernel.process.signal_actions[&10];
-    f.kernel.process.signal_actions.insert(8, action);
+    let action = f.thread.state.signal_actions[&10];
+    f.thread.state.signal_actions.insert(8, action);
     // An unmasked synchronous fault is thread-pending; blocked synchronous
     // faults terminate under the separately native-checked fault policy.
-    f.kernel.process.signal_mask = 0;
-    f.kernel.queue_signal(10).unwrap();
+    f.thread.state.signal_mask = 0;
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
     assert_eq!(
         f.kernel.handle(
             &mut f.thread,
@@ -414,12 +414,12 @@ fn u4_signal_synchronous_fault_selects_thread_pending_queue() {
         Next::Resume
     );
     assert_eq!(f.thread.cpu.gpr[reg::RDI], 8);
-    assert_eq!(f.kernel.process.pending.len(), 1);
+    assert_eq!(f.thread.state.pending.len(), 1);
     assert_eq!(
-        f.kernel.process.pending[0].target,
+        f.thread.state.pending[0].target,
         signals::PendingTarget::Process
     );
-    assert_eq!(f.kernel.process.pending[0].number, 10);
+    assert_eq!(f.thread.state.pending[0].number, 10);
 }
 
 #[test]
@@ -430,7 +430,7 @@ fn u4_signal_thread_target_restart_preview_matches_delivery() {
         f.thread.cpu.rip = GuestAddr(0x400002);
         f.thread.cpu.gpr[reg::RSP] = DATA + 0x2000;
         for number in [35, 36] {
-            f.kernel.process.signal_actions.insert(
+            f.thread.state.signal_actions.insert(
                 number,
                 SignalAction {
                     handler: 0x400100,
@@ -444,9 +444,9 @@ fn u4_signal_thread_target_restart_preview_matches_delivery() {
                 },
             );
         }
-        signals::queue(&mut f.kernel.process, signals::PendingSignal::user(35, 0));
+        signals::queue(&mut f.thread.state, signals::PendingSignal::user(35, 0));
         signals::queue(
-            &mut f.kernel.process,
+            &mut f.thread.state,
             signals::PendingSignal::thread(36, -6),
         );
         assert_eq!(f.call(nr::WRITE, &[1, DATA, 1]), Next::Resume);
@@ -471,7 +471,7 @@ fn u4_signal_restart_preview_uses_selected_realtime_handler() {
         f.thread.cpu.rip = GuestAddr(0x400002);
         f.thread.cpu.gpr[reg::RSP] = DATA + 0x2000;
         for number in [35, 36] {
-            f.kernel.process.signal_actions.insert(
+            f.thread.state.signal_actions.insert(
                 number,
                 SignalAction {
                     handler: 0x400100,
@@ -485,8 +485,8 @@ fn u4_signal_restart_preview_uses_selected_realtime_handler() {
                 },
             );
         }
-        f.kernel.queue_signal(36).unwrap();
-        f.kernel.queue_signal(35).unwrap();
+        f.kernel.queue_signal(&mut f.thread, 36).unwrap();
+        f.kernel.queue_signal(&mut f.thread, 35).unwrap();
         assert_eq!(f.call(nr::WRITE, &[1, DATA, 1]), Next::Resume);
         assert_eq!(f.thread.cpu.gpr[reg::RDI], 35);
         let base = f.thread.cpu.gpr[reg::RSP];
@@ -521,7 +521,7 @@ fn u4_signal_rep_budget_context_roundtrip() {
     assert!(matches!(reason, ExitReason::BudgetExhausted { .. }));
     assert!(f.thread.cpu.repeat_continuation.is_some());
     let before = f.thread.cpu.clone();
-    f.kernel.queue_signal(10).unwrap();
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
     f.kernel.handle(&mut f.thread, &f.mem, reason);
     assert!(f.thread.cpu.repeat_continuation.is_none());
     f.thread.cpu.gpr[reg::RSP] += 8;
@@ -546,7 +546,7 @@ fn u4_signal_changed_rep_return_discards_continuation() {
     f.thread.cpu.gpr[reg::RSI] = DATA;
     f.thread.cpu.gpr[reg::RDI] = DATA;
     let reason = paludarium_cpu::run(&mut f.thread.cpu, &f.mem, 1);
-    f.kernel.queue_signal(10).unwrap();
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
     f.kernel.handle(&mut f.thread, &f.mem, reason);
     let base = f.thread.cpu.gpr[reg::RSP];
     f.mem
@@ -559,17 +559,17 @@ fn u4_signal_changed_rep_return_discards_continuation() {
 #[test]
 fn u4_signal_nested_altstack_frames_do_not_overlap() {
     let mut f = signal_fixture();
-    f.kernel.process.alt_stack = AltStack {
+    f.thread.state.alt_stack = AltStack {
         sp: DATA,
         size: 8192,
         flags: 0,
     };
-    f.kernel.process.signal_actions.get_mut(&10).unwrap().flags =
+    f.thread.state.signal_actions.get_mut(&10).unwrap().flags =
         signals::SA_ONSTACK | signals::SA_NODEFER;
-    f.kernel.queue_signal(10).unwrap();
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
     f.kernel.checkpoint(&mut f.thread, &f.mem);
     let first = f.thread.cpu.gpr[reg::RSP];
-    f.kernel.queue_signal(10).unwrap();
+    f.kernel.queue_signal(&mut f.thread, 10).unwrap();
     f.kernel.checkpoint(&mut f.thread, &f.mem);
     let second = f.thread.cpu.gpr[reg::RSP];
     assert!(second + 1024 < first);
@@ -587,15 +587,15 @@ fn u4_default_stop_is_not_process_termination() {
     for number in [19, 20] {
         let mut f = fixture();
         let before = f.thread.cpu.clone();
-        f.kernel.queue_signal(number).unwrap();
+        f.kernel.queue_signal(&mut f.thread, number).unwrap();
         let next = f.kernel.checkpoint(&mut f.thread, &f.mem);
         assert!(
             !matches!(next, Next::Exit(_)),
             "native reports a stopped child, not exit"
         );
         assert_eq!(f.thread.cpu, before);
-        f.kernel.process.signal_mask = 1 << 17;
-        f.kernel.queue_signal(18).unwrap();
+        f.thread.state.signal_mask = 1 << 17;
+        f.kernel.queue_signal(&mut f.thread, 18).unwrap();
         assert_eq!(f.kernel.checkpoint(&mut f.thread, &f.mem), Next::Resume);
         assert_eq!(f.thread.cpu, before);
     }
@@ -603,11 +603,11 @@ fn u4_default_stop_is_not_process_termination() {
 #[test]
 fn u4_blocked_tstp_defers_stop_until_unmask() {
     let mut f = fixture();
-    f.kernel.process.signal_mask = 1 << 19;
-    f.kernel.queue_signal(20).unwrap();
+    f.thread.state.signal_mask = 1 << 19;
+    f.kernel.queue_signal(&mut f.thread, 20).unwrap();
     assert_eq!(f.kernel.checkpoint(&mut f.thread, &f.mem), Next::Resume);
-    assert!(!f.kernel.process.stopped);
-    assert_eq!(f.kernel.process.pending.len(), 1);
-    f.kernel.process.signal_mask = 0;
+    assert!(!f.thread.state.stopped);
+    assert_eq!(f.thread.state.pending.len(), 1);
+    f.thread.state.signal_mask = 0;
     assert_eq!(f.kernel.checkpoint(&mut f.thread, &f.mem), Next::Stopped);
 }

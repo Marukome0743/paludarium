@@ -1,5 +1,5 @@
 //! Synchronized runtime-to-Kernel signal transport; it never holds an MMU lock.
-use crate::{Process, signals};
+use crate::{ThreadState, signals};
 use paludarium_types::Errno;
 use std::sync::{
     Arc, Mutex, PoisonError,
@@ -44,7 +44,7 @@ impl SignalInbox {
     pub fn wake_token(&self) -> Arc<AtomicBool> {
         self.wake.clone()
     }
-    pub(crate) fn drain(&self, process: &mut Process) -> bool {
+    pub(crate) fn drain(&self, process: &mut ThreadState) -> bool {
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
         let received = !queue.is_empty();
         for signal in queue.drain(..) {
@@ -68,7 +68,7 @@ mod u4_tests {
         inbox.send(19).unwrap();
         inbox.send(18).unwrap();
         inbox.send(9).unwrap();
-        let mut process = Process::default();
+        let mut process = ThreadState::default();
         inbox.drain(&mut process);
         assert!(process.pending.iter().any(|s| s.number == 9));
         assert!(!process.stopped);
@@ -87,7 +87,7 @@ mod u4_tests {
             }
         });
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-        let mut process = Process::default();
+        let mut process = ThreadState::default();
         let mut count = 0;
         while count < 1000 {
             assert!(

@@ -26,6 +26,10 @@ fn fixture() -> Fixture {
         kernel,
         thread: Thread {
             tid: 1,
+            state: ThreadState {
+                pid: 1,
+                ..ThreadState::default()
+            },
             cpu: CpuState::default(),
         },
         mem,

@@ -47,6 +47,20 @@ pub enum Next {
 pub struct Thread {
     pub tid: u32,
     pub cpu: CpuState,
+    pub state: ThreadState,
+}
+impl Thread {
+    #[must_use]
+    pub fn new(tid: u32, cpu: CpuState) -> Self {
+        Self {
+            tid,
+            cpu,
+            state: ThreadState {
+                pid: 1,
+                ..ThreadState::default()
+            },
+        }
+    }
 }
 
 /// A registered signal action (`struct k_sigaction` on x86-64). Recorded
@@ -80,9 +94,9 @@ impl Default for AltStack {
     }
 }
 
-/// The guest process (entities.md Process). U1 has exactly one.
+/// Thread-owned Linux signal context and lifecycle state.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Process {
+pub struct ThreadState {
     pub pid: u32,
     pub signal_actions: BTreeMap<i32, SignalAction>,
     pub signal_mask: u64,
@@ -93,6 +107,12 @@ pub struct Process {
     pub(crate) frames: Vec<signals::SavedFrame>,
     pub(crate) timer: signals::RealTimer,
     pub stopped: bool,
+}
+
+/// Process identity; shared resources are owned by ThreadGroup.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Process {
+    pub pid: u32,
 }
 
 /// The emulated Linux kernel for one process.
@@ -113,10 +133,7 @@ impl Kernel {
         let files = files::Files::with_host(Arc::clone(&host));
         Kernel {
             host,
-            process: Process {
-                pid: 1,
-                ..Process::default()
-            },
+            process: Process { pid: 1 },
             table: SyscallTable::u1(),
             files,
             cancellation: Arc::new(AtomicBool::new(false)),
@@ -168,55 +185,64 @@ impl Kernel {
         Thread {
             tid: self.process.pid,
             cpu: CpuState::new(image.entry_point, image.initial_stack_pointer),
+            state: ThreadState {
+                pid: self.process.pid,
+                ..ThreadState::default()
+            },
         }
     }
 
-    fn terminate(&mut self, signal: i32) -> Next {
+    fn terminate(&mut self, thread: &mut Thread, signal: i32) -> Next {
         let status = ExitStatus::Signaled(signal);
-        self.process.exit_status = Some(status);
+        thread.state.exit_status = Some(status);
         self.group.stop(status);
         Next::Exit(status)
     }
 
-    /// Queues a standard signal for the process's current thread.
-    pub fn queue_signal(&mut self, number: i32) -> Result<(), paludarium_types::Errno> {
-        if number == 18 {
-            self.group.job_continue();
-        }
+    /// Queues a signal in a thread's process-pending view (manual Kernel clients).
+    pub fn queue_signal(
+        &mut self,
+        thread: &mut Thread,
+        number: i32,
+    ) -> Result<(), paludarium_types::Errno> {
         if !(1..=64).contains(&number) {
             return Err(paludarium_types::Errno::EINVAL);
         }
-        signals::queue(&mut self.process, signals::PendingSignal::user(number, 0));
+        if number == 18 {
+            self.group.job_continue();
+        }
+        signals::queue(&mut thread.state, signals::PendingSignal::user(number, 0));
         Ok(())
     }
 
     /// Delivers an unblocked pending signal at a CPU/Kernel boundary.
     pub fn checkpoint(&mut self, thread: &mut Thread, mem: &AddressSpace) -> Next {
+        self.group.register(thread.tid, Arc::clone(&self.inbox));
         if let Some(status) = self.group.status() {
             return Next::Exit(status);
         }
-        self.sync_actions();
-        self.group.drain_process(&mut self.process);
-        self.inbox.drain(&mut self.process);
-        if self.process.pending.iter().any(|s| s.number == 18) {
+        self.sync_actions(thread);
+        self.group.drain_process(&mut thread.state);
+        self.inbox.drain(&mut thread.state);
+        if thread.state.pending.iter().any(|s| s.number == 18) {
             self.group.job_continue();
         }
         if let Ok(now) = self.host.clock(paludarium_host::ClockId::Monotonic) {
-            signals::expire_timer(&mut self.process, now);
+            self.group.expire_timer(&mut thread.state, now);
         }
-        while let Some(index) = signals::next_pending(&self.process, false) {
-            let signal = self.process.pending.remove(index);
-            let action = self
-                .process
+        while let Some(index) = signals::next_pending(&thread.state, false) {
+            let signal = thread.state.pending.remove(index);
+            let action = thread
+                .state
                 .signal_actions
                 .get(&signal.number)
                 .copied()
                 .unwrap_or_default();
             if signal.synchronous
                 && (action.handler <= 1
-                    || self.process.signal_mask & (1u64 << (signal.number - 1)) != 0)
+                    || thread.state.signal_mask & (1u64 << (signal.number - 1)) != 0)
             {
-                return self.terminate(signal.number);
+                return self.terminate(thread, signal.number);
             }
             if action.handler == 1
                 || action.handler == 0 && matches!(signal.number, 17 | 18 | 23 | 28)
@@ -224,15 +250,15 @@ impl Kernel {
                 continue;
             }
             if signal.number == 19 || action.handler == 0 && matches!(signal.number, 20..=22) {
-                self.process.stopped = true;
+                thread.state.stopped = true;
                 self.group.job_stop();
                 return Next::Stopped;
             }
             if action.handler == 0 || signal.number == 9 {
-                return self.terminate(signal.number);
+                return self.terminate(thread, signal.number);
             }
-            if signals::install(&mut self.process, &mut thread.cpu, mem, signal, action).is_err() {
-                return self.terminate(signal::SIGSEGV);
+            if signals::install(&mut thread.state, &mut thread.cpu, mem, signal, action).is_err() {
+                return self.terminate(thread, signal::SIGSEGV);
             }
             if action.flags & signals::SA_RESETHAND != 0 {
                 self.group
@@ -240,7 +266,7 @@ impl Kernel {
             }
             return Next::Resume;
         }
-        if self.process.stopped {
+        if thread.state.stopped {
             Next::Stopped
         } else {
             Next::Resume
@@ -249,6 +275,7 @@ impl Kernel {
 
     /// Handles a stop of `thread` (W3, W4).
     pub fn handle(&mut self, thread: &mut Thread, mem: &AddressSpace, reason: ExitReason) -> Next {
+        self.group.register(thread.tid, Arc::clone(&self.inbox));
         let fault = match reason {
             ExitReason::PageFault {
                 rip,
@@ -323,26 +350,27 @@ impl Kernel {
             _ => None,
         };
         if let Some(fault) = fault {
-            signals::queue(&mut self.process, fault);
+            signals::queue(&mut thread.state, fault);
             return self.checkpoint(thread, mem);
         }
         match reason {
             ExitReason::Syscall { .. } => self.syscall(thread, mem),
             ExitReason::PageFault { .. }
             | ExitReason::GeneralProtection { .. }
-            | ExitReason::Halt { .. } => self.terminate(signal::SIGSEGV),
-            ExitReason::InvalidOpcode { .. } => self.terminate(signal::SIGILL),
+            | ExitReason::Halt { .. } => self.terminate(thread, signal::SIGSEGV),
+            ExitReason::InvalidOpcode { .. } => self.terminate(thread, signal::SIGILL),
             ExitReason::ArithmeticFault { .. } | ExitReason::FloatingPointFault { .. } => {
-                self.terminate(signal::SIGFPE)
+                self.terminate(thread, signal::SIGFPE)
             }
             ExitReason::BudgetExhausted { .. } => self.checkpoint(thread, mem),
             // Later units add stop reasons; until then they end the process.
-            _ => self.terminate(signal::SIGSEGV),
+            _ => self.terminate(thread, signal::SIGSEGV),
         }
     }
 
     fn syscall(&mut self, thread: &mut Thread, mem: &AddressSpace) -> Next {
-        self.sync_actions();
+        self.sync_actions(thread);
+        self.group.sync_timer(&mut thread.state);
         let number = thread.cpu.gpr[reg::RAX];
         let args = [
             thread.cpu.gpr[reg::RDI],
@@ -362,20 +390,24 @@ impl Kernel {
         let mut ctx = syscalls::Context {
             host: &*self.host,
             files: &mut self.files,
-            process: &mut self.process,
+            process: &mut thread.state,
             cpu: &mut thread.cpu,
             mem,
             cancellation: &self.cancellation,
             inbox: &self.inbox,
+            group: &self.group,
         };
         let outcome = handler(&mut ctx, args);
+        if number == syscalls::nr::SETITIMER {
+            self.group.set_timer(thread.state.timer);
+        }
         if number == syscalls::nr::RT_SIGACTION
             && args[1] != 0
-            && let Some(action) = self.process.signal_actions.get(&(args[0] as i32))
+            && let Some(action) = thread.state.signal_actions.get(&(args[0] as i32))
         {
             self.group.set_action(args[0] as i32, *action);
         }
-        self.inbox.drain(&mut self.process);
+        self.inbox.drain(&mut thread.state);
         match outcome {
             syscalls::Outcome::Return(value) => {
                 thread.cpu.gpr[reg::RAX] = value;
@@ -384,11 +416,12 @@ impl Kernel {
                 if number == syscalls::nr::WRITE
                     && value == paludarium_types::Errno(4).to_syscall_return()
                 {
-                    let action = signals::next_pending(&self.process, true)
+                    let action = signals::next_pending(&thread.state, true)
                         .and_then(|index| {
-                            self.process
+                            thread
+                                .state
                                 .signal_actions
-                                .get(&self.process.pending[index].number)
+                                .get(&thread.state.pending[index].number)
                         })
                         .filter(|action| action.handler > 1);
                     if action.is_some_and(|a| a.flags & 0x1000_0000 != 0)
@@ -401,10 +434,10 @@ impl Kernel {
                 self.checkpoint(thread, mem)
             }
             syscalls::Outcome::Restored => self.checkpoint(thread, mem),
-            syscalls::Outcome::BadFrame => self.terminate(signal::SIGSEGV),
+            syscalls::Outcome::BadFrame => self.terminate(thread, signal::SIGSEGV),
             syscalls::Outcome::Exit(code) => {
                 let status = ExitStatus::Exited(code & 0xff);
-                self.process.exit_status = Some(status);
+                thread.state.exit_status = Some(status);
                 Next::Exit(status)
             }
         }
