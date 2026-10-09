@@ -4,7 +4,7 @@ use paludarium_host::{ClockId, FileHandle, FileStat};
 use paludarium_types::{Errno, GuestAddr};
 use paludarium_vfs::{FileSystem, HostFs, MemFs};
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 pub const NUMBERS: &[u64] = &[
     0, 2, 3, 4, 5, 6, 8, 32, 33, 72, 73, 76, 77, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 217,
     257, 258, 262, 263, 264, 265, 266, 267, 292,
@@ -15,11 +15,12 @@ struct Descriptor {
     path: Vec<u8>,
     cloexec: bool,
 }
+#[derive(Clone)]
 pub struct Files {
     pub terminal_size: Option<(u16, u16)>,
     pub fs: Arc<dyn FileSystem>,
-    fds: BTreeMap<u32, Descriptor>,
-    cwd: Vec<u8>,
+    fds: Arc<Mutex<BTreeMap<u32, Descriptor>>>,
+    cwd: Arc<Mutex<Vec<u8>>>,
     umask: u32,
 }
 impl Default for Files {
@@ -29,27 +30,31 @@ impl Default for Files {
         Self {
             terminal_size: None,
             fs: Arc::new(fs),
-            fds: BTreeMap::new(),
-            cwd: b"/".to_vec(),
+            fds: Arc::new(Mutex::new(BTreeMap::new())),
+            cwd: Arc::new(Mutex::new(b"/".to_vec())),
             umask: 0o022,
         }
     }
 }
 impl Files {
     pub fn with_host(host: Arc<dyn paludarium_host::Host>) -> Self {
-        let mut files = Self::default();
+        let files = Self::default();
         for channel in 0..3 {
-            files.fds.insert(
-                channel,
-                Descriptor {
-                    file: Arc::new(StandardFile {
-                        host: Arc::clone(&host),
-                        channel,
-                    }),
-                    path: Vec::new(),
-                    cloexec: false,
-                },
-            );
+            files
+                .fds
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(
+                    channel,
+                    Descriptor {
+                        file: Arc::new(StandardFile {
+                            host: Arc::clone(&host),
+                            channel,
+                        }),
+                        path: Vec::new(),
+                        cloexec: false,
+                    },
+                );
         }
         files
     }
@@ -63,15 +68,18 @@ impl Files {
             == u32::try_from(fd).ok()
     }
     fn allocate(&mut self, d: Descriptor, min: u32) -> Result<u32, Errno> {
+        let mut fds = self.fds.lock().unwrap_or_else(PoisonError::into_inner);
         let mut n = min;
-        while self.fds.contains_key(&n) {
+        while fds.contains_key(&n) {
             n = n.checked_add(1).ok_or(Errno(24))?
         }
-        self.fds.insert(n, d);
+        fds.insert(n, d);
         Ok(n)
     }
     fn descriptor(&self, fd: u64) -> Result<Descriptor, Errno> {
         self.fds
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
             .get(&u32::try_from(fd).map_err(|_| Errno::EBADF)?)
             .cloned()
             .ok_or(Errno::EBADF)
@@ -84,7 +92,10 @@ impl Files {
             return Ok(p);
         }
         let mut base = if dir as i32 == -100 {
-            self.cwd.clone()
+            self.cwd
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
         } else {
             let d = self.descriptor(dir)?;
             if d.file.stat()?.mode & 0o170000 != 0o040000 {
@@ -97,6 +108,26 @@ impl Files {
         }
         base.extend_from_slice(&p);
         Ok(base)
+    }
+    pub(crate) fn for_clone(&self, share_files: bool, share_fs: bool) -> Self {
+        let mut child = self.clone();
+        if !share_files {
+            child.fds = Arc::new(Mutex::new(
+                self.fds
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone(),
+            ));
+        }
+        if !share_fs {
+            child.cwd = Arc::new(Mutex::new(
+                self.cwd
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone(),
+            ));
+        }
+        child
     }
 }
 fn path(c: &Context<'_>, addr: u64) -> Result<Vec<u8>, Errno> {
@@ -212,7 +243,12 @@ fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
                 .map(u64::from)
         }
         3 => {
-            c.files.fds.remove(&(a[0] as u32)).ok_or(Errno::EBADF)?;
+            c.files
+                .fds
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&(a[0] as u32))
+                .ok_or(Errno::EBADF)?;
             Ok(0)
         }
         4 | 6 | 262 => {
@@ -245,7 +281,11 @@ fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
             if a[1] > i32::MAX as u64 || n == 292 && (a[2] & !0x80000 != 0 || a[0] == a[1]) {
                 return Err(Errno::EINVAL);
             }
-            c.files.fds.insert(a[1] as u32, d);
+            c.files
+                .fds
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(a[1] as u32, d);
             Ok(a[1])
         }
         72 => {
@@ -260,7 +300,11 @@ fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
                 1 => Ok(u64::from(d.cloexec)),
                 2 => {
                     d.cloexec = a[2] & 1 != 0;
-                    c.files.fds.insert(a[0] as u32, d);
+                    c.files
+                        .fds
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .insert(a[0] as u32, d);
                     Ok(0)
                 }
                 3 => Ok(d.file.flags() as u64),
@@ -311,7 +355,12 @@ fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
             Ok(0)
         }
         79 => {
-            let mut p = c.files.cwd.clone();
+            let mut p = c
+                .files
+                .cwd
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
             p.push(0);
             if a[1] < p.len() as u64 {
                 return Err(Errno::ERANGE);
@@ -328,7 +377,7 @@ fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
             if c.files.fs.metadata(&p, true)?.mode & 0o170000 != 0o040000 {
                 return Err(Errno::ENOTDIR);
             }
-            c.files.cwd = p;
+            *c.files.cwd.lock().unwrap_or_else(PoisonError::into_inner) = p;
             Ok(0)
         }
         82 | 264 => {
@@ -341,7 +390,13 @@ fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
                 (at(c, a[0], a[1])?, at(c, a[2], a[3])?)
             };
             c.files.fs.rename(&old, &new)?;
-            for d in c.files.fds.values_mut() {
+            for d in c
+                .files
+                .fds
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .values_mut()
+            {
                 if d.path == old || d.path.starts_with(&old) && d.path.get(old.len()) == Some(&b'/')
                 {
                     let mut p = new.clone();
@@ -349,12 +404,11 @@ fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
                     d.path = p;
                 }
             }
-            if c.files.cwd == old
-                || c.files.cwd.starts_with(&old) && c.files.cwd.get(old.len()) == Some(&b'/')
-            {
+            let mut cwd = c.files.cwd.lock().unwrap_or_else(PoisonError::into_inner);
+            if *cwd == old || cwd.starts_with(&old) && cwd.get(old.len()) == Some(&b'/') {
                 let mut p = new.clone();
-                p.extend_from_slice(&c.files.cwd[old.len()..]);
-                c.files.cwd = p;
+                p.extend_from_slice(&cwd[old.len()..]);
+                *cwd = p;
             }
             Ok(0)
         }

@@ -10,14 +10,17 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use paludarium_cpu::{DecodeCache, run_cached};
+mod workers;
 use paludarium_host::Host;
 use paludarium_jit::{CodeCache, NoopCodeCache};
-use paludarium_kernel::{Kernel, Next, SignalInbox};
+use paludarium_kernel::{Kernel, SignalInbox};
 use paludarium_loader::{StartInfo, load};
 use paludarium_mmu::AddressSpace;
-use paludarium_types::{Error, ErrorKind, ExitReason, ExitStatus, signal};
+#[cfg(test)]
+use paludarium_types::signal;
+use paludarium_types::{Error, ErrorKind, ExitReason, ExitStatus};
 use paludarium_vfs::{GuestFile, HostFs, MemFs, MountedFs};
+use workers::Execution;
 
 /// Instructions run between two checks of the kill request (BR4.3,
 /// entities.md SessionConfig: internal, default 100000).
@@ -32,10 +35,22 @@ pub struct Mount {
 }
 
 /// Terminal size given to the guest. Used from U9.
+/// ```compile_fail
+/// use paludarium_runtime::TerminalInfo;
+/// let _ = TerminalInfo { columns: 80, rows: 24 };
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TerminalInfo {
     pub columns: u16,
     pub rows: u16,
+}
+impl TerminalInfo {
+    /// Creates the explicit guest terminal size, including zero dimensions.
+    #[must_use]
+    pub const fn new(columns: u16, rows: u16) -> Self {
+        Self { columns, rows }
+    }
 }
 
 /// Configuration of one run (C10 `Config`, entities.md SessionConfig).
@@ -86,12 +101,12 @@ pub struct Session {
     config: Config,
     mounts: Vec<(Vec<u8>, Arc<dyn HostFs>)>,
     host: Arc<dyn Host>,
-    code_cache: Box<dyn CodeCache>,
+    code_cache: Arc<dyn CodeCache>,
     budget: u64,
     kill_requested: Arc<AtomicBool>,
     signal_inbox: Arc<SignalInbox>,
-    stopped: AtomicBool,
-    last_stop: Mutex<Option<ExitReason>>,
+    stopped: Arc<AtomicBool>,
+    last_stop: Arc<Mutex<Option<ExitReason>>>,
 }
 
 impl Session {
@@ -115,12 +130,12 @@ impl Session {
             mounts,
             config,
             host,
-            code_cache: Box::new(NoopCodeCache),
+            code_cache: Arc::new(NoopCodeCache),
             budget: DEFAULT_BUDGET,
             kill_requested: Arc::new(AtomicBool::new(false)),
             signal_inbox: Arc::new(SignalInbox::default()),
-            stopped: AtomicBool::new(false),
-            last_stop: Mutex::new(None),
+            stopped: Arc::new(AtomicBool::new(false)),
+            last_stop: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -206,63 +221,20 @@ impl Session {
         if let Some(tty) = self.config.tty {
             kernel = kernel.with_terminal_size(tty.columns, tty.rows);
         }
-        let mut thread = kernel.spawn_initial(&image);
-        let mut decode_cache = DecodeCache::new();
-
-        loop {
-            if self.kill_requested.load(Ordering::SeqCst) {
-                self.stopped.store(false, Ordering::SeqCst);
-                return Ok(ExitStatus::Signaled(signal::SIGKILL));
-            }
-            match kernel.checkpoint(&mut thread, &mem) {
-                Next::Stopped => {
-                    self.stopped.store(true, Ordering::SeqCst);
-                    let clock = paludarium_host::ClockId::Monotonic;
-                    let now = self
-                        .host
-                        .clock(clock)
-                        .map_err(|_| Error::new(ErrorKind::Host, "stopped process clock"))?;
-                    self.host
-                        .wait_until(
-                            clock,
-                            now.saturating_add(10_000_000),
-                            &self.signal_inbox.wake_token(),
-                        )
-                        .map_err(|_| Error::new(ErrorKind::Host, "stopped process wait"))?;
-                    continue;
-                }
-                Next::Exit(status) => {
-                    self.stopped.store(false, Ordering::SeqCst);
-                    return Ok(status);
-                }
-                _ => self.stopped.store(false, Ordering::SeqCst),
-            }
-            let reason = self
-                .code_cache
-                .try_run(&mut thread.cpu, &mem)
-                .unwrap_or_else(|| {
-                    run_cached(&mut thread.cpu, &mem, self.budget, &mut decode_cache)
-                });
-            match kernel.handle(&mut thread, &mut mem, reason) {
-                Next::Resume => {}
-                Next::Stopped => {}
-                Next::Exit(status) => {
-                    if !matches!(reason, ExitReason::Syscall { .. }) {
-                        *self
-                            .last_stop
-                            .lock()
-                            .unwrap_or_else(PoisonError::into_inner) = Some(reason);
-                    }
-                    return Ok(status);
-                }
-                _ => {
-                    return Err(
-                        Error::new(ErrorKind::Internal, "unexpected kernel decision")
-                            .with_rip(thread.cpu.rip),
-                    );
-                }
-            }
-        }
+        let thread = kernel.spawn_initial(&image);
+        let execution = Arc::new(Execution::new(
+            Arc::clone(&self.host),
+            Arc::new(mem),
+            kernel.thread_group(),
+            Arc::clone(&self.kill_requested),
+            Arc::clone(&self.signal_inbox),
+            Arc::clone(&self.stopped),
+            Arc::clone(&self.last_stop),
+            Arc::clone(&self.code_cache),
+            self.budget,
+        ));
+        execution.execute(kernel, thread);
+        execution.finish()
     }
 }
 
@@ -271,3 +243,6 @@ mod tests;
 
 #[cfg(test)]
 mod u9_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod u5_tests;

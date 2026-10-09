@@ -406,7 +406,7 @@ fn u4_signal_synchronous_fault_selects_thread_pending_queue() {
     assert_eq!(
         f.kernel.handle(
             &mut f.thread,
-            &mut f.mem,
+            &f.mem,
             ExitReason::ArithmeticFault {
                 rip: GuestAddr(0x400000)
             }
@@ -522,7 +522,7 @@ fn u4_signal_rep_budget_context_roundtrip() {
     assert!(f.thread.cpu.repeat_continuation.is_some());
     let before = f.thread.cpu.clone();
     f.kernel.queue_signal(10).unwrap();
-    f.kernel.handle(&mut f.thread, &mut f.mem, reason);
+    f.kernel.handle(&mut f.thread, &f.mem, reason);
     assert!(f.thread.cpu.repeat_continuation.is_none());
     f.thread.cpu.gpr[reg::RSP] += 8;
     f.call(nr::RT_SIGRETURN, &[]);
@@ -547,7 +547,7 @@ fn u4_signal_changed_rep_return_discards_continuation() {
     f.thread.cpu.gpr[reg::RDI] = DATA;
     let reason = paludarium_cpu::run(&mut f.thread.cpu, &f.mem, 1);
     f.kernel.queue_signal(10).unwrap();
-    f.kernel.handle(&mut f.thread, &mut f.mem, reason);
+    f.kernel.handle(&mut f.thread, &f.mem, reason);
     let base = f.thread.cpu.gpr[reg::RSP];
     f.mem
         .write_u64(GuestAddr(base + 48 + 14 * 8), DATA + 65)

@@ -766,6 +766,9 @@ pub struct AtomicResult {
 pub struct AddressSpace {
     data: Mutex<AddressSpaceData>,
 }
+
+#[cfg(test)]
+mod u5_tests;
 impl Default for AddressSpace {
     fn default() -> Self {
         Self::new()
@@ -874,6 +877,10 @@ impl AddressSpace {
         self.locked().current_break()
     }
     pub fn set_break(&mut self, addr: GuestAddr) -> GuestAddr {
+        self.locked().set_break(addr)
+    }
+    /// Adjusts the shared process break under the memory/mapping lock.
+    pub fn set_break_shared(&self, addr: GuestAddr) -> GuestAddr {
         self.locked().set_break(addr)
     }
     /// Validate the whole write range even on failed comparison, then perform

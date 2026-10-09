@@ -47,7 +47,7 @@ pub(crate) struct Context<'a> {
     pub host: &'a dyn Host,
     pub process: &'a mut Process,
     pub cpu: &'a mut CpuState,
-    pub mem: &'a mut AddressSpace,
+    pub mem: &'a AddressSpace,
     pub cancellation: &'a std::sync::atomic::AtomicBool,
     pub inbox: &'a crate::SignalInbox,
 }
@@ -463,24 +463,25 @@ fn sys_mmap(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
             return err(Errno::EINVAL);
         }
         if flags & MAP_FIXED_NOREPLACE == 0
-            && let Err(e) = c.mem.unmap(at, len)
+            && let Err(e) = c.mem.unmap_shared(at, len)
         {
             return err(e);
         }
-        c.mem.map(Some(at), len, prot, MappingKind::Anonymous)
+        c.mem
+            .map_shared(Some(at), len, prot, MappingKind::Anonymous)
     } else {
         // Linux rounds a non-fixed hint down to its page boundary.
         let hint = GuestAddr(addr & !4095);
         let hinted = (hint.0 != 0)
             .then(|| {
                 c.mem
-                    .map(Some(hint), len, prot, MappingKind::Anonymous)
+                    .map_shared(Some(hint), len, prot, MappingKind::Anonymous)
                     .ok()
             })
             .flatten();
         match hinted {
             Some(a) => Ok(a),
-            None => c.mem.map(None, len, prot, MappingKind::Anonymous),
+            None => c.mem.map_shared(None, len, prot, MappingKind::Anonymous),
         }
     };
     match result {
@@ -501,14 +502,14 @@ fn sys_mprotect(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
             err(Errno::EINVAL)
         };
     }
-    match c.mem.protect(GuestAddr(a[0]), a[1], prot) {
+    match c.mem.protect_shared(GuestAddr(a[0]), a[1], prot) {
         Ok(()) => ok(0),
         Err(e) => err(e),
     }
 }
 
 fn sys_munmap(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
-    match c.mem.unmap(GuestAddr(a[0]), a[1]) {
+    match c.mem.unmap_shared(GuestAddr(a[0]), a[1]) {
         Ok(()) => ok(0),
         Err(e) => err(e),
     }
@@ -516,7 +517,7 @@ fn sys_munmap(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
 
 fn sys_brk(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
     // brk(0) and invalid requests return the current break (BR2.3).
-    ok(c.mem.set_break(GuestAddr(a[0])).0)
+    ok(c.mem.set_break_shared(GuestAddr(a[0])).0)
 }
 
 const SIGKILL: u64 = 9;
@@ -634,11 +635,10 @@ fn sys_ioctl(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
         }
         let host_info = c.host.terminal_info(stream)?;
         let info = if let Some((columns, rows)) = c.files.terminal_size {
-            paludarium_host::TerminalInfo {
-                columns,
-                rows,
-                ..host_info.unwrap_or_default()
-            }
+            let mut info = host_info.unwrap_or_default();
+            info.columns = columns;
+            info.rows = rows;
+            info
         } else {
             host_info.ok_or(Errno::ENOTTY)?
         };

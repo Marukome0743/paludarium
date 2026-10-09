@@ -13,7 +13,10 @@ mod inbox;
 mod signals;
 pub use inbox::SignalInbox;
 mod files;
+mod futex;
 mod syscalls;
+mod threads;
+pub use threads::ThreadGroup;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -100,6 +103,8 @@ pub struct Kernel {
     files: files::Files,
     cancellation: Arc<AtomicBool>,
     inbox: Arc<SignalInbox>,
+    group: Arc<ThreadGroup>,
+    pending_child: Option<(Box<Kernel>, Thread)>,
 }
 
 impl Kernel {
@@ -116,6 +121,8 @@ impl Kernel {
             files,
             cancellation: Arc::new(AtomicBool::new(false)),
             inbox: Arc::new(SignalInbox::default()),
+            group: Arc::new(ThreadGroup::default()),
+            pending_child: None,
         }
     }
 
@@ -140,6 +147,7 @@ impl Kernel {
 
     /// Connects the runtime's single-process signal queue and wait wake token.
     pub fn with_signal_inbox(mut self, inbox: Arc<SignalInbox>) -> Self {
+        self.group.set_process_inbox(Arc::clone(&inbox));
         self.cancellation = inbox.wake_token();
         self.inbox = inbox;
         self
@@ -155,6 +163,8 @@ impl Kernel {
     /// point, rsp at the initial stack, everything else zero.
     #[must_use]
     pub fn spawn_initial(&self, image: &LoadedImage) -> Thread {
+        self.group
+            .register(self.process.pid, Arc::clone(&self.inbox));
         Thread {
             tid: self.process.pid,
             cpu: CpuState::new(image.entry_point, image.initial_stack_pointer),
@@ -164,11 +174,15 @@ impl Kernel {
     fn terminate(&mut self, signal: i32) -> Next {
         let status = ExitStatus::Signaled(signal);
         self.process.exit_status = Some(status);
+        self.group.stop(status);
         Next::Exit(status)
     }
 
     /// Queues a standard signal for the process's current thread.
     pub fn queue_signal(&mut self, number: i32) -> Result<(), paludarium_types::Errno> {
+        if number == 18 {
+            self.group.job_continue();
+        }
         if !(1..=64).contains(&number) {
             return Err(paludarium_types::Errno::EINVAL);
         }
@@ -178,7 +192,15 @@ impl Kernel {
 
     /// Delivers an unblocked pending signal at a CPU/Kernel boundary.
     pub fn checkpoint(&mut self, thread: &mut Thread, mem: &AddressSpace) -> Next {
+        if let Some(status) = self.group.status() {
+            return Next::Exit(status);
+        }
+        self.sync_actions();
+        self.group.drain_process(&mut self.process);
         self.inbox.drain(&mut self.process);
+        if self.process.pending.iter().any(|s| s.number == 18) {
+            self.group.job_continue();
+        }
         if let Ok(now) = self.host.clock(paludarium_host::ClockId::Monotonic) {
             signals::expire_timer(&mut self.process, now);
         }
@@ -203,6 +225,7 @@ impl Kernel {
             }
             if signal.number == 19 || action.handler == 0 && matches!(signal.number, 20..=22) {
                 self.process.stopped = true;
+                self.group.job_stop();
                 return Next::Stopped;
             }
             if action.handler == 0 || signal.number == 9 {
@@ -210,6 +233,10 @@ impl Kernel {
             }
             if signals::install(&mut self.process, &mut thread.cpu, mem, signal, action).is_err() {
                 return self.terminate(signal::SIGSEGV);
+            }
+            if action.flags & signals::SA_RESETHAND != 0 {
+                self.group
+                    .set_action(signal.number, SignalAction::default());
             }
             return Next::Resume;
         }
@@ -221,12 +248,7 @@ impl Kernel {
     }
 
     /// Handles a stop of `thread` (W3, W4).
-    pub fn handle(
-        &mut self,
-        thread: &mut Thread,
-        mem: &mut AddressSpace,
-        reason: ExitReason,
-    ) -> Next {
+    pub fn handle(&mut self, thread: &mut Thread, mem: &AddressSpace, reason: ExitReason) -> Next {
         let fault = match reason {
             ExitReason::PageFault {
                 rip,
@@ -274,6 +296,18 @@ impl Kernel {
                     synchronous: true,
                 })
             }
+            ExitReason::FloatingPointFault { rip, code } => {
+                thread.cpu.rip = rip;
+                Some(signals::PendingSignal {
+                    target: signals::PendingTarget::Thread,
+                    number: signal::SIGFPE,
+                    code: i32::from(code),
+                    addr: rip.0,
+                    trap: 19,
+                    error: 0,
+                    synchronous: true,
+                })
+            }
             ExitReason::GeneralProtection { rip } | ExitReason::Halt { rip } => {
                 thread.cpu.rip = rip;
                 Some(signals::PendingSignal {
@@ -298,14 +332,17 @@ impl Kernel {
             | ExitReason::GeneralProtection { .. }
             | ExitReason::Halt { .. } => self.terminate(signal::SIGSEGV),
             ExitReason::InvalidOpcode { .. } => self.terminate(signal::SIGILL),
-            ExitReason::ArithmeticFault { .. } => self.terminate(signal::SIGFPE),
+            ExitReason::ArithmeticFault { .. } | ExitReason::FloatingPointFault { .. } => {
+                self.terminate(signal::SIGFPE)
+            }
             ExitReason::BudgetExhausted { .. } => self.checkpoint(thread, mem),
             // Later units add stop reasons; until then they end the process.
             _ => self.terminate(signal::SIGSEGV),
         }
     }
 
-    fn syscall(&mut self, thread: &mut Thread, mem: &mut AddressSpace) -> Next {
+    fn syscall(&mut self, thread: &mut Thread, mem: &AddressSpace) -> Next {
+        self.sync_actions();
         let number = thread.cpu.gpr[reg::RAX];
         let args = [
             thread.cpu.gpr[reg::RDI],
@@ -315,6 +352,9 @@ impl Kernel {
             thread.cpu.gpr[reg::R8],
             thread.cpu.gpr[reg::R9],
         ];
+        if let Some(next) = self.thread_syscall(thread, mem, number, args) {
+            return next;
+        }
         let Some(handler) = self.table.get(number) else {
             thread.cpu.gpr[reg::RAX] = paludarium_types::Errno::ENOSYS.to_syscall_return();
             return Next::Resume;
@@ -329,6 +369,12 @@ impl Kernel {
             inbox: &self.inbox,
         };
         let outcome = handler(&mut ctx, args);
+        if number == syscalls::nr::RT_SIGACTION
+            && args[1] != 0
+            && let Some(action) = self.process.signal_actions.get(&(args[0] as i32))
+        {
+            self.group.set_action(args[0] as i32, *action);
+        }
         self.inbox.drain(&mut self.process);
         match outcome {
             syscalls::Outcome::Return(value) => {
@@ -370,3 +416,6 @@ mod tests;
 
 #[cfg(test)]
 mod u9_tests;
+
+#[cfg(test)]
+mod u5_tests;

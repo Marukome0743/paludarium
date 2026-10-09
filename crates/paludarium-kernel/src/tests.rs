@@ -46,7 +46,7 @@ impl Fixture {
         let reason = ExitReason::Syscall {
             rip: GuestAddr(0x1000),
         };
-        self.kernel.handle(&mut self.thread, &mut self.mem, reason)
+        self.kernel.handle(&mut self.thread, &self.mem, reason)
     }
 
     fn ret(&mut self, number: u64, args: &[u64]) -> u64 {
@@ -178,7 +178,7 @@ fn exit_and_exit_group_keep_low_eight_bits() {
 fn guest_exceptions_end_the_process_with_signals() {
     let mut f = fixture();
     let rip = GuestAddr(0x1000);
-    let mut handle = |reason| fixture().kernel.handle(&mut f.thread, &mut f.mem, reason);
+    let mut handle = |reason| fixture().kernel.handle(&mut f.thread, &f.mem, reason);
     assert_eq!(
         handle(ExitReason::PageFault {
             rip,
@@ -214,13 +214,31 @@ fn u2_arithmetic_fault_terminates_with_sigfpe() {
     assert_eq!(
         f.kernel.handle(
             &mut f.thread,
-            &mut f.mem,
+            &f.mem,
             ExitReason::ArithmeticFault {
                 rip: GuestAddr(0x1000)
             }
         ),
         Next::Exit(ExitStatus::Signaled(signal::SIGFPE))
     );
+}
+
+#[test]
+fn u3_floating_point_fault_codes_terminate_with_sigfpe() {
+    for code in [3, 4, 5, 6, 7] {
+        let mut f = fixture();
+        assert_eq!(
+            f.kernel.handle(
+                &mut f.thread,
+                &f.mem,
+                ExitReason::FloatingPointFault {
+                    rip: GuestAddr(0x1000),
+                    code
+                }
+            ),
+            Next::Exit(ExitStatus::Signaled(signal::SIGFPE))
+        );
+    }
 }
 
 #[test]

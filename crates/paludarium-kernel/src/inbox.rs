@@ -8,20 +8,31 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct SignalInbox {
-    queue: Mutex<Vec<i32>>,
+    queue: Mutex<Vec<signals::PendingSignal>>,
     wake: Arc<AtomicBool>,
 }
 impl SignalInbox {
     /// Queues a signal for the single guest process (U4).
     pub fn send(&self, number: i32) -> Result<(), Errno> {
+        self.send_pending(signals::PendingSignal::user(number, 0))
+    }
+    pub(crate) fn send_thread(&self, number: i32) -> Result<(), Errno> {
+        self.send_pending(signals::PendingSignal::thread(number, 0))
+    }
+    fn send_pending(&self, signal: signals::PendingSignal) -> Result<(), Errno> {
+        let number = signal.number;
         if !(1..=64).contains(&number) {
             return Err(Errno::EINVAL);
         }
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
-        if number < 32 && queue.contains(&number) {
+        if number < 32
+            && queue
+                .iter()
+                .any(|s| s.number == number && s.target == signal.target)
+        {
             return Ok(());
         }
-        queue.push(number);
+        queue.push(signal);
         self.wake.store(true, Ordering::SeqCst);
         Ok(())
     }
@@ -36,8 +47,8 @@ impl SignalInbox {
     pub(crate) fn drain(&self, process: &mut Process) -> bool {
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
         let received = !queue.is_empty();
-        for number in queue.drain(..) {
-            signals::queue(process, signals::PendingSignal::user(number, 0));
+        for signal in queue.drain(..) {
+            signals::queue(process, signal);
         }
         // Sender stores while holding this same mutex, preventing a lost wake.
         self.wake.store(false, Ordering::SeqCst);
