@@ -28,11 +28,24 @@ static void end(long code) { sc(60,code,0,0,0,0,0);__builtin_unreachable(); }
 extern long spawn(u64 flags,void *sp,u32 *ptid,u32 *ctid,void *tls);
 extern void restorer(void);
 static volatile long signals;
-static void handler(void) { ++signals; }
+static void handler(void) { ++signals;if(CASE==34||CASE==35)put(&word,1); }
 struct action {u64 handler,flags,restorer,mask;};
+static void pause_ns(long ns) {long t[2]={ns/1000000000,ns%1000000000};sc(35,(u64)t,0,0,0,0,0);}
+static long now_ns(void) {long t[2];sc(228,1,(u64)t,0,0,0,0);return t[0]*1000000000+t[1];}
+static void timer_us(long us) {long t[4]={0,0,us/1000000,us%1000000};sc(38,0,(u64)t,0,0,0,0);}
 /* Keep all helpers referenced across compile-time cases without changing code. */
 void child_main(void) {
  seen_tid=(u32)sc(186,0,0,0,0,0,0);
+ if(CASE>=27) {
+  while(!get(&ready)){}
+  pause_ns(CASE>=36?150000000:50000000);
+  if(CASE<=29)timer_us(CASE==29?0:50000);
+  else {
+   sc(234,sc(39,0,0,0,0,0,0),main_tid,10,0,0,0);
+   if(CASE<36){pause_ns(50000000);fut(&word,CASE%2?138:129,1,0,1);}
+  }
+  put(&done,1);end(0);
+ }
  if (CASE==12) {u64 got;__asm__ volatile("mov %%fs:0,%0":"=r"(got));put(&word,got==tls);}
  if (CASE==13) put(&word,get(&child_tid)==seen_tid);
  if (CASE==14) {put(&done,1);end(7);}
@@ -51,6 +64,27 @@ void child_main(void) {
 }
 void test_main(void) {
  main_tid=sc(186,0,0,0,0,0,0);
+ if(CASE>=27) {
+  struct action a={(u64)handler,0x4000000|((CASE>=30&&CASE!=32&&CASE!=33)?0x10000000:0),(u64)restorer,0};
+  sc(13,CASE<=29?14:10,(u64)&a,0,8,0,0);
+  if(CASE==28)timer_us(1500000);
+  if(CASE==29)timer_us(100000);
+  long tid=spawn(BASE|PARENT_TID|CHILD_TID|CLEAR_TID,stack+sizeof(stack),&parent_tid,&child_tid,0);
+  if(tid<0){emit(tid,0,0);return;}
+  long start=now_ns(),r;
+  put(&ready,1);
+  if(CASE<=29){long t[2]={CASE==29?0:2,CASE==29?200000000:0};r=sc(35,(u64)t,0,0,0,0,0);}
+  else {
+   long t[2]={0,500000000};
+   if(CASE==37){long deadline=start+500000000;t[0]=deadline/1000000000;t[1]=deadline%1000000000;}
+   r=fut(&word,CASE%2?137:128,0,CASE>=36?(u64)t:0,1);
+  }
+  long elapsed=now_ns()-start;
+  while(!get(&done)){}
+  while(get(&child_tid)){u32 value=get(&child_tid);if(value)fut(&child_tid,0,value,0,0);}
+  emit(r,signals,CASE<=28?elapsed<500000000:CASE==29?elapsed>=150000000:CASE>=36?(elapsed>=400000000&&elapsed<600000000):get(&word));
+  return;
+ }
  /* Invalid, finite futex cases determine error precedence directly. */
  if(CASE<=11) {
   long t[2]={0,1000000},bad[2]={0,1000000000};
@@ -67,6 +101,7 @@ void test_main(void) {
   case 9:emit(fut(&word,129,3,0,0),fut(&word,138,3,0,1),0);break;
   case 10:emit(fut(&word,128,0,0x60000000,0),0,0);break;
   case 11:emit(fut(&word,384,0,(u64)t,0),0,0);break;
+  default:break;
   }
   return;
  }

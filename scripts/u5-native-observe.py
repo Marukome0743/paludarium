@@ -41,13 +41,13 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--emulator', type=Path)
     parser.add_argument('--smoke', action='store_true')
-    parser.add_argument('--case', type=int, choices=range(27))
+    parser.add_argument('--case', type=int, choices=range(38))
     args = parser.parse_args()
     if platform.system() != 'Linux' or platform.machine() != 'x86_64':
         raise RuntimeError('Native expectations require an x86-64 Linux runner')
     args.out.mkdir(parents=True, exist_ok=True)
     results = []
-    cases = [args.case] if args.case is not None else range(1 if args.smoke else 27)
+    cases = [args.case] if args.case is not None else range(1 if args.smoke else 38)
     for case in cases:
         guest = args.guests / f'thread-{case}'
         native = run([str(guest.resolve())], args.out / f'native-{case}')

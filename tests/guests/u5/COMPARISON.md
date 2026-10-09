@@ -1,6 +1,6 @@
 # U5 native-first 比較
 
-各 native x86-64 Linux CI 実行で oracle を生成する。`threads.c` は libc に依存せず、観測値を little-endian signed 64-bit で出力する。stdout、stderr、終了ステータス、定義されたメモリ観測値を完全一致で比較する。TID 数値は出力せず、clone 戻り値、parent TID、child TID、gettid の一致関係へ正規化する。アドレス、時刻、スケジューラの実行順序は比較しない。WAKE は waiter 登録まで繰り返し、sleep による順序推定を使わない。
+各 native x86-64 Linux CI 実行で oracle を生成する。`threads.c` は libc に依存せず、観測値を little-endian signed 64-bit で出力する。stdout、stderr、終了ステータス、定義されたメモリ観測値を完全一致で比較する。TID 数値は出力せず、clone 戻り値、parent TID、child TID、gettid の一致関係へ正規化する。アドレス、時刻の生値、スケジューラの実行順序は比較しない。既存WAKEケースはwaiter登録まで繰り返す。追加signal/timerケースは親のready flag後に子を50ms（timeoutケース150ms）遅延させる有限guestで、Host待機登録の正確な同期は内部部品テストで別に検証する。
 
 | ケース | 動作 |
 | --- | --- |
@@ -12,6 +12,13 @@
 | 17–20 | private wake、bitset 選択、shared bitset wake、有効 tgkill 検索 |
 | 21–23 | signal による WAIT 中断、不正 flag 依存関係、不正 parent TID ポインタ |
 | 24–26 | 並行 locked increment、100 回 mutex/condvar 相当 handoff、shared wake |
+| 27–29 | 親nanosleep中に子が共有timerを設定・短縮・解除 |
+| 30–31 | timeoutなしWAIT/WAIT_BITSET、SA_RESTART handler後に子WAKE |
+| 32–33 | 同じsignal/wake順でSA_RESTARTなし |
+| 34–35 | SA_RESTART handlerでfutex値を変更、WAIT/WAIT_BITSETの再比較 |
+| 36–37 | 相対WAIT/絶対monotonic BITSETの500ms期限中150ms時点でSA_RESTART signal |
+
+全38ケース。27/28はsyscall結果・handler回数・経過500ms未満のboolを出力する（2秒/1.5秒遅延を区別）。29は結果・handler回数・150ms以上のbool。36/37は結果・handler回数・経過400ms以上600ms未満のboolを出力し、生時刻は比較しない。timeout付き再開のerrnoはLinux実測で決め、SA_RESTART一般規則から推定しない。30–35の第3値はhandler後のfutex値。親は子のdoneとclear_child_tidを待ち、late WAKEを含む子の終了を回収する。
 
 `scripts/u5-native-observe.py --out target/u5-native-first` は全ケースを独立した30秒の process-group watchdog、kill/reap、raw log 付きで実行する。`--emulator target/debug/paludarium` を追加すると native 実行後に emulator と比較する。ケース16は17、他は0で終了する。native の不一致・エラー観測値はデータとして記録し、errno 表から推定しない。
 

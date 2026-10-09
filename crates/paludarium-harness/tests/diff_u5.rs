@@ -54,4 +54,9 @@ cases!(
     tgkill_lookup=>20, interrupt_wait=>21, invalid_clone_flags=>22,
     invalid_parent_tid=>23, locked_increments=>24, mutex_condvar_handoff=>25,
     shared_wake=>26,
+    timer_set_during_sleep=>27, timer_shorten_during_sleep=>28,
+    timer_cancel_during_sleep=>29, wait_restart_wake=>30, bitset_restart_wake=>31,
+    wait_no_restart=>32, bitset_no_restart=>33, wait_restart_value_change=>34,
+    bitset_restart_value_change=>35, wait_restart_relative_timeout=>36,
+    bitset_restart_absolute_timeout=>37,
 );
