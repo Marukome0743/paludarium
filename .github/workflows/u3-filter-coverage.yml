@@ -55,8 +55,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends musl-tools
-          cargo test --locked -p paludarium-harness --test diff_u3 u3_native_observation -- --ignored --exact --nocapture > target/u3-filter-coverage-evidence/native-collection.log 2>&1
-          cp -R target/u3-guests target/u3-filter-coverage-evidence/native
+          python3 diagnostics/u3-filter-coverage/collect-native.py > target/u3-filter-coverage-evidence/native-collection.log 2>&1
       - name: Run exact listed command from empty profiles
         id: measure
         shell: bash
