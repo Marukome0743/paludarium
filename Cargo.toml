@@ -13,6 +13,7 @@ members = [
     "crates/paludarium-runtime",
     "crates/paludarium",
     "crates/paludarium-harness",
+    "crates/paludarium-wasm",
 ]
 # Guest programs, fuzz targets and spikes are built separately (other targets
 # or other toolchain flags), so they are not workspace members.

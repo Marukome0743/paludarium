@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 paludarium-types.workspace = true
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 getrandom = "0.4"
 cap-std = "4.0.3"
 cap-fs-ext = "4.0.3"

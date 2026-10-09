@@ -1,8 +1,11 @@
+#[cfg(not(target_arch = "wasm32"))]
 use paludarium_types::Errno;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::{
     OnceLock,
     atomic::{AtomicBool, Ordering},
 };
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Clocks required by the guest ABI; values are not host syscall numbers.
@@ -17,6 +20,7 @@ pub enum WaitOutcome {
     Interrupted,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn native_clock(clock: ClockId) -> Result<u64, Errno> {
     static EPOCH: OnceLock<Instant> = OnceLock::new();
     let duration = match clock {
@@ -27,6 +31,7 @@ pub(crate) fn native_clock(clock: ClockId) -> Result<u64, Errno> {
     };
     u64::try_from(duration.as_nanos()).map_err(|_| Errno::ERANGE)
 }
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn native_wait(
     clock: ClockId,
     deadline: u64,

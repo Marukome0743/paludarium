@@ -8,10 +8,16 @@
 #![forbid(unsafe_code)]
 
 mod alu;
+mod cpuid;
+mod crypto;
 mod exec;
+mod softfloat;
+mod sse;
 mod state;
 #[cfg(test)]
 mod u2_tests;
+#[cfg(test)]
+mod u3_tests;
 
 use paludarium_decoder::{DecodeError, Instruction, decode};
 use paludarium_mmu::AddressSpace;
@@ -152,6 +158,12 @@ fn execute_decoded(
             {
                 state.rflags = continuation.initial_flags;
             }
+        } else if matches!(stop, Stop::FloatingPointFault(_)) {
+            // Unmasked SIMD exceptions preserve destinations but commit the
+            // exception status bits which Linux exposes in the signal frame.
+            let mxcsr = state.mxcsr;
+            *state = snapshot;
+            state.mxcsr = mxcsr;
         } else if stop != Stop::Syscall {
             *state = snapshot;
         }
@@ -173,6 +185,7 @@ fn execute_decoded(
         Stop::Halt => ExitReason::Halt { rip },
         Stop::GeneralProtection => ExitReason::GeneralProtection { rip },
         Stop::ArithmeticFault => ExitReason::ArithmeticFault { rip },
+        Stop::FloatingPointFault(code) => ExitReason::FloatingPointFault { rip, code },
         Stop::Syscall => ExitReason::Syscall { rip: state.rip },
     })
 }
@@ -341,8 +354,8 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         }
-        // cpuid is valid x86 but not implemented.
-        let (mut s, mem) = machine(&[0x0f, 0xa2]);
+        // XGETBV remains unsupported by the virtual CPU contract.
+        let (mut s, mem) = machine(&[0x0f, 0x01, 0xd0]);
         assert!(matches!(
             run(&mut s, &mem, 10),
             ExitReason::InvalidOpcode { .. }

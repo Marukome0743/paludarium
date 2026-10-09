@@ -1,0 +1,15 @@
+[package]
+name="paludarium-wasm"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+rust-version.workspace=true
+[lib]
+crate-type=["cdylib","rlib"]
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+paludarium-runtime.workspace=true
+paludarium-host.workspace=true
+paludarium-types.workspace=true
+paludarium-mmu.workspace=true
+[lints]
+workspace=true
