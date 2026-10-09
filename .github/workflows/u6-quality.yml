@@ -14,6 +14,7 @@ jobs:
           persist-credentials: false
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - run: cargo build --locked -p paludarium
       - run: cargo test --locked -p paludarium-harness --test diff_u1 --test diff_u2 --test parallel_u2 --test diff_u4 --test diff_u7 --test diff_u9 --test diff_u3 --test diff_u5 -- --nocapture
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -23,6 +24,7 @@ jobs:
             target/u3-guests
             target/u4-guests
             target/u9-guests
+            target/u5-diff
   production-wasm:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -91,15 +93,15 @@ jobs:
       - name: Approved U6 component coverage command
         run: 'cargo llvm-cov --locked -p paludarium-kernel --lib --lcov --output-path target/u6-coverage.lcov -- u6_tests::'
       - name: Current shared-source regressions, accumulating the same denominator
-        run: cargo llvm-cov --locked --no-clean --no-report --workspace --lib
+        run: cargo llvm-cov --locked --no-report --workspace --lib
       - run: rustup target add x86_64-unknown-linux-musl
       - run: bash tests/guests/u6/build.sh target/guests/u6
       - name: Build and execute current instrumented CLI
-        run: cargo llvm-cov run --locked --no-clean --no-report -p paludarium -- target/guests/u6/event-0
+        run: cargo llvm-cov run --locked --no-report -p paludarium -- target/guests/u6/event-0
       - name: Instrumented finite U6 differential execution
         env:
           PALUDARIUM_U6_EMULATOR: ${{ github.workspace }}/target/llvm-cov-target/debug/paludarium
-        run: cargo llvm-cov --locked --no-clean --no-report -p paludarium-harness --test diff_u6 -- --nocapture
+        run: cargo llvm-cov --locked --no-report -p paludarium-harness --test diff_u6 -- --nocapture
       - run: cargo llvm-cov report --lcov --output-path target/u6-coverage.lcov
       - run: python3 scripts/u6-coverage.py --lcov target/u6-coverage.lcov --out target/u6-coverage.json
       - if: always()

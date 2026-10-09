@@ -2,7 +2,7 @@
 
 ## Catalog
 
-raw Linux ABI guestは0〜66の67件、Rust target guest timer/unixの2件、計69件を固定する。元66件のnative先行証拠はc00e346aのstep4-native-firstに保持する。追加64〜66のnative期待は次のfixture-only CI取得前で未確定。保存期待fixtureは作らない。
+raw Linux ABI guestは0〜66の67件、Rust target guest timer/unixの2件、計69件を固定する。元66件のnative先行証拠はc00e346aのstep4-native-firstに保持する。追加64〜66はfixture-only source6add97faでnative先行観測後に製品へ接続した。source6b181418のLinux fresh差分で全69件が成功した中間証跡をstep9-first-green69に保持する。最終品質sourceの全原本は別に結合する。保存期待fixtureは作らない。
 
 | ID | ケース | 比較 |
 | --- | --- | --- |
@@ -86,8 +86,8 @@ raw Linux ABI guestは0〜66の67件、Rust target guest timer/unixの2件、計
 
 ## Boundaries
 
-初回製品は元64 CケースのLinux差分成功まで取得済みで、Rust2件はharness path adapter修正後の実行待ち。backpressure製品動作は追加64〜66のnative先行取得とgoまで変更しない。fillは64KiB単位1024回、drainは2048回で有限。OSのsend-buffer設定に依存するqueue容量やshort writeの具体バイト数は比較せず、飽和errno、部分成功、OUTの遷移、drainによる進捗という関係を比較する。これはゲストへの資源上限追加ではなくfixture自身の有限境界である。
+初回64 Cケース成功後のRust adapter、getrandomとmusl clone flagの接続を経て、Tokio timer/UnixStreamと追加backpressure3件を含むLinux69件が成功した。backpressure製品動作は追加64〜66のnative先行取得と親goの後に実装した。fillは64KiB単位1024回、drainは2048回で有限。OSのsend-buffer設定に依存するqueue容量やshort writeの具体バイト数は比較せず、飽和errno、部分成功、OUTの遷移、drainによる進捗という関係を比較する。これはゲストへの資源上限追加ではなくfixture自身の有限境界である。
 
-case66はclone共有Threadがrelease atomicを受けてpeerをdrainし、親のblocking writeを進め、clear-child-TID futexで終了を回収する。releaseはsyscall開始前なので実Host waitへの到達をこのguestだけで保証しない。実待機開始後の解除は内部Host同期テストで別に確かめる。Node/実Safariでは非threaded0〜65とunixを含め、timerと66のguest threadingはU11境界として明示する。登録/通知競合とtimer metadataの内部同期テストは製品実装後に検証する。
+case66はclone共有Threadがrelease atomicを受けてpeerをdrainし、親のblocking writeを進め、clear-child-TID futexで終了を回収する。releaseはsyscall開始前なので実Host waitへの到達をこのguestだけで保証しない。実待機開始後の解除は内部Host同期テストで別に確かめた。Node/実Safariでは非threaded0〜65とunixを含め、timerと66のguest threadingはU11境界として明示する。登録/通知競合とtimer metadataの内部同期テストは製品実装後の単体テストで検証した。現moduleのNode/実Safari結果は最終原本取得まで未検証。
 
 新しいobservable syscall動作が必要になれば追加guestをnative先行で取得し、この固定69ケースを削らず追加する。DGRAM/SEQPACKETとネットワーク通信は承認済み対応範囲と区別する。U10 probe全量、U11 guest Worker達成を有限結果から推測しない。
