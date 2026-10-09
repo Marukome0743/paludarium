@@ -144,23 +144,27 @@ impl Execution {
         Ok(())
     }
     pub fn finish(&self) -> Result<ExitStatus, Error> {
+        let mut host_error = None;
         while self.group.active_threads() != 0 {
             if self.kill.load(Ordering::SeqCst) {
                 self.group.stop(ExitStatus::Signaled(signal::SIGKILL));
             }
             if let Err(error) = self.pause() {
                 self.group.stop(ExitStatus::Signaled(signal::SIGKILL));
-                return Err(error);
+                host_error.get_or_insert(error);
             }
         }
         let handles =
             std::mem::take(&mut *self.handles.lock().unwrap_or_else(PoisonError::into_inner));
         for handle in handles {
-            handle
-                .join()
-                .map_err(|_| Error::new(ErrorKind::Host, "worker join"))?;
+            if handle.join().is_err() {
+                host_error.get_or_insert_with(|| Error::new(ErrorKind::Host, "worker join"));
+            }
         }
         self.stopped.store(false, Ordering::SeqCst);
+        if let Some(error) = host_error {
+            return Err(error);
+        }
         let mut results = self.results.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(index) = results.iter().position(Result::is_err) {
             return results.remove(index);
