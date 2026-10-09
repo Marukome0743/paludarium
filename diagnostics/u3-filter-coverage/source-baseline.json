@@ -1,0 +1,1061 @@
+{
+  "signed_product_head": "11195ad000415af6b320b8e0e4b64a46265fdb61",
+  "rows": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "signed_ci_sha256": "5e7e7a6503fa11251b30d1b27b05c90b2d1287c0696fde4b83e0d09dccae8b31",
+      "main_current_sha256": "5e7e7a6503fa11251b30d1b27b05c90b2d1287c0696fde4b83e0d09dccae8b31"
+    },
+    {
+      "path": ".github/workflows/native-diagnostic.yml",
+      "signed_ci_sha256": "474c7f282f5499f4effe7c9850a4662a2bd2b4e048157cadb0aed650f3dcadbf",
+      "main_current_sha256": "474c7f282f5499f4effe7c9850a4662a2bd2b4e048157cadb0aed650f3dcadbf"
+    },
+    {
+      "path": ".github/workflows/nightly.yml",
+      "signed_ci_sha256": "2dc922a8b39d6ff1e939fba1b1da22a629f0b57e4073bea07836328c7390f0a1",
+      "main_current_sha256": "2dc922a8b39d6ff1e939fba1b1da22a629f0b57e4073bea07836328c7390f0a1"
+    },
+    {
+      "path": ".github/workflows/u2-production-sanitizers.yml",
+      "signed_ci_sha256": "688cac32acc63d4bf66f3a05933c3a63fb57b434745804fad3df1b6dabbc11b8",
+      "main_current_sha256": "688cac32acc63d4bf66f3a05933c3a63fb57b434745804fad3df1b6dabbc11b8"
+    },
+    {
+      "path": ".gitignore",
+      "signed_ci_sha256": "b63da8980a1118a7457ae4a73203905a49c23fe49483eedcb0fcf8f7e2f59ad7",
+      "main_current_sha256": "b63da8980a1118a7457ae4a73203905a49c23fe49483eedcb0fcf8f7e2f59ad7"
+    },
+    {
+      "path": "Cargo.lock",
+      "signed_ci_sha256": "7af431e6bd6a474fbce145de28b98d5ee0e960bfbca41c3f4d814e1ee745c2ef",
+      "main_current_sha256": "7af431e6bd6a474fbce145de28b98d5ee0e960bfbca41c3f4d814e1ee745c2ef"
+    },
+    {
+      "path": "Cargo.toml",
+      "signed_ci_sha256": "b9253c234b26442423fc5c1c66dca814dc28d8b04afff8c3cb00e218ee4bc4d5",
+      "main_current_sha256": "b9253c234b26442423fc5c1c66dca814dc28d8b04afff8c3cb00e218ee4bc4d5"
+    },
+    {
+      "path": "README.md",
+      "signed_ci_sha256": "26957e8cb8307bd9ed01b935223c5d7de3186b0ad114497794d985e16594d10a",
+      "main_current_sha256": "26957e8cb8307bd9ed01b935223c5d7de3186b0ad114497794d985e16594d10a"
+    },
+    {
+      "path": "ci/linux-dev/Dockerfile",
+      "signed_ci_sha256": "caa76f6aa5954f7c2afbed3a6f65075fb47190c7204419b1f91ab60ef08aa449",
+      "main_current_sha256": "caa76f6aa5954f7c2afbed3a6f65075fb47190c7204419b1f91ab60ef08aa449"
+    },
+    {
+      "path": "clippy.toml",
+      "signed_ci_sha256": "8bdbe4c5a329aba3aa92387881a7904906b488ef7b6f3cad66d40164cf6d3e5a",
+      "main_current_sha256": "8bdbe4c5a329aba3aa92387881a7904906b488ef7b6f3cad66d40164cf6d3e5a"
+    },
+    {
+      "path": "crates/paludarium-cpu/Cargo.toml",
+      "signed_ci_sha256": "df195375ebc8cd57aa38664efcb7fd4a19da5e6d80e73d87e0ed05dacdd7e697",
+      "main_current_sha256": "df195375ebc8cd57aa38664efcb7fd4a19da5e6d80e73d87e0ed05dacdd7e697"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/alu.rs",
+      "signed_ci_sha256": "5ebdd0c75824142b242ea3e41b1124e90041bff2abdecb00ecbe5f6c730e298f",
+      "main_current_sha256": "5ebdd0c75824142b242ea3e41b1124e90041bff2abdecb00ecbe5f6c730e298f"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/cpuid.rs",
+      "signed_ci_sha256": "6275508509a6ac097d033d0038d67f2c1babd057abcbd2637239d52d5f45db60",
+      "main_current_sha256": "6275508509a6ac097d033d0038d67f2c1babd057abcbd2637239d52d5f45db60"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/crypto.rs",
+      "signed_ci_sha256": "54449083efb171b5acb7329fdaa5a6df083cc1fb669083eb541410ea2949d43f",
+      "main_current_sha256": "54449083efb171b5acb7329fdaa5a6df083cc1fb669083eb541410ea2949d43f"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/exec.rs",
+      "signed_ci_sha256": "832cca7a3abba778ab49e284c429b56d33ea028ae174e413d75fcdff5307dca1",
+      "main_current_sha256": "832cca7a3abba778ab49e284c429b56d33ea028ae174e413d75fcdff5307dca1"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/lib.rs",
+      "signed_ci_sha256": "4901de449bca19e24516fff19ef0aed8f6d4d3b91fa187411485a61c95748242",
+      "main_current_sha256": "4901de449bca19e24516fff19ef0aed8f6d4d3b91fa187411485a61c95748242"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/softfloat.rs",
+      "signed_ci_sha256": "3048195860a99dcadb99f6a3394d947950ed04368cdb88ffbaf9294726bd6fe8",
+      "main_current_sha256": "3048195860a99dcadb99f6a3394d947950ed04368cdb88ffbaf9294726bd6fe8"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/sse.rs",
+      "signed_ci_sha256": "bb3f0d8f2747dd03f17668985dcaba91edd44f16ef4076857a64ce1e80aaa0ee",
+      "main_current_sha256": "bb3f0d8f2747dd03f17668985dcaba91edd44f16ef4076857a64ce1e80aaa0ee"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/state.rs",
+      "signed_ci_sha256": "c51b9e636499ef7bea2c66ed768a8b660f98006f4fc1adfae9aec9a5f3580fb2",
+      "main_current_sha256": "c51b9e636499ef7bea2c66ed768a8b660f98006f4fc1adfae9aec9a5f3580fb2"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/u2_tests.rs",
+      "signed_ci_sha256": "dc80918a12a451e743f9bb0eabd8120fb4849019db698faa6a70494607d67827",
+      "main_current_sha256": "dc80918a12a451e743f9bb0eabd8120fb4849019db698faa6a70494607d67827"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/u3_tests.rs",
+      "signed_ci_sha256": "bb9a27d85c0f9a38c3b4e52d5c55e299fcf34c770ab9729ec504374087ecf6f0",
+      "main_current_sha256": "bb9a27d85c0f9a38c3b4e52d5c55e299fcf34c770ab9729ec504374087ecf6f0"
+    },
+    {
+      "path": "crates/paludarium-cpu/src/u4_tests.rs",
+      "signed_ci_sha256": "3b69cb669f0d5c868a1404279e91a43080377d4ea45e0da29f9e54c09909a741",
+      "main_current_sha256": "3b69cb669f0d5c868a1404279e91a43080377d4ea45e0da29f9e54c09909a741"
+    },
+    {
+      "path": "crates/paludarium-decoder/Cargo.toml",
+      "signed_ci_sha256": "7db6e7fb7237dc8a68eb98fe757cc32526e538cd705a8039ac23cb0fb8e3a39d",
+      "main_current_sha256": "7db6e7fb7237dc8a68eb98fe757cc32526e538cd705a8039ac23cb0fb8e3a39d"
+    },
+    {
+      "path": "crates/paludarium-decoder/src/lib.rs",
+      "signed_ci_sha256": "41b85fd865d9ef3d45da088c2e52e2099dffda3123018352ffd6d7d7d992062f",
+      "main_current_sha256": "41b85fd865d9ef3d45da088c2e52e2099dffda3123018352ffd6d7d7d992062f"
+    },
+    {
+      "path": "crates/paludarium-decoder/src/u3_native_encodings.rs",
+      "signed_ci_sha256": "3b48d6358621ca012fb11332217c5ab929fc70cb5a920e184e4ed3b05cfca7b2",
+      "main_current_sha256": "3b48d6358621ca012fb11332217c5ab929fc70cb5a920e184e4ed3b05cfca7b2"
+    },
+    {
+      "path": "crates/paludarium-decoder/src/u3_tests.rs",
+      "signed_ci_sha256": "7f2e5242701f467e36fff1f660e883f3c7e13f282d3cf4df86074ad1a5df5634",
+      "main_current_sha256": "7f2e5242701f467e36fff1f660e883f3c7e13f282d3cf4df86074ad1a5df5634"
+    },
+    {
+      "path": "crates/paludarium-harness/Cargo.toml",
+      "signed_ci_sha256": "5fe447eb1e2161ecdc2824ec70b86214c8dd1a020f28a3b0a744ee2d4a095d4c",
+      "main_current_sha256": "5fe447eb1e2161ecdc2824ec70b86214c8dd1a020f28a3b0a744ee2d4a095d4c"
+    },
+    {
+      "path": "crates/paludarium-harness/src/coverage.rs",
+      "signed_ci_sha256": "458f8155842d7a034571662c4d737314b97e744c546028900b1dfcd9a7c3a7cb",
+      "main_current_sha256": "458f8155842d7a034571662c4d737314b97e744c546028900b1dfcd9a7c3a7cb"
+    },
+    {
+      "path": "crates/paludarium-harness/src/lib.rs",
+      "signed_ci_sha256": "032693a9ee3fcedd49d1a364bba3b13feb596a6e7a84fbc1ccf4e0bb0e008d5e",
+      "main_current_sha256": "032693a9ee3fcedd49d1a364bba3b13feb596a6e7a84fbc1ccf4e0bb0e008d5e"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/diff_u1.rs",
+      "signed_ci_sha256": "5c6af822b41be11e5b1c5301a4eb8d9beb54f0bea1a5e6b0fe3dbacacf6bc7a3",
+      "main_current_sha256": "5c6af822b41be11e5b1c5301a4eb8d9beb54f0bea1a5e6b0fe3dbacacf6bc7a3"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/diff_u2.rs",
+      "signed_ci_sha256": "b8e2bbbc0b755fad7b673395a9b3b11927b6c70547ee10a138bcacdeef488d78",
+      "main_current_sha256": "b8e2bbbc0b755fad7b673395a9b3b11927b6c70547ee10a138bcacdeef488d78"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/diff_u3.rs",
+      "signed_ci_sha256": "3059aff48fef4c0eb457c5284516f6f305ed36c61fa3525207c52c2cfefba57e",
+      "main_current_sha256": "3059aff48fef4c0eb457c5284516f6f305ed36c61fa3525207c52c2cfefba57e"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/diff_u4.rs",
+      "signed_ci_sha256": "8e5f5561e83af9d8e48f8265666dfb46f3e2ae3487b067d549a167df473dc732",
+      "main_current_sha256": "8e5f5561e83af9d8e48f8265666dfb46f3e2ae3487b067d549a167df473dc732"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/diff_u7.rs",
+      "signed_ci_sha256": "3b8783794f73d9b309d4e117a6bfd1fcfa7c121574fb56bf608ff6b745ef1f79",
+      "main_current_sha256": "3b8783794f73d9b309d4e117a6bfd1fcfa7c121574fb56bf608ff6b745ef1f79"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/diff_u9.rs",
+      "signed_ci_sha256": "ae7bb01c3ebfe4663ab72aa6f43ce2f4b32c45b66e75c9c8c98597cc3a1f0391",
+      "main_current_sha256": "ae7bb01c3ebfe4663ab72aa6f43ce2f4b32c45b66e75c9c8c98597cc3a1f0391"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/parallel_u2.rs",
+      "signed_ci_sha256": "99033a4e82f6bdfb294a68570e55ed8ac9227268b8de47fc19e7971c5d697412",
+      "main_current_sha256": "99033a4e82f6bdfb294a68570e55ed8ac9227268b8de47fc19e7971c5d697412"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/support/u2.rs",
+      "signed_ci_sha256": "ae6e7ee5a578b07f3b31616dfe3ceec31bbef5bae0ac1e56d58d503b255fd492",
+      "main_current_sha256": "ae6e7ee5a578b07f3b31616dfe3ceec31bbef5bae0ac1e56d58d503b255fd492"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/support/u3.rs",
+      "signed_ci_sha256": "598c357a1b1ca36f8bb74dcf81752bea9f9dcb2d20459f68ac7daf82970fb05b",
+      "main_current_sha256": "598c357a1b1ca36f8bb74dcf81752bea9f9dcb2d20459f68ac7daf82970fb05b"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/support/u3_oracle.rs",
+      "signed_ci_sha256": "0e23a6166e5cff7b1dc770780a1e9464e7897b3bf89e2b8929e6d5d8092ddc77",
+      "main_current_sha256": "0e23a6166e5cff7b1dc770780a1e9464e7897b3bf89e2b8929e6d5d8092ddc77"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/support/u4.rs",
+      "signed_ci_sha256": "a5e9eb362d821179aa936dadd42181e24f5ffbf55b0fc3de8490de347d8c1e29",
+      "main_current_sha256": "a5e9eb362d821179aa936dadd42181e24f5ffbf55b0fc3de8490de347d8c1e29"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/support/u4_oracles.rs",
+      "signed_ci_sha256": "97b15b5eb75a6c7c78226cb7a3791e9aae4ac09ff6106c37f78e04f210b40474",
+      "main_current_sha256": "97b15b5eb75a6c7c78226cb7a3791e9aae4ac09ff6106c37f78e04f210b40474"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/support/u7.rs",
+      "signed_ci_sha256": "2c8649053567157bff3d45a8297a10843a5cb0de7fc879c11142f7b90ec8fc03",
+      "main_current_sha256": "2c8649053567157bff3d45a8297a10843a5cb0de7fc879c11142f7b90ec8fc03"
+    },
+    {
+      "path": "crates/paludarium-harness/tests/support/u9.rs",
+      "signed_ci_sha256": "6889bb927cf17fc4bdc3e5b0ea0875737f4dbf0c6d1f2a51726f4af58b6cf67d",
+      "main_current_sha256": "6889bb927cf17fc4bdc3e5b0ea0875737f4dbf0c6d1f2a51726f4af58b6cf67d"
+    },
+    {
+      "path": "crates/paludarium-host/Cargo.toml",
+      "signed_ci_sha256": "5697caee593e96eafe6e4804af52721529cad834eea55d64424625114f52718d",
+      "main_current_sha256": "5697caee593e96eafe6e4804af52721529cad834eea55d64424625114f52718d"
+    },
+    {
+      "path": "crates/paludarium-host/src/clock.rs",
+      "signed_ci_sha256": "2c4c0f17a42424f38c55016ac3336e9f8fd1c86f12f3689b40f1a9ef2a8de8d1",
+      "main_current_sha256": "2c4c0f17a42424f38c55016ac3336e9f8fd1c86f12f3689b40f1a9ef2a8de8d1"
+    },
+    {
+      "path": "crates/paludarium-host/src/fs.rs",
+      "signed_ci_sha256": "39d4cafe4d21516df8a24675dbf94c99393fee8698edc3fd6306503d23a82248",
+      "main_current_sha256": "39d4cafe4d21516df8a24675dbf94c99393fee8698edc3fd6306503d23a82248"
+    },
+    {
+      "path": "crates/paludarium-host/src/lib.rs",
+      "signed_ci_sha256": "d3e46d977ccd8b4d142d33c404243945b80a61e40605bd367ff37917baf1932b",
+      "main_current_sha256": "d3e46d977ccd8b4d142d33c404243945b80a61e40605bd367ff37917baf1932b"
+    },
+    {
+      "path": "crates/paludarium-host/src/native_fs.rs",
+      "signed_ci_sha256": "1888c7aeccc4c10fbb6ba75bf3a57045a5ad7e44f0ea8d3e816fe893b99a9fc1",
+      "main_current_sha256": "1888c7aeccc4c10fbb6ba75bf3a57045a5ad7e44f0ea8d3e816fe893b99a9fc1"
+    },
+    {
+      "path": "crates/paludarium-host/src/testing.rs",
+      "signed_ci_sha256": "7b6de84217835678b4dc4aff2c0bb1aa48a20f82656c50c98f9641d4929f6ae3",
+      "main_current_sha256": "7b6de84217835678b4dc4aff2c0bb1aa48a20f82656c50c98f9641d4929f6ae3"
+    },
+    {
+      "path": "crates/paludarium-host/src/u4_tests.rs",
+      "signed_ci_sha256": "94e3f37729fd902440eb728d1c4b1b479a051296bf0b6cddd9df17c13fafb0d3",
+      "main_current_sha256": "94e3f37729fd902440eb728d1c4b1b479a051296bf0b6cddd9df17c13fafb0d3"
+    },
+    {
+      "path": "crates/paludarium-host/src/u9_tests.rs",
+      "signed_ci_sha256": "b69284cdd863661acc6e0c9015bca6af462a2610fd6707f83c9e76b676d6b667",
+      "main_current_sha256": "b69284cdd863661acc6e0c9015bca6af462a2610fd6707f83c9e76b676d6b667"
+    },
+    {
+      "path": "crates/paludarium-host/src/wasm.rs",
+      "signed_ci_sha256": "7d1bc13881b1033731f827d225f987a125ff755b6dd5f0cac610416320bd3649",
+      "main_current_sha256": "7d1bc13881b1033731f827d225f987a125ff755b6dd5f0cac610416320bd3649"
+    },
+    {
+      "path": "crates/paludarium-host/tests/u9_public_api.rs",
+      "signed_ci_sha256": "7b25a18ea51c15e2f7a31fad292216015e5b679fcece776120100170cefc37b6",
+      "main_current_sha256": "7b25a18ea51c15e2f7a31fad292216015e5b679fcece776120100170cefc37b6"
+    },
+    {
+      "path": "crates/paludarium-jit/Cargo.toml",
+      "signed_ci_sha256": "7515331ffc89a06073b36d85a1f8129db1794bd2b3009be98dae48e9e2d5a152",
+      "main_current_sha256": "7515331ffc89a06073b36d85a1f8129db1794bd2b3009be98dae48e9e2d5a152"
+    },
+    {
+      "path": "crates/paludarium-jit/src/lib.rs",
+      "signed_ci_sha256": "73e4b33dff2d23e639e0cd864b671380f0812c5448da18cadda1c2c93558b3e8",
+      "main_current_sha256": "73e4b33dff2d23e639e0cd864b671380f0812c5448da18cadda1c2c93558b3e8"
+    },
+    {
+      "path": "crates/paludarium-kernel/Cargo.toml",
+      "signed_ci_sha256": "2043d557bb99dcf6df734e0c81695a67d693fdbfdaf68fa234a6fc32f2cd969e",
+      "main_current_sha256": "2043d557bb99dcf6df734e0c81695a67d693fdbfdaf68fa234a6fc32f2cd969e"
+    },
+    {
+      "path": "crates/paludarium-kernel/src/files.rs",
+      "signed_ci_sha256": "3dda9f613158c1b82cad8d6005dd695fa43f7301249ec911bb1cace921e110a1",
+      "main_current_sha256": "3dda9f613158c1b82cad8d6005dd695fa43f7301249ec911bb1cace921e110a1"
+    },
+    {
+      "path": "crates/paludarium-kernel/src/inbox.rs",
+      "signed_ci_sha256": "1056c93c4f0095ab5c6a39545704760b10eee60ab13da68b81b48da215340d5f",
+      "main_current_sha256": "1056c93c4f0095ab5c6a39545704760b10eee60ab13da68b81b48da215340d5f"
+    },
+    {
+      "path": "crates/paludarium-kernel/src/lib.rs",
+      "signed_ci_sha256": "68e4e70822b26428c12fc166fb12998c0f0e557d1fe87c7d6247b7635596822d",
+      "main_current_sha256": "68e4e70822b26428c12fc166fb12998c0f0e557d1fe87c7d6247b7635596822d"
+    },
+    {
+      "path": "crates/paludarium-kernel/src/signals.rs",
+      "signed_ci_sha256": "a7def16b0baee2828e6376db65b6738b6f26b0eba54a7f35885779b3da754fb9",
+      "main_current_sha256": "a7def16b0baee2828e6376db65b6738b6f26b0eba54a7f35885779b3da754fb9"
+    },
+    {
+      "path": "crates/paludarium-kernel/src/syscalls.rs",
+      "signed_ci_sha256": "9bf8473e4cb49862540c1020d2c479df6b5cf993972c27b84aa5242a5643b064",
+      "main_current_sha256": "9bf8473e4cb49862540c1020d2c479df6b5cf993972c27b84aa5242a5643b064"
+    },
+    {
+      "path": "crates/paludarium-kernel/src/tests.rs",
+      "signed_ci_sha256": "dc7bc9b689c18f498c3bbb9f3dc4d851467a881ae01ad64995973c052b58aa99",
+      "main_current_sha256": "dc7bc9b689c18f498c3bbb9f3dc4d851467a881ae01ad64995973c052b58aa99"
+    },
+    {
+      "path": "crates/paludarium-kernel/src/u4_tests.rs",
+      "signed_ci_sha256": "bfffe8eb63c46cb52d410d086fbfc861a3d2eeb02bb3aa1b53f700e0b16d4365",
+      "main_current_sha256": "bfffe8eb63c46cb52d410d086fbfc861a3d2eeb02bb3aa1b53f700e0b16d4365"
+    },
+    {
+      "path": "crates/paludarium-kernel/src/u9_tests.rs",
+      "signed_ci_sha256": "53197dc46a2431ee6b3cfeac1f38b7c0db7b90bf6065ccbc9eb267c971ea5678",
+      "main_current_sha256": "53197dc46a2431ee6b3cfeac1f38b7c0db7b90bf6065ccbc9eb267c971ea5678"
+    },
+    {
+      "path": "crates/paludarium-loader/Cargo.toml",
+      "signed_ci_sha256": "9576ce5bb66da218f27105e17269a5a44d80a2579c3a366a169db5d9cd09b1cb",
+      "main_current_sha256": "9576ce5bb66da218f27105e17269a5a44d80a2579c3a366a169db5d9cd09b1cb"
+    },
+    {
+      "path": "crates/paludarium-loader/src/elf.rs",
+      "signed_ci_sha256": "bf5202fee56bb3f339560e312936ae9a58deb8ad9a87d70f2ef945715deb35eb",
+      "main_current_sha256": "bf5202fee56bb3f339560e312936ae9a58deb8ad9a87d70f2ef945715deb35eb"
+    },
+    {
+      "path": "crates/paludarium-loader/src/lib.rs",
+      "signed_ci_sha256": "a426f3f095d6ff6bd53a6c95c77b8d37523cc0523b2e3d2495464a398c87cce8",
+      "main_current_sha256": "a426f3f095d6ff6bd53a6c95c77b8d37523cc0523b2e3d2495464a398c87cce8"
+    },
+    {
+      "path": "crates/paludarium-loader/src/testing.rs",
+      "signed_ci_sha256": "17071c3b0a155662def62770ad5d338499994e669c968ea8de32b08169a17340",
+      "main_current_sha256": "17071c3b0a155662def62770ad5d338499994e669c968ea8de32b08169a17340"
+    },
+    {
+      "path": "crates/paludarium-loader/src/tests.rs",
+      "signed_ci_sha256": "c39db39aaf9737b240abe4abb7d2b768aed3efbe392d1a2c98180848de852e9c",
+      "main_current_sha256": "c39db39aaf9737b240abe4abb7d2b768aed3efbe392d1a2c98180848de852e9c"
+    },
+    {
+      "path": "crates/paludarium-mmu/Cargo.toml",
+      "signed_ci_sha256": "5d17784c21076933bc6aec70b8bb3e4862da679cc90c700cc7a8fba806ae00c5",
+      "main_current_sha256": "5d17784c21076933bc6aec70b8bb3e4862da679cc90c700cc7a8fba806ae00c5"
+    },
+    {
+      "path": "crates/paludarium-mmu/src/lib.rs",
+      "signed_ci_sha256": "f1f5b8008ed5e133869d8a42e4643c738a996c1018aedd44ad69904a2f9edf00",
+      "main_current_sha256": "f1f5b8008ed5e133869d8a42e4643c738a996c1018aedd44ad69904a2f9edf00"
+    },
+    {
+      "path": "crates/paludarium-mmu/src/tests.rs",
+      "signed_ci_sha256": "cd69af3c787b888fa0a23c030288f06b3f712d332d2eb9ed60c2b74b1d0b1d28",
+      "main_current_sha256": "cd69af3c787b888fa0a23c030288f06b3f712d332d2eb9ed60c2b74b1d0b1d28"
+    },
+    {
+      "path": "crates/paludarium-mmu/src/u4_tests.rs",
+      "signed_ci_sha256": "af5ec8d05fff4c0d23a2afbc635f514849de53f613a68463e151968c4940e06a",
+      "main_current_sha256": "af5ec8d05fff4c0d23a2afbc635f514849de53f613a68463e151968c4940e06a"
+    },
+    {
+      "path": "crates/paludarium-runtime/Cargo.toml",
+      "signed_ci_sha256": "146a375abbdaa2d83f18c72730635f19a83e5c29d5b05f38138107fee0902714",
+      "main_current_sha256": "146a375abbdaa2d83f18c72730635f19a83e5c29d5b05f38138107fee0902714"
+    },
+    {
+      "path": "crates/paludarium-runtime/src/lib.rs",
+      "signed_ci_sha256": "b2afc0989262dcc9942dbb7a8e6cb19c499070fb9d6eea6cb152a415022f3f97",
+      "main_current_sha256": "b2afc0989262dcc9942dbb7a8e6cb19c499070fb9d6eea6cb152a415022f3f97"
+    },
+    {
+      "path": "crates/paludarium-runtime/src/tests.rs",
+      "signed_ci_sha256": "a2dd3bfde97808662a55b5c2bf05bbf9ec3d2c2edbd2153e41b8411777f47c88",
+      "main_current_sha256": "a2dd3bfde97808662a55b5c2bf05bbf9ec3d2c2edbd2153e41b8411777f47c88"
+    },
+    {
+      "path": "crates/paludarium-runtime/src/u4_tests.rs",
+      "signed_ci_sha256": "1ac37fce51d01fdbf7fbe6856da569e29c94f1e406e83fdaa0d15532b01c904e",
+      "main_current_sha256": "1ac37fce51d01fdbf7fbe6856da569e29c94f1e406e83fdaa0d15532b01c904e"
+    },
+    {
+      "path": "crates/paludarium-runtime/src/u9_tests.rs",
+      "signed_ci_sha256": "8508eb0a0e2939d7e5511870e930dbaf91ff552a96da5907e4b435d06e3c8f6b",
+      "main_current_sha256": "8508eb0a0e2939d7e5511870e930dbaf91ff552a96da5907e4b435d06e3c8f6b"
+    },
+    {
+      "path": "crates/paludarium-types/Cargo.toml",
+      "signed_ci_sha256": "ecd2ab9b66459a5a309d9ff2f185691511d0b32dc8b187893307fe5bfeeae2de",
+      "main_current_sha256": "ecd2ab9b66459a5a309d9ff2f185691511d0b32dc8b187893307fe5bfeeae2de"
+    },
+    {
+      "path": "crates/paludarium-types/src/lib.rs",
+      "signed_ci_sha256": "b77bebcbb4036b949811b37259fe43436615650a0bcaa33f5bdfa90c4a52fe24",
+      "main_current_sha256": "b77bebcbb4036b949811b37259fe43436615650a0bcaa33f5bdfa90c4a52fe24"
+    },
+    {
+      "path": "crates/paludarium-vfs/Cargo.toml",
+      "signed_ci_sha256": "6340b2aff60fe0060550730d078a00be3db1e9f5d47393b3c37ab89319240260",
+      "main_current_sha256": "6340b2aff60fe0060550730d078a00be3db1e9f5d47393b3c37ab89319240260"
+    },
+    {
+      "path": "crates/paludarium-vfs/src/lib.rs",
+      "signed_ci_sha256": "34d4632777503d7e43668a198f02a11c38441bfc1c7f0289893babaf85aa4510",
+      "main_current_sha256": "34d4632777503d7e43668a198f02a11c38441bfc1c7f0289893babaf85aa4510"
+    },
+    {
+      "path": "crates/paludarium-vfs/src/mount.rs",
+      "signed_ci_sha256": "ef2404281592a4a4ab6e51d3a332c1d9a9636875fd24e8decadfd6081691c598",
+      "main_current_sha256": "ef2404281592a4a4ab6e51d3a332c1d9a9636875fd24e8decadfd6081691c598"
+    },
+    {
+      "path": "crates/paludarium-vfs/src/open_file.rs",
+      "signed_ci_sha256": "082bd499a81aa48db2cf9d588aa0454f2a43068bf27c2f7fb5a7973d67fc302f",
+      "main_current_sha256": "082bd499a81aa48db2cf9d588aa0454f2a43068bf27c2f7fb5a7973d67fc302f"
+    },
+    {
+      "path": "crates/paludarium-vfs/src/operations.rs",
+      "signed_ci_sha256": "583a4c736a26b54b531065e779ca86dbc9d976dafe498e792b7d9122b69b9767",
+      "main_current_sha256": "583a4c736a26b54b531065e779ca86dbc9d976dafe498e792b7d9122b69b9767"
+    },
+    {
+      "path": "crates/paludarium-vfs/src/u1_tests.rs",
+      "signed_ci_sha256": "490884b9a092a7c6eda1cf4e29830a139848c105e26c88a0e6baecca2fa37e7d",
+      "main_current_sha256": "490884b9a092a7c6eda1cf4e29830a139848c105e26c88a0e6baecca2fa37e7d"
+    },
+    {
+      "path": "crates/paludarium-vfs/src/u7_tests.rs",
+      "signed_ci_sha256": "bd7110ee4a01af0fcdb479facb2554c061551a1b51ffb0ec4957feaa1ff2e477",
+      "main_current_sha256": "bd7110ee4a01af0fcdb479facb2554c061551a1b51ffb0ec4957feaa1ff2e477"
+    },
+    {
+      "path": "crates/paludarium-wasm/Cargo.toml",
+      "signed_ci_sha256": "8d6239917c8f1af6c96f9fb649c5f17d6e2733811c4eba9ab4423f5433959b96",
+      "main_current_sha256": "8d6239917c8f1af6c96f9fb649c5f17d6e2733811c4eba9ab4423f5433959b96"
+    },
+    {
+      "path": "crates/paludarium-wasm/src/abi.rs",
+      "signed_ci_sha256": "d2cab5a2d8bbbb3983b7775ece04f3d613b3e88e387aac6994afb209a56511b9",
+      "main_current_sha256": "d2cab5a2d8bbbb3983b7775ece04f3d613b3e88e387aac6994afb209a56511b9"
+    },
+    {
+      "path": "crates/paludarium-wasm/src/lib.rs",
+      "signed_ci_sha256": "e37aeacf3fbca2e782f776c569508ab211589db42a602e484613c41af4907be2",
+      "main_current_sha256": "e37aeacf3fbca2e782f776c569508ab211589db42a602e484613c41af4907be2"
+    },
+    {
+      "path": "crates/paludarium/Cargo.toml",
+      "signed_ci_sha256": "50fa1586728384d14c16c274df0ad97e0572c81c94ba4091bc98756a3fa2d468",
+      "main_current_sha256": "50fa1586728384d14c16c274df0ad97e0572c81c94ba4091bc98756a3fa2d468"
+    },
+    {
+      "path": "crates/paludarium/src/cli.rs",
+      "signed_ci_sha256": "5bf66265f14796b8087155a84f8fcce0eaa57f75aedb659ee6ff76398d3ebf4b",
+      "main_current_sha256": "5bf66265f14796b8087155a84f8fcce0eaa57f75aedb659ee6ff76398d3ebf4b"
+    },
+    {
+      "path": "crates/paludarium/src/lib.rs",
+      "signed_ci_sha256": "827d4970c620246477c3d4009c6f9c435a65c3e28e5bf688e37b7dc26f8336de",
+      "main_current_sha256": "827d4970c620246477c3d4009c6f9c435a65c3e28e5bf688e37b7dc26f8336de"
+    },
+    {
+      "path": "crates/paludarium/src/main.rs",
+      "signed_ci_sha256": "d89ffff6cf35af97475bf535e19b9e9e18fcb1d93aaaa4b2d343f7ad3614cc96",
+      "main_current_sha256": "d89ffff6cf35af97475bf535e19b9e9e18fcb1d93aaaa4b2d343f7ad3614cc96"
+    },
+    {
+      "path": "crates/paludarium/tests/command.rs",
+      "signed_ci_sha256": "1a2f92abeb566a36e10b84c9aaf93b390937fe1915136d1e2dc93540d00ff66e",
+      "main_current_sha256": "1a2f92abeb566a36e10b84c9aaf93b390937fe1915136d1e2dc93540d00ff66e"
+    },
+    {
+      "path": "deny.toml",
+      "signed_ci_sha256": "48881b3279292f43cbd1687636bce894185d35f5163c915a2799aff9f4d9b4e6",
+      "main_current_sha256": "48881b3279292f43cbd1687636bce894185d35f5163c915a2799aff9f4d9b4e6"
+    },
+    {
+      "path": "docs/reports/wasm-threads.md",
+      "signed_ci_sha256": "0a06a9c381c0b8e32fd9d8761e92d95f37ee8f7e9a32037ad21cec5dc32b5cdf",
+      "main_current_sha256": "6aa691863688818e68a9a2c8cb323ad2c81cb44b21ca9640344efd70812eed39"
+    },
+    {
+      "path": "docs/u1/census/hello-c.forms",
+      "signed_ci_sha256": "abe35f3b83f96161a26517727cd7797a01a352398568dad014d1d5ae7a0017ff",
+      "main_current_sha256": "abe35f3b83f96161a26517727cd7797a01a352398568dad014d1d5ae7a0017ff"
+    },
+    {
+      "path": "docs/u1/census/hello-c.mnemonics",
+      "signed_ci_sha256": "3d53ca0d784f139f9e8058151645f6975bb6e88ca4f433c60754ebd92f48b7f0",
+      "main_current_sha256": "3d53ca0d784f139f9e8058151645f6975bb6e88ca4f433c60754ebd92f48b7f0"
+    },
+    {
+      "path": "docs/u1/census/hello-rs.forms",
+      "signed_ci_sha256": "41de22ccbd60bf0302ae143bb3a6951800c12687f32d399b91aed2e88df8bf26",
+      "main_current_sha256": "41de22ccbd60bf0302ae143bb3a6951800c12687f32d399b91aed2e88df8bf26"
+    },
+    {
+      "path": "docs/u1/census/hello-rs.mnemonics",
+      "signed_ci_sha256": "c02c667fa55df984ee55fca5ad5edc69d12c97b8811525ec6df9d7e724b9f58c",
+      "main_current_sha256": "c02c667fa55df984ee55fca5ad5edc69d12c97b8811525ec6df9d7e724b9f58c"
+    },
+    {
+      "path": "docs/u1/census/repair-20261008.md",
+      "signed_ci_sha256": "d17d53f48606cf6c734babbf85f6bb969cdc6c29ef58194f5e14c11d0fca177e",
+      "main_current_sha256": "d17d53f48606cf6c734babbf85f6bb969cdc6c29ef58194f5e14c11d0fca177e"
+    },
+    {
+      "path": "fuzz/Cargo.lock",
+      "signed_ci_sha256": "f72024fa59bf3a1c52ba253beb677f197de6e7ac99134f12ecedb2c1777730ff",
+      "main_current_sha256": "f72024fa59bf3a1c52ba253beb677f197de6e7ac99134f12ecedb2c1777730ff"
+    },
+    {
+      "path": "fuzz/Cargo.toml",
+      "signed_ci_sha256": "ddc4b41f10d46ec220aea9d71b32e6890bc0f01bec6c74f16a9a98ff929b7b5b",
+      "main_current_sha256": "ddc4b41f10d46ec220aea9d71b32e6890bc0f01bec6c74f16a9a98ff929b7b5b"
+    },
+    {
+      "path": "fuzz/fuzz_targets/cpu_u2.rs",
+      "signed_ci_sha256": "ea17e903dcac52b1363cbd4e384ac40f4198cda3235c7f67a59b759ccf2ff0a1",
+      "main_current_sha256": "ea17e903dcac52b1363cbd4e384ac40f4198cda3235c7f67a59b759ccf2ff0a1"
+    },
+    {
+      "path": "fuzz/fuzz_targets/decode.rs",
+      "signed_ci_sha256": "f4b4ee13e7b92cad1fb6d48be40f2340338a409f85fa7d0e4d624be4ef6dea5d",
+      "main_current_sha256": "f4b4ee13e7b92cad1fb6d48be40f2340338a409f85fa7d0e4d624be4ef6dea5d"
+    },
+    {
+      "path": "fuzz/fuzz_targets/load_elf.rs",
+      "signed_ci_sha256": "c983fe978af1156131b9bffc2f1e5e2cf655a6be3d886eafc4e7cd1a58a3f359",
+      "main_current_sha256": "c983fe978af1156131b9bffc2f1e5e2cf655a6be3d886eafc4e7cd1a58a3f359"
+    },
+    {
+      "path": "fuzz/fuzz_targets/mmu_ops.rs",
+      "signed_ci_sha256": "b47b75285d760a0e7b04efd79d7ea6a0c737606347e3b5e3754d258a9beed4a8",
+      "main_current_sha256": "b47b75285d760a0e7b04efd79d7ea6a0c737606347e3b5e3754d258a9beed4a8"
+    },
+    {
+      "path": "fuzz/fuzz_targets/mmu_u2.rs",
+      "signed_ci_sha256": "2f7334c3a2218e209dc2b95c0d2d8c7619eeb129047142293e6114032f269a5f",
+      "main_current_sha256": "2f7334c3a2218e209dc2b95c0d2d8c7619eeb129047142293e6114032f269a5f"
+    },
+    {
+      "path": "fuzz/fuzz_targets/syscall_args.rs",
+      "signed_ci_sha256": "0dacb32f4237e2376814024c8aaf91a3921cc0fbfd71d5ecfcad1c91bcafda00",
+      "main_current_sha256": "0dacb32f4237e2376814024c8aaf91a3921cc0fbfd71d5ecfcad1c91bcafda00"
+    },
+    {
+      "path": "fuzz/fuzz_targets/vfs_paths.rs",
+      "signed_ci_sha256": "9e8aafe83401b4f4ab1414f863e199dbb9fab1e57b840409efc35cca5fe74edd",
+      "main_current_sha256": "9e8aafe83401b4f4ab1414f863e199dbb9fab1e57b840409efc35cca5fe74edd"
+    },
+    {
+      "path": "fuzz/lsan.supp",
+      "signed_ci_sha256": "0093908d3e9a8788c2936875ae16705a1b7f756f5baa52839f876077847d7e4d",
+      "main_current_sha256": "0093908d3e9a8788c2936875ae16705a1b7f756f5baa52839f876077847d7e4d"
+    },
+    {
+      "path": "packages/paludarium-wasm/coordinator.mjs",
+      "signed_ci_sha256": "708fa2e7f17fa5c93b93b534b072e99465c2bef7e439a6dcd59ae4bdc09de309",
+      "main_current_sha256": "708fa2e7f17fa5c93b93b534b072e99465c2bef7e439a6dcd59ae4bdc09de309"
+    },
+    {
+      "path": "packages/paludarium-wasm/execution.mjs",
+      "signed_ci_sha256": "22c76efd1928211f6e1601a7617d46a37478875ecaae90cbfd3384f68c624237",
+      "main_current_sha256": "22c76efd1928211f6e1601a7617d46a37478875ecaae90cbfd3384f68c624237"
+    },
+    {
+      "path": "packages/paludarium-wasm/index.mjs",
+      "signed_ci_sha256": "0d4a2209b50cc3960355d773684733600c160dff1ff8ae3fe109b81a92f983d3",
+      "main_current_sha256": "0d4a2209b50cc3960355d773684733600c160dff1ff8ae3fe109b81a92f983d3"
+    },
+    {
+      "path": "packages/paludarium-wasm/package.json",
+      "signed_ci_sha256": "3bf38e317e67926dc8aadf919d93efae24221c7009a1436c632e2eeeb5afe06d",
+      "main_current_sha256": "3bf38e317e67926dc8aadf919d93efae24221c7009a1436c632e2eeeb5afe06d"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/checks.mjs",
+      "signed_ci_sha256": "9f46cd8d95458f0bcdec6dd894fa7f377ca4ac5d43639c8152fd1064f98dd93c",
+      "main_current_sha256": "9f46cd8d95458f0bcdec6dd894fa7f377ca4ac5d43639c8152fd1064f98dd93c"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/generate-guests.py",
+      "signed_ci_sha256": "054614bf0914cda170115172722eefd57af7a7217c22a1adfd14c1b9583479d3",
+      "main_current_sha256": "054614bf0914cda170115172722eefd57af7a7217c22a1adfd14c1b9583479d3"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guest-hashes.json",
+      "signed_ci_sha256": "5e57f7fbc393ce6e144cb4d18621f2fdd5432dc2ab01a9b10c889ffbc7b6630c",
+      "main_current_sha256": "5e57f7fbc393ce6e144cb4d18621f2fdd5432dc2ab01a9b10c889ffbc7b6630c"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/atomic",
+      "signed_ci_sha256": "58722c985f408085f22e5c5257150a2786117a41e346af882532f8f3305c3915",
+      "main_current_sha256": "58722c985f408085f22e5c5257150a2786117a41e346af882532f8f3305c3915"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/divide_fault",
+      "signed_ci_sha256": "1bdc30089956e602a28456dd3d10d9d0f3a358198fce4c7c7abc8a0bbf674f62",
+      "main_current_sha256": "1bdc30089956e602a28456dd3d10d9d0f3a358198fce4c7c7abc8a0bbf674f62"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/hello",
+      "signed_ci_sha256": "67eeda7b49312fed76e36b13d8d8c8717902e0d0b0517656df491302f1e488fb",
+      "main_current_sha256": "67eeda7b49312fed76e36b13d8d8c8717902e0d0b0517656df491302f1e488fb"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/infinite",
+      "signed_ci_sha256": "fc1410e51255e8ffe962f084058045c3157950a2fa8dd33198294221bac71549",
+      "main_current_sha256": "fc1410e51255e8ffe962f084058045c3157950a2fa8dd33198294221bac71549"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/integer",
+      "signed_ci_sha256": "7cfb5bbb2a56f3c31211b37aa2cc017f512791b28447d3a7fa046ff8875cf19b",
+      "main_current_sha256": "7cfb5bbb2a56f3c31211b37aa2cc017f512791b28447d3a7fa046ff8875cf19b"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/stdin",
+      "signed_ci_sha256": "aebf98eaced18956b811c0eee106d03cee18bcd7cdaff3221d99bb3b4bb6863f",
+      "main_current_sha256": "aebf98eaced18956b811c0eee106d03cee18bcd7cdaff3221d99bb3b4bb6863f"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/u3-aes",
+      "signed_ci_sha256": "a86b73f596786d26f008c0ae6696cbf8ca8caa7521ff4a74855cc07594898696",
+      "main_current_sha256": "a86b73f596786d26f008c0ae6696cbf8ca8caa7521ff4a74855cc07594898696"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/u3-cpuid",
+      "signed_ci_sha256": "5eeeb56e14b37b5d261df624de7bdd761350ccde83410478154d52a86179a5ac",
+      "main_current_sha256": "5eeeb56e14b37b5d261df624de7bdd761350ccde83410478154d52a86179a5ac"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/u3-fault",
+      "signed_ci_sha256": "60d83369698b2a818c16b45284de191232cb505c35dddb5cdebcea47d5f1d990",
+      "main_current_sha256": "60d83369698b2a818c16b45284de191232cb505c35dddb5cdebcea47d5f1d990"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/u3-float",
+      "signed_ci_sha256": "84467dfd256772d078c1465344ddb8d881d11fab1ec27183c4c4ddbc938aaa09",
+      "main_current_sha256": "84467dfd256772d078c1465344ddb8d881d11fab1ec27183c4c4ddbc938aaa09"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/u3-packed",
+      "signed_ci_sha256": "79ab3ed44cc7d67a744efe385d346b0378a1489227b619712ba505fe5c30e835",
+      "main_current_sha256": "79ab3ed44cc7d67a744efe385d346b0378a1489227b619712ba505fe5c30e835"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/u3-pclmul",
+      "signed_ci_sha256": "1c16e37b7c5d8debfba1b88e9a70ae1bd33c7dfa94b0cc4232b3ebc9dae3bef7",
+      "main_current_sha256": "1c16e37b7c5d8debfba1b88e9a70ae1bd33c7dfa94b0cc4232b3ebc9dae3bef7"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/u3-sha",
+      "signed_ci_sha256": "55b70fcafa49b386d6dc00f72c7610d0540525f29034e6f03af93e767d99dcd5",
+      "main_current_sha256": "55b70fcafa49b386d6dc00f72c7610d0540525f29034e6f03af93e767d99dcd5"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/import-check.mjs",
+      "signed_ci_sha256": "eb9d474b7bd2dee42a6c67d2469bb550908e5d3f20b137f780868249622dd887",
+      "main_current_sha256": "eb9d474b7bd2dee42a6c67d2469bb550908e5d3f20b137f780868249622dd887"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/index.html",
+      "signed_ci_sha256": "624729c484ea282b75e35b7fee354e7a1f828444c38d97c0d51da96e6b63081a",
+      "main_current_sha256": "624729c484ea282b75e35b7fee354e7a1f828444c38d97c0d51da96e6b63081a"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/node-check.mjs",
+      "signed_ci_sha256": "be37884c9c39ba93f9e6b3c8809bbe70ecaf5453d63248b398e981d6c3ccbf3b",
+      "main_current_sha256": "be37884c9c39ba93f9e6b3c8809bbe70ecaf5453d63248b398e981d6c3ccbf3b"
+    },
+    {
+      "path": "packages/paludarium-wasm/worker-support.mjs",
+      "signed_ci_sha256": "a5f30c5886170ddc7f5eb069da33e399e120c9568e8ca89ba20c52ff3c3c15d5",
+      "main_current_sha256": "a5f30c5886170ddc7f5eb069da33e399e120c9568e8ca89ba20c52ff3c3c15d5"
+    },
+    {
+      "path": "rust-toolchain.toml",
+      "signed_ci_sha256": "c0ab4a2681f5d8f2dfb9c85131cf4eb8a3177009fc3fe8372273340ae9189175",
+      "main_current_sha256": "c0ab4a2681f5d8f2dfb9c85131cf4eb8a3177009fc3fe8372273340ae9189175"
+    },
+    {
+      "path": "scripts/aidlc-checkpoint-regression.test.ts",
+      "signed_ci_sha256": "962c8cdf3bfd93f9b3a6fe936d698ee7c748245f36840b4186eb853703c17f38",
+      "main_current_sha256": "962c8cdf3bfd93f9b3a6fe936d698ee7c748245f36840b4186eb853703c17f38"
+    },
+    {
+      "path": "scripts/aidlc-jj-source-regression.test.ts",
+      "signed_ci_sha256": "679ccebc034a3a35bbe67aa7391f9925cc55ecb6877b40cd20eb32dd9b462844",
+      "main_current_sha256": "679ccebc034a3a35bbe67aa7391f9925cc55ecb6877b40cd20eb32dd9b462844"
+    },
+    {
+      "path": "scripts/build-wasm.sh",
+      "signed_ci_sha256": "ff5cba29a5c41e84da8f923212265bfd23a6bbf9b815ff64e48117a1765095ea",
+      "main_current_sha256": "ff5cba29a5c41e84da8f923212265bfd23a6bbf9b815ff64e48117a1765095ea"
+    },
+    {
+      "path": "scripts/linux-dev.sh",
+      "signed_ci_sha256": "295201875582f0dd6d8108c241bd7c550d76f12570dcf9f2b93bb0647eda8e2f",
+      "main_current_sha256": "295201875582f0dd6d8108c241bd7c550d76f12570dcf9f2b93bb0647eda8e2f"
+    },
+    {
+      "path": "scripts/repair-aidlc-checkpoints.ps1",
+      "signed_ci_sha256": "d988732e5ada824965a7ce495e3cc1e426bcf8bb907444cc9c8bfb64ef0e35ed",
+      "main_current_sha256": "d988732e5ada824965a7ce495e3cc1e426bcf8bb907444cc9c8bfb64ef0e35ed"
+    },
+    {
+      "path": "scripts/wasm-native-guests.py",
+      "signed_ci_sha256": "dbb708e4411bded74083a158337cd7f843d236b18270c865e7b298fffe73f943",
+      "main_current_sha256": "dbb708e4411bded74083a158337cd7f843d236b18270c865e7b298fffe73f943"
+    },
+    {
+      "path": "spikes/wasm-threads/.cargo/config.toml",
+      "signed_ci_sha256": "7876cda4cff9fd261511e04f9466e724a98e5940eaa20aa57c1c2afe22cddb07",
+      "main_current_sha256": "7876cda4cff9fd261511e04f9466e724a98e5940eaa20aa57c1c2afe22cddb07"
+    },
+    {
+      "path": "spikes/wasm-threads/Cargo.lock",
+      "signed_ci_sha256": "13b498b812a6de2fda64b6147e0b2db14cc1cb7fcd652f40237ed5465a60a923",
+      "main_current_sha256": "13b498b812a6de2fda64b6147e0b2db14cc1cb7fcd652f40237ed5465a60a923"
+    },
+    {
+      "path": "spikes/wasm-threads/Cargo.toml",
+      "signed_ci_sha256": "3e9c5b86cf6cfbf4ef3805141c45757db01715ab475fc6b82884240096ecad62",
+      "main_current_sha256": "3e9c5b86cf6cfbf4ef3805141c45757db01715ab475fc6b82884240096ecad62"
+    },
+    {
+      "path": "spikes/wasm-threads/browser-check.mjs",
+      "signed_ci_sha256": "91d49ed097e1d9fad2cb413c5dc9e02a6540f37687390d6027d22e5c46bdab5c",
+      "main_current_sha256": "91d49ed097e1d9fad2cb413c5dc9e02a6540f37687390d6027d22e5c46bdab5c"
+    },
+    {
+      "path": "spikes/wasm-threads/build.sh",
+      "signed_ci_sha256": "6d88f7f362388f3b1068226340dd2c82a794c30f7007a78b7620b3f1fb197a3c",
+      "main_current_sha256": "6d88f7f362388f3b1068226340dd2c82a794c30f7007a78b7620b3f1fb197a3c"
+    },
+    {
+      "path": "spikes/wasm-threads/js/check.mjs",
+      "signed_ci_sha256": "8c6ed30ca7b217e4fcd06f630df1591e6ecf7c6a10ffebf2d94b4314e9fa254c",
+      "main_current_sha256": "8c6ed30ca7b217e4fcd06f630df1591e6ecf7c6a10ffebf2d94b4314e9fa254c"
+    },
+    {
+      "path": "spikes/wasm-threads/js/worker.mjs",
+      "signed_ci_sha256": "e6d710899921ce39899b8d8d7f7957df3bb126a796cbbcba38b36e5b1046973b",
+      "main_current_sha256": "e6d710899921ce39899b8d8d7f7957df3bb126a796cbbcba38b36e5b1046973b"
+    },
+    {
+      "path": "spikes/wasm-threads/node-check.mjs",
+      "signed_ci_sha256": "294acc3221c6a9d4c9ba0836172b15d0742b1dcbfc7c0edbe5cfacb045b7570a",
+      "main_current_sha256": "294acc3221c6a9d4c9ba0836172b15d0742b1dcbfc7c0edbe5cfacb045b7570a"
+    },
+    {
+      "path": "spikes/wasm-threads/package-lock.json",
+      "signed_ci_sha256": "72423f96e088e107038627cf3a569171cf4a0d4e9400af1c9abfb66be0461f23",
+      "main_current_sha256": "72423f96e088e107038627cf3a569171cf4a0d4e9400af1c9abfb66be0461f23"
+    },
+    {
+      "path": "spikes/wasm-threads/package.json",
+      "signed_ci_sha256": "93394669841d8757fd2993070ff9949771b178718091f5217bd0284dc8b779c8",
+      "main_current_sha256": "93394669841d8757fd2993070ff9949771b178718091f5217bd0284dc8b779c8"
+    },
+    {
+      "path": "spikes/wasm-threads/serve.mjs",
+      "signed_ci_sha256": "25adf3ab9ab969d5935f2595de8cf3176d92373d31d32a6ff7abbf7d07de012a",
+      "main_current_sha256": "25adf3ab9ab969d5935f2595de8cf3176d92373d31d32a6ff7abbf7d07de012a"
+    },
+    {
+      "path": "spikes/wasm-threads/src/lib.rs",
+      "signed_ci_sha256": "b5ee34515f702aa7c8616854a4a49d8a20a0112826518eed8ad5f677c11c907c",
+      "main_current_sha256": "b5ee34515f702aa7c8616854a4a49d8a20a0112826518eed8ad5f677c11c907c"
+    },
+    {
+      "path": "spikes/wasm-threads/web/index.html",
+      "signed_ci_sha256": "06d2fcbdc1851e3c31d52d9ca97fcb050221b874b049be5ff141fd2faf1c3b2e",
+      "main_current_sha256": "06d2fcbdc1851e3c31d52d9ca97fcb050221b874b049be5ff141fd2faf1c3b2e"
+    },
+    {
+      "path": "spikes/wasm-threads/web/page.mjs",
+      "signed_ci_sha256": "ebfb8834bbf1c0a843c4b7c519d24a314cdd2915783681e9da04b551ec061134",
+      "main_current_sha256": "ebfb8834bbf1c0a843c4b7c519d24a314cdd2915783681e9da04b551ec061134"
+    },
+    {
+      "path": "tests/guests/build.sh",
+      "signed_ci_sha256": "91e7e4af10dd8223bda4a543dc221b018607c819298584d6fd500d439c6da91f",
+      "main_current_sha256": "91e7e4af10dd8223bda4a543dc221b018607c819298584d6fd500d439c6da91f"
+    },
+    {
+      "path": "tests/guests/hello-c/hello.c",
+      "signed_ci_sha256": "cf962316ff20165dd455db11efe1da85baaf2c669a5e13c8c5562c7e92e44554",
+      "main_current_sha256": "cf962316ff20165dd455db11efe1da85baaf2c669a5e13c8c5562c7e92e44554"
+    },
+    {
+      "path": "tests/guests/hello-rs/Cargo.lock",
+      "signed_ci_sha256": "abf0c8a00e194ac6ceb51512c27b85143e5c961daace7e8d7ee63a005b27cd5a",
+      "main_current_sha256": "abf0c8a00e194ac6ceb51512c27b85143e5c961daace7e8d7ee63a005b27cd5a"
+    },
+    {
+      "path": "tests/guests/hello-rs/Cargo.toml",
+      "signed_ci_sha256": "c015cb2fa3a107229f9ca9c4a8a087edfdd0b7a01d3bb56b06847209ae2c7e48",
+      "main_current_sha256": "c015cb2fa3a107229f9ca9c4a8a087edfdd0b7a01d3bb56b06847209ae2c7e48"
+    },
+    {
+      "path": "tests/guests/hello-rs/src/main.rs",
+      "signed_ci_sha256": "4645b82e7df19f8a5466112abba5bb6e96828e9f42d068f8b44ce970248056f4",
+      "main_current_sha256": "4645b82e7df19f8a5466112abba5bb6e96828e9f42d068f8b44ce970248056f4"
+    },
+    {
+      "path": "tests/guests/insn/UNDEFINED.md",
+      "signed_ci_sha256": "6e7aa22e0e27f24c3878aebda754010d78412ca2a0e52ab2aacf4c601147d4e5",
+      "main_current_sha256": "6e7aa22e0e27f24c3878aebda754010d78412ca2a0e52ab2aacf4c601147d4e5"
+    },
+    {
+      "path": "tests/guests/insn/alu.c",
+      "signed_ci_sha256": "b7fcb75a1d47ebc78e05a73a440cc3ce21180655429cf417e1b2f2e32fe513f8",
+      "main_current_sha256": "b7fcb75a1d47ebc78e05a73a440cc3ce21180655429cf417e1b2f2e32fe513f8"
+    },
+    {
+      "path": "tests/guests/insn/atomic.c",
+      "signed_ci_sha256": "151e01ffed590aae6b24589f19748df1b3f3ad6a45e888bfb9c2487c9d0a2ded",
+      "main_current_sha256": "151e01ffed590aae6b24589f19748df1b3f3ad6a45e888bfb9c2487c9d0a2ded"
+    },
+    {
+      "path": "tests/guests/insn/bt.c",
+      "signed_ci_sha256": "1ce6448175462d1cb7ab3ec0cdbfc06de9df606da01fa338bca8860f6e131415",
+      "main_current_sha256": "1ce6448175462d1cb7ab3ec0cdbfc06de9df606da01fa338bca8860f6e131415"
+    },
+    {
+      "path": "tests/guests/insn/cmptest.c",
+      "signed_ci_sha256": "3d47ac8c2b08a1eebc57a4ae6e6a90605be6b450d21dca9276a74ec9ebdb6fc4",
+      "main_current_sha256": "3d47ac8c2b08a1eebc57a4ae6e6a90605be6b450d21dca9276a74ec9ebdb6fc4"
+    },
+    {
+      "path": "tests/guests/insn/cond-cmov.c",
+      "signed_ci_sha256": "76341d5a78640df8b01f2f2b0b5e8be0a79f68165feb45d7e4035dbfae16710d",
+      "main_current_sha256": "76341d5a78640df8b01f2f2b0b5e8be0a79f68165feb45d7e4035dbfae16710d"
+    },
+    {
+      "path": "tests/guests/insn/cond-jcc.c",
+      "signed_ci_sha256": "a60eb986c5809f1ec38cbdb84fc235d4d76ae944c0f16dd334b787c0e7e6d7df",
+      "main_current_sha256": "a60eb986c5809f1ec38cbdb84fc235d4d76ae944c0f16dd334b787c0e7e6d7df"
+    },
+    {
+      "path": "tests/guests/insn/cond-set.c",
+      "signed_ci_sha256": "9597d876b2ae8f07130f9428bf4690a6ea4f9cf700e7e3980709ad43ac8e223b",
+      "main_current_sha256": "9597d876b2ae8f07130f9428bf4690a6ea4f9cf700e7e3980709ad43ac8e223b"
+    },
+    {
+      "path": "tests/guests/insn/incdec.c",
+      "signed_ci_sha256": "8d77563cfab550af774b9e08477cc54971b1f63ae46d80dd85aa496d4c53e2cc",
+      "main_current_sha256": "8d77563cfab550af774b9e08477cc54971b1f63ae46d80dd85aa496d4c53e2cc"
+    },
+    {
+      "path": "tests/guests/insn/insn.h",
+      "signed_ci_sha256": "d2f14e141a0f0901c14a64e793be4555123be0e27ebd8e919274d011c2ff8b6c",
+      "main_current_sha256": "d2f14e141a0f0901c14a64e793be4555123be0e27ebd8e919274d011c2ff8b6c"
+    },
+    {
+      "path": "tests/guests/insn/mov.c",
+      "signed_ci_sha256": "48cbce3f6c8fb4a26b8a03348861db8fa9af4747084d55c7806b8fbd085e840e",
+      "main_current_sha256": "48cbce3f6c8fb4a26b8a03348861db8fa9af4747084d55c7806b8fbd085e840e"
+    },
+    {
+      "path": "tests/guests/insn/muldiv.c",
+      "signed_ci_sha256": "bcfb1b86ace48323df9201ecc5a225aa0720e7007e12fda3bbb73cbb44e836dd",
+      "main_current_sha256": "bcfb1b86ace48323df9201ecc5a225aa0720e7007e12fda3bbb73cbb44e836dd"
+    },
+    {
+      "path": "tests/guests/insn/shift.c",
+      "signed_ci_sha256": "de48b4a8b323d6432967911e34f677d6c4d0a9ef6da8282148ba4f43ca3c3578",
+      "main_current_sha256": "de48b4a8b323d6432967911e34f677d6c4d0a9ef6da8282148ba4f43ca3c3578"
+    },
+    {
+      "path": "tests/guests/insn/sse.c",
+      "signed_ci_sha256": "491c51e83c7c7472a9e5ddba25630989139c6acb9528a0791f55ef9576eafdad",
+      "main_current_sha256": "491c51e83c7c7472a9e5ddba25630989139c6acb9528a0791f55ef9576eafdad"
+    },
+    {
+      "path": "tests/guests/insn/string.c",
+      "signed_ci_sha256": "92264a6a57ad7488006fe18c2ab89a53254444c688a098d884a94706036f9278",
+      "main_current_sha256": "92264a6a57ad7488006fe18c2ab89a53254444c688a098d884a94706036f9278"
+    },
+    {
+      "path": "tests/guests/insn/u2-bmi.c",
+      "signed_ci_sha256": "a50acfae855016be292ac3ccd14fd023d346d3737602e996b27df0cc2c2da7fb",
+      "main_current_sha256": "a50acfae855016be292ac3ccd14fd023d346d3737602e996b27df0cc2c2da7fb"
+    },
+    {
+      "path": "tests/guests/insn/u2-control.c",
+      "signed_ci_sha256": "253ec41f6bfec5fd91185a781f898840b96860e0dd1552adf6b5463fa5036df2",
+      "main_current_sha256": "253ec41f6bfec5fd91185a781f898840b96860e0dd1552adf6b5463fa5036df2"
+    },
+    {
+      "path": "tests/guests/insn/u2-frame.c",
+      "signed_ci_sha256": "a0442993a72cc07b426c9e4993e10361b3c50ba695c8aed248acaa47977aa665",
+      "main_current_sha256": "a0442993a72cc07b426c9e4993e10361b3c50ba695c8aed248acaa47977aa665"
+    },
+    {
+      "path": "tests/guests/insn/u2-integer.c",
+      "signed_ci_sha256": "e25be8058aa9ebff80c245b6abec2e9cb7395bd4f78da89ba102be61a8e649f6",
+      "main_current_sha256": "e25be8058aa9ebff80c245b6abec2e9cb7395bd4f78da89ba102be61a8e649f6"
+    },
+    {
+      "path": "tests/guests/insn/u2-pairs.c",
+      "signed_ci_sha256": "136d7420985ededef48e1f2222bc6ca4dd2ec155c49ce39842ab9fbe67aebd5b",
+      "main_current_sha256": "136d7420985ededef48e1f2222bc6ca4dd2ec155c49ce39842ab9fbe67aebd5b"
+    },
+    {
+      "path": "tests/guests/insn/u2-segment-atomic.c",
+      "signed_ci_sha256": "f71d1cbf5e4a6275473bd8d5d54fdc84358fc475940f39394357028920379546",
+      "main_current_sha256": "f71d1cbf5e4a6275473bd8d5d54fdc84358fc475940f39394357028920379546"
+    },
+    {
+      "path": "tests/guests/insn/u2-string.c",
+      "signed_ci_sha256": "86169d25895a092656fc0f4c49b83d917d817d2d6660d7f71c1d23d0a8bc80ec",
+      "main_current_sha256": "86169d25895a092656fc0f4c49b83d917d817d2d6660d7f71c1d23d0a8bc80ec"
+    },
+    {
+      "path": "tests/guests/u2/build.sh",
+      "signed_ci_sha256": "2eb278301590276d8375db3fa337a92e11bd455c38aa0ac63d39179930f3407f",
+      "main_current_sha256": "2eb278301590276d8375db3fa337a92e11bd455c38aa0ac63d39179930f3407f"
+    },
+    {
+      "path": "tests/guests/u2/classify.py",
+      "signed_ci_sha256": "b6e9fb9e905d7a343e0ade928c037e5c0816175d69641c793f71b8d40e3f40d7",
+      "main_current_sha256": "b6e9fb9e905d7a343e0ade928c037e5c0816175d69641c793f71b8d40e3f40d7"
+    },
+    {
+      "path": "tests/guests/u2/inventory.py",
+      "signed_ci_sha256": "b9cd812d2ebe8a386f379891cb692dec49f909bd0f291ab2c4ede6e7b029a2b6",
+      "main_current_sha256": "b9cd812d2ebe8a386f379891cb692dec49f909bd0f291ab2c4ede6e7b029a2b6"
+    },
+    {
+      "path": "tests/guests/u2/observe.c",
+      "signed_ci_sha256": "afc158e8fbefb58eb632ad74dcd0b1ea471a9fa7bfec7556a5f7bd4031062b2f",
+      "main_current_sha256": "afc158e8fbefb58eb632ad74dcd0b1ea471a9fa7bfec7556a5f7bd4031062b2f"
+    },
+    {
+      "path": "tests/guests/u2/trace.py",
+      "signed_ci_sha256": "ca666de99e74499d18a2a501d6fc127e616770932a959d7314d767494f7a1f70",
+      "main_current_sha256": "ca666de99e74499d18a2a501d6fc127e616770932a959d7314d767494f7a1f70"
+    },
+    {
+      "path": "tests/guests/u3/build.sh",
+      "signed_ci_sha256": "a945edb7dfa3c1f11c443afb07b892b129aa182d2d246853cea976c7d593202d",
+      "main_current_sha256": "a945edb7dfa3c1f11c443afb07b892b129aa182d2d246853cea976c7d593202d"
+    },
+    {
+      "path": "tests/guests/u3/cpuid-observe.c",
+      "signed_ci_sha256": "4168acd5cfd8ee865e2db54919e83b1bd2c37241b583406bc5c86e4ed70c5637",
+      "main_current_sha256": "4168acd5cfd8ee865e2db54919e83b1bd2c37241b583406bc5c86e4ed70c5637"
+    },
+    {
+      "path": "tests/guests/u3/fault-observe.c",
+      "signed_ci_sha256": "9e1ada4d051b1b9ef201bbdc34115784e60b53e5d1b6c9fad73e8232064571cb",
+      "main_current_sha256": "9e1ada4d051b1b9ef201bbdc34115784e60b53e5d1b6c9fad73e8232064571cb"
+    },
+    {
+      "path": "tests/guests/u3/generate.py",
+      "signed_ci_sha256": "17551188915463b5881c594d1277b376927b599f3f81f628fcc4f025f79925d3",
+      "main_current_sha256": "17551188915463b5881c594d1277b376927b599f3f81f628fcc4f025f79925d3"
+    },
+    {
+      "path": "tests/guests/u3/native-contract.rs",
+      "signed_ci_sha256": "46ead5bfd6cf06802c8fd6bd8ce501cfc5e7882efd60eae33c523458d4073849",
+      "main_current_sha256": "46ead5bfd6cf06802c8fd6bd8ce501cfc5e7882efd60eae33c523458d4073849"
+    },
+    {
+      "path": "tests/guests/u3/observe.c",
+      "signed_ci_sha256": "680a9238dc7082e33a8becb423d6971639693a64e283af412de4a07d46aef3fe",
+      "main_current_sha256": "680a9238dc7082e33a8becb423d6971639693a64e283af412de4a07d46aef3fe"
+    },
+    {
+      "path": "tests/guests/u3/runner.S",
+      "signed_ci_sha256": "28d94c8d8691f2d1756f19e6974739a48a4b0d39e63b119838a5f311fffeedf9",
+      "main_current_sha256": "28d94c8d8691f2d1756f19e6974739a48a4b0d39e63b119838a5f311fffeedf9"
+    },
+    {
+      "path": "tests/guests/u4/build.sh",
+      "signed_ci_sha256": "cd5943adf40121aeac684f3785be91ad508335a774d86197078d4c865f78b3e6",
+      "main_current_sha256": "cd5943adf40121aeac684f3785be91ad508335a774d86197078d4c865f78b3e6"
+    },
+    {
+      "path": "tests/guests/u4/memory.c",
+      "signed_ci_sha256": "4ff1ef7492c633fa9ce30e1299b9129d3fdb8a8f2599d66be67e62dbf36112f1",
+      "main_current_sha256": "4ff1ef7492c633fa9ce30e1299b9129d3fdb8a8f2599d66be67e62dbf36112f1"
+    },
+    {
+      "path": "tests/guests/u4/realtime-order-oracle.c",
+      "signed_ci_sha256": "3e856cadc9f6bcf32e6b21643847e0c8dda2d579b3f514de732eaad46d281a03",
+      "main_current_sha256": "3e856cadc9f6bcf32e6b21643847e0c8dda2d579b3f514de732eaad46d281a03"
+    },
+    {
+      "path": "tests/guests/u4/signals.c",
+      "signed_ci_sha256": "5f5e8b41fe175f5200be39c04207a8c65f42434a9133af8bf252ff64f28470de",
+      "main_current_sha256": "5f5e8b41fe175f5200be39c04207a8c65f42434a9133af8bf252ff64f28470de"
+    },
+    {
+      "path": "tests/guests/u4/stop-continue-oracle.c",
+      "signed_ci_sha256": "32b3e448283cc890effdf11e9e34a46c323e1eccc7e9e94d38ada19e29392cbd",
+      "main_current_sha256": "32b3e448283cc890effdf11e9e34a46c323e1eccc7e9e94d38ada19e29392cbd"
+    },
+    {
+      "path": "tests/guests/u4/time.c",
+      "signed_ci_sha256": "b00729ca575f0085ca9192b5434ec6b389eecdb7e44f16c4ad6ada30f9f129e2",
+      "main_current_sha256": "b00729ca575f0085ca9192b5434ec6b389eecdb7e44f16c4ad6ada30f9f129e2"
+    },
+    {
+      "path": "tests/guests/u4/write-restart-oracle.c",
+      "signed_ci_sha256": "57e167a45c9f092765bd18cc11a15bd2936c004b6ee3044dbdfaf1fd51cc7e0c",
+      "main_current_sha256": "57e167a45c9f092765bd18cc11a15bd2936c004b6ee3044dbdfaf1fd51cc7e0c"
+    },
+    {
+      "path": "tests/guests/u7/build.sh",
+      "signed_ci_sha256": "da4bbaf56b52ec8d133874f829efe05f84b57ef936f38f59eb769e40de04e215",
+      "main_current_sha256": "da4bbaf56b52ec8d133874f829efe05f84b57ef936f38f59eb769e40de04e215"
+    },
+    {
+      "path": "tests/guests/u7/files.c",
+      "signed_ci_sha256": "09ec1eccef840dc75a1f1337df8df81c7636d8c68c4efb53a5ce71dca815a71c",
+      "main_current_sha256": "09ec1eccef840dc75a1f1337df8df81c7636d8c68c4efb53a5ce71dca815a71c"
+    },
+    {
+      "path": "tests/guests/u9/build.sh",
+      "signed_ci_sha256": "a553aca201617372c0ab3ef5ff062789827236372f4534d22b040816dba95b69",
+      "main_current_sha256": "a553aca201617372c0ab3ef5ff062789827236372f4534d22b040816dba95b69"
+    },
+    {
+      "path": "tests/guests/u9/host-pty.py",
+      "signed_ci_sha256": "4be24b7d06cbdea91a047a3d83f6c9f8abf3c31eda172fc353a017d822cb8177",
+      "main_current_sha256": "4be24b7d06cbdea91a047a3d83f6c9f8abf3c31eda172fc353a017d822cb8177"
+    },
+    {
+      "path": "tests/guests/u9/io.c",
+      "signed_ci_sha256": "a030ef5e8386e4dab5bcc682635393d131eb228e3aa27bf6eecbf56a48460037",
+      "main_current_sha256": "a030ef5e8386e4dab5bcc682635393d131eb228e3aa27bf6eecbf56a48460037"
+    },
+    {
+      "path": "tests/guests/u9/oracle.py",
+      "signed_ci_sha256": "8cefb40e0847b164d7b1eafd739a90acbbc2b298b529664bdab7172d9ae1a404",
+      "main_current_sha256": "8cefb40e0847b164d7b1eafd739a90acbbc2b298b529664bdab7172d9ae1a404"
+    },
+    {
+      "path": "tools/insn-trace/insn-census.sh",
+      "signed_ci_sha256": "2423faf3ad7c47c510b4444cadc6c7bb0054e9256b50dc6d8a444726c0c3b78a",
+      "main_current_sha256": "2423faf3ad7c47c510b4444cadc6c7bb0054e9256b50dc6d8a444726c0c3b78a"
+    },
+    {
+      "path": "tools/insn-trace/insn-trace.c",
+      "signed_ci_sha256": "8fd62ea2bce4648c2e47d0e02a5a1ebf5a0d15b287cf8cdb50f6d06b2e5339c3",
+      "main_current_sha256": "8fd62ea2bce4648c2e47d0e02a5a1ebf5a0d15b287cf8cdb50f6d06b2e5339c3"
+    }
+  ],
+  "known_document_difference": "docs/reports/wasm-threads.md signedCI vs main current exact hash are separate; no generic exclusion."
+}

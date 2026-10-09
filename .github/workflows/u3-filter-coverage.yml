@@ -1,0 +1,95 @@
+name: U3 listed filter coverage diagnostic
+on:
+  push:
+    branches: [codex/u2-asan-diagnostic]
+    paths:
+      - .github/workflows/u3-filter-coverage.yml
+      - diagnostics/u3-filter-coverage/**
+permissions:
+  contents: read
+jobs:
+  filter-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-01
+      CARGO_TERM_COLOR: never
+      RUST_TEST_THREADS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0
+        with:
+          tool: cargo-llvm-cov
+      - name: Record fixed toolchain and exact source baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u3-filter-coverage-evidence
+          evidence=target/u3-filter-coverage-evidence
+          test "$(uname -m)" = x86_64
+          rustup toolchain install nightly-2026-10-01 --profile minimal --component llvm-tools-preview
+          {
+            uname -a
+            lscpu
+            rustc -Vv
+            cargo -V
+            cargo llvm-cov --version
+            printf 'CI_HEAD=%s\n' "$GITHUB_SHA"
+          } > "$evidence/environment.log" 2>&1
+          cp diagnostics/u3-filter-coverage/source-baseline.json "$evidence/source-baseline.json"
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,hashlib
+          e=Path('target/u3-filter-coverage-evidence')
+          b=json.loads((e/'source-baseline.json').read_text())
+          rows=[{'path':r['path'],'sha256':hashlib.sha256(Path(r['path']).read_bytes()).hexdigest()} for r in b['rows']]
+          (e/'source-before.json').write_text(json.dumps(rows,indent=2)+'\n')
+          assert len(rows)==211
+          assert all(a['sha256']==r['signed_ci_sha256'] for a,r in zip(rows,b['rows']))
+          PY
+      - name: Run exact listed command from empty profiles
+        id: measure
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=target/u3-filter-coverage-evidence
+          cargo llvm-cov clean --workspace > "$evidence/clean.log" 2>&1
+          printf '%s\n' 'cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib u3_tests:: --fail-under-lines 80' > "$evidence/command.txt"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/start.txt"
+          set +e
+          cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib u3_tests:: --fail-under-lines 80 > "$evidence/measurement.log" 2>&1
+          status=$?
+          printf '%s\n' "$status" > "$evidence/measurement-exit.txt"
+          cargo llvm-cov report --lcov --output-path "$evidence/coverage.lcov" > "$evidence/lcov-report.log" 2>&1
+          printf '%s\n' "$?" > "$evidence/lcov-report-exit.txt"
+          cargo llvm-cov report --json --output-path "$evidence/coverage.json" > "$evidence/json-report.log" 2>&1
+          printf '%s\n' "$?" > "$evidence/json-report-exit.txt"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/end.txt"
+          cat "$evidence/measurement.log"
+          exit "$status"
+      - name: Retain final source proof even on measurement failure
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p target/u3-filter-coverage-evidence
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,hashlib
+          e=Path('target/u3-filter-coverage-evidence')
+          b=json.loads(Path('diagnostics/u3-filter-coverage/source-baseline.json').read_text())
+          rows=[{'path':r['path'],'sha256':hashlib.sha256(Path(r['path']).read_bytes()).hexdigest()} for r in b['rows']]
+          (e/'source-after.json').write_text(json.dumps(rows,indent=2)+'\n')
+          before=json.loads((e/'source-before.json').read_text())
+          ok=rows==before and len(rows)==211
+          (e/'source-compare.json').write_text(json.dumps({'pass':ok,'paths':len(rows)})+'\n')
+          assert ok
+          PY
+      - name: Preserve all outcomes
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u3-listed-filter-coverage
+          path: target/u3-filter-coverage-evidence/
+          retention-days: 7
