@@ -3,6 +3,81 @@ use super::*;
 use paludarium_mmu::{MappingKind, Prot};
 use paludarium_types::{Errno, GuestAddr, PAGE_SIZE};
 const DATA: u64 = 0x600000;
+mod fd {
+    use super::*;
+    #[test]
+    fn pipe_pointer_fault() {
+        let (mut k, mut t, m) = setup();
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 293, [1, 0, 0, 0, 0, 0]),
+            Errno::EFAULT.to_syscall_return()
+        );
+    }
+    #[test]
+    fn pipe_invalid_flags() {
+        let (mut k, mut t, m) = setup();
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 293, [DATA, 1, 0, 0, 0, 0]),
+            Errno::EINVAL.to_syscall_return()
+        );
+    }
+    #[test]
+    fn pipe_cloexec() {
+        let (mut k, mut t, m) = setup();
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 293, [DATA, 0x80000, 0, 0, 0, 0]),
+            0
+        );
+        let fd = m.read_u64(GuestAddr(DATA)).unwrap() as u32;
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 72, [fd as u64, 1, 0, 0, 0, 0]),
+            1
+        );
+        assert!(k.files.for_exec().descriptor(fd as u64).is_err());
+    }
+    #[test]
+    fn vector_table_fault() {
+        let (mut k, mut t, m) = setup();
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 20, [1, 1, 1, 0, 0, 0]),
+            Errno::EFAULT.to_syscall_return()
+        );
+    }
+    #[test]
+    fn vector_count_and_total_limit() {
+        let (mut k, mut t, m) = setup();
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 20, [1, DATA, 1025, 0, 0, 0]),
+            Errno::EINVAL.to_syscall_return()
+        );
+        m.write_u64(GuestAddr(DATA), DATA).unwrap();
+        m.write_u64(GuestAddr(DATA + 8), 0x80000000).unwrap();
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 20, [1, DATA, 1, 0, 0, 0]),
+            Errno::EINVAL.to_syscall_return()
+        );
+    }
+    #[test]
+    fn vector_payload_fault() {
+        let (mut k, mut t, m) = setup();
+        m.write_u64(GuestAddr(DATA), 1).unwrap();
+        m.write_u64(GuestAddr(DATA + 8), 1).unwrap();
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 20, [1, DATA, 1, 0, 0, 0]),
+            Errno::EFAULT.to_syscall_return()
+        );
+    }
+    #[test]
+    fn vector_concatenation() {
+        let (mut k, mut t, m) = setup();
+        m.write(GuestAddr(DATA + 64), b"abc").unwrap();
+        for (offset, base, len) in [(0, DATA + 64, 1), (16, DATA + 65, 2)] {
+            m.write_u64(GuestAddr(DATA + offset), base).unwrap();
+            m.write_u64(GuestAddr(DATA + offset + 8), len).unwrap();
+        }
+        assert_eq!(syscall(&mut k, &mut t, &m, 20, [1, DATA, 2, 0, 0, 0]), 3);
+    }
+}
 fn setup() -> (Kernel, Thread, AddressSpace) {
     let kernel = Kernel::new(Arc::new(paludarium_host::testing::RecordingHost::new()));
     let thread = Thread::new(

@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,6 +14,14 @@
 
 static void result(const char *name, long value) { printf("%s=%ld\n", name, value); }
 static pid_t child(void) { return syscall(SYS_fork); }
+static int thread_ready[2], thread_block[2];
+static void *blocked_sibling(void *unused) {
+    (void)unused;
+    char byte;
+    if (write(thread_ready[1], "x", 1) != 1) _exit(85);
+    read(thread_block[0], &byte, 1);
+    _exit(84);
+}
 static void finish(pid_t pid) {
     int status = 0;
     result("wait", waitpid(pid, &status, 0) == pid);
@@ -21,6 +30,20 @@ static void finish(pid_t pid) {
 int main(int argc, char **argv) {
     if (argc < 3) return 99;
     const char *mode = argv[1], *self = argv[2];
+    if (!strcmp(mode, "exec-thread-child")) {
+        result("replacement", 1);
+        return 0;
+    }
+    if (!strcmp(mode, "exec-thread")) {
+        pthread_t sibling;
+        if (pipe(thread_ready) || pipe(thread_block) || pthread_create(&sibling, NULL, blocked_sibling, NULL)) return 83;
+        char byte;
+        if (read(thread_ready[0], &byte, 1) != 1) return 82;
+        char *args[] = { "u8-process", "exec-thread-child", (char *)self, NULL };
+        char *env[] = { NULL };
+        execve(self, args, env);
+        return 81;
+    }
     if (!strcmp(mode, "child")) {
         result("argv", argc == 4 && !strcmp(argv[3], "argument"));
         result("env", getenv("U8_VALUE") && !strcmp(getenv("U8_VALUE"), "value"));

@@ -105,6 +105,7 @@ mod linux {
         u8_vfork_exec => ("vfork-exec","u8-process"),
         u8_vfork_exit => ("vfork-exit","u8-process"),
         u8_exec => ("exec","u8-process"),
+        u8_exec_thread => ("exec-thread","u8-process"),
         u8_enoent => ("enoent","u8-process"),
         u8_exec_fault => ("exec-fault","u8-process"),
         u8_bad_elf => ("bad-elf","u8-process"),
