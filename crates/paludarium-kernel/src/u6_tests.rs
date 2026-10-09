@@ -6,6 +6,113 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 const DATA: u64 = 0x600000;
 #[test]
+fn u6_et_unread_write_during_host_wait() {
+    for socket in [false, true] {
+        let mut f = Fixture::new();
+        let (fd, writer) = if socket {
+            let [a, b] =
+                crate::sockets::SocketPairEnd::pair(0x801, Arc::clone(&f.kernel.files.readiness))
+                    .unwrap();
+            let fd = f.kernel.files.install(b, false).unwrap();
+            (u64::from(fd), a as Arc<dyn paludarium_host::FileHandle>)
+        } else {
+            let fd = f.event(0);
+            (fd, f.kernel.files.descriptor(fd).unwrap().file)
+        };
+        let bytes = if socket {
+            vec![1]
+        } else {
+            1u64.to_le_bytes().to_vec()
+        };
+        writer.write(&bytes).unwrap();
+        let e = f.epoll();
+        f.add(e, fd, 1 | (1 << 31), 99);
+        assert_eq!(f.poll(e, 0), 1);
+        assert_eq!(f.poll(e, 0), 0);
+        *f.host.action.lock().unwrap() = Some(Box::new(move || {
+            writer.write(&bytes).unwrap();
+        }));
+        assert_eq!(f.poll(e, 20), 1);
+        assert_eq!(f.host.now.load(Ordering::SeqCst), 0);
+        assert_eq!(f.poll(e, 0), 0);
+    }
+}
+#[test]
+fn u6_pwait_handler_uses_temporary_mask_and_returns_original() {
+    for nodefer in [false, true] {
+        let mut f = Fixture::new();
+        let e = f.epoll();
+        let original = (1 << 13) | (1 << 9);
+        let action_mask = 1 << 11;
+        f.thread.state.signal_mask = original;
+        f.thread.cpu.gpr[reg::RSP] = DATA + 0x4000;
+        f.thread.state.signal_actions.insert(
+            14,
+            SignalAction {
+                handler: DATA + 0x1000,
+                restorer: DATA + 0x1010,
+                flags: 0x4000000 | if nodefer { signals::SA_NODEFER } else { 0 },
+                mask: action_mask,
+            },
+        );
+        f.kernel.group.set_timer(signals::RealTimer {
+            deadline: Some(5_000_000),
+            interval: 0,
+        });
+        f.mem.write_u64(GuestAddr(DATA + 128), 0).unwrap();
+        assert_eq!(
+            f.ret(281, [e, DATA + 64, 1, 20, DATA + 128, 8]),
+            Errno(4).to_syscall_return()
+        );
+        assert_eq!(f.thread.cpu.rip, GuestAddr(DATA + 0x1000));
+        assert_eq!(f.thread.state.frames.len(), 1);
+        assert_eq!(f.thread.state.wait_restore_mask, None);
+        assert_eq!(
+            f.thread.state.signal_mask,
+            action_mask | if nodefer { 0 } else { 1 << 13 }
+        );
+        let frame = f.thread.cpu.gpr[reg::RSP];
+        assert_eq!(f.mem.read_u64(GuestAddr(frame + 304)).unwrap(), original);
+        f.thread.cpu.gpr[reg::RSP] += 8;
+        f.ret(15, [0; 6]);
+        assert_eq!(f.thread.state.signal_mask, original);
+        assert!(f.thread.state.frames.is_empty());
+        assert!(f.thread.state.pending.is_empty());
+    }
+}
+#[test]
+fn u6_pwait_mask_restores_without_handler_for_masked_ignored_metadata() {
+    for mode in 0..3 {
+        let mut f = Fixture::new();
+        let e = f.epoll();
+        let original = 1 << 13;
+        f.thread.state.signal_mask = original;
+        f.thread.state.signal_actions.insert(
+            14,
+            SignalAction {
+                handler: if mode == 1 { 1 } else { DATA + 0x1000 },
+                ..SignalAction::default()
+            },
+        );
+        let inbox = Arc::new(SignalInbox::default());
+        f.kernel = f.kernel.with_signal_inbox(Arc::clone(&inbox));
+        *f.host.action.lock().unwrap() = Some(Box::new(move || {
+            if mode == 2 {
+                inbox.timer_changed();
+            } else {
+                inbox.send(14).unwrap();
+            }
+        }));
+        f.mem
+            .write_u64(GuestAddr(DATA + 128), if mode == 0 { original } else { 0 })
+            .unwrap();
+        assert_eq!(f.ret(281, [e, DATA + 64, 1, 20, DATA + 128, 8]), 0);
+        assert_eq!(f.thread.state.signal_mask, original);
+        assert_eq!(f.thread.state.wait_restore_mask, None);
+        assert!(f.thread.state.frames.is_empty());
+    }
+}
+#[test]
 fn u6_tokio_musl_clone_accepts_ignored_detached_bit() {
     let mut f = Fixture::new();
     let flags = 0x100

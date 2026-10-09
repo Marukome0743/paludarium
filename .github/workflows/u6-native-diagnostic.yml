@@ -48,6 +48,12 @@ jobs:
         run: cargo +nightly-2026-10-01 build --locked -p paludarium
       - name: Fresh native and emulated finite comparisons
         run: cargo +nightly-2026-10-01 test --locked -p paludarium-harness --test diff_u6 -- --nocapture
+      - name: Ten bounded fresh Tokio timer comparisons
+        run: |
+          set -euo pipefail
+          for attempt in {1..10}; do
+            python3 scripts/u6-native-observe.py --case timer --guests target/guests/u6 --out "target/u6-diff/timer-repeat-$attempt" --emulator target/debug/paludarium
+          done
       - name: Retain both observation streams
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

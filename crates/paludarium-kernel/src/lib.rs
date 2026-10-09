@@ -103,6 +103,8 @@ pub struct ThreadState {
     pub pid: u32,
     pub signal_actions: BTreeMap<i32, SignalAction>,
     pub signal_mask: u64,
+    /// One-time original mask for a signal interrupting epoll_pwait.
+    pub(crate) wait_restore_mask: Option<u64>,
     pub alt_stack: AltStack,
     pub clear_child_tid: u64,
     pub exit_status: Option<ExitStatus>,
@@ -260,14 +262,33 @@ impl Kernel {
             if action.handler == 0 || signal.number == 9 {
                 return self.terminate(thread, signal.number);
             }
+            let delivery_mask = thread.state.signal_mask;
+            let restore_mask = thread.state.wait_restore_mask.take();
+            if let Some(mask) = restore_mask {
+                // The signal is selected using pwait's temporary mask, but
+                // its ucontext must restore the original mask on sigreturn.
+                thread.state.signal_mask = mask;
+            }
             if signals::install(&mut thread.state, &mut thread.cpu, mem, signal, action).is_err() {
                 return self.terminate(thread, signal::SIGSEGV);
+            }
+            if restore_mask.is_some() {
+                // Handler execution still uses the temporary mask, plus the
+                // same action/self-block rules as ordinary signal delivery.
+                thread.state.signal_mask = delivery_mask | action.mask;
+                if action.flags & signals::SA_NODEFER == 0 {
+                    thread.state.signal_mask |= 1u64 << (signal.number - 1);
+                }
+                thread.state.signal_mask &= !signals::unblockable();
             }
             if action.flags & signals::SA_RESETHAND != 0 {
                 self.group
                     .set_action(signal.number, SignalAction::default());
             }
             return Next::Resume;
+        }
+        if let Some(mask) = thread.state.wait_restore_mask.take() {
+            thread.state.signal_mask = mask;
         }
         if thread.state.stopped {
             Next::Stopped

@@ -86,6 +86,9 @@ pub(crate) fn dispatch(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
 #[derive(Default)]
 struct Side {
     bytes: VecDeque<u8>,
+    /// Remaining bytes per successful write, to retain poll callbacks when
+    /// a peer consumes one write while later writes remain unread.
+    writes: VecDeque<usize>,
     closed: bool,
     read_shutdown: bool,
     write_shutdown: bool,
@@ -205,7 +208,19 @@ impl FileHandle for SocketPairEnd {
         for byte in &mut buf[..count] {
             *byte = own.bytes.pop_front().ok_or(Errno::EIO)?;
         }
-        if full {
+        let mut remaining = count;
+        let mut consumed_write = false;
+        while remaining != 0 {
+            let front = own.writes.front_mut().ok_or(Errno::EIO)?;
+            let consumed = remaining.min(*front);
+            *front -= consumed;
+            remaining -= consumed;
+            if *front == 0 {
+                own.writes.pop_front();
+                consumed_write = true;
+            }
+        }
+        if full || consumed_write {
             sides[1 - self.side].output_epoch = sides[1 - self.side].output_epoch.wrapping_add(1);
         }
         self.pair.hub.changed();
@@ -229,10 +244,17 @@ impl FileHandle for SocketPairEnd {
             return Err(Errno::EAGAIN);
         }
         peer.bytes.try_reserve(count).map_err(|_| Errno::ENOMEM)?;
-        if peer.bytes.is_empty() && !buf.is_empty() {
+        if count != 0 {
+            peer.writes.try_reserve(1).map_err(|_| Errno::ENOMEM)?;
+        }
+        // Additional bytes wake a readable peer's poll callback as well.
+        if count != 0 {
             peer.input_epoch = peer.input_epoch.wrapping_add(1);
         }
         peer.bytes.extend(buf[..count].iter().copied());
+        if count != 0 {
+            peer.writes.push_back(count);
+        }
         self.pair.hub.changed();
         Ok(count)
     }

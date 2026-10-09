@@ -291,7 +291,17 @@ pub(crate) fn dispatch(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
                 crate::events::wait(c, ticket, deadline)?;
             }
         })();
-        c.process.signal_mask = old_mask;
+        if number == 281
+            && a[4] != 0
+            && result == Err(Errno(4))
+            && crate::signals::next_pending(c.process, true).is_some()
+        {
+            // Defer original-mask restoration until the eligible signal is
+            // installed at the syscall checkpoint. Its frame saves old_mask.
+            c.process.wait_restore_mask = Some(old_mask);
+        } else {
+            c.process.signal_mask = old_mask;
+        }
         result
     })();
     Outcome::Return(result.unwrap_or_else(Errno::to_syscall_return))
@@ -325,6 +335,35 @@ mod u6_tests {
         f.read(&mut [0; 8]).unwrap();
         f.write(&1u64.to_le_bytes()).unwrap();
         assert_eq!(e.collect(1).len(), 1);
+    }
+    #[test]
+    fn u6_epoll_event_output_read_callback() {
+        let hub = Arc::default();
+        let e = EpollInstance::new(Arc::clone(&hub));
+        let f: Arc<dyn FileHandle> = Arc::new(EventCounter::new(2, 1, hub).unwrap());
+        e.control(1, 3, Arc::clone(&f), OUT | ET, 79).unwrap();
+        assert_eq!(e.collect(1), vec![(OUT, 79)]);
+        f.read(&mut [0; 8]).unwrap();
+        assert_eq!(e.collect(1), vec![(OUT, 79)]);
+        assert!(e.collect(1).is_empty());
+    }
+    #[test]
+    fn u6_epoll_socket_output_consumed_write_callbacks() {
+        let hub = Arc::default();
+        let e = EpollInstance::new(Arc::clone(&hub));
+        let [writer, reader] = crate::sockets::SocketPairEnd::pair(0x801, hub).unwrap();
+        e.control(1, 3, writer.clone(), OUT | ET, 81).unwrap();
+        assert_eq!(e.collect(1), vec![(OUT, 81)]);
+        writer.write(b"abc").unwrap();
+        writer.write(b"de").unwrap();
+        assert!(e.collect(1).is_empty());
+        reader.read(&mut [0; 3]).unwrap();
+        assert_eq!(e.collect(1), vec![(OUT, 81)]);
+        assert!(e.collect(1).is_empty());
+        reader.read(&mut [0; 1]).unwrap();
+        assert!(e.collect(1).is_empty());
+        reader.read(&mut [0; 1]).unwrap();
+        assert_eq!(e.collect(1), vec![(OUT, 81)]);
     }
     #[test]
     fn u6_epoll_oneshot() {

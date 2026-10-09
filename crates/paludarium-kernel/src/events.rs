@@ -134,7 +134,6 @@ impl FileHandle for EventCounter {
         if s.value == 0 {
             return Err(Errno::EAGAIN);
         }
-        let full = s.value == u64::MAX - 1;
         let value = if self.semaphore {
             s.value -= 1;
             1
@@ -143,9 +142,7 @@ impl FileHandle for EventCounter {
             s.value = 0;
             v
         };
-        if full {
-            s.output_epoch = s.output_epoch.wrapping_add(1);
-        }
+        s.output_epoch = s.output_epoch.wrapping_add(1);
         buf[..8].copy_from_slice(&value.to_le_bytes());
         self.hub.changed();
         Ok(8)
@@ -164,9 +161,9 @@ impl FileHandle for EventCounter {
             .checked_add(value)
             .filter(|v| *v != u64::MAX)
             .ok_or(Errno::EAGAIN)?;
-        if s.value == 0 && next != 0 {
-            s.input_epoch = s.input_epoch.wrapping_add(1);
-        }
+        // Linux eventfd wakes its poll callbacks for a successful write even
+        // when the counter was already readable; ET consumes each callback.
+        s.input_epoch = s.input_epoch.wrapping_add(1);
         s.value = next;
         self.hub.changed();
         Ok(8)
@@ -252,10 +249,10 @@ mod u6_tests {
         c.write(&1u64.to_le_bytes()).unwrap();
         let ready = c.readiness().unwrap();
         c.write(&1u64.to_le_bytes()).unwrap();
-        assert_eq!(c.readiness().unwrap(), ready);
+        assert_eq!(c.readiness().unwrap().1, ready.1 + 1);
         take(&c).unwrap();
         c.write(&1u64.to_le_bytes()).unwrap();
-        assert_eq!(c.readiness().unwrap().1, before.1 + 2);
+        assert_eq!(c.readiness().unwrap().1, before.1 + 3);
     }
     #[test]
     fn u6_event_flags() {
