@@ -3,8 +3,9 @@
   "rows": [
     {
       "path": ".github/workflows/ci.yml",
-      "signed_ci_sha256": "5e7e7a6503fa11251b30d1b27b05c90b2d1287c0696fde4b83e0d09dccae8b31",
-      "main_current_sha256": "5e7e7a6503fa11251b30d1b27b05c90b2d1287c0696fde4b83e0d09dccae8b31"
+      "signed_ci_sha256": "fbeea2cd3f6ffa88eebbc612f4834f1ea045f40db53b2f24aaf3e5b4f1ce1818",
+      "main_current_sha256": "fbeea2cd3f6ffa88eebbc612f4834f1ea045f40db53b2f24aaf3e5b4f1ce1818",
+      "previous_signed_ci_sha256": "5e7e7a6503fa11251b30d1b27b05c90b2d1287c0696fde4b83e0d09dccae8b31"
     },
     {
       "path": ".github/workflows/native-diagnostic.yml",

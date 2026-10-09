@@ -144,6 +144,11 @@ jobs:
     name: line coverage >= 80%
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PALUDARIUM_U3_FULL_REPLAY: '1'
+      PALUDARIUM_U3_NATIVE_OBSERVATIONS: ${{ github.workspace }}/target/u3-guests/observe.native
+      PALUDARIUM_U3_NATIVE_FAULTS: ${{ github.workspace }}/target/u3-guests/fault-observe.native
+      PALUDARIUM_U3_NATIVE_CPUID: ${{ github.workspace }}/target/u3-guests/cpuid-observe.native
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -154,6 +159,30 @@ jobs:
           mkdir -p target/u3-guests
           uname -a > target/u3-guests/uname.txt
           lscpu > target/u3-guests/cpu.txt
+      - name: Generate fresh U3 native inputs before instrumented library tests
+        shell: bash
+        run: |
+          bash tests/guests/u3/build.sh target/u3-guests
+          python3 - <<'PY_NATIVE'
+          from pathlib import Path
+          import subprocess, os, signal, json, hashlib
+          out=Path('target/u3-guests')
+          rows=[]
+          for name, expected_rows in [('observe',23576),('fault-observe',1162),('cpuid-observe',12)]:
+              binary=out/name
+              with (out/(name+'.native')).open('wb') as stdout, (out/(name+'.stderr')).open('wb') as stderr:
+                  child=subprocess.Popen([str(binary.resolve())], stdout=stdout, stderr=stderr, start_new_session=True)
+                  try:
+                      code=child.wait(timeout=30)
+                  except subprocess.TimeoutExpired:
+                      os.killpg(child.pid,signal.SIGKILL)
+                      child.wait()
+                      raise
+              data=(out/(name+'.native')).read_bytes()
+              rows.append({'name':name,'exit':code,'rows':len(data.splitlines()),'binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'output_sha256':hashlib.sha256(data).hexdigest()})
+              (out/'native-input-receipt.json').write_text(json.dumps(rows,indent=2)+'\n')
+              assert code==0 and len(data.splitlines())==expected_rows and not (out/(name+'.stderr')).read_bytes()
+          PY_NATIVE
       - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
         with:
           tool: cargo-llvm-cov
