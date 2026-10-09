@@ -1,4 +1,5 @@
 //! U3 runner bootstrap. Semantic cases follow native observations.
+#![allow(unexpected_cfgs)]
 use super::{CpuState, INITIAL_MXCSR};
 use paludarium_types::GuestAddr;
 #[path = "../../../tests/guests/u3/native-contract.rs"]
@@ -88,7 +89,10 @@ fn runner_bootstrap_preserves_existing_state_layout() {
 /// Diagnostic replay accepts an explicitly supplied, freshly generated native
 /// observation file. Expected states are never checked into the test sources.
 #[test]
-#[ignore = "requires PALUDARIUM_U3_NATIVE_OBSERVATIONS from the native runner"]
+#[cfg_attr(
+    not(coverage),
+    ignore = "requires PALUDARIUM_U3_NATIVE_OBSERVATIONS from the native runner"
+)]
 fn packed_and_crypto_native_replay() {
     use paludarium_decoder::{Mnemonic as M, decode};
     use paludarium_mmu::{AddressSpace, MappingKind, Prot};
@@ -284,7 +288,10 @@ fn cpuid_zero_extends_all_outputs_and_advances_rip() {
 }
 
 #[test]
-#[ignore = "requires PALUDARIUM_U3_NATIVE_FAULTS from the native runner"]
+#[cfg_attr(
+    not(coverage),
+    ignore = "requires PALUDARIUM_U3_NATIVE_FAULTS from the native runner"
+)]
 fn packed_crypto_movement_fault_replay() {
     use super::exec::Stop;
     use paludarium_decoder::{Mnemonic as M, decode};
@@ -586,4 +593,106 @@ fn floating_comparison_distinguishes_qnan_and_snan() {
         compare(F64, 0, 0x8000_0000_0000_0000, 0x1f80, false),
         (Some(0), 0)
     );
+}
+
+fn public_machine(code: &[u8]) -> (CpuState, paludarium_mmu::AddressSpace) {
+    use paludarium_mmu::{AddressSpace, MappingKind, Prot};
+    let mut memory = AddressSpace::new();
+    memory
+        .map(
+            Some(GuestAddr(0x10000)),
+            4096,
+            Prot::from_bits(7).unwrap(),
+            MappingKind::Anonymous,
+        )
+        .unwrap();
+    memory.write(GuestAddr(0x10000), code).unwrap();
+    (
+        CpuState::new(GuestAddr(0x10000), GuestAddr(0x80000)),
+        memory,
+    )
+}
+
+#[test]
+fn public_cached_sse_sees_code_changes_and_budget() {
+    use paludarium_types::ExitReason;
+    let (mut state, memory) = public_machine(&[0x66, 0x0f, 0xef, 0xc0]);
+    let mut cache = super::DecodeCache::new();
+    state.xmm[0] = u128::MAX;
+    assert!(matches!(
+        super::run_cached(&mut state, &memory, 1, &mut cache),
+        ExitReason::BudgetExhausted { .. }
+    ));
+    assert_eq!(state.xmm[0], 0);
+    memory.write(GuestAddr(0x10003), &[0xc1]).unwrap();
+    state.rip = GuestAddr(0x10000);
+    state.xmm[0] = 0xaa;
+    state.xmm[1] = 0x55;
+    super::step_cached(&mut state, &memory, &mut cache).unwrap();
+    assert_eq!(state.xmm[0], 0xff);
+    assert_eq!(super::current_rip(&state), GuestAddr(0x10004));
+}
+
+#[test]
+fn public_sse_fetch_permission_and_truncation_preserve_state() {
+    use paludarium_mmu::Prot;
+    use paludarium_types::ExitReason;
+    let (mut state, mut memory) = public_machine(&[0x66, 0x0f, 0xef, 0xc0]);
+    memory
+        .protect(GuestAddr(0x10000), 4096, Prot::READ)
+        .unwrap();
+    assert!(matches!(
+        super::step(&mut state, &memory),
+        Err(ExitReason::PageFault { fetch: true, .. })
+    ));
+    memory
+        .protect(GuestAddr(0x10000), 4096, Prot::from_bits(7).unwrap())
+        .unwrap();
+    memory.write(GuestAddr(0x10fff), &[0x66]).unwrap();
+    state.rip = GuestAddr(0x10fff);
+    let before = state.clone();
+    assert!(matches!(
+        super::step(&mut state, &memory),
+        Err(ExitReason::PageFault {
+            fetch: true,
+            addr: GuestAddr(0x11000),
+            ..
+        })
+    ));
+    assert_eq!(state.rip, before.rip);
+    assert_eq!(state.xmm, before.xmm);
+}
+
+#[test]
+fn public_sse_alignment_fault_is_transactional() {
+    use paludarium_types::ExitReason;
+    let (mut state, memory) = public_machine(&[0x0f, 0x28, 0x02]);
+    state.gpr[2] = 0x10001;
+    state.xmm = [u128::MAX; 16];
+    let before = state.clone();
+    assert!(matches!(
+        super::run(&mut state, &memory, 1),
+        ExitReason::GeneralProtection { .. }
+    ));
+    assert_eq!(state.xmm, before.xmm);
+    assert_eq!(state.rip, before.rip);
+    assert_eq!(state.mxcsr, before.mxcsr);
+}
+
+#[test]
+fn public_unsupported_simd_reports_original_encoding() {
+    use paludarium_types::ExitReason;
+    for code in [
+        &[0xc5, 0xf9, 0xef, 0xc0][..],
+        &[0x66, 0x0f, 0x38, 0xde, 0xc1][..],
+    ] {
+        let (mut state, memory) = public_machine(code);
+        match super::step(&mut state, &memory) {
+            Err(ExitReason::InvalidOpcode { rip, bytes }) => {
+                assert_eq!(rip, GuestAddr(0x10000));
+                assert_eq!(&bytes.as_slice()[..code.len()], code);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
 }

@@ -135,3 +135,30 @@ fn all_native_observer_input_encodings_connect() {
         );
     }
 }
+
+#[test]
+fn every_native_encoding_requires_its_complete_length() {
+    for bytes in NATIVE_ENCODINGS {
+        for length in 0..bytes.len() {
+            assert!(
+                crate::decode(&bytes[..length], GuestAddr(0)).is_err(),
+                "{bytes:02x?} prefix {length}"
+            );
+        }
+        let decoded = crate::decode(bytes, GuestAddr(0x12340)).unwrap();
+        assert_eq!(usize::from(decoded.len), bytes.len());
+        assert_eq!(decoded.next_rip(), GuestAddr(0x12340 + bytes.len() as u64));
+    }
+}
+
+#[test]
+fn lock_is_rejected_for_native_simd_register_encodings() {
+    for bytes in NATIVE_ENCODINGS {
+        let mut locked = vec![0xf0];
+        locked.extend_from_slice(bytes);
+        assert!(
+            crate::decode(&locked, GuestAddr(0)).is_err(),
+            "locked {bytes:02x?}"
+        );
+    }
+}

@@ -15,6 +15,10 @@ jobs:
       RUSTUP_TOOLCHAIN: nightly-2026-10-01
       CARGO_TERM_COLOR: never
       RUST_TEST_THREADS: '1'
+      PALUDARIUM_U3_FULL_REPLAY: '1'
+      PALUDARIUM_U3_NATIVE_OBSERVATIONS: target/u3-filter-coverage-evidence/native/observe.native
+      PALUDARIUM_U3_NATIVE_FAULTS: target/u3-filter-coverage-evidence/native/fault-observe.native
+      PALUDARIUM_U3_NATIVE_CPUID: target/u3-filter-coverage-evidence/native/cpuid-observe.native
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -74,6 +78,7 @@ jobs:
           cargo llvm-cov report --json --output-path "$evidence/coverage.json" > "$evidence/json-report.log" 2>&1
           printf '%s\n' "$?" > "$evidence/json-report-exit.txt"
           date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/end.txt"
+          cp -R target/llvm-cov-target "$evidence/profiles-and-objects"
           cat "$evidence/measurement.log"
           exit "$status"
       - name: Retain final source proof even on measurement failure
