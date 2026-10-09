@@ -29,6 +29,7 @@ def operation(executable, binary, args, directory, environment, fixture=None, mo
     child = run([str(executable), '--exact', 'u10_guest_operation', '--nocapture'], cwd=ROOT, env=env)
     (directory / 'runner.json').write_text(json.dumps(child, indent=2) + '\n')
     if child['timed_out'] or child['exit'] != 0:
+        print(json.dumps({'case': directory.name, 'runner_failure': child}, ensure_ascii=False), flush=True)
         raise ValueError('emulator operation failed/timed out: ' + str(directory))
     row = {'stdout': (directory / 'stdout').read_text(), 'stderr': (directory / 'stderr').read_text(),
            'exit': int((directory / 'exit').read_text()), 'timed_out': False,
@@ -54,6 +55,11 @@ def differential(executable):
     def store(name, row):
         observations['rows'][name] = row
         (output / 'observations.json').write_text(json.dumps(observations, indent=2) + '\n')
+        expected = native['rows'][name.removeprefix('default-')]
+        fields = ('exit', 'timed_out', 'stdout', 'stderr', 'stop', 'wall_seconds')
+        print(json.dumps({'case': name,
+                          'native': {k: expected[k] for k in fields if k in expected},
+                          'emulated': {k: row[k] for k in fields if k in row}}, ensure_ascii=False), flush=True)
 
     with tempfile.TemporaryDirectory(prefix='paludarium-u10-emulated-') as temporary:
         scratch = pathlib.Path(temporary)

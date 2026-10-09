@@ -67,6 +67,12 @@ jobs:
           u10_bin="$(dirname "$u10_cargo")"
           u10_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
           sudo unshare --net env PATH="$u10_bin:$PATH" RUSTC="$u10_rustc" CARGO_HOME="$u10_cargo_home" "$u10_cargo" test --locked --offline -p paludarium-harness --test diff_u10 -- --nocapture
+      - name: Make differential evidence readable after isolated execution
+        if: always()
+        run: |
+          if [ -d target/u10/differential ]; then
+            sudo chown -R "$(id -u):$(id -g)" target/u10/differential
+          fi
       - name: Retain differential observations and watchdog failure records
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
