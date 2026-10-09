@@ -36,6 +36,7 @@ jobs:
             rustc -Vv
             cargo -V
             cargo llvm-cov --version
+            cargo llvm-cov --help
             printf 'CI_HEAD=%s\n' "$GITHUB_SHA"
           } > "$evidence/environment.log" 2>&1
           cp diagnostics/u3-filter-coverage/source-baseline.json "$evidence/source-baseline.json"
@@ -56,10 +57,10 @@ jobs:
           set -euo pipefail
           evidence=target/u3-filter-coverage-evidence
           cargo llvm-cov clean --workspace > "$evidence/clean.log" 2>&1
-          printf '%s\n' 'cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib u3_tests:: --fail-under-lines 80' > "$evidence/command.txt"
+          printf '%s\n' 'cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib --fail-under-lines 80 -- u3_tests::' > "$evidence/command.txt"
           date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/start.txt"
           set +e
-          cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib u3_tests:: --fail-under-lines 80 > "$evidence/measurement.log" 2>&1
+          cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib --fail-under-lines 80 -- u3_tests:: > "$evidence/measurement.log" 2>&1
           status=$?
           printf '%s\n' "$status" > "$evidence/measurement-exit.txt"
           cargo llvm-cov report --lcov --output-path "$evidence/coverage.lcov" > "$evidence/lcov-report.log" 2>&1
