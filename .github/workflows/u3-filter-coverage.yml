@@ -60,17 +60,30 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends musl-tools
           python3 diagnostics/u3-filter-coverage/collect-native.py > target/u3-filter-coverage-evidence/native-collection.log 2>&1
-      - name: Run exact listed command from empty profiles
+      - name: Run mandatory U3 native differential and boundary matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=target/u3-filter-coverage-evidence
+          cargo llvm-cov clean --workspace > "$evidence/matrix-clean.log" 2>&1
+          printf '%s\n' 'cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib --no-report -- u3_tests::' > "$evidence/matrix-command.txt"
+          set +e
+          cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib --no-report -- u3_tests:: > "$evidence/matrix.log" 2>&1
+          status=$?
+          printf '%s\n' "$status" > "$evidence/matrix-exit.txt"
+          cat "$evidence/matrix.log"
+          exit "$status"
+      - name: Measure shared CPU and Decoder library floor from empty profiles
         id: measure
         shell: bash
         run: |
           set -euo pipefail
           evidence=target/u3-filter-coverage-evidence
           cargo llvm-cov clean --workspace > "$evidence/clean.log" 2>&1
-          printf '%s\n' 'cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib --fail-under-lines 80 -- u3_tests::' > "$evidence/command.txt"
+          printf '%s\n' 'cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib --fail-under-lines 80' > "$evidence/command.txt"
           date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/start.txt"
           set +e
-          cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib --fail-under-lines 80 -- u3_tests:: > "$evidence/measurement.log" 2>&1
+          cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib --fail-under-lines 80 > "$evidence/measurement.log" 2>&1
           status=$?
           printf '%s\n' "$status" > "$evidence/measurement-exit.txt"
           cargo llvm-cov report --lcov --output-path "$evidence/coverage.lcov" > "$evidence/lcov-report.log" 2>&1
