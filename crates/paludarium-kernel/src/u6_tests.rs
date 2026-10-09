@@ -5,6 +5,52 @@ use paludarium_types::{Errno, GuestAddr};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 const DATA: u64 = 0x600000;
+#[test]
+fn u6_blocking_socket_write_retries_after_host_entry_and_metadata() {
+    use paludarium_host::FileHandle;
+    for metadata in [false, true] {
+        let mut f = Fixture::new();
+        let inbox = Arc::new(SignalInbox::default());
+        f.kernel = f.kernel.with_signal_inbox(Arc::clone(&inbox));
+        let [a, b] =
+            crate::sockets::SocketPairEnd::pair(1, Arc::clone(&f.kernel.files.readiness)).unwrap();
+        a.write(&vec![0; crate::sockets::SEND_WINDOW]).unwrap();
+        let fd = f.kernel.files.install(a, false).unwrap();
+        f.kernel.files.install(b.clone(), false).unwrap();
+        let entered = Arc::new(AtomicBool::new(false));
+        let observed = Arc::clone(&entered);
+        *f.host.action.lock().unwrap() = Some(Box::new(move || {
+            observed.store(true, Ordering::SeqCst);
+            if metadata {
+                inbox.timer_changed();
+            }
+            assert_eq!(b.read(&mut [0; 128]), Ok(128));
+        }));
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || {
+            let result = f.ret(1, [u64::from(fd), DATA, 128, 0, 0, 0]);
+            tx.send(result).unwrap();
+        });
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_secs(3)).unwrap(),
+            128
+        );
+        assert!(entered.load(Ordering::SeqCst));
+        worker.join().unwrap();
+    }
+}
+#[test]
+fn u6_tokio_getrandom_checked_host_boundary() {
+    let mut f = Fixture::new();
+    assert_eq!(f.ret(318, [DATA, 16, 4, 0, 0, 0]), 16);
+    let mut bytes = [1; 16];
+    f.mem.read(GuestAddr(DATA), &mut bytes).unwrap();
+    assert_eq!(bytes, [0; 16]);
+    assert_eq!(
+        f.ret(318, [1, 16, 4, 0, 0, 0]),
+        Errno::EFAULT.to_syscall_return()
+    );
+}
 type Action = Box<dyn FnOnce() + Send>;
 #[derive(Default)]
 struct TestHost {

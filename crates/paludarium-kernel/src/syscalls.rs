@@ -103,6 +103,9 @@ impl SyscallTable {
             handlers.insert(*number, crate::files::dispatch);
         }
         handlers.insert(290, crate::events::dispatch);
+        // Tokio's current Linux std uses GRND_INSECURE to seed its scheduler;
+        // the Host random boundary supplies secure bytes without OS passthrough.
+        handlers.insert(318, sys_getrandom);
         for number in [213, 233, 232, 281, 291] {
             handlers.insert(number, crate::epoll::dispatch);
         }
@@ -130,6 +133,35 @@ impl SyscallTable {
 
 fn ok(value: u64) -> Outcome {
     Outcome::Return(value)
+}
+
+fn sys_getrandom(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let result = (|| {
+        if a[2] & !7 != 0 {
+            return Err(Errno::EINVAL);
+        }
+        let len = usize::try_from(a[1].min(0x7fff_f000)).map_err(|_| Errno::EINVAL)?;
+        c.mem
+            .check_write(GuestAddr(a[0]), len)
+            .map_err(|_| Errno::EFAULT)?;
+        let mut bytes = [0u8; 256];
+        let mut done = 0;
+        while done < len {
+            let count = bytes.len().min(len - done);
+            c.host
+                .random_bytes(&mut bytes[..count])
+                .map_err(|_| Errno::EIO)?;
+            c.mem
+                .write(
+                    GuestAddr(a[0].checked_add(done as u64).ok_or(Errno::EFAULT)?),
+                    &bytes[..count],
+                )
+                .map_err(|_| Errno::EFAULT)?;
+            done += count;
+        }
+        Ok(done as u64)
+    })();
+    Outcome::Return(result.unwrap_or_else(Errno::to_syscall_return))
 }
 
 fn err(e: Errno) -> Outcome {

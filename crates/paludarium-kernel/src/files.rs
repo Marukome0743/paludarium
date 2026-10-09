@@ -224,28 +224,7 @@ pub(crate) fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno
                 c.mem
                     .read(GuestAddr(a[1]), &mut b)
                     .map_err(|_| Errno::EFAULT)?;
-                let d = d.ok_or(Errno::EBADF)?;
-                loop {
-                    let ticket = c.files.readiness.token.value();
-                    match d.file.write(&b) {
-                        Err(e)
-                            if e == Errno::EAGAIN
-                                && d.file.readiness().is_ok()
-                                && d.file.flags() & crate::events::NONBLOCK == 0 =>
-                        {
-                            crate::events::wait(c, ticket, None)?
-                        }
-                        result => {
-                            if result == Err(Errno(32)) {
-                                crate::signals::queue(
-                                    c.process,
-                                    crate::signals::PendingSignal::user(13, 0),
-                                );
-                            }
-                            return result.map(|v| v as u64);
-                        }
-                    }
-                }
+                return write_io(c, &d.ok_or(Errno::EBADF)?.file, &b, false);
             }
             let count = if let Some(d) = d {
                 loop {
@@ -571,6 +550,45 @@ pub(crate) fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno
             Ok(bytes.len() as u64)
         }
         _ => Err(Errno::ENOSYS),
+    }
+}
+/// Blocking stream writes preserve partial progress across readiness retries.
+/// No descriptor-table, stream-state or guest-memory lock spans a Host wait.
+pub(crate) fn write_io(
+    c: &mut Context<'_>,
+    file: &Arc<dyn FileHandle>,
+    bytes: &[u8],
+    nosignal: bool,
+) -> Result<u64, Errno> {
+    let stream = file
+        .as_any()
+        .is_some_and(|a| a.is::<crate::sockets::SocketPairEnd>());
+    let mut done = 0;
+    loop {
+        let ticket = c.files.readiness.token.value();
+        let nonblocking = file.flags() & crate::events::NONBLOCK != 0;
+        match file.write(&bytes[done..]) {
+            Ok(count) => {
+                done += count;
+                if count == 0 || done == bytes.len() || nonblocking || !stream {
+                    return Ok(done as u64);
+                }
+            }
+            Err(e) if e == Errno::EAGAIN && file.readiness().is_ok() && !nonblocking => {
+                if let Err(e) = crate::events::wait(c, ticket, None) {
+                    return if done != 0 { Ok(done as u64) } else { Err(e) };
+                }
+            }
+            Err(e) => {
+                if done != 0 {
+                    return Ok(done as u64);
+                }
+                if e == Errno(32) && !nosignal {
+                    crate::signals::queue(c.process, crate::signals::PendingSignal::user(13, 0));
+                }
+                return Err(e);
+            }
+        }
     }
 }
 struct StandardFile {

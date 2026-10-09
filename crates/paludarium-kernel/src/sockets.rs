@@ -8,6 +8,11 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
+// Per-stream flow-control window, not a per-guest memory/fd quota. Native
+// queue capacity and packet accounting depend on the host; the oracle compares
+// saturation, partial success and readiness transitions instead of byte counts.
+pub(crate) const SEND_WINDOW: usize = 212_992;
+
 pub(crate) fn dispatch(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
     let result = (|| match c.cpu.gpr[paludarium_cpu::reg::RAX] {
         41 => Err(Errno(97)),
@@ -71,11 +76,7 @@ pub(crate) fn dispatch(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
             c.mem
                 .read(GuestAddr(a[1]), &mut bytes)
                 .map_err(|_| Errno::EFAULT)?;
-            let result = d.file.write(&bytes);
-            if result == Err(Errno(32)) && a[3] & 0x4000 == 0 {
-                crate::signals::queue(c.process, crate::signals::PendingSignal::user(13, 0));
-            }
-            result.map(|n| n as u64)
+            crate::files::write_io(c, &d.file, &bytes, a[3] & 0x4000 != 0)
         }
         _ => Err(Errno::ENOSYS),
     })();
@@ -89,6 +90,7 @@ struct Side {
     read_shutdown: bool,
     write_shutdown: bool,
     input_epoch: u64,
+    output_epoch: u64,
 }
 struct Pair {
     sides: Mutex<[Side; 2]>,
@@ -108,7 +110,10 @@ impl SocketPairEnd {
             return Err(Errno(94));
         }
         let pair = Arc::new(Pair {
-            sides: Mutex::new([Side::default(), Side::default()]),
+            sides: Mutex::new(std::array::from_fn(|_| Side {
+                output_epoch: 1,
+                ..Side::default()
+            })),
             hub,
         });
         Ok(std::array::from_fn(|side| {
@@ -165,7 +170,7 @@ impl FileHandle for SocketPairEnd {
         let own = &sides[self.side];
         let peer = &sides[1 - self.side];
         let eof = own.read_shutdown || peer.closed || peer.write_shutdown;
-        let mask = OUT
+        let mask = (u32::from(peer.bytes.len() < SEND_WINDOW || peer.closed) * OUT)
             | (u32::from(!own.bytes.is_empty() || eof) * IN)
             | if peer.closed {
                 0x2010
@@ -174,7 +179,7 @@ impl FileHandle for SocketPairEnd {
             } else {
                 0
             };
-        Ok((mask, own.input_epoch, 1))
+        Ok((mask, own.input_epoch, own.output_epoch))
     }
     fn read(&self, buf: &mut [u8]) -> Result<usize, Errno> {
         if buf.is_empty() {
@@ -188,6 +193,7 @@ impl FileHandle for SocketPairEnd {
         let eof = sides[self.side].read_shutdown
             || sides[1 - self.side].closed
             || sides[1 - self.side].write_shutdown;
+        let full = sides[self.side].bytes.len() == SEND_WINDOW;
         let own = &mut sides[self.side];
         if own.read_shutdown {
             return Ok(0);
@@ -198,6 +204,9 @@ impl FileHandle for SocketPairEnd {
         let count = buf.len().min(own.bytes.len());
         for byte in &mut buf[..count] {
             *byte = own.bytes.pop_front().ok_or(Errno::EIO)?;
+        }
+        if full {
+            sides[1 - self.side].output_epoch = sides[1 - self.side].output_epoch.wrapping_add(1);
         }
         self.pair.hub.changed();
         Ok(count)
@@ -215,15 +224,17 @@ impl FileHandle for SocketPairEnd {
             return Err(Errno(32));
         }
         let peer = &mut sides[1 - self.side];
-        peer.bytes
-            .try_reserve(buf.len())
-            .map_err(|_| Errno::ENOMEM)?;
+        let count = buf.len().min(SEND_WINDOW.saturating_sub(peer.bytes.len()));
+        if count == 0 && !buf.is_empty() {
+            return Err(Errno::EAGAIN);
+        }
+        peer.bytes.try_reserve(count).map_err(|_| Errno::ENOMEM)?;
         if peer.bytes.is_empty() && !buf.is_empty() {
             peer.input_epoch = peer.input_epoch.wrapping_add(1);
         }
-        peer.bytes.extend(buf.iter().copied());
+        peer.bytes.extend(buf[..count].iter().copied());
         self.pair.hub.changed();
-        Ok(buf.len())
+        Ok(count)
     }
     fn seek(&self, _: i64, _: u32) -> Result<u64, Errno> {
         Err(Errno::ESPIPE)
@@ -254,6 +265,20 @@ mod u6_tests {
     use super::*;
     fn pair() -> [Arc<SocketPairEnd>; 2] {
         SocketPairEnd::pair(1, Arc::default()).unwrap()
+    }
+    #[test]
+    fn u6_socket_backpressure_partial_write_and_out_edge() {
+        let [a, b] = pair();
+        let bytes = vec![7; SEND_WINDOW + 1];
+        assert_eq!(a.write(&bytes), Ok(SEND_WINDOW));
+        assert_eq!(a.write(&[1]), Err(Errno::EAGAIN));
+        let full = a.readiness().unwrap();
+        assert_eq!(full.0 & OUT, 0);
+        assert_eq!(b.read(&mut [0; 1]), Ok(1));
+        let ready = a.readiness().unwrap();
+        assert_ne!(ready.0 & OUT, 0);
+        assert_eq!(ready.2, full.2 + 1);
+        assert_eq!(a.write(&[1]), Ok(1));
     }
     #[test]
     fn u6_socket_empty() {
