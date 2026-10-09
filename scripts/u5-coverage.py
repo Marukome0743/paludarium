@@ -5,6 +5,7 @@ from pathlib import Path
 
 FILES = {
     'crates/paludarium-host/src/lib.rs', 'crates/paludarium-host/src/threads.rs',
+    'crates/paludarium-host/src/native_fs.rs',
     'crates/paludarium-kernel/src/lib.rs', 'crates/paludarium-kernel/src/files.rs',
     'crates/paludarium-kernel/src/syscalls.rs', 'crates/paludarium-kernel/src/inbox.rs',
     'crates/paludarium-kernel/src/threads.rs', 'crates/paludarium-kernel/src/futex.rs',
