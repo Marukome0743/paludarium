@@ -57,13 +57,16 @@ jobs:
       - run: chmod +x target/guests/u10/probe target/guests/u10/aube
       - run: rustup toolchain install nightly-2026-10-01 --profile minimal
       - name: Compile C10 harness before network isolation
-        run: cargo +nightly-2026-10-01 test --locked -p paludarium-harness --test diff_u10 --no-run
+        run: |
+          u10_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          CARGO_HOME="$u10_cargo_home" cargo +nightly-2026-10-01 test --locked -p paludarium-harness --test diff_u10 --no-run
       - name: Fresh native oracle then bounded C10 differential without network
         run: |
           u10_cargo="$(rustup which --toolchain nightly-2026-10-01 cargo)"
           u10_rustc="$(rustup which --toolchain nightly-2026-10-01 rustc)"
           u10_bin="$(dirname "$u10_cargo")"
-          sudo unshare --net env PATH="$u10_bin:$PATH" RUSTC="$u10_rustc" "$u10_cargo" test --locked --offline -p paludarium-harness --test diff_u10 -- --nocapture
+          u10_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          sudo unshare --net env PATH="$u10_bin:$PATH" RUSTC="$u10_rustc" CARGO_HOME="$u10_cargo_home" "$u10_cargo" test --locked --offline -p paludarium-harness --test diff_u10 -- --nocapture
       - name: Retain differential observations and watchdog failure records
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
