@@ -89,7 +89,7 @@ jobs:
       - run: python3 scripts/u5-coverage-native.py
       - run: cargo install --locked cargo-llvm-cov
       - name: Approved U6 component coverage command
-        run: cargo llvm-cov --locked -p paludarium-kernel --lib --lcov --output-path target/u6-coverage.lcov -- u6_tests::
+        run: 'cargo llvm-cov --locked -p paludarium-kernel --lib --lcov --output-path target/u6-coverage.lcov -- u6_tests::'
       - name: Current shared-source regressions, accumulating the same denominator
         run: cargo llvm-cov --locked --no-clean --no-report --workspace --lib
       - run: rustup target add x86_64-unknown-linux-musl
