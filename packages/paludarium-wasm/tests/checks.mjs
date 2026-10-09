@@ -21,7 +21,7 @@ export async function runChecks({ wasmUrl, readGuest, native }) {
   const runtime = await createPaludarium({ wasmUrl }); const results = [];
   try {
     const expected = new Map(native.map(row => [row.name, row]));
-    for (const name of ["hello", "integer", "atomic", "divide_fault", ...native.map(row => row.name).filter(name => name.startsWith("u3-"))]) {
+    for (const name of ["hello", "integer", "atomic", "divide_fault", ...native.map(row => row.name).filter(name => name.startsWith("u3-") || name.startsWith("u6-"))]) {
       const bytes = await readGuest(name), row = expected.get(name);
       check(row && !row.timed_out && await digest(bytes) === row.sha256, `${name}: native source mismatch`);
       const observed = await observe(runtime, bytes);
@@ -29,7 +29,12 @@ export async function runChecks({ wasmUrl, readGuest, native }) {
       check(JSON.stringify(observed.status) === JSON.stringify(desired), `${name}: exit/signal mismatch`);
       // CPUID is a deliberately virtual identity/features contract. The native
       // host row proves fixture execution/provenance, not identity equivalence.
-      const desiredStdout = name === "u3-cpuid" ? "00".repeat(16) : row.stdout;
+      let desiredStdout = name === "u3-cpuid" ? "00".repeat(16) : row.stdout;
+      if (["u6-52", "u6-53", "u6-54"].includes(name)) {
+        const policyStdout = "9fffffffffffffff" + "00".repeat(24);
+        check(row.policy_exception === "AF_INET/AF_INET6 unavailable: EAFNOSUPPORT" && row.policy_stdout === policyStdout, `${name}: missing network policy boundary`);
+        desiredStdout = policyStdout;
+      }
       check(observed.stdout === desiredStdout && observed.stderr === row.stderr, `${name}: streams mismatch`);
       results.push({ case: name, pass: true, ...observed });
     }

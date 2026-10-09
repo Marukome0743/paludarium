@@ -1,0 +1,157 @@
+name: U6 quality
+on:
+  push:
+    branches: [codex/u6-native-diagnostic]
+permissions:
+  contents: read
+jobs:
+  preceding-native-diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - run: cargo test --locked -p paludarium-harness --test diff_u1 --test diff_u2 --test parallel_u2 --test diff_u4 --test diff_u7 --test diff_u9 --test diff_u3 --test diff_u5 -- --nocapture
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u6-preceding-native-observations
+          path: |
+            target/u3-guests
+            target/u4-guests
+            target/u9-guests
+  production-wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - run: rustup component add rust-src --toolchain nightly-2026-10-01
+      - run: python3 packages/paludarium-wasm/tests/generate-guests.py --check
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - run: rustup target add x86_64-unknown-linux-musl --toolchain nightly-2026-10-01
+      - run: bash tests/guests/u6/build.sh target/guests/u6
+      - run: python3 scripts/u6-native-observe.py --out target/u6-production-native
+      - run: python3 scripts/wasm-native-guests.py > target-base-native.json
+      - run: python3 scripts/u6-wasm-guests.py --base-native target-base-native.json --observations target/u6-production-native --guests target/guests/u6 --destination packages/paludarium-wasm/tests/guests --out target-native-results.json
+      - run: bash scripts/build-wasm.sh
+      - run: node --test packages/paludarium-wasm/tests/import-check.mjs
+      - run: node packages/paludarium-wasm/tests/u6-check.mjs --wasm packages/paludarium-wasm/paludarium.wasm --native target-native-results.json
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u6-production-wasm
+          path: |
+            packages/paludarium-wasm/paludarium.wasm
+            target-native-results.json
+            target/u6-production-native
+            packages/paludarium-wasm/tests/guests
+  platforms:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: rustup component add rustfmt clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo test --locked -p paludarium-host -p paludarium-kernel -p paludarium-mmu -p paludarium-runtime --lib
+      - run: cargo test --locked -p paludarium-vfs --lib
+      - run: cargo test --locked -p paludarium --lib --test command
+      - run: cargo install --locked cargo-deny
+      - run: cargo deny check
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PALUDARIUM_U3_FULL_REPLAY: '1'
+      PALUDARIUM_U3_NATIVE_OBSERVATIONS: ${{ github.workspace }}/target/u3-guests/observe.native
+      PALUDARIUM_U3_NATIVE_FAULTS: ${{ github.workspace }}/target/u3-guests/fault-observe.native
+      PALUDARIUM_U3_NATIVE_CPUID: ${{ github.workspace }}/target/u3-guests/cpuid-observe.native
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: rustup component add llvm-tools-preview
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - run: bash tests/guests/u3/build.sh target/u3-guests
+      - run: python3 scripts/u5-coverage-native.py
+      - run: cargo install --locked cargo-llvm-cov
+      - name: Approved U6 component coverage command
+        run: cargo llvm-cov --locked -p paludarium-kernel --lib --lcov --output-path target/u6-coverage.lcov -- u6_tests::
+      - name: Current shared-source regressions, accumulating the same denominator
+        run: cargo llvm-cov --locked --no-clean --no-report --workspace --lib
+      - run: rustup target add x86_64-unknown-linux-musl
+      - run: bash tests/guests/u6/build.sh target/guests/u6
+      - name: Build and execute current instrumented CLI
+        run: cargo llvm-cov run --locked --no-clean --no-report -p paludarium -- target/guests/u6/event-0
+      - name: Instrumented finite U6 differential execution
+        env:
+          PALUDARIUM_U6_EMULATOR: ${{ github.workspace }}/target/llvm-cov-target/debug/paludarium
+        run: cargo llvm-cov --locked --no-clean --no-report -p paludarium-harness --test diff_u6 -- --nocapture
+      - run: cargo llvm-cov report --lcov --output-path target/u6-coverage.lcov
+      - run: python3 scripts/u6-coverage.py --lcov target/u6-coverage.lcov --out target/u6-coverage.json
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u6-coverage
+          path: target/u6-coverage.*
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [kernel_events_u6, kernel_sockets_u6]
+    container:
+      image: rust:1-bookworm
+      options: --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined --ulimit=stack=-1
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-01
+      ASAN_OPTIONS: detect_leaks=1
+      LSAN_OPTIONS: suppressions=/work/fuzz/lsan.supp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: ln -s "$GITHUB_WORKSPACE" /work
+      - run: rustup toolchain install nightly-2026-10-01 --profile minimal
+      - run: cargo install --locked --version 0.13.2 cargo-fuzz
+      - run: cargo check --locked --manifest-path fuzz/Cargo.toml --bins
+      - name: ASan and LSan, 600 seconds per target
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /work
+          mkdir -p target/u6-fuzz
+          rustc -Vv > target/u6-fuzz/toolchain.txt
+          sha256sum fuzz/Cargo.lock > target/u6-fuzz/lock-before.sha256
+          date -u > target/u6-fuzz/start.txt
+          set +e
+          cargo fuzz run --fuzz-dir fuzz --sanitizer address '${{ matrix.target }}' -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048 2>&1 | tee target/u6-fuzz/raw.log
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > target/u6-fuzz/exit.txt
+          date -u > target/u6-fuzz/end.txt
+          sha256sum fuzz/Cargo.lock > target/u6-fuzz/lock-after.sha256
+          cmp target/u6-fuzz/lock-before.sha256 target/u6-fuzz/lock-after.sha256
+          test "$status" = 0
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u6-fuzz-${{ matrix.target }}
+          path: |
+            target/u6-fuzz
+            fuzz/artifacts
+

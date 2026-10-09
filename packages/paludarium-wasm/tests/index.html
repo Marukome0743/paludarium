@@ -2,9 +2,10 @@
 <script type="module">
 import {runChecks} from './checks.mjs';
 const parameters=new URLSearchParams(location.search);
+const guestBase=new URL(parameters.get('guestbase')??'guests/',location.href);
 try {
  const native=await fetch(parameters.get('native')??'/native-results.json',{signal:AbortSignal.timeout(30000)}).then(r=>r.json());
- const result=await runChecks({wasmUrl:parameters.get('wasm')??'/paludarium.wasm',native,readGuest:async name=>new Uint8Array(await fetch(`guests/${name}`,{signal:AbortSignal.timeout(30000)}).then(r=>r.arrayBuffer()))});
+ const result=await runChecks({wasmUrl:parameters.get('wasm')??'/paludarium.wasm',native,readGuest:async name=>new Uint8Array(await fetch(new URL(name,guestBase),{signal:AbortSignal.timeout(30000)}).then(r=>r.arrayBuffer()))});
  window.__paludariumProductionReport={environment:'Safari Worker',crossOriginIsolated,...result};
 } catch(error){window.__paludariumProductionReport={pass:false,error:String(error)}}
 document.querySelector('#result').textContent=JSON.stringify(window.__paludariumProductionReport);
