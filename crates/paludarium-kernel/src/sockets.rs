@@ -13,6 +13,142 @@ use std::sync::{Arc, Mutex, PoisonError};
 // saturation, partial success and readiness transitions instead of byte counts.
 pub(crate) const SEND_WINDOW: usize = 212_992;
 
+/// Unidirectional anonymous pipe using the same buffered readiness transport.
+pub(crate) struct PipeEnd {
+    endpoint: Arc<SocketPairEnd>,
+    reader: bool,
+}
+#[cfg(test)]
+mod u8_pipe_tests {
+    use super::*;
+    fn pair() -> [Arc<PipeEnd>; 2] {
+        PipeEnd::pair(0, Arc::default()).unwrap()
+    }
+    #[test]
+    fn transfer() {
+        let [r, w] = pair();
+        w.write(b"abc").unwrap();
+        let mut b = [0; 3];
+        assert_eq!(r.read(&mut b), Ok(3));
+        assert_eq!(&b, b"abc");
+    }
+    #[test]
+    fn eof_after_last_writer() {
+        let [r, w] = pair();
+        let copy = Arc::clone(&w);
+        drop(w);
+        assert_eq!(r.read(&mut [0]), Err(Errno::EAGAIN));
+        drop(copy);
+        assert_eq!(r.read(&mut [0]), Ok(0));
+    }
+    #[test]
+    fn broken_pipe_after_reader() {
+        let [r, w] = pair();
+        drop(r);
+        assert_eq!(w.write(b"x"), Err(Errno(32)));
+    }
+    #[test]
+    fn direction_is_enforced() {
+        let [r, w] = pair();
+        assert_eq!(r.write(b"x"), Err(Errno::EBADF));
+        assert_eq!(w.read(&mut [0]), Err(Errno::EBADF));
+    }
+    #[test]
+    fn flags_and_seek() {
+        let [r, w] = PipeEnd::pair(NONBLOCK | CLOEXEC, Arc::default()).unwrap();
+        assert_eq!(r.flags(), NONBLOCK);
+        assert_eq!(w.flags(), NONBLOCK | 1);
+        r.set_flags(0).unwrap();
+        assert_eq!(r.flags(), 0);
+        assert_eq!(r.seek(0, 0), Err(Errno::ESPIPE));
+    }
+    #[test]
+    fn readiness_transition() {
+        let [r, w] = pair();
+        assert_eq!(r.readiness().unwrap().0, 0);
+        assert_eq!(w.readiness().unwrap().0, OUT);
+        w.write(b"x").unwrap();
+        assert_eq!(r.readiness().unwrap().0, IN);
+        drop(w);
+        assert_eq!(r.readiness().unwrap().0, IN | 0x10);
+    }
+    #[test]
+    fn buffered_bytes_before_eof() {
+        let [r, w] = pair();
+        w.write(b"ab").unwrap();
+        drop(w);
+        assert_eq!(r.read(&mut [0]), Ok(1));
+        assert_eq!(r.read(&mut [0]), Ok(1));
+        assert_eq!(r.read(&mut [0]), Ok(0));
+    }
+}
+impl PipeEnd {
+    pub(crate) fn pair(flags: u32, hub: Arc<ReadinessHub>) -> Result<[Arc<Self>; 2], Errno> {
+        let [reader, writer] = SocketPairEnd::pair(1 | flags, hub)?;
+        reader.shutdown(1)?;
+        writer.shutdown(0)?;
+        Ok([
+            Arc::new(Self {
+                endpoint: reader,
+                reader: true,
+            }),
+            Arc::new(Self {
+                endpoint: writer,
+                reader: false,
+            }),
+        ])
+    }
+}
+impl FileHandle for PipeEnd {
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+    fn read(&self, bytes: &mut [u8]) -> Result<usize, Errno> {
+        if self.reader {
+            self.endpoint.read(bytes)
+        } else {
+            Err(Errno::EBADF)
+        }
+    }
+    fn write(&self, bytes: &[u8]) -> Result<usize, Errno> {
+        if self.reader {
+            Err(Errno::EBADF)
+        } else {
+            self.endpoint.write(bytes)
+        }
+    }
+    fn readiness(&self) -> Result<(u32, u64, u64), Errno> {
+        let (mask, input, output) = self.endpoint.readiness()?;
+        Ok((
+            mask & if self.reader { IN | 0x10 } else { OUT | 8 },
+            input,
+            output,
+        ))
+    }
+    fn flags(&self) -> u32 {
+        u32::from(!self.reader) | (self.endpoint.flags() & NONBLOCK)
+    }
+    fn set_flags(&self, flags: u32) -> Result<(), Errno> {
+        self.endpoint.set_flags(flags)
+    }
+    fn seek(&self, _: i64, _: u32) -> Result<u64, Errno> {
+        Err(Errno::ESPIPE)
+    }
+    fn stat(&self) -> Result<FileStat, Errno> {
+        Ok(FileStat {
+            mode: 0o010600,
+            links: 1,
+            ..FileStat::default()
+        })
+    }
+    fn truncate(&self, _: u64) -> Result<(), Errno> {
+        Err(Errno::EINVAL)
+    }
+    fn flock(&self, _: u32) -> Result<(), Errno> {
+        Err(Errno::ENOSYS)
+    }
+}
+
 pub(crate) fn dispatch(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
     let result = (|| match c.cpu.gpr[paludarium_cpu::reg::RAX] {
         41 => Err(Errno(97)),

@@ -6,8 +6,8 @@ use paludarium_vfs::{FileSystem, HostFs, MemFs};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 pub const NUMBERS: &[u64] = &[
-    0, 2, 3, 4, 5, 6, 8, 32, 33, 72, 73, 76, 77, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 217,
-    257, 258, 262, 263, 264, 265, 266, 267, 292,
+    0, 2, 3, 4, 5, 6, 8, 20, 22, 32, 33, 72, 73, 76, 77, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88,
+    89, 217, 257, 258, 262, 263, 264, 265, 266, 267, 292, 293,
 ];
 #[derive(Clone)]
 pub(crate) struct Descriptor {
@@ -201,6 +201,63 @@ pub(crate) fn dispatch(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
 }
 pub(crate) fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
     match n {
+        22 | 293 => {
+            let flags = if n == 22 {
+                0
+            } else {
+                u32::try_from(a[1]).map_err(|_| Errno::EINVAL)?
+            };
+            if flags & !(crate::events::NONBLOCK | crate::events::CLOEXEC) != 0 {
+                return Err(Errno::EINVAL);
+            }
+            c.mem
+                .check_write(GuestAddr(a[0]), 8)
+                .map_err(|_| Errno::EFAULT)?;
+            let [reader, writer] =
+                crate::sockets::PipeEnd::pair(flags, Arc::clone(&c.files.readiness))?;
+            let first = c
+                .files
+                .install(reader, flags & crate::events::CLOEXEC != 0)?;
+            let second = c
+                .files
+                .install(writer, flags & crate::events::CLOEXEC != 0)?;
+            let mut bytes = [0; 8];
+            bytes[..4].copy_from_slice(&first.to_le_bytes());
+            bytes[4..].copy_from_slice(&second.to_le_bytes());
+            output(c, a[0], &bytes)?;
+            Ok(0)
+        }
+        20 => {
+            if a[2] > 1024 {
+                return Err(Errno::EINVAL);
+            }
+            let descriptor = c.files.descriptor(a[0])?;
+            let mut bytes = Vec::new();
+            for index in 0..a[2] {
+                let addr = a[1].checked_add(index * 16).ok_or(Errno::EFAULT)?;
+                let base = c.mem.read_u64(GuestAddr(addr)).map_err(|_| Errno::EFAULT)?;
+                let length = c
+                    .mem
+                    .read_u64(GuestAddr(addr + 8))
+                    .map_err(|_| Errno::EFAULT)?;
+                let length = usize::try_from(length).map_err(|_| Errno::EINVAL)?;
+                let total = bytes
+                    .len()
+                    .checked_add(length)
+                    .filter(|v| *v <= 0x7fff_f000)
+                    .ok_or(Errno::EINVAL)?;
+                c.mem
+                    .check_read(GuestAddr(base), length)
+                    .map_err(|_| Errno::EFAULT)?;
+                bytes.try_reserve(length).map_err(|_| Errno::ENOMEM)?;
+                let start = bytes.len();
+                bytes.resize(total, 0);
+                c.mem
+                    .read(GuestAddr(base), &mut bytes[start..])
+                    .map_err(|_| Errno::EFAULT)?;
+            }
+            write_io(c, &descriptor.file, &bytes, false)
+        }
         0 | 1 => {
             let requested = usize::try_from(a[2].min(0x7fff_f000)).map_err(|_| Errno::EINVAL)?;
             let d = Some(c.files.descriptor(a[0])?);
