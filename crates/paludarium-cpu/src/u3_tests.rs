@@ -172,7 +172,20 @@ fn packed_and_crypto_native_replay() {
             )
             .unwrap();
         memory.write(GuestAddr(0x40000), &input).unwrap();
-        super::exec::execute(&mut state, &memory, &instruction).unwrap();
+        // Exercise the public fetch/decode/transaction boundary against the
+        // same independently observed native result, not a second oracle.
+        memory
+            .map(
+                Some(GuestAddr(0x10000)),
+                4096,
+                Prot::READ_EXEC,
+                MappingKind::ElfSegment,
+            )
+            .unwrap();
+        memory
+            .write_initial(GuestAddr(0x10000), &bytes(fields[3]))
+            .unwrap();
+        super::step(&mut state, &memory).unwrap();
         for n in 0..16 {
             assert_eq!(
                 state.xmm[n].to_le_bytes(),
@@ -695,4 +708,47 @@ fn public_unsupported_simd_reports_original_encoding() {
             other => panic!("unexpected {other:?}"),
         }
     }
+}
+
+#[test]
+fn public_cached_sse_observes_unmapping_and_zero_budget() {
+    use paludarium_types::ExitReason;
+    let (mut state, mut memory) = public_machine(&[0x66, 0x0f, 0xef, 0xc0]);
+    let mut cache = super::DecodeCache::new();
+    state.xmm[0] = u128::MAX;
+    assert!(matches!(
+        super::run_cached(&mut state, &memory, 0, &mut cache),
+        ExitReason::BudgetExhausted { .. }
+    ));
+    assert_eq!(state.xmm[0], u128::MAX);
+    super::step_cached(&mut state, &memory, &mut cache).unwrap();
+    state.rip = GuestAddr(0x10000);
+    memory.unmap(GuestAddr(0x10000), 4096).unwrap();
+    assert!(matches!(
+        super::step_cached(&mut state, &memory, &mut cache),
+        Err(ExitReason::PageFault {
+            fetch: true,
+            mapped: false,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn public_unmasked_simd_exception_keeps_destination_and_commits_status() {
+    use paludarium_types::ExitReason;
+    // DIVSS zero/zero with invalid unmasked: #XM leaves the destination intact.
+    let (mut state, memory) = public_machine(&[0xf3, 0x0f, 0x5e, 0xc1]);
+    state.mxcsr = INITIAL_MXCSR & !(1 << 7);
+    state.xmm[0] = 0x1122_3344_5566_7788_0000_0000_0000_0000;
+    let before = state.clone();
+    assert!(matches!(
+        super::step(&mut state, &memory),
+        Err(ExitReason::FloatingPointFault { .. })
+    ));
+    assert_eq!(state.xmm, before.xmm);
+    assert_eq!(state.gpr, before.gpr);
+    assert_eq!(state.rip, before.rip);
+    assert_eq!(state.rflags, before.rflags);
+    assert_eq!(state.mxcsr, before.mxcsr | 1);
 }

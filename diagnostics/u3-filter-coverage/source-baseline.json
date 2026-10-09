@@ -103,8 +103,8 @@
     },
     {
       "path": "crates/paludarium-cpu/src/u3_tests.rs",
-      "signed_ci_sha256": "5d38942f7d5ef41c3b6bbebb196387d55c66e2f8b1e182a742d315f9fd448cd0",
-      "main_current_sha256": "5d38942f7d5ef41c3b6bbebb196387d55c66e2f8b1e182a742d315f9fd448cd0",
+      "signed_ci_sha256": "35505434e4fc21f8f1294071122f68863f2152f35b2f285dcf00400865dcc548",
+      "main_current_sha256": "35505434e4fc21f8f1294071122f68863f2152f35b2f285dcf00400865dcc548",
       "previous_signed_ci_sha256": "bb9a27d85c0f9a38c3b4e52d5c55e299fcf34c770ab9729ec504374087ecf6f0"
     },
     {
@@ -129,8 +129,8 @@
     },
     {
       "path": "crates/paludarium-decoder/src/u3_tests.rs",
-      "signed_ci_sha256": "0bba0c7e295ba1649199a64907b98312b71ed2192053aedf76e8bf87935d97d9",
-      "main_current_sha256": "0bba0c7e295ba1649199a64907b98312b71ed2192053aedf76e8bf87935d97d9",
+      "signed_ci_sha256": "ba13c0d645fb7dd31846bff33b0d8166bab5f9dfc90b854de47534e7d4df06f5",
+      "main_current_sha256": "ba13c0d645fb7dd31846bff33b0d8166bab5f9dfc90b854de47534e7d4df06f5",
       "previous_signed_ci_sha256": "7f2e5242701f467e36fff1f660e883f3c7e13f282d3cf4df86074ad1a5df5634"
     },
     {

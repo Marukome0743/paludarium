@@ -162,3 +162,16 @@ fn lock_is_rejected_for_native_simd_register_encodings() {
         );
     }
 }
+
+#[test]
+fn public_operand_iterator_retains_scalar_width_and_high_register() {
+    use crate::{Operand, Register};
+    let instruction = decode(&[0xf2, 0x44, 0x0f, 0x10, 0x48, 0x08], GuestAddr(0)).unwrap();
+    let operands: Vec<_> = instruction.operands().collect();
+    assert_eq!(instruction.operand_count(), 2);
+    assert_eq!(operands.len(), 2);
+    assert_eq!(operands[0], Operand::Register(Register::Xmm(9)));
+    assert_eq!(Register::Xmm(9).size(), 16);
+    assert!(matches!(operands[1], Operand::Memory(m) if m.size == 8 && m.displacement == 8));
+    assert_eq!(instruction.operand(2), None);
+}
