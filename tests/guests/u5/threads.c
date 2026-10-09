@@ -36,6 +36,13 @@ static void timer_us(long us) {long t[4]={0,0,us/1000000,us%1000000};sc(38,0,(u6
 /* Keep all helpers referenced across compile-time cases without changing code. */
 void child_main(void) {
  seen_tid=(u32)sc(186,0,0,0,0,0,0);
+ if(CASE>=38) {
+  if(CASE==39)timer_us(1000000);
+  else if(CASE==40)for(unsigned i=0;i<4;i++){timer_us(1000000);timer_us(500000);timer_us(0);}
+  else timer_us(0);
+  /* Publish only after the timer syscall completed; parent waits on this. */
+  put(&ready,1);put(&done,1);end(0);
+ }
  if(CASE>=27) {
   while(!get(&ready)){}
   pause_ns(CASE>=36?150000000:50000000);
@@ -64,6 +71,21 @@ void child_main(void) {
 }
 void test_main(void) {
  main_tid=sc(186,0,0,0,0,0,0);
+ if(CASE>=38) {
+  long start=now_ns();
+  long tid=spawn(BASE|PARENT_TID|CHILD_TID|CLEAR_TID,stack+sizeof(stack),&parent_tid,&child_tid,0);
+  if(tid<0){emit(tid,0,0);return;}
+  while(!get(&ready)){}
+  long t[2]={0,200000000},r;
+  if(CASE==41){long deadline=now_ns()+200000000;t[0]=deadline/1000000000;t[1]=deadline%1000000000;r=sc(230,1,1,(u64)t,0,0,0);}
+  else if(CASE==42)r=fut(&word,128,0,(u64)t,0);
+  else r=sc(35,(u64)t,0,0,0,0,0);
+  long elapsed=now_ns()-start;
+  if(CASE==39)timer_us(0);
+  while(!get(&done)){}
+  while(get(&child_tid)){u32 value=get(&child_tid);if(value)fut(&child_tid,0,value,0,0);}
+  emit(r,signals,elapsed>=150000000&&elapsed<600000000);return;
+ }
  if(CASE>=27) {
   struct action a={(u64)handler,0x4000000|((CASE>=30&&CASE!=32&&CASE!=33)?0x10000000:0),(u64)restorer,0};
   sc(13,CASE<=29?14:10,(u64)&a,0,8,0,0);

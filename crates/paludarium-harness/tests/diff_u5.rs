@@ -59,4 +59,7 @@ cases!(
     wait_no_restart=>32, bitset_no_restart=>33, wait_restart_value_change=>34,
     bitset_restart_value_change=>35, wait_restart_relative_timeout=>36,
     bitset_restart_absolute_timeout=>37,
+    timer_disarm_before_sleep=>38, timer_set_before_sleep=>39,
+    timer_repeated_changes_before_sleep=>40, timer_disarm_before_absolute_sleep=>41,
+    timer_disarm_before_timed_futex=>42,
 );

@@ -17,8 +17,15 @@
 | 32–33 | 同じsignal/wake順でSA_RESTARTなし |
 | 34–35 | SA_RESTART handlerでfutex値を変更、WAIT/WAIT_BITSETの再比較 |
 | 36–37 | 相対WAIT/絶対monotonic BITSETの500ms期限中150ms時点でSA_RESTART signal |
+| 38 | 子timer解除完了→ready→親200ms relative nanosleep |
+| 39 | 子1秒timer設定完了→ready→親200ms relative nanosleep→timer解除 |
+| 40 | 子1秒set/500ms shorten/disarmを4回反復完了→ready→親200ms relative nanosleep |
+| 41 | 子timer解除完了→ready→親monotonic now+200ms absolute clock_nanosleep |
+| 42 | 子timer解除完了→ready→親relative200ms timeout付きWAIT |
 
-全38ケース。27/28はsyscall結果・handler回数・経過500ms未満のboolを出力する（2秒/1.5秒遅延を区別）。29は結果・handler回数・150ms以上のbool。36/37は結果・handler回数・経過400ms以上600ms未満のboolを出力し、生時刻は比較しない。timeout付き再開のerrnoはLinux実測で決め、SA_RESTART一般規則から推定しない。30–35の第3値はhandler後のfutex値。親は子のdoneとclear_child_tidを待ち、late WAKEを含む子の終了を回収する。
+全43ケース。27/28はsyscall結果・handler回数・経過500ms未満のboolを出力する（2秒/1.5秒遅延を区別）。29は結果・handler回数・150ms以上のbool。36/37は結果・handler回数・経過400ms以上600ms未満のboolを出力し、生時刻は比較しない。timeout付き再開のerrnoはLinux実測で決め、SA_RESTART一般規則から推定しない。30–35の第3値はhandler後のfutex値。親は子のdoneとclear_child_tidを待ち、late WAKEを含む子の終了を回収する。
+
+38–42ではseq-cst ready store/load（release/acquire以上）により、子のtimer syscall完了が親待機入口より前と確定する。新signal handler/送信は追加しない。出力はsyscall結果・handler回数・経過150ms以上600ms未満のboolであり、期待値はnative実測で確定する。生時刻/TIDは比較しない。elapsed起点はclone前、41の絶対deadlineはready確認後のclock取得から200ms。各ケース30秒watchdogを維持し、既存0–37の観測規則を変更しない。
 
 `scripts/u5-native-observe.py --out target/u5-native-first` は全ケースを独立した30秒の process-group watchdog、kill/reap、raw log 付きで実行する。`--emulator target/debug/paludarium` を追加すると native 実行後に emulator と比較する。ケース16は17、他は0で終了する。native の不一致・エラー観測値はデータとして記録し、errno 表から推定しない。
 
