@@ -45,7 +45,7 @@ jobs:
       - name: Current Kernel and Host regression
         run: cargo +nightly-2026-10-01 test --locked -p paludarium-kernel -p paludarium-host --lib
       - name: Build current emulator
-        run: cargo +nightly-2026-10-01 build --locked -p paludarium-cli
+        run: cargo +nightly-2026-10-01 build --locked -p paludarium
       - name: Fresh native and emulated finite comparisons
         run: cargo +nightly-2026-10-01 test --locked -p paludarium-harness --test diff_u6 -- --nocapture
       - name: Retain both observation streams
