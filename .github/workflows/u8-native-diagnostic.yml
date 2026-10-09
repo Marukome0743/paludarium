@@ -49,4 +49,6 @@ jobs:
           cargo test --locked -p paludarium-kernel -p paludarium-runtime --lib u5_tests::
           cargo test --locked -p paludarium-kernel --lib u6_tests::
       - name: U5 and U6 differential regression
-        run: cargo test --locked -p paludarium-harness --test diff_u5 --test diff_u6 u -- --nocapture
+        run: |
+          cargo build --locked -p paludarium
+          cargo test --locked -p paludarium-harness --test diff_u5 --test diff_u6 -- --nocapture

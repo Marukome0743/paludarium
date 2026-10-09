@@ -149,6 +149,7 @@ jobs:
       PALUDARIUM_U3_NATIVE_OBSERVATIONS: ${{ github.workspace }}/target/u3-guests/observe.native
       PALUDARIUM_U3_NATIVE_FAULTS: ${{ github.workspace }}/target/u3-guests/fault-observe.native
       PALUDARIUM_U3_NATIVE_CPUID: ${{ github.workspace }}/target/u3-guests/cpuid-observe.native
+      PALUDARIUM_U5_EMULATOR: ${{ github.workspace }}/target/llvm-cov-target/debug/paludarium
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -188,7 +189,14 @@ jobs:
           tool: cargo-llvm-cov
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       # NFR3.3: fails below 80% of lines. The floor is never lowered.
-      - run: cargo llvm-cov --locked --workspace --fail-under-lines 80
+      - name: Workspace line coverage >= 80%
+        run: |
+          cargo llvm-cov clean --workspace
+          (
+            source <(cargo llvm-cov show-env --sh)
+            cargo build --locked -p paludarium --target-dir target/llvm-cov-target
+          )
+          cargo llvm-cov --no-clean --locked --workspace --fail-under-lines 80
         env:
           # Instrumented independent cases run serially; race cases still
           # launch their own host workers and retain the 30-second watchdog.
@@ -196,7 +204,13 @@ jobs:
       - name: U1 package line coverage >= 80%
         # Keep the same U1 production file set; fresh architectural tests live
         # in Harness and must execute when measuring the newly shared CPU code.
-        run: cargo llvm-cov --locked $U1_PACKAGES -p paludarium-harness --ignore-filename-regex 'paludarium-harness/' --fail-under-lines 80
+        run: |
+          cargo llvm-cov clean --workspace
+          (
+            source <(cargo llvm-cov show-env --sh)
+            cargo build --locked -p paludarium --target-dir target/llvm-cov-target
+          )
+          cargo llvm-cov --no-clean --locked $U1_PACKAGES -p paludarium-harness --ignore-filename-regex 'paludarium-harness/' --fail-under-lines 80
         env:
           RUST_TEST_THREADS: "1"
 
