@@ -1,0 +1,36 @@
+{
+  "normalization": {
+    "pid": "Compare parent-child relations and returned PID equality as booleans, never numeric IDs.",
+    "usage": "Compare initialized timeval fields and nonnegative normalized values, never elapsed time.",
+    "ordering": "Wait or pipe synchronization fixes stdout ordering; Rust spawn output occurs after wait.",
+    "addresses": "No address or pointer values are printed.",
+    "signal": "Compare raw wait status separately from outer exit status."
+  },
+  "cases": [
+    {"name":"fork","binary":"u8-process"},
+    {"name":"private","binary":"u8-process"},
+    {"name":"shared","binary":"u8-process"},
+    {"name":"offset","binary":"u8-process"},
+    {"name":"vfork-exec","binary":"u8-process"},
+    {"name":"vfork-exit","binary":"u8-process"},
+    {"name":"exec","binary":"u8-process"},
+    {"name":"enoent","binary":"u8-process"},
+    {"name":"exec-fault","binary":"u8-process"},
+    {"name":"bad-elf","binary":"u8-process"},
+    {"name":"cloexec","binary":"u8-process"},
+    {"name":"wait-specific","binary":"u8-process"},
+    {"name":"wait-any","binary":"u8-process"},
+    {"name":"wnohang","binary":"u8-process"},
+    {"name":"signal","binary":"u8-process"},
+    {"name":"double-reap","binary":"u8-process"},
+    {"name":"wait-fault","binary":"u8-process"},
+    {"name":"usage","binary":"u8-process"},
+    {"name":"no-child","binary":"u8-process"},
+    {"name":"invalid-clone","binary":"u8-process"},
+    {"name":"invalid-wait","binary":"u8-process"},
+    {"name":"spawn","binary":"u8-command"},
+    {"name":"status","binary":"u8-command"},
+    {"name":"output","binary":"u8-command"},
+    {"name":"missing","binary":"u8-command"}
+  ]
+}

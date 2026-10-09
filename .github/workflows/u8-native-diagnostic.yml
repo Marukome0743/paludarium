@@ -1,0 +1,31 @@
+name: U8 native expectations
+on:
+  push:
+    branches: [codex/u8-native-diagnostic]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-first:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools strace
+      - run: rustup toolchain install nightly-2026-10-01 --profile minimal
+      - run: rustup target add x86_64-unknown-linux-musl --toolchain nightly-2026-10-01
+      - name: Verify U8 bounded runner
+        run: cargo +nightly-2026-10-01 test --locked -p paludarium-harness --test diff_u8 u8_runner_ready -- --exact
+      - name: Build U8 static-musl guests
+        run: bash tests/guests/u8/build.sh target/guests/u8
+      - name: Observe native process and Rust Command behavior before implementation
+        run: python3 tests/guests/u8/observe.py --native-only --cases tests/guests/u8/cases.json --guest-dir target/guests/u8 --out target/u8-native-first --trace
+      - name: Retain fresh oracle and syscall traces
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u8-native-first
+          path: target/u8-native-first
+          retention-days: 7
