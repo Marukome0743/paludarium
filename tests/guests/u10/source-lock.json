@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "toolchain": "nightly-2026-10-01",
+  "target": "x86_64-unknown-linux-musl",
+  "aube": {"repository": "https://github.com/aubepkg/aube", "tag": "v2.6.1", "revision": "bd94e42f54d3b5e3dd102716b7197f316cb5f4ed", "lock_sha256": "8960ea5673ff7b7bf376d2b1570b2a79875c2bf397c9044f88b203d7375b2668", "primer": "empty file, outside unmodified source tree"}
+}

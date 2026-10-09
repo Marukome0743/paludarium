@@ -1,0 +1,12 @@
+[package]
+name = "paludarium-probe-u10"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[workspace]
+
+[dependencies]
+tokio = { version = "=1.53.1", features = ["rt-multi-thread", "time"] }
+rayon = "=1.11.0"
+libc = "=0.2.186"

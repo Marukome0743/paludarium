@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "deadline_seconds": 30,
+  "probe": ["tokio-timer", "unix-stream-pair", "rayon", "mutex-condvar", "fs-basic", "fs-hardlink", "fs-symlink", "fs-flock"],
+  "aube": [
+    {"name": "version", "args": ["--version"]},
+    {"name": "install", "args": ["install"]},
+    {"name": "frozen", "args": ["install", "--frozen-lockfile"], "before": "remove-node-modules"},
+    {"name": "list", "args": ["list"]}
+  ],
+  "environment": {"PATH": "/u10-no-node", "HOME": "/home/u10", "TMPDIR": "/tmp", "NO_COLOR": "1", "TERM": "dumb", "LANG": "C", "LC_ALL": "C", "TZ": "UTC"},
+  "network": "native network namespace; emulator network disabled",
+  "comparison": {"stdout": true, "exit": true, "stderr": "diagnostic; time fields normalized explicitly", "filesystem": "diagnostic snapshot"}
+}
