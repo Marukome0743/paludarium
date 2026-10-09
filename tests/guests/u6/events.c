@@ -26,8 +26,45 @@ static I wait(I e,struct Ev *out,I max,I ms){return sc(232,e,(U)out,max,ms,0,0);
 static I put(I fd,U value){return S(1,fd,&value,8);}
 static I get(I fd,U *value){return S(0,fd,value,8);}
 static void closefd(I fd){S(3,fd,0,0);}
+static char pressure_buffer[65536],pressure_stack[65536] __attribute__((aligned(16)));
+static int pressure_fds[2];
+static unsigned pressure_ready,pressure_tid;
+static U pressure_drained;
+extern I pressure_spawn(U flags,void *sp,unsigned *ptid,unsigned *ctid,void *tls);
+void pressure_child(void) {
+ while(!__atomic_load_n(&pressure_ready,__ATOMIC_SEQ_CST)){}
+ for(unsigned i=0;i<2048;i++){I r=S(0,pressure_fds[1],pressure_buffer,sizeof(pressure_buffer));if(r<0)break;__atomic_fetch_add(&pressure_drained,(U)r,__ATOMIC_SEQ_CST);}
+ S(60,0,0,0);__builtin_unreachable();
+}
+__asm__(".global pressure_spawn\npressure_spawn: mov %rcx,%r10; mov $56,%eax; syscall; test %rax,%rax; jnz 1f; xor %ebp,%ebp; call pressure_child; ud2; 1: ret");
+static I fill_stream(int fd,I *partial,U *queued) {
+ I last=0;*partial=0;*queued=0;
+ for(unsigned i=0;i<1024;i++) {last=S(1,fd,pressure_buffer,sizeof(pressure_buffer));if(last<0)break;*queued+=(U)last;if((U)last<sizeof(pressure_buffer))*partial=1;}
+ return last;
+}
 static I run(I *o) {
  U x=0;struct Ev out[4]={{0,0}};I fd=-1,e=-1,d=-1;int p[2]={-1,-1};char b[8]={0};int id=CASE;
+ if(CASE>=64) {
+  sc(53,1,1|NB,0,(U)pressure_fds,0,0);
+  e=ep();ctl(e,1,pressure_fds[0],4|ET,77);
+  I initially=wait(e,out,1,0),partial=0;U queued=0;
+  I last=fill_stream(pressure_fds[0],&partial,&queued);
+  if(CASE==64) {
+   o[0]=last;o[1]=initially;o[2]=wait(e,out,1,0)==0;
+   for(unsigned i=0;i<2048;i++){I r=S(0,pressure_fds[1],pressure_buffer,sizeof(pressure_buffer));if(r<0)break;}
+   o[3]=wait(e,out,1,0);return 0;
+  }
+  if(CASE==65) {o[0]=last;o[1]=partial;o[2]=queued>0;o[3]=queued<67108864UL;return 0;}
+  /* Native capacity is a host setting: compare completion and progress,
+     never a fixed queue byte count or a timing guess. */
+  S(72,pressure_fds[0],4,0);
+  I tid=pressure_spawn(0x50f00UL|0x100000UL|0x1000000UL|0x200000UL,pressure_stack+sizeof(pressure_stack),&pressure_tid,&pressure_tid,0);
+  if(tid<0){o[0]=tid;return 0;}
+  __atomic_store_n(&pressure_ready,1,__ATOMIC_SEQ_CST);
+  o[0]=last;o[1]=S(1,pressure_fds[0],pressure_buffer,32768)==32768;
+  while(__atomic_load_n(&pressure_tid,__ATOMIC_SEQ_CST)){unsigned value=__atomic_load_n(&pressure_tid,__ATOMIC_SEQ_CST);if(value)sc(202,(U)&pressure_tid,0,value,0,0,0);}
+  o[2]=__atomic_load_n(&pressure_drained,__ATOMIC_SEQ_CST)>0;o[3]=S(72,pressure_fds[0],3,0)==2;return 0;
+ }
  if(CASE<16){
  fd=event(CASE==0?7:CASE==2?3:0,NB|(CASE==2?1:0));
  switch(id){

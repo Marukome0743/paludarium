@@ -107,6 +107,8 @@ cases!(
     event_blocking_signal=>59,
     group_kill=>60, timer_metadata_before_epoll=>61,
     epoll_nested=>62, socket_nosignal=>63,
+    socket_backpressure_readiness=>64, socket_short_write_saturation=>65,
+    socket_blocking_write_peer_drains=>66,
 );
 #[test]
 fn tokio_timer() {

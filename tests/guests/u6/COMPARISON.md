@@ -2,7 +2,7 @@
 
 ## Catalog
 
-raw Linux ABI guestは0〜63の64件、Rust target guest timer/unixの2件、計66件を固定する。各native期待はCI実測前で未確定。保存期待fixtureは作らない。
+raw Linux ABI guestは0〜66の67件、Rust target guest timer/unixの2件、計69件を固定する。元66件のnative先行証拠はc00e346aのstep4-native-firstに保持する。追加64〜66のnative期待は次のfixture-only CI取得前で未確定。保存期待fixtureは作らない。
 
 | ID | ケース | 比較 |
 | --- | --- | --- |
@@ -70,6 +70,9 @@ raw Linux ABI guestは0〜63の64件、Rust target guest timer/unixの2件、計
 | 61 | timer_metadata_before_epoll | raw4個の64bit観測値 |
 | 62 | epoll_nested | raw4個の64bit観測値 |
 | 63 | socket_nosignal | raw4個の64bit観測値 |
+| 64 | socket_backpressure_readiness | fill末尾errno、初回OUT、飽和時OUT消失、peer全drain後OUT再通知 |
+| 65 | socket_short_write_saturation | fill末尾errno、途中short write有無、queued正値、有限fill内飽和 |
+| 66 | socket_blocking_write_peer_drains | fill末尾errno、blocking32KiB完了、child peer read進捗、writer NONBLOCK解除 |
 | timer | tokio1.48.0 multi-thread runtimeの2timer完了 | stdout/stderr/exit/timeout |
 | unix | std UnixStream::pair双方向write/read | stdout/stderr/exit/timeout |
 
@@ -83,4 +86,8 @@ raw Linux ABI guestは0〜63の64件、Rust target guest timer/unixの2件、計
 
 ## Boundaries
 
-現時点では製品未変更。blocking socket backpressure、登録/通知の競合、待機中の別Thread timer変更等の内部同期検証は製品実装後のHost単体に加える。新しいobservable syscall動作が必要になれば追加guestをnative先行で取得し、この固定66ケースを削らず追加する。DGRAM/SEQPACKETとネットワーク通信は承認済み対応範囲と区別する。U10 probe全量、U11 guest Worker達成を有限結果から推測しない。
+初回製品は元64 CケースのLinux差分成功まで取得済みで、Rust2件はharness path adapter修正後の実行待ち。backpressure製品動作は追加64〜66のnative先行取得とgoまで変更しない。fillは64KiB単位1024回、drainは2048回で有限。OSのsend-buffer設定に依存するqueue容量やshort writeの具体バイト数は比較せず、飽和errno、部分成功、OUTの遷移、drainによる進捗という関係を比較する。これはゲストへの資源上限追加ではなくfixture自身の有限境界である。
+
+case66はclone共有Threadがrelease atomicを受けてpeerをdrainし、親のblocking writeを進め、clear-child-TID futexで終了を回収する。releaseはsyscall開始前なので実Host waitへの到達をこのguestだけで保証しない。実待機開始後の解除は内部Host同期テストで別に確かめる。Node/実Safariでは非threaded0〜65とunixを含め、timerと66のguest threadingはU11境界として明示する。登録/通知競合とtimer metadataの内部同期テストは製品実装後に検証する。
+
+新しいobservable syscall動作が必要になれば追加guestをnative先行で取得し、この固定69ケースを削らず追加する。DGRAM/SEQPACKETとネットワーク通信は承認済み対応範囲と区別する。U10 probe全量、U11 guest Worker達成を有限結果から推測しない。
