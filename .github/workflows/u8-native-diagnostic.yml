@@ -40,7 +40,8 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
       - run: rustup toolchain install nightly-2026-10-01 --profile minimal --component clippy,rustfmt
       - name: U8 internal component tests
-        run: cargo test --locked -p paludarium-mmu -p paludarium-kernel -p paludarium-runtime --lib u8_tests::
+        run: |
+          cargo test --locked -p paludarium-mmu -p paludarium-kernel -p paludarium-runtime --lib u8_tests::
       - name: Fresh native versus emulated U8 and Rust Command
         run: cargo test --locked -p paludarium-harness --test diff_u8 u8_ -- --nocapture
       - name: U5 and U6 internal regression

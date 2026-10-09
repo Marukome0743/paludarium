@@ -4,8 +4,13 @@ mod support;
 
 #[test]
 fn u8_runner_ready() {
-    assert!(
-        cfg!(all(target_os = "linux", target_arch = "x86_64")),
+    let platform = (
+        std::env::consts::OS.to_owned(),
+        std::env::consts::ARCH.to_owned(),
+    );
+    assert_eq!(
+        platform,
+        ("linux".to_owned(), "x86_64".to_owned()),
         "U8 native oracle requires x86-64 Linux; unsupported platform is not a zero-test PASS"
     );
     assert!(
