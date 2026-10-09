@@ -30,6 +30,11 @@ def build(directory):
     source.mkdir(exist_ok=True)
     upstream = source / 'aube'
     try:
+        # cargo-deny 0.20.2 graph/config arguments are top-level options,
+        # before `check`. Validate parsing before downloading/building guests.
+        command(['cargo', 'deny', '--manifest-path', str(HERE / 'probe/Cargo.toml'),
+                 '--config', str(ROOT / 'deny.toml'), '--locked', 'check', '--help'],
+                ROOT, directory / 'cli-dependencies.log')
         if not upstream.exists():
             archive = directory / 'aube-source.tar.gz'
             revision = lock['aube']['revision']
@@ -60,7 +65,7 @@ def build(directory):
             static_elf((directory / name).read_bytes())
             receipt['binaries'][name] = {'sha256': digest(directory / name), 'static_elf': True,
                                          'lock_sha256': digest(manifest.parent / 'Cargo.lock'), 'command': args}
-            command(['cargo', 'deny', '--manifest-path', str(manifest), '--locked', 'check', '--config', str(ROOT / 'deny.toml')], ROOT, directory / f'{name}-dependencies.log')
+            command(['cargo', 'deny', '--manifest-path', str(manifest), '--config', str(ROOT / 'deny.toml'), '--locked', 'check'], ROOT, directory / f'{name}-dependencies.log')
         receipt['source_after'] = snapshot(upstream)
         receipt['source_unchanged'] = receipt['source_after'] == before
         if not receipt['source_unchanged']:
