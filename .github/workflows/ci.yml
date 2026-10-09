@@ -150,6 +150,7 @@ jobs:
       PALUDARIUM_U3_NATIVE_FAULTS: ${{ github.workspace }}/target/u3-guests/fault-observe.native
       PALUDARIUM_U3_NATIVE_CPUID: ${{ github.workspace }}/target/u3-guests/cpuid-observe.native
       PALUDARIUM_U5_EMULATOR: ${{ github.workspace }}/target/llvm-cov-target/debug/paludarium
+      PALUDARIUM_U6_EMULATOR: ${{ github.workspace }}/target/llvm-cov-target/debug/paludarium
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
