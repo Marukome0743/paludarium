@@ -109,6 +109,11 @@ cases!(
     epoll_nested=>62, socket_nosignal=>63,
     socket_backpressure_readiness=>64, socket_short_write_saturation=>65,
     socket_blocking_write_peer_drains=>66,
+    event_et_unread_write=>67, event_et_drain_rewrite=>68, event_et_oneshot_unread=>69,
+    socket_et_unread_write=>70, socket_et_drain_rewrite=>71, socket_et_oneshot_unread=>72,
+    pwait_temporary_unblock_handler=>73, pwait_normal_signal=>74,
+    pwait_masked_signal=>75, pwait_ignored_signal=>76,
+    pwait_ready_restores_mask=>77, pwait_invalid_restores_mask=>78,
 );
 #[test]
 fn tokio_timer() {

@@ -2,7 +2,7 @@
 
 ## Catalog
 
-raw Linux ABI guestは0〜66の67件、Rust target guest timer/unixの2件、計69件を固定する。元66件のnative先行証拠はc00e346aのstep4-native-firstに保持する。追加64〜66はfixture-only source6add97faでnative先行観測後に製品へ接続した。source6b181418のLinux fresh差分で全69件が成功した中間証跡をstep9-first-green69に保持する。最終品質sourceの全原本は別に結合する。保存期待fixtureは作らない。
+raw Linux ABI guestは0〜78の79件、Rust target guest timer/unixの2件、計81件を固定する。元69件のgreen source aeb7d59c8c611bc3120380ea60707e0369dfa683と品質証拠は歴史として保持する。追加67〜78はET未読追加writeとpwait一時mask境界のnative先行観測待ちであり、製品修正前にfixture-only CIで期待を取得する。保存期待fixtureは作らない。
 
 | ID | ケース | 比較 |
 | --- | --- | --- |
@@ -73,6 +73,18 @@ raw Linux ABI guestは0〜66の67件、Rust target guest timer/unixの2件、計
 | 64 | socket_backpressure_readiness | fill末尾errno、初回OUT、飽和時OUT消失、peer全drain後OUT再通知 |
 | 65 | socket_short_write_saturation | fill末尾errno、途中short write有無、queued正値、有限fill内飽和 |
 | 66 | socket_blocking_write_peer_drains | fill末尾errno、blocking32KiB完了、child peer read進捗、writer NONBLOCK解除 |
+| 67 | event_et_unread_write | 最初/未読追加write後の通知、counter合計 |
+| 68 | event_et_drain_rewrite | 最初/追加write通知、drain後空、rewrite通知 |
+| 69 | event_et_oneshot_unread | 初回通知、disabled時追加write、MOD rearm通知、再disabled |
+| 70 | socket_et_unread_write | socketpair結果、最初/未読追加write通知、read3bytes |
+| 71 | socket_et_drain_rewrite | 最初/追加write通知、drain後空、rewrite通知 |
+| 72 | socket_et_oneshot_unread | 初回通知、disabled時追加write、MOD rearm通知、再disabled |
+| 73 | pwait_temporary_unblock_handler | 元SIGALRM blocked→一時unblock、errno、handler回数、return後元mask |
+| 74 | pwait_normal_signal | 元unblockedの通常signal、errno、handler回数、return後mask |
+| 75 | pwait_masked_signal | 元/一時maskともblocked、有限timeout、handlerなし、元mask |
+| 76 | pwait_ignored_signal | 元blocked→一時unblock+SIG_IGN、有限timeout、元mask |
+| 77 | pwait_ready_restores_mask | ready即時return、handlerなし、元blocked mask復帰 |
+| 78 | pwait_invalid_restores_mask | invalid maxeventsのerrno、handlerなし、元blocked mask復帰 |
 | timer | tokio1.48.0 multi-thread runtimeの2timer完了 | stdout/stderr/exit/timeout |
 | unix | std UnixStream::pair双方向write/read | stdout/stderr/exit/timeout |
 
@@ -90,4 +102,4 @@ raw Linux ABI guestは0〜66の67件、Rust target guest timer/unixの2件、計
 
 case66はclone共有Threadがrelease atomicを受けてpeerをdrainし、親のblocking writeを進め、clear-child-TID futexで終了を回収する。releaseはsyscall開始前なので実Host waitへの到達をこのguestだけで保証しない。実待機開始後の解除は内部Host同期テストで別に確かめた。Node/実Safariでは非threaded0〜65とunixを含め、timerと66のguest threadingはU11境界として明示する。登録/通知競合とtimer metadataの内部同期テストは製品実装後の単体テストで検証した。現moduleのNode/実Safari結果は最終原本取得まで未検証。
 
-新しいobservable syscall動作が必要になれば追加guestをnative先行で取得し、この固定69ケースを削らず追加する。DGRAM/SEQPACKETとネットワーク通信は承認済み対応範囲と区別する。U10 probe全量、U11 guest Worker達成を有限結果から推測しない。
+新しいobservable syscall動作が必要になれば追加guestをnative先行で取得し、この固定81ケースを削らず追加する。Wasmは0〜78のうち66を除く78 Cケース+unix=79件、既存21との合計100件を予定し、全新結果は未検証。DGRAM/SEQPACKETとネットワーク通信は承認済み対応範囲と区別する。U10 probe全量、U11 guest Worker達成を有限結果から推測しない。

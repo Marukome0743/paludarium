@@ -44,7 +44,36 @@ static I fill_stream(int fd,I *partial,U *queued) {
 }
 static I run(I *o) {
  U x=0;struct Ev out[4]={{0,0}};I fd=-1,e=-1,d=-1;int p[2]={-1,-1};char b[8]={0};int id=CASE;
- if(CASE>=64) {
+ if(CASE>=67) {
+  e=ep();
+  if(CASE<=69) {
+   fd=event(0,NB);ctl(e,1,fd,1|ET|(CASE==69?ONE:0),67);
+   put(fd,1);o[0]=wait(e,out,1,0);put(fd,1);o[1]=wait(e,out,1,0);
+   if(CASE==67){get(fd,&x);o[2]=x;return 0;}
+   if(CASE==68){get(fd,&x);o[2]=wait(e,out,1,0);put(fd,3);o[3]=wait(e,out,1,0);return 0;}
+   ctl(e,3,fd,1|ET|ONE,69);o[2]=wait(e,out,1,0);o[3]=wait(e,out,1,0);return 0;
+  }
+  if(CASE<=72) {
+   o[0]=sc(53,1,1|NB,0,(U)p,0,0);ctl(e,1,p[1],1|ET|(CASE==72?ONE:0),70);
+   S(1,p[0],"ab",2);I first=wait(e,out,1,0);S(1,p[0],"c",1);I second=wait(e,out,1,0);
+   if(CASE==70){o[1]=first;o[2]=second;o[3]=S(0,p[1],b,3);return 0;}
+   o[0]=first;o[1]=second;
+   if(CASE==71){S(0,p[1],b,3);o[2]=wait(e,out,1,0);S(1,p[0],"d",1);o[3]=wait(e,out,1,0);return 0;}
+   ctl(e,3,p[1],1|ET|ONE,72);o[2]=wait(e,out,1,0);o[3]=wait(e,out,1,0);return 0;
+  }
+  /* Handler return must restore the original mask, not the temporary one.
+     Timer arrival is bounded by the syscall deadline, not a scheduling sleep. */
+  action((U)handler,0);U blocked=1UL<<13,mask=0,after=0;
+  if(CASE!=74)sc(14,0,(U)&blocked,0,8,0,0);
+  if(CASE==75)mask=blocked;
+  if(CASE==76)action(1,0);
+  if(CASE==77){fd=event(1,NB);ctl(e,1,fd,1,77);}
+  if(CASE<=76)alarm_us(CASE==75||CASE==76?1000:20000);
+  o[0]=sc(281,e,(U)out,CASE==78?0:1,CASE==75||CASE==76?20:500,(U)&mask,8);
+  o[1]=signals;sc(14,2,0,(U)&after,8,0,0);o[2]=(after&blocked)!=0;
+  alarm_us(0);return 0;
+ }
+ if(CASE>=64&&CASE<=66) {
   sc(53,1,1|NB,0,(U)pressure_fds,0,0);
   e=ep();ctl(e,1,pressure_fds[0],4|ET,77);
   I initially=wait(e,out,1,0),partial=0;U queued=0;
