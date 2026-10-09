@@ -131,6 +131,8 @@ fn named_case(name: &str) {
             .arg(root.join("scripts/u6-native-observe.py"))
             .arg("--case")
             .arg(name)
+            .arg("--guests")
+            .arg(root.join("target/guests/u6"))
             .arg("--out")
             .arg(root.join(format!("target/u6-diff/{name}")))
             .arg("--emulator")
