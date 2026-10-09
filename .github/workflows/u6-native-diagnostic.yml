@@ -31,3 +31,27 @@ jobs:
           name: u6-native-first
           path: target/u6-native-first
           retention-days: 7
+  differential:
+    needs: native-first
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - run: rustup toolchain install nightly-2026-10-01 --profile minimal
+      - run: rustup target add x86_64-unknown-linux-musl --toolchain nightly-2026-10-01
+      - name: Current Kernel and Host regression
+        run: cargo +nightly-2026-10-01 test --locked -p paludarium-kernel -p paludarium-host --lib
+      - name: Build current emulator
+        run: cargo +nightly-2026-10-01 build --locked -p paludarium-cli
+      - name: Fresh native and emulated finite comparisons
+        run: cargo +nightly-2026-10-01 test --locked -p paludarium-harness --test diff_u6 -- --nocapture
+      - name: Retain both observation streams
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u6-differential
+          path: target/u6-diff
+          retention-days: 7

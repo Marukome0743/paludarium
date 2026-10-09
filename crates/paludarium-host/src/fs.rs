@@ -15,6 +15,14 @@ pub struct DirectoryEntry {
     pub kind: u8,
 }
 pub trait FileHandle: Send + Sync {
+    /// Guest poll mask and separate rising-edge generations for input/output.
+    /// Kernel-owned descriptions override this; ordinary files cannot join epoll.
+    fn readiness(&self) -> Result<(u32, u64, u64), Errno> {
+        Err(Errno::EPERM)
+    }
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        None
+    }
     fn stdio_channel(&self) -> Option<u32> {
         None
     }

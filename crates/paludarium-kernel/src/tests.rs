@@ -151,13 +151,13 @@ fn write_goes_to_host_streams_only_for_fd_1_and_2() {
 }
 
 #[test]
-fn unknown_and_network_syscalls_are_enosys() {
+fn unknown_syscalls_are_enosys_and_network_is_rejected() {
     let mut f = fixture();
-    assert_eq!(f.ret(nr::SOCKET, &[2, 1, 0]), errno(Errno::ENOSYS));
+    assert_eq!(f.ret(nr::SOCKET, &[2, 1, 0]), errno(Errno(97)));
     assert_eq!(f.ret(0, &[0, DATA, 1]), 0); // U7 stdin EOF
     assert_eq!(f.ret(u64::MAX, &[]), errno(Errno::ENOSYS));
     assert_eq!(f.ret(1_000_000, &[]), errno(Errno::ENOSYS));
-    assert!(!SyscallTable::u1().contains(nr::SOCKET));
+    assert!(SyscallTable::u1().contains(nr::SOCKET));
 }
 
 #[test]

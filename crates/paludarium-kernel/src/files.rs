@@ -10,13 +10,14 @@ pub const NUMBERS: &[u64] = &[
     257, 258, 262, 263, 264, 265, 266, 267, 292,
 ];
 #[derive(Clone)]
-struct Descriptor {
-    file: Arc<dyn FileHandle>,
+pub(crate) struct Descriptor {
+    pub(crate) file: Arc<dyn FileHandle>,
     path: Vec<u8>,
     cloexec: bool,
 }
 #[derive(Clone)]
 pub struct Files {
+    pub(crate) readiness: Arc<crate::events::ReadinessHub>,
     pub terminal_size: Option<(u16, u16)>,
     pub fs: Arc<dyn FileSystem>,
     fds: Arc<Mutex<BTreeMap<u32, Descriptor>>>,
@@ -28,6 +29,7 @@ impl Default for Files {
         let fs = MemFs::new();
         let _ = fs.mkdir(b"/tmp", 0o1777);
         Self {
+            readiness: Arc::default(),
             terminal_size: None,
             fs: Arc::new(fs),
             fds: Arc::new(Mutex::new(BTreeMap::new())),
@@ -37,6 +39,20 @@ impl Default for Files {
     }
 }
 impl Files {
+    pub(crate) fn install(
+        &mut self,
+        file: Arc<dyn FileHandle>,
+        cloexec: bool,
+    ) -> Result<u32, Errno> {
+        self.allocate(
+            Descriptor {
+                file,
+                path: Vec::new(),
+                cloexec,
+            },
+            0,
+        )
+    }
     pub fn with_host(host: Arc<dyn paludarium_host::Host>) -> Self {
         let files = Self::default();
         for channel in 0..3 {
@@ -76,7 +92,7 @@ impl Files {
         fds.insert(n, d);
         Ok(n)
     }
-    fn descriptor(&self, fd: u64) -> Result<Descriptor, Errno> {
+    pub(crate) fn descriptor(&self, fd: u64) -> Result<Descriptor, Errno> {
         self.fds
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -171,7 +187,7 @@ pub(crate) fn dispatch(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
         Err(e) => Outcome::Return(e.to_syscall_return()),
     }
 }
-fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
+pub(crate) fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
     match n {
         0 | 1 => {
             let requested = usize::try_from(a[2].min(0x7fff_f000)).map_err(|_| Errno::EINVAL)?;
@@ -208,10 +224,43 @@ fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
                 c.mem
                     .read(GuestAddr(a[1]), &mut b)
                     .map_err(|_| Errno::EFAULT)?;
-                return d.ok_or(Errno::EBADF)?.file.write(&b).map(|v| v as u64);
+                let d = d.ok_or(Errno::EBADF)?;
+                loop {
+                    let ticket = c.files.readiness.token.value();
+                    match d.file.write(&b) {
+                        Err(e)
+                            if e == Errno::EAGAIN
+                                && d.file.readiness().is_ok()
+                                && d.file.flags() & crate::events::NONBLOCK == 0 =>
+                        {
+                            crate::events::wait(c, ticket, None)?
+                        }
+                        result => {
+                            if result == Err(Errno(32)) {
+                                crate::signals::queue(
+                                    c.process,
+                                    crate::signals::PendingSignal::user(13, 0),
+                                );
+                            }
+                            return result.map(|v| v as u64);
+                        }
+                    }
+                }
             }
             let count = if let Some(d) = d {
-                d.file.read(&mut b)?
+                loop {
+                    let ticket = c.files.readiness.token.value();
+                    match d.file.read(&mut b) {
+                        Err(e)
+                            if e == Errno::EAGAIN
+                                && d.file.readiness().is_ok()
+                                && d.file.flags() & crate::events::NONBLOCK == 0 =>
+                        {
+                            crate::events::wait(c, ticket, None)?
+                        }
+                        result => break result?,
+                    }
+                }
             } else if a[0] == 0 {
                 c.host.read_stdin(&mut b)?
             } else {

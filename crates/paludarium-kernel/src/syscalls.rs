@@ -102,6 +102,13 @@ impl SyscallTable {
         for number in crate::files::NUMBERS {
             handlers.insert(*number, crate::files::dispatch);
         }
+        handlers.insert(290, crate::events::dispatch);
+        for number in [213, 233, 232, 281, 291] {
+            handlers.insert(number, crate::epoll::dispatch);
+        }
+        for number in [41, 44, 45, 48, 53] {
+            handlers.insert(number, crate::sockets::dispatch);
+        }
         SyscallTable { handlers }
     }
 
@@ -435,7 +442,19 @@ fn sys_poll(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
             fd if fd < 0 => 0,
             0 => events & POLLIN,
             1 | 2 => events & POLLOUT,
-            _ => POLLNVAL,
+            _ => match c.files.descriptor(fd as u64) {
+                Ok(d) => match d.file.readiness() {
+                    Ok((mask, _, _)) => (mask as u16) & (events | 0x18),
+                    Err(_) => d.file.stat().map_or(POLLNVAL, |stat| {
+                        if stat.mode & 0o170000 == 0o100000 {
+                            events & (POLLIN | POLLOUT)
+                        } else {
+                            0
+                        }
+                    }),
+                },
+                Err(_) => POLLNVAL,
+            },
         };
         if c.mem
             .write(at.wrapping_add(6), &revents.to_le_bytes())

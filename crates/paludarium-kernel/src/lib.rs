@@ -13,6 +13,9 @@ mod inbox;
 mod signals;
 pub use inbox::SignalInbox;
 mod files;
+mod events;
+mod epoll;
+mod sockets;
 mod futex;
 mod syscalls;
 mod threads;
@@ -452,3 +455,6 @@ mod u9_tests;
 
 #[cfg(test)]
 mod u5_tests;
+
+#[cfg(test)]
+mod u6_tests;
