@@ -21,6 +21,13 @@ jobs:
       - run: bash scripts/build-wasm.sh
       - run: node --test packages/paludarium-wasm/tests/import-check.mjs
       - run: node packages/paludarium-wasm/tests/node-check.mjs packages/paludarium-wasm/paludarium.wasm target-native-results.json
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u5-production-wasm
+          path: |
+            packages/paludarium-wasm/paludarium.wasm
+            target-native-results.json
   platforms:
     strategy:
       fail-fast: false
@@ -40,11 +47,19 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PALUDARIUM_U3_FULL_REPLAY: '1'
+      PALUDARIUM_U3_NATIVE_OBSERVATIONS: ${{ github.workspace }}/target/u3-guests/observe.native
+      PALUDARIUM_U3_NATIVE_FAULTS: ${{ github.workspace }}/target/u3-guests/fault-observe.native
+      PALUDARIUM_U3_NATIVE_CPUID: ${{ github.workspace }}/target/u3-guests/cpuid-observe.native
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - run: rustup component add llvm-tools-preview
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - run: bash tests/guests/u3/build.sh target/u3-guests
+      - run: python3 scripts/u5-coverage-native.py
       - run: cargo install --locked cargo-llvm-cov
       - run: cargo llvm-cov --locked --workspace --lib --lcov --output-path target/u5-coverage.lcov
       - run: python3 scripts/u5-coverage.py target/u5-coverage.lcov --out target/u5-coverage.json

@@ -258,12 +258,14 @@ impl HostFs for NativeFs {
         cap_stat(m)
     }
     fn mkdir(&self, p: &[u8], m: u32) -> Result<(), Errno> {
-        let mut builder = cap_std::fs::DirBuilder::new();
+        let builder = cap_std::fs::DirBuilder::new();
         #[cfg(unix)]
-        {
+        let builder = {
+            let mut builder = builder;
             use cap_std::fs::DirBuilderExt;
             builder.mode(m);
-        }
+            builder
+        };
         #[cfg(not(unix))]
         let _ = m;
         self.root.create_dir_with(path(p)?, &builder).map_err(err)
@@ -476,6 +478,7 @@ mod u7_tests {
         assert_eq!(std::fs::read(x.base.join("sentinel")).unwrap(), b"outside");
     }
     #[test]
+    #[cfg(unix)]
     fn u7_native_symlink_escape() {
         let x = Fixture::new();
         #[cfg(unix)]
