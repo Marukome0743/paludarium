@@ -11,7 +11,7 @@ use std::{
     collections::BTreeMap,
     sync::{
         Arc, Mutex, PoisonError,
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicU32, AtomicU64, Ordering},
     },
 };
 
@@ -23,6 +23,7 @@ pub struct ThreadGroup {
     actions: Mutex<BTreeMap<i32, SignalAction>>,
     process_inbox: Mutex<Arc<SignalInbox>>,
     process_pending: Mutex<ThreadState>,
+    timer_generation: AtomicU64,
     pub(crate) futexes: Futexes,
 }
 impl Default for ThreadGroup {
@@ -35,6 +36,7 @@ impl Default for ThreadGroup {
             actions: Mutex::new(BTreeMap::new()),
             process_inbox: Mutex::new(Arc::new(SignalInbox::default())),
             process_pending: Mutex::new(ThreadState::default()),
+            timer_generation: AtomicU64::new(0),
             futexes: Futexes::default(),
         }
     }
@@ -52,6 +54,20 @@ impl ThreadGroup {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .timer = timer;
+        self.timer_generation.fetch_add(1, Ordering::SeqCst);
+        // A timer update is a deadline change, not a signal. Existing Host waits
+        // must return so they can recompute the shared deadline.
+        for inbox in self
+            .members
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+        {
+            inbox.interrupt();
+        }
+    }
+    pub(crate) fn timer_generation(&self) -> u64 {
+        self.timer_generation.load(Ordering::SeqCst)
     }
     pub(crate) fn expire_timer(&self, local: &mut ThreadState, now: u64) {
         {
@@ -246,6 +262,28 @@ impl Kernel {
             _ => return None,
         };
         thread.cpu.gpr[reg::RAX] = result.unwrap_or_else(Errno::to_syscall_return);
+        // Native WAIT/WAIT_BITSET without a timeout restart after SA_RESTART.
+        // Timed waits return EINTR instead (native cases36/37); replaying their
+        // relative request would also incorrectly extend its deadline.
+        if n == 202
+            && matches!(a[1] & !128, 0 | 9 | 265)
+            && a[3] == 0
+            && result == Err(Errno(4))
+            && signals::next_pending(&thread.state, true)
+                .and_then(|index| {
+                    thread
+                        .state
+                        .signal_actions
+                        .get(&thread.state.pending[index].number)
+                })
+                .is_some_and(|action| action.handler > 1 && action.flags & 0x1000_0000 != 0)
+            && let Some(rip) = thread.cpu.rip.0.checked_sub(2)
+        {
+            // The handler's saved context resumes the syscall, rechecking the
+            // futex value when it returns (including a handler's value change).
+            thread.cpu.rip = GuestAddr(rip);
+            thread.cpu.gpr[reg::RAX] = n;
+        }
         Some(self.checkpoint(thread, mem))
     }
     fn return_error(&self, thread: &mut Thread, error: Errno) -> Next {

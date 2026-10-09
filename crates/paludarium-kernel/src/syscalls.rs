@@ -179,6 +179,7 @@ fn sleep(c: &mut Context<'_>, clock: ClockId, absolute: bool, req: u64, rem: u64
         now.saturating_add(request).min(i64::MAX as u64)
     };
     loop {
+        let timer_generation = c.group.timer_generation();
         let clock_now = match c.host.clock(clock) {
             Ok(t) => t,
             Err(e) => return err(e),
@@ -208,6 +209,13 @@ fn sleep(c: &mut Context<'_>, clock: ClockId, absolute: bool, req: u64, rem: u64
                     || !matches!(s.number, 17 | 18 | 23 | 28))
         });
         match result {
+            Ok(_)
+                if !pending
+                    && c.group.status().is_none()
+                    && c.group.timer_generation() != timer_generation =>
+            {
+                continue;
+            }
             Ok(WaitOutcome::Interrupted) if received && !pending => continue,
             Ok(WaitOutcome::Complete) if !pending => {
                 if c.host.clock(clock).is_ok_and(|now| now < deadline) {

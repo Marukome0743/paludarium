@@ -243,3 +243,304 @@ fn process_signal_interrupts_registered_child_wait_token() {
         signals::PendingTarget::Process
     );
 }
+
+/// The first Host wait acknowledges entry before the other worker changes the
+/// timer. No wall-clock sleep is used to infer guest/Host scheduling.
+struct EnteredWaitHost {
+    inner: paludarium_host::testing::RecordingHost,
+    first: std::sync::atomic::AtomicBool,
+    entered: std::sync::mpsc::SyncSender<u64>,
+    release: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+}
+impl paludarium_host::Host for EnteredWaitHost {
+    fn clock(&self, clock: paludarium_host::ClockId) -> Result<u64, Errno> {
+        self.inner.clock(clock)
+    }
+    fn wait_until(
+        &self,
+        clock: paludarium_host::ClockId,
+        deadline: u64,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<paludarium_host::WaitOutcome, Errno> {
+        if self.first.swap(false, Ordering::SeqCst) {
+            self.entered.send(deadline).unwrap();
+            self.release
+                .lock()
+                .unwrap()
+                .recv_timeout(std::time::Duration::from_secs(3))
+                .unwrap();
+            assert!(
+                cancel.load(Ordering::SeqCst),
+                "timer update must wake the sleeping worker"
+            );
+        }
+        self.inner.wait_until(clock, deadline, cancel)
+    }
+    fn wait_on(
+        &self,
+        token: &paludarium_host::WaitToken,
+        expected: u32,
+        deadline: Option<(paludarium_host::ClockId, u64)>,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<paludarium_host::WaitOutcome, Errno> {
+        self.entered.send(deadline.unwrap().1).unwrap();
+        self.release
+            .lock()
+            .unwrap()
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .unwrap();
+        if self.first.swap(false, Ordering::SeqCst) {
+            assert!(cancel.load(Ordering::SeqCst));
+        }
+        paludarium_host::Host::wait_on(
+            &paludarium_host::NativeHost,
+            token,
+            expected,
+            deadline,
+            cancel,
+        )
+    }
+    fn read_stdin(&self, buf: &mut [u8]) -> Result<usize, Errno> {
+        self.inner.read_stdin(buf)
+    }
+    fn write_stdout(&self, buf: &[u8]) -> Result<usize, Errno> {
+        self.inner.write_stdout(buf)
+    }
+    fn write_stderr(&self, buf: &[u8]) -> Result<usize, Errno> {
+        self.inner.write_stderr(buf)
+    }
+    fn random_bytes(&self, buf: &mut [u8]) -> Result<(), paludarium_types::Error> {
+        self.inner.random_bytes(buf)
+    }
+}
+fn change_timer_after_host_wait(initial: Option<u64>, replacement: Option<u64>) {
+    use paludarium_host::{ClockId, Host};
+    let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(1);
+    let (release_tx, release_rx) = std::sync::mpsc::sync_channel(1);
+    let host = Arc::new(EnteredWaitHost {
+        inner: paludarium_host::testing::RecordingHost::new(),
+        first: std::sync::atomic::AtomicBool::new(true),
+        entered: entered_tx,
+        release: std::sync::Mutex::new(release_rx),
+    });
+    let inbox = Arc::new(SignalInbox::default());
+    let mut k = Kernel::new(host.clone()).with_signal_inbox(inbox.clone());
+    let group = k.group.clone();
+    group.set_timer(signals::RealTimer {
+        deadline: initial,
+        interval: 0,
+    });
+    let mut t = thread();
+    inbox.drain(&mut t.state);
+    let m = memory();
+    m.write(GuestAddr(DATA), &2u64.to_le_bytes()).unwrap();
+    t.cpu.gpr[reg::RAX] = syscalls::nr::NANOSLEEP;
+    t.cpu.gpr[reg::RDI] = DATA;
+    let (done_tx, done_rx) = std::sync::mpsc::sync_channel(1);
+    let worker = std::thread::spawn(move || {
+        let next = k.handle(
+            &mut t,
+            &m,
+            ExitReason::Syscall {
+                rip: GuestAddr(0x400000),
+            },
+        );
+        done_tx.send((next, t.cpu.gpr[reg::RAX])).unwrap();
+    });
+    assert_eq!(
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .unwrap(),
+        initial.unwrap_or(2_000_000_000)
+    );
+    host.inner.set_clock(ClockId::Monotonic, 50_000_000);
+    group.set_timer(signals::RealTimer {
+        deadline: replacement,
+        interval: 0,
+    });
+    release_tx.send(()).unwrap();
+    let (next, value) = done_rx
+        .recv_timeout(std::time::Duration::from_secs(3))
+        .unwrap();
+    worker.join().unwrap();
+    if let Some(deadline) = replacement {
+        assert_eq!(next, Next::Exit(ExitStatus::Signaled(14)));
+        assert_eq!(host.clock(ClockId::Monotonic), Ok(deadline));
+    } else {
+        assert_eq!(next, Next::Resume);
+        assert_eq!(value, 0, "cancellation notification alone is not EINTR");
+        assert_eq!(host.clock(ClockId::Monotonic), Ok(2_000_000_000));
+    }
+}
+#[test]
+fn timer_set_recomputes_existing_host_sleep() {
+    change_timer_after_host_wait(None, Some(100_000_000));
+}
+#[test]
+fn timer_shorten_recomputes_existing_host_sleep() {
+    change_timer_after_host_wait(Some(1_500_000_000), Some(100_000_000));
+}
+#[test]
+fn timer_cancel_notification_does_not_interrupt_sleep() {
+    change_timer_after_host_wait(Some(100_000_000), None);
+}
+
+#[test]
+fn timer_notification_does_not_interrupt_futex_wait() {
+    let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(1);
+    let (release_tx, release_rx) = std::sync::mpsc::sync_channel(1);
+    let host = Arc::new(EnteredWaitHost {
+        inner: paludarium_host::testing::RecordingHost::new(),
+        first: std::sync::atomic::AtomicBool::new(true),
+        entered: entered_tx,
+        release: std::sync::Mutex::new(release_rx),
+    });
+    let mut k = Kernel::new(host).with_signal_inbox(Arc::new(SignalInbox::default()));
+    let group = k.group.clone();
+    let m = Arc::new(memory());
+    let worker_mem = m.clone();
+    let mut t = thread();
+    t.cpu.gpr[reg::RAX] = 202;
+    t.cpu.gpr[reg::RDI] = DATA;
+    t.cpu.gpr[reg::RSI] = 128;
+    let (done_tx, done_rx) = std::sync::mpsc::sync_channel(1);
+    let worker = std::thread::spawn(move || {
+        k.handle(
+            &mut t,
+            &worker_mem,
+            ExitReason::Syscall {
+                rip: GuestAddr(0x400000),
+            },
+        );
+        done_tx.send(t.cpu.gpr[reg::RAX]).unwrap();
+    });
+    entered_rx
+        .recv_timeout(std::time::Duration::from_secs(3))
+        .unwrap();
+    group.set_timer(signals::RealTimer::default());
+    release_tx.send(()).unwrap();
+    // Re-entry proves the metadata wake did not return EINTR to the guest.
+    entered_rx
+        .recv_timeout(std::time::Duration::from_secs(3))
+        .unwrap();
+    assert_eq!(group.futexes.wake(&m, DATA, true, 1, u32::MAX), Ok(1));
+    release_tx.send(()).unwrap();
+    assert_eq!(
+        done_rx
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .unwrap(),
+        0
+    );
+    worker.join().unwrap();
+}
+
+#[test]
+fn timer_notification_does_not_interrupt_flock_wait() {
+    let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(1);
+    let (release_tx, release_rx) = std::sync::mpsc::sync_channel(1);
+    let host = Arc::new(EnteredWaitHost {
+        inner: paludarium_host::testing::RecordingHost::new(),
+        first: std::sync::atomic::AtomicBool::new(true),
+        entered: entered_tx,
+        release: std::sync::Mutex::new(release_rx),
+    });
+    let mut k = Kernel::new(host).with_signal_inbox(Arc::new(SignalInbox::default()));
+    let blocker = k.files.fs.open(b"/lock", 0x42, 0o600).unwrap();
+    blocker.flock(2).unwrap();
+    let group = k.group.clone();
+    let m = memory();
+    m.write(GuestAddr(DATA), b"/lock\0").unwrap();
+    let mut t = thread();
+    t.cpu.gpr[reg::RAX] = 2;
+    t.cpu.gpr[reg::RDI] = DATA;
+    k.handle(
+        &mut t,
+        &m,
+        ExitReason::Syscall {
+            rip: GuestAddr(0x400000),
+        },
+    );
+    let fd = t.cpu.gpr[reg::RAX];
+    assert!((3..100).contains(&fd));
+    t.cpu.gpr[reg::RAX] = 73;
+    t.cpu.gpr[reg::RDI] = fd;
+    t.cpu.gpr[reg::RSI] = 2;
+    let (done_tx, done_rx) = std::sync::mpsc::sync_channel(1);
+    let worker = std::thread::spawn(move || {
+        k.handle(
+            &mut t,
+            &m,
+            ExitReason::Syscall {
+                rip: GuestAddr(0x400000),
+            },
+        );
+        done_tx.send(t.cpu.gpr[reg::RAX]).unwrap();
+    });
+    entered_rx
+        .recv_timeout(std::time::Duration::from_secs(3))
+        .unwrap();
+    group.set_timer(signals::RealTimer::default());
+    blocker.flock(8).unwrap();
+    release_tx.send(()).unwrap();
+    assert_eq!(
+        done_rx
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .unwrap(),
+        0
+    );
+    worker.join().unwrap();
+}
+
+#[test]
+fn futex_signal_frame_restarts_only_untimed_sa_restart() {
+    for op in [128, 137, 393] {
+        for timed in [false, true] {
+            for restart in [false, true] {
+                let mut k = Kernel::new(Arc::new(paludarium_host::testing::RecordingHost::new()));
+                let m = memory();
+                m.write(GuestAddr(DATA + 16), &1u64.to_le_bytes()).unwrap();
+                let mut t = thread();
+                t.state.signal_actions.insert(
+                    10,
+                    SignalAction {
+                        handler: DATA + 64,
+                        flags: 0x0400_0000 | if restart { 0x1000_0000 } else { 0 },
+                        restorer: DATA + 80,
+                        mask: 0,
+                    },
+                );
+                k.queue_signal(&mut t, 10).unwrap();
+                t.cpu.rip = GuestAddr(DATA + 122);
+                t.cpu.gpr[reg::RSP] = DATA + 4096;
+                t.cpu.gpr[reg::RAX] = 202;
+                t.cpu.gpr[reg::RDI] = DATA;
+                t.cpu.gpr[reg::RSI] = op;
+                t.cpu.gpr[reg::R10] = if timed { DATA + 16 } else { 0 };
+                t.cpu.gpr[reg::R9] = 1;
+                assert_eq!(
+                    k.handle(
+                        &mut t,
+                        &m,
+                        ExitReason::Syscall {
+                            rip: GuestAddr(DATA + 120)
+                        }
+                    ),
+                    Next::Resume
+                );
+                let saved = &t.state.frames.last().unwrap().cpu;
+                assert_eq!(
+                    saved.rip,
+                    GuestAddr(DATA + if restart && !timed { 120 } else { 122 })
+                );
+                assert_eq!(
+                    saved.gpr[reg::RAX],
+                    if restart && !timed {
+                        202
+                    } else {
+                        Errno(4).to_syscall_return()
+                    }
+                );
+            }
+        }
+    }
+}
