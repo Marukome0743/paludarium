@@ -61,7 +61,7 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --locked -p paludarium-host -p paludarium-kernel -p paludarium-mmu -p paludarium-runtime --lib
       - run: cargo test --locked -p paludarium-vfs --lib
-      - run: cargo test --locked -p paludarium --test command
+      - run: cargo test --locked -p paludarium --lib --test command
       - run: cargo install --locked cargo-deny
       - run: cargo deny check
   coverage:
