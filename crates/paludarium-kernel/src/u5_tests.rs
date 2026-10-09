@@ -358,6 +358,9 @@ fn change_timer_after_host_wait(initial: Option<u64>, replacement: Option<u64>) 
         deadline: replacement,
         interval: 0,
     });
+    // The timer-setting child's next checkpoint also drains process signals.
+    // It must not acknowledge the sleeping parent's control notification.
+    group.drain_process(&mut ThreadState::default());
     release_tx.send(()).unwrap();
     let (next, value) = done_rx
         .recv_timeout(std::time::Duration::from_secs(3))

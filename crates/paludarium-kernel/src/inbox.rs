@@ -10,6 +10,7 @@ use std::sync::{
 pub struct SignalInbox {
     queue: Mutex<Vec<signals::PendingSignal>>,
     wake: Arc<AtomicBool>,
+    control_wake: AtomicBool,
     listeners: Mutex<Vec<Weak<AtomicBool>>>,
 }
 impl SignalInbox {
@@ -65,6 +66,10 @@ impl SignalInbox {
     }
     /// Interrupts a native wait without modifying CPU or guest memory.
     pub fn interrupt(&self) {
+        let _queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        // Only the owning worker may acknowledge a control notification.
+        // A different worker draining process signals must not erase it.
+        self.control_wake.store(true, Ordering::SeqCst);
         self.wake.store(true, Ordering::SeqCst);
         self.notify_listeners();
     }
@@ -79,6 +84,7 @@ impl SignalInbox {
             signals::queue(process, signal);
         }
         // Sender stores while holding this same mutex, preventing a lost wake.
+        self.control_wake.store(false, Ordering::SeqCst);
         self.wake.store(false, Ordering::SeqCst);
         received
     }
@@ -93,7 +99,10 @@ impl SignalInbox {
                 true
             }
         });
-        self.wake.store(!queue.is_empty(), Ordering::SeqCst);
+        self.wake.store(
+            !queue.is_empty() || self.control_wake.load(Ordering::SeqCst),
+            Ordering::SeqCst,
+        );
     }
 }
 
