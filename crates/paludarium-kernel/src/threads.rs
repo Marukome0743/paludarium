@@ -63,7 +63,7 @@ impl ThreadGroup {
             .unwrap_or_else(PoisonError::into_inner)
             .values()
         {
-            inbox.interrupt();
+            inbox.timer_changed();
         }
     }
     pub(crate) fn timer_generation(&self) -> u64 {
@@ -420,6 +420,7 @@ impl Kernel {
             .group
             .futexes
             .register(mem, a[0], private, a[2] as u32, mask)?;
+        let mut interrupted = false;
         loop {
             let state = waiter.state.load(Ordering::SeqCst);
             if state != 0 {
@@ -430,7 +431,9 @@ impl Kernel {
                 };
             }
             self.group.drain_process(&mut thread.state);
-            self.inbox.drain(&mut thread.state);
+            interrupted |= self.inbox.drain(&mut thread.state).interrupted;
+            interrupted |= !self.inbox.owns_wake(&self.cancellation)
+                && self.cancellation.load(Ordering::SeqCst);
             if let Ok(now) = self.host.clock(ClockId::Monotonic) {
                 self.group.expire_timer(&mut thread.state, now);
             }
@@ -443,6 +446,7 @@ impl Kernel {
             };
             let result = if self.group.status().is_some()
                 || signals::next_pending(&thread.state, true).is_some()
+                || interrupted
             {
                 3
             } else if deadline.is_some_and(|end| now >= end) {
@@ -471,7 +475,7 @@ impl Kernel {
                     }
                 };
             if outcome == WaitOutcome::Interrupted {
-                self.inbox.drain(&mut thread.state);
+                interrupted |= self.inbox.drain(&mut thread.state).interrupted;
             }
         }
     }

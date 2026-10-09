@@ -197,6 +197,9 @@ fn sleep(c: &mut Context<'_>, clock: ClockId, absolute: bool, req: u64, rem: u64
         let next = timer_deadline.map_or(deadline, |t| deadline.min(t));
         let result = c.host.wait_until(clock, next, c.cancellation);
         let received = c.inbox.drain(c.process);
+        let interrupted = received.interrupted
+            || (!c.inbox.owns_wake(c.cancellation)
+                && c.cancellation.load(std::sync::atomic::Ordering::SeqCst));
         if let Ok(now) = c.host.clock(ClockId::Monotonic) {
             c.group.expire_timer(c.process, now);
         }
@@ -212,12 +215,18 @@ fn sleep(c: &mut Context<'_>, clock: ClockId, absolute: bool, req: u64, rem: u64
             Ok(_)
                 if !pending
                     && c.group.status().is_none()
-                    && c.group.timer_generation() != timer_generation =>
+                    && !interrupted
+                    && (received.timer_changed
+                        || c.group.timer_generation() != timer_generation) =>
             {
                 continue;
             }
-            Ok(WaitOutcome::Interrupted) if received && !pending => continue,
-            Ok(WaitOutcome::Complete) if !pending => {
+            Ok(WaitOutcome::Interrupted)
+                if received.signals && !pending && !interrupted && c.group.status().is_none() =>
+            {
+                continue;
+            }
+            Ok(WaitOutcome::Complete) if !pending && !interrupted && c.group.status().is_none() => {
                 if c.host.clock(clock).is_ok_and(|now| now < deadline) {
                     continue;
                 }

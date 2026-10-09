@@ -322,30 +322,36 @@ fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno> {
                     Ok(()) => return Ok(0),
                     Err(e) if e == Errno::EAGAIN && a[1] & 4 == 0 => {
                         let timer_generation = c.group.timer_generation();
-                        c.inbox.drain(c.process);
+                        let receipt = c.inbox.drain(c.process);
                         c.group.drain_process(c.process);
                         let now = c.host.clock(ClockId::Monotonic)?;
                         c.group.expire_timer(c.process, now);
                         if c.group.status().is_some()
                             || crate::signals::next_pending(c.process, true).is_some()
+                            || receipt.interrupted
                         {
                             return Err(Errno(4));
                         }
-                        if c.cancellation.load(std::sync::atomic::Ordering::SeqCst) {
+                        if !c.inbox.owns_wake(c.cancellation)
+                            && c.cancellation.load(std::sync::atomic::Ordering::SeqCst)
+                        {
                             return Err(Errno(4));
                         }
-                        if c.host.wait_until(
+                        let outcome = c.host.wait_until(
                             ClockId::Monotonic,
                             now.saturating_add(10_000_000),
                             c.cancellation,
-                        )? == paludarium_host::WaitOutcome::Interrupted
-                            && c.group.timer_generation() == timer_generation
-                        {
-                            return Err(Errno(4));
-                        }
-                        c.inbox.drain(c.process);
+                        )?;
+                        let receipt = c.inbox.drain(c.process);
                         c.group.drain_process(c.process);
-                        if crate::signals::next_pending(c.process, true).is_some() {
+                        if c.group.status().is_some()
+                            || crate::signals::next_pending(c.process, true).is_some()
+                            || receipt.interrupted
+                            || (outcome == paludarium_host::WaitOutcome::Interrupted
+                                && !receipt.timer_changed
+                                && !receipt.signals
+                                && c.group.timer_generation() == timer_generation)
+                        {
                             return Err(Errno(4));
                         }
                     }

@@ -3,6 +3,80 @@ use paludarium_mmu::{MappingKind, Prot};
 use paludarium_types::{Errno, GuestAddr};
 use std::sync::atomic::Ordering;
 const DATA: u64 = 0x600000;
+#[test]
+fn timer_receipt_survives_process_dispatch_and_owner_acknowledges_kind() {
+    let inbox = SignalInbox::default();
+    let mut other = ThreadState::default();
+    inbox.timer_changed();
+    inbox.drain_process(&mut other);
+    assert!(inbox.wake_token().load(Ordering::SeqCst));
+    let receipt = inbox.drain(&mut other);
+    assert!(receipt.timer_changed);
+    assert!(!receipt.interrupted);
+    assert!(!inbox.wake_token().load(Ordering::SeqCst));
+    inbox.timer_changed();
+    inbox.interrupt();
+    inbox.send_thread(10).unwrap();
+    inbox.drain_process(&mut other);
+    let receipt = inbox.drain(&mut other);
+    assert!(receipt.timer_changed && receipt.interrupted && receipt.signals);
+    let receipt = inbox.drain(&mut other);
+    assert!(!receipt.timer_changed && !receipt.interrupted && !receipt.signals);
+}
+#[test]
+fn preentry_timer_metadata_keeps_sleep_deadline_but_real_interrupt_wins() {
+    use paludarium_host::{ClockId, Host};
+    for (changes, interrupted) in [(1, false), (2, false), (8, false), (2, true)] {
+        let host = Arc::new(paludarium_host::testing::RecordingHost::new());
+        let inbox = Arc::new(SignalInbox::default());
+        let mut k = Kernel::new(host.clone()).with_signal_inbox(inbox.clone());
+        k.group.register(1, inbox.clone());
+        let group = k.group.clone();
+        std::thread::spawn(move || {
+            for i in 0..changes {
+                group.set_timer(signals::RealTimer {
+                    deadline: (i % 2 == 1).then_some(1_000_000_000),
+                    interval: 0,
+                });
+            }
+            group.drain_process(&mut ThreadState::default());
+        })
+        .join()
+        .unwrap();
+        if interrupted {
+            inbox.interrupt();
+        }
+        assert!(inbox.wake_token().load(Ordering::SeqCst));
+        let mut t = thread();
+        let m = memory();
+        m.write(GuestAddr(DATA + 8), &200_000_000u64.to_le_bytes())
+            .unwrap();
+        t.cpu.gpr[reg::RAX] = syscalls::nr::NANOSLEEP;
+        t.cpu.gpr[reg::RDI] = DATA;
+        assert!(matches!(
+            k.handle(
+                &mut t,
+                &m,
+                ExitReason::Syscall {
+                    rip: GuestAddr(0x400000)
+                }
+            ),
+            Next::Resume
+        ));
+        assert_eq!(
+            t.cpu.gpr[reg::RAX],
+            if interrupted {
+                Errno(4).to_syscall_return()
+            } else {
+                0
+            }
+        );
+        assert_eq!(
+            host.clock(ClockId::Monotonic).unwrap(),
+            if interrupted { 0 } else { 200_000_000 }
+        );
+    }
+}
 fn memory() -> AddressSpace {
     let mem = AddressSpace::new();
     mem.map_shared(

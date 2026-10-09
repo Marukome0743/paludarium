@@ -11,7 +11,14 @@ pub struct SignalInbox {
     queue: Mutex<Vec<signals::PendingSignal>>,
     wake: Arc<AtomicBool>,
     control_wake: AtomicBool,
+    timer_wake: AtomicBool,
     listeners: Mutex<Vec<Weak<AtomicBool>>>,
+}
+#[derive(Default)]
+pub(crate) struct WakeReceipt {
+    pub signals: bool,
+    pub timer_changed: bool,
+    pub interrupted: bool,
 }
 impl SignalInbox {
     /// Queues a signal for the single guest process (U4).
@@ -73,18 +80,30 @@ impl SignalInbox {
         self.wake.store(true, Ordering::SeqCst);
         self.notify_listeners();
     }
+    /// Deadline metadata wakes an owner without requesting guest interruption.
+    pub(crate) fn timer_changed(&self) {
+        let _queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        self.timer_wake.store(true, Ordering::SeqCst);
+        self.wake.store(true, Ordering::SeqCst);
+    }
+    pub(crate) fn owns_wake(&self, token: &AtomicBool) -> bool {
+        std::ptr::eq(&*self.wake, token)
+    }
     #[must_use]
     pub fn wake_token(&self) -> Arc<AtomicBool> {
         self.wake.clone()
     }
-    pub(crate) fn drain(&self, process: &mut ThreadState) -> bool {
+    pub(crate) fn drain(&self, process: &mut ThreadState) -> WakeReceipt {
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
-        let received = !queue.is_empty();
+        let received = WakeReceipt {
+            signals: !queue.is_empty(),
+            timer_changed: self.timer_wake.swap(false, Ordering::SeqCst),
+            interrupted: self.control_wake.swap(false, Ordering::SeqCst),
+        };
         for signal in queue.drain(..) {
             signals::queue(process, signal);
         }
         // Sender stores while holding this same mutex, preventing a lost wake.
-        self.control_wake.store(false, Ordering::SeqCst);
         self.wake.store(false, Ordering::SeqCst);
         received
     }
@@ -100,7 +119,9 @@ impl SignalInbox {
             }
         });
         self.wake.store(
-            !queue.is_empty() || self.control_wake.load(Ordering::SeqCst),
+            !queue.is_empty()
+                || self.control_wake.load(Ordering::SeqCst)
+                || self.timer_wake.load(Ordering::SeqCst),
             Ordering::SeqCst,
         );
     }
