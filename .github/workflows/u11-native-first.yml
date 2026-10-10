@@ -1,5 +1,7 @@
 name: U11 native expectations before wasm changes
 on:
+  push:
+    branches: [codex/u11-wasm-launcher]
   workflow_dispatch:
 permissions:
   contents: read
