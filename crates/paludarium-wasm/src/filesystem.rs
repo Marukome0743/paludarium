@@ -32,8 +32,27 @@ pub(crate) struct Entry {
     pub mode: u32,
     pub inode: u64,
     pub links: u64,
-    pub mtime_ns: u64,
+    pub mtime_ns: i128,
     pub content: Vec<u8>,
+}
+pub(crate) fn snapshot_bytes(entries: &[Entry]) -> Option<Vec<u8>> {
+    let mut data = u32::MAX.to_le_bytes().to_vec();
+    data.extend_from_slice(&2u32.to_le_bytes());
+    data.extend_from_slice(&u32::try_from(entries.len()).ok()?.to_le_bytes());
+    for entry in entries {
+        data.extend_from_slice(&u32::try_from(entry.path.len()).ok()?.to_le_bytes());
+        data.extend_from_slice(&entry.path);
+        data.extend_from_slice(&entry.mode.to_le_bytes());
+        data.extend_from_slice(&entry.inode.to_le_bytes());
+        data.extend_from_slice(&entry.links.to_le_bytes());
+        data.extend_from_slice(&entry.mtime_ns.to_le_bytes());
+        data.extend_from_slice(&u32::try_from(entry.content.len()).ok()?.to_le_bytes());
+        data.extend_from_slice(&entry.content);
+        if data.len() > 64 * 1024 * 1024 {
+            return None;
+        }
+    }
+    Some(data)
 }
 impl PrivateFs {
     pub(crate) fn new(config: Config, host: Arc<dyn Host>) -> Result<Arc<Self>, Error> {
@@ -126,6 +145,31 @@ impl PrivateFs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn u7_mtime_snapshot_signed_bytes_and_positive_range() {
+        for ns in [
+            -1_000_000_000,
+            -500_000_000,
+            -1,
+            0,
+            1,
+            1_500_000_000,
+            i128::from(u64::MAX),
+        ] {
+            let entry = Entry {
+                path: b"/".to_vec(),
+                mode: 0o100644,
+                inode: 1,
+                links: 1,
+                mtime_ns: ns,
+                content: vec![],
+            };
+            let bytes = snapshot_bytes(&[entry]).unwrap();
+            assert_eq!(&bytes[..12], &[255, 255, 255, 255, 2, 0, 0, 0, 1, 0, 0, 0]);
+            assert_eq!(&bytes[37..53], &ns.to_le_bytes());
+            assert_eq!(bytes.len(), 57);
+        }
+    }
     use paludarium_host::testing::RecordingHost;
     fn fixture() -> Arc<PrivateFs> {
         PrivateFs::new(

@@ -1,4 +1,5 @@
 import { isNode, spawnWorker, listen, stopWorker } from "./worker-support.mjs";
+import { decodeSnapshot } from "./filesystem-snapshot.mjs";
 export class PaludariumError extends Error {
   constructor(kind, message, details = {}) { super(message); this.name = "PaludariumError"; this.kind = kind; for (const field of ["rip", "bytes", "syscall"]) if (details[field] !== undefined) this[field] = details[field]; }
 }
@@ -18,16 +19,6 @@ function validate(options) {
   if (Object.entries(options.env ?? {}).some(([key, value]) => !key || key.includes("=") || key.includes("\0") || typeof value !== "string" || value.includes("\0"))) throw new PaludariumError("invalid-program", "invalid guest environment");
   if (Object.entries(options.files ?? {}).some(([path, bytes]) => !path.startsWith("/") || path.includes("\0") || !(bytes instanceof Uint8Array))) throw new PaludariumError("invalid-program", "invalid guest files");
   if (Object.entries(options.fileModes ?? {}).some(([path, mode]) => !Object.hasOwn(options.files ?? {}, path) || !Number.isInteger(mode) || mode < 0 || mode > 0o7777)) throw new PaludariumError("invalid-program", "invalid guest file modes");
-}
-function decodeSnapshot(bytes) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), decoder = new TextDecoder(); let offset = 0;
-  const u32 = () => { const value = view.getUint32(offset, true); offset += 4; return value; };
-  const u64 = () => { const value = view.getBigUint64(offset, true); offset += 8; return value; };
-  const chunk = () => { const length = u32(); if (offset + length > bytes.length) throw new Error("invalid filesystem snapshot"); const value = bytes.slice(offset, offset + length); offset += length; return value; };
-  const entries = [], count = u32();
-  for (let index = 0; index < count; index++) { const path = decoder.decode(chunk()), mode = u32(), inode = u64(), links = u64(), mtimeNs = u64(), content = chunk(); entries.push({ path, mode, inode, links, mtimeNs, content }); }
-  if (offset !== bytes.length) throw new Error("invalid filesystem snapshot length");
-  return entries;
 }
 /** C12: all Rust execution and locking takes place in dedicated Workers. */
 export async function createPaludarium({ wasmUrl }) {

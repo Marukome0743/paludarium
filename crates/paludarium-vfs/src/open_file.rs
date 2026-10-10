@@ -72,7 +72,7 @@ impl FileHandle for MemFile {
         data[pos..end].copy_from_slice(b);
         s.0 = end as u64;
         if !b.is_empty() {
-            n.mtime_ns = modified;
+            n.mtime_ns = i128::from(modified);
         }
         Ok(b.len())
     }
@@ -108,7 +108,7 @@ impl FileHandle for MemFile {
             b.try_reserve(len - b.len()).map_err(|_| Errno::ENOMEM)?;
         }
         b.resize(len, 0);
-        n.mtime_ns = modified;
+        n.mtime_ns = i128::from(modified);
         Ok(())
     }
     fn flock(&self, op: u32) -> Result<(), Errno> {
