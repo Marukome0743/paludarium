@@ -21,7 +21,11 @@ def snapshot(output, compare=None):
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(value)
     if compare:
-        assert Path(compare).read_text(encoding="utf-8-sig") == value
+        def listing(text):
+            rows = [line.split("  ", 1) for line in text.splitlines()]
+            assert len(rows) == len({path for _, path in rows}), "Duplicate input path"
+            return {path: digest for digest, path in rows}
+        assert listing(Path(compare).read_text(encoding="utf-8-sig")) == listing(value), "Input path/hash mismatch"
     print("Audited", len(value.splitlines()), "inputs and both locks")
 
 def native(output):
