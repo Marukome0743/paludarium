@@ -1,0 +1,288 @@
+name: U5 current native coverage platforms and sanitizers
+on:
+  push:
+    branches: [codex/u5-current-verification]
+permissions:
+  contents: read
+env:
+  RUSTUP_TOOLCHAIN: nightly-2026-10-10
+  CARGO_TERM_COLOR: never
+jobs:
+  native-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+        with:
+          persist-credentials: false
+      - name: Prepare fixed tools and input audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u5-current-evidence
+          mkdir -p "$e"
+          test "$(uname -m)" = x86_64
+          uname -a > "$e/environment.txt"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          rustup toolchain install nightly-2026-10-10 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview
+          compiler_bin="$(rustup which --toolchain nightly-2026-10-10 rustc)"
+          compiler_dir="${compiler_bin%/*}"
+          echo "$compiler_dir" >> "$GITHUB_PATH"
+          echo "RUSTC=$compiler_bin" >> "$GITHUB_ENV"
+          echo "RUSTDOC=$compiler_dir/rustdoc" >> "$GITHUB_ENV"
+          "$compiler_bin" -Vv > "$e/compiler.txt"
+          "$compiler_dir/cargo" -V > "$e/cargo.txt"
+          "$compiler_dir/cargo" install --locked --version 0.9.1 cargo-llvm-cov
+          cargo llvm-cov --version > "$e/llvm-cov.txt"
+          python3 .github/scripts/u5-current-diagnostic.py snapshot "$e/source-before.sha256"
+      - name: Fresh native differential all43
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u5-current-evidence
+          set +e
+          cargo build --locked -p paludarium 2>&1 | tee "$e/cli-build.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/cli-build-exit.txt"
+          test "$status" = 0
+          set +e
+          cargo test --locked -p paludarium-harness --test diff_u5 -- --nocapture 2>&1 | tee "$e/diff.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/diff-exit.txt"
+          test "$status" = 0
+          python3 .github/scripts/u5-current-diagnostic.py diff "$e/diff.log"
+          printf '0\n' > "$e/diff-validation-exit.txt"
+      - name: Original separate13-file Linux coverage
+        shell: bash
+        env:
+          PALUDARIUM_U3_FULL_REPLAY: '1'
+          PALUDARIUM_U3_NATIVE_OBSERVATIONS: ${{ github.workspace }}/target/u3-guests/observe.native
+          PALUDARIUM_U3_NATIVE_FAULTS: ${{ github.workspace }}/target/u3-guests/fault-observe.native
+          PALUDARIUM_U3_NATIVE_CPUID: ${{ github.workspace }}/target/u3-guests/cpuid-observe.native
+        run: |
+          set -euo pipefail
+          e=target/u5-current-evidence
+          bash tests/guests/u3/build.sh target/u3-guests
+          python3 scripts/u5-coverage-native.py
+          cp target/u3-guests/native-input-receipt.json "$e/coverage-native-input-receipt.json"
+          cargo llvm-cov clean --workspace
+          set +e
+          cargo llvm-cov --locked --workspace --lib --lcov --output-path "$e/coverage.lcov" 2>&1 | tee "$e/coverage.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/coverage-exit.txt"
+          test "$status" = 0
+          set +e
+          python3 scripts/u5-coverage.py "$e/coverage.lcov" --out "$e/u5-coverage.json" 2>&1 | tee "$e/coverage-validation.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/coverage-validation-exit.txt"
+          test "$status" = 0
+          cargo llvm-cov report --locked --workspace --json --output-path "$e/coverage.json"
+          printf '0\n' > "$e/coverage-json-exit.txt"
+      - name: Audit unchanged inputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u5-current-evidence
+          python .github/scripts/u5-current-diagnostic.py snapshot "$e/source-after.sha256" --compare "$e/source-before.sha256"
+          printf '0\n' > "$e/source-compare-exit.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u5-current-native-coverage
+          path: |
+            target/u5-current-evidence/
+            target/u5-diff/
+            fuzz/artifacts/
+          retention-days: 7
+  platforms:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+        with:
+          persist-credentials: false
+      - name: Prepare actualcompiler and strict audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u5-current-evidence
+          mkdir -p "$e"
+          rustup toolchain install nightly-2026-10-10 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview
+          compiler_bin="$(rustup which --toolchain nightly-2026-10-10 rustc)"
+          compiler_dir="${compiler_bin%/*}"
+          echo "$compiler_dir" >> "$GITHUB_PATH"
+          echo "RUSTC=$compiler_bin" >> "$GITHUB_ENV"
+          echo "RUSTDOC=$compiler_dir/rustdoc" >> "$GITHUB_ENV"
+          "$compiler_bin" -Vv > "$e/compiler.txt"
+          "$compiler_dir/cargo" -V > "$e/cargo.txt"
+          python .github/scripts/u5-current-diagnostic.py snapshot "$e/source-before.sha256"
+      - name: U5 exact46 and quality
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u5-current-evidence
+          set +e
+          cargo test --locked -p paludarium-kernel -p paludarium-host -p paludarium-runtime -p paludarium-mmu --lib u5_tests:: 2>&1 | tee "$e/lib.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/lib-exit.txt"
+          test "$status" = 0
+          python .github/scripts/u5-current-diagnostic.py lib "$e/lib.log"
+          printf '0\n' > "$e/lib-validation-exit.txt"
+          set +e
+          cargo fmt --all -- --check 2>&1 | tee "$e/fmt.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/fmt-exit.txt"
+          test "$status" = 0
+          set +e
+          cargo clippy --locked --workspace --all-targets -- -D warnings 2>&1 | tee "$e/clippy.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/clippy-exit.txt"
+          test "$status" = 0
+          cargo install --locked --version 0.20.2 cargo-deny
+          cargo deny --version > "$e/deny-version.txt"
+          set +e
+          cargo deny check advisories 2>&1 | tee "$e/deny-advisories.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/deny-advisories-exit.txt"
+          test "$status" = 0
+          set +e
+          cargo deny check bans 2>&1 | tee "$e/deny-bans.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/deny-bans-exit.txt"
+          test "$status" = 0
+          set +e
+          cargo deny check licenses 2>&1 | tee "$e/deny-licenses.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/deny-licenses-exit.txt"
+          test "$status" = 0
+          set +e
+          cargo deny check sources 2>&1 | tee "$e/deny-sources.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/deny-sources-exit.txt"
+          test "$status" = 0
+      - name: Audit unchanged inputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u5-current-evidence
+          python .github/scripts/u5-current-diagnostic.py snapshot "$e/source-after.sha256" --compare "$e/source-before.sha256"
+          printf '0\n' > "$e/source-compare-exit.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u5-current-platform-${{ matrix.os }}
+          path: |
+            target/u5-current-evidence/
+            target/u5-diff/
+            fuzz/artifacts/
+          retention-days: 7
+  sanitizer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [kernel_threads_u5, kernel_futex_u5]
+    container:
+      image: rust:1-bookworm
+      options: --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined --ulimit=stack=-1
+    env:
+      ASAN_OPTIONS: detect_leaks=1
+      LSAN_OPTIONS: suppressions=/work/fuzz/lsan.supp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+        with:
+          persist-credentials: false
+      - name: Actualcompiler and complete input binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u5-current-evidence
+          mkdir -p "$e"
+          ln -s "$GITHUB_WORKSPACE" /work
+          rustup toolchain install nightly-2026-10-10 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview
+          compiler_bin="$(rustup which --toolchain nightly-2026-10-10 rustc)"
+          compiler_dir="${compiler_bin%/*}"
+          echo "$compiler_dir" >> "$GITHUB_PATH"
+          echo "RUSTC=$compiler_bin" >> "$GITHUB_ENV"
+          echo "RUSTDOC=$compiler_dir/rustdoc" >> "$GITHUB_ENV"
+          "$compiler_bin" -Vv > "$e/compiler.txt"
+          "$compiler_dir/cargo" -V > "$e/cargo.txt"
+          "$compiler_dir/cargo" install --locked --version 0.13.2 cargo-fuzz
+          cargo fuzz --version > "$e/fuzz-version.txt"
+          python .github/scripts/u5-current-diagnostic.py snapshot "$e/source-before.sha256"
+      - name: Current locked build and600secs ASanLSan
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /work
+          e=target/u5-current-evidence
+          set +e
+          cargo check --locked --manifest-path fuzz/Cargo.toml --bins 2>&1 | tee "$e/fuzz-check.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/fuzz-check-exit.txt"
+          test "$status" = 0
+          printf 'ASAN_OPTIONS=%s\nLSAN_OPTIONS=%s\nseed=1\ntimeout=30\nrss_limit_mb=2048\nmax_total_time=600\nsan=address\n' "$ASAN_OPTIONS" "$LSAN_OPTIONS" > "$e/settings.txt"
+          sha256sum fuzz/lsan.supp > "$e/suppression.sha256"
+          date -u +%FT%TZ > "$e/start.txt"
+          set +e
+          cargo fuzz run --fuzz-dir fuzz --sanitizer address '${{ matrix.target }}' -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048 2>&1 | tee "$e/fuzz.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/fuzz-exit.txt"
+          test "$status" = 0
+          date -u +%FT%TZ > "$e/end.txt"
+          binary="fuzz/target/x86_64-unknown-linux-gnu/release/${{ matrix.target }}"
+          sha256sum "$binary" > "$e/binary.sha256"
+          nm -a "$binary" > "$e/symbols.txt"
+          grep -q __asan_init "$e/symbols.txt"
+          grep -q __lsan "$e/symbols.txt"
+          printf '0\n' > "$e/instrumentation-exit.txt"
+      - name: Audit unchanged inputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u5-current-evidence
+          python .github/scripts/u5-current-diagnostic.py snapshot "$e/source-after.sha256" --compare "$e/source-before.sha256"
+          printf '0\n' > "$e/source-compare-exit.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u5-current-sanitizer-${{ matrix.target }}
+          path: |
+            target/u5-current-evidence/
+            target/u5-diff/
+            fuzz/artifacts/
+          retention-days: 7
