@@ -445,6 +445,16 @@ impl AddressSpaceData {
     }
 
     fn read_with(&self, addr: GuestAddr, buf: &mut [u8], access: Access) -> Result<(), Fault> {
+        {
+            let directory = self.read_directory();
+            self.check(&directory, addr, buf.len(), access)?;
+            if chunks(addr, buf.len()).all(|(page, _, _)| lookup(&directory, page).is_some()) {
+                self.load(&directory, addr, buf);
+                return Ok(());
+            }
+        }
+        // A lazy read needs the exclusive directory only to install logical
+        // zero pages. Revalidate after acquiring it, as on the write slow path.
         let mut directory = self.write_directory();
         self.check(&directory, addr, buf.len(), access)?;
         // A successful lazy read installs the logical zero-page entry without
@@ -460,9 +470,14 @@ impl AddressSpaceData {
                 }
             }
         }
+        self.load(&directory, addr, buf);
+        Ok(())
+    }
+
+    fn load(&self, directory: &Directory, addr: GuestAddr, buf: &mut [u8]) {
         for (page, offset, range) in chunks(addr, buf.len()) {
             let dst = &mut buf[range];
-            match lookup(&directory, page).and_then(|p| p.frame.get()) {
+            match lookup(directory, page).and_then(|p| p.frame.get()) {
                 Some(frame) => {
                     for (d, s) in dst.iter_mut().zip(&frame[offset..]) {
                         *d = s.load(Ordering::Relaxed);
@@ -471,7 +486,6 @@ impl AddressSpaceData {
                 None => dst.fill(0),
             }
         }
-        Ok(())
     }
 
     fn store(&self, directory: &Directory, addr: GuestAddr, buf: &[u8]) {
@@ -1319,3 +1333,6 @@ mod tests {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod u2_tests;
+
+#[cfg(test)]
+mod u11_tests;
