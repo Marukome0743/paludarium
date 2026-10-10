@@ -38,7 +38,13 @@ class MetadataTests(unittest.TestCase):
 
     def test_symlink_target_without_following(self):
         (self.root / 'link').symlink_to('missing')
-        self.assertEqual(MODULE.snapshot_metadata(self.root)['link'], {'kind': 'symlink', 'mode': stat.S_IMODE((self.root / 'link').lstat().st_mode), 'target': 'missing'})
+        self.assertEqual(MODULE.snapshot_metadata(self.root)['link'], {'kind': 'symlink', 'mode': stat.S_IMODE((self.root / 'link').lstat().st_mode), 'target': 'missing', 'mtime_ns': (self.root / 'link').lstat().st_mtime_ns})
+
+    def test_initial_epoch_preparation(self):
+        (self.root / 'file').write_bytes(b'content')
+        receipt = MODULE.prepare_epoch_fixture(self.root)
+        self.assertEqual(receipt['paths'], ['file'])
+        self.assertEqual(MODULE.snapshot_metadata(self.root)['file']['mtime_ns'], 0)
 
     def test_nested_directory(self):
         (self.root / 'nested').mkdir()

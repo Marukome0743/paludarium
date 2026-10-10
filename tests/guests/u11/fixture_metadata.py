@@ -3,6 +3,16 @@ import hashlib
 import base64
 import pathlib
 import stat
+import os
+
+
+def prepare_epoch_fixture(directory):
+    paths = []
+    for path in sorted(pathlib.Path(directory).rglob('*')):
+        if path.is_file() and not path.is_symlink():
+            os.utime(path, ns=(0, 0))
+            paths.append(str(path.relative_to(directory)))
+    return {'initial_regular_file_mtime_ns': 0, 'paths': paths}
 
 
 def snapshot_metadata(directory):
@@ -12,7 +22,7 @@ def snapshot_metadata(directory):
         relative = str(path.relative_to(directory))
         info = path.lstat()
         kind = stat.S_IFMT(info.st_mode)
-        row = {'mode': stat.S_IMODE(info.st_mode)}
+        row = {'mode': stat.S_IMODE(info.st_mode), 'mtime_ns': info.st_mtime_ns}
         if kind == stat.S_IFDIR:
             row['kind'] = 'directory'
         elif kind == stat.S_IFLNK:

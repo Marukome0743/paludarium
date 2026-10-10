@@ -14,7 +14,7 @@ from metadata import fixture_inputs
 HERE = pathlib.Path(__file__).resolve().parent
 
 
-def observe(guests, output, config, *, extra_snapshot=None):
+def observe(guests, output, config, *, extra_snapshot=None, prepare_fixture=None):
     if platform.system() != 'Linux' or platform.machine() != 'x86_64':
         raise RuntimeError('native oracle requires x86-64 Linux')
     if os.readlink('/proc/self/ns/net') == os.readlink('/proc/1/ns/net'):
@@ -31,6 +31,8 @@ def observe(guests, output, config, *, extra_snapshot=None):
         env = dict(config['environment'], HOME=str(root / 'home'), TMPDIR=str(root / 'tmp'))
         (root / 'home').mkdir(); (root / 'tmp').mkdir()
         observations['fixture_root'] = str(root)
+        if prepare_fixture is not None:
+            observations['guest_environment'] = env
         for name in config['probe'] + ['all', 'environment']:
             args = [] if name == 'all' else [name]
             row = run([str(guests / 'probe')] + args, cwd=root, env=env)
@@ -42,6 +44,8 @@ def observe(guests, output, config, *, extra_snapshot=None):
             else:
                 probe_pass(row, config['probe'] if name == 'all' else [name])
         shutil.copytree(HERE / 'fixtures', root / 'fixture')
+        if prepare_fixture is not None:
+            observations['fixture_preparation'] = prepare_fixture(root / 'fixture')
         app = root / 'fixture/app'
         observations['fixture_input_modes'] = fixture_inputs(root / 'fixture')
         for case in config['aube']:
