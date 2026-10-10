@@ -7,6 +7,7 @@ import sys
 import tempfile
 
 from comparison import compare, probe_pass, reproduced
+from comparison_args import comparison_config, compare_original
 from evidence import snapshot
 from native import observe
 from runner import run
@@ -45,15 +46,21 @@ def operation(executable, binary, args, directory, environment, fixture=None, mo
     return row
 
 
-def differential(executable):
-    config = json.loads((HERE / 'cases.json').read_text())
+def differential(executable, *, original_argv=False):
+    original = json.loads((HERE / 'cases.json').read_text())
+    config = original if original_argv else comparison_config(original)
+    compare_rows = compare_original if original_argv else compare
     guests = pathlib.Path(os.environ.get('PALUDARIUM_U10_GUEST_DIR', ROOT / 'target/guests/u10')).resolve()
     output = ROOT / 'target/u10/differential'
+    if original_argv:
+        output = output / 'original-argv'
     output.mkdir(parents=True, exist_ok=True)
     observe(guests, output / 'native', config)
     native = json.loads((output / 'native/observations.json').read_text())
     observations = {'schema': 1, 'binary_hashes': native['binary_hashes'], 'rows': {},
                     'native_complete': native['native_complete'],
+                    'case_config': config,
+                    'comparison': 'original-argv stable outcomes; raw stderr retained' if original_argv else 'same append-only reporter; stdout/stderr/exit',
                     'mount_scope': 'temporary fixture/app and fixture/outside only'}
     operations = pathlib.Path(tempfile.mkdtemp(prefix='operations-', dir=output))
     observations['operation_records'] = str(operations)
@@ -85,7 +92,7 @@ def differential(executable):
             row = operation(executable, guests / 'aube', case['args'], operations / name,
                             config['environment'], fixture)
             store(name, row)
-            compare(native['rows'][case['name']], row, str(pathlib.Path(native['fixture_root']) / 'fixture/app'), '/')
+            compare_rows(native['rows'][case['name']], row, str(pathlib.Path(native['fixture_root']) / 'fixture/app'), '/')
         rows = {}
         # A root mount routes /tmp and /home descendants into this bounded
         # fixture. Prepare the same runtime directories as the native oracle.
@@ -98,7 +105,7 @@ def differential(executable):
                             config['environment'], fixture, mounted=True)
             store(case['name'], row)
             rows[case['name']] = row
-            compare(native['rows'][case['name']], row, str(pathlib.Path(native['fixture_root']) / 'fixture/app'), '/')
+            compare_rows(native['rows'][case['name']], row, str(pathlib.Path(native['fixture_root']) / 'fixture/app'), '/')
         reproduced(rows)
         observations['differential_complete'] = True
         (output / 'observations.json').write_text(json.dumps(observations, indent=2) + '\n')
@@ -107,3 +114,4 @@ def differential(executable):
 
 if __name__ == '__main__':
     differential(pathlib.Path(sys.argv[1]).resolve())
+    differential(pathlib.Path(sys.argv[1]).resolve(), original_argv=True)
