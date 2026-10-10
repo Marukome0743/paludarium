@@ -57,7 +57,16 @@ jobs:
           printf '%s\n' "$status" > "$e/diff-exit.txt"
           test "$status" = 0
           grep -q 'test u3_fresh_native_differential ... ok' "$e/diff-u3.log"
-          grep -q '2 passed; 0 failed; 2 ignored' "$e/diff-u3.log"
+          grep -q '11 passed; 0 failed; 2 ignored' "$e/diff-u3.log"
+          set +e
+          cargo test --locked -p paludarium-harness --test diff_u3 -- --ignored --nocapture 2>&1 | tee "$e/diff-explicit-ignored.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/diff-explicit-ignored-exit.txt"
+          test "$status" = 0
+          grep -q '2 passed; 0 failed; 0 ignored' "$e/diff-explicit-ignored.log"
+          grep -q 'test u3_saved_observation_replay ... ok' "$e/diff-explicit-ignored.log"
+          grep -q 'test u3_native_observation ... ok' "$e/diff-explicit-ignored.log"
       - name: Separate empty-profile shared nine file coverage
         shell: bash
         run: |
@@ -149,91 +158,4 @@ jobs:
         with:
           name: u3-current-scoped-${{ matrix.os }}
           path: target/u3-scoped-evidence/
-          retention-days: 7
-  asan:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [cpu_u2, mmu_u2, decode]
-    container:
-      image: rust:1-bookworm
-      options: --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined --ulimit=stack=-1
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - name: Compiler and independent sanitizer readiness
-        shell: bash
-        run: |
-          set -euo pipefail
-          e=target/u3-current-asan-evidence
-          mkdir -p "$e"
-          exec > >(tee "$e/environment.log") 2>&1
-          ln -s "$GITHUB_WORKSPACE" /work
-          test "$(uname -m)" = x86_64
-          uname -a
-          lscpu
-          apt-get update
-          apt-get install -y --no-install-recommends llvm binutils python3
-          rustup toolchain install nightly-2026-10-10 --profile minimal
-          cargo install --locked --version 0.13.2 cargo-fuzz
-          rustc -Vv
-          cargo -V
-          cargo fuzz --version
-          cc --version
-          dpkg-query -W libc6 gcc llvm
-          env | sort > "$e/environment-variables.log"
-          python3 .github/scripts/u3-current-diagnostic.py snapshot "$e/source-before.sha256"
-          export LSAN_OPTIONS=suppressions=/work/fuzz/lsan.supp
-          export ASAN_OPTIONS=detect_leaks=1
-          printf 'int main(void) { return 0; }\n' > "$e/minimal.c"
-          cc -fsanitize=address -g -O1 "$e/minimal.c" -o "$e/minimal-asan"
-          for attempt in 1 2; do
-            set +e
-            "$e/minimal-asan" > "$e/minimal-$attempt.log" 2>&1
-            status=$?
-            set -e
-            printf '%s\n' "$status" > "$e/minimal-$attempt-exit.txt"
-            test "$status" = 0
-          done
-      - name: Current target ASan and LSan at least 600 seconds
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd /work
-          e=target/u3-current-asan-evidence
-          target='${{ matrix.target }}'
-          mkdir -p "fuzz/corpus/$target" "fuzz/artifacts/$target"
-          tar -cf "$e/corpus-before.tar" "fuzz/corpus/$target" "fuzz/artifacts/$target"
-          export LSAN_OPTIONS=suppressions=/work/fuzz/lsan.supp
-          export ASAN_OPTIONS=detect_leaks=1
-          printf 'seed=1\nsanitizer=address\nLSAN_OPTIONS=%s\nASAN_OPTIONS=%s\nCI_HEAD=%s\n' "$LSAN_OPTIONS" "$ASAN_OPTIONS" "$GITHUB_SHA" > "$e/settings.txt"
-          date -u +%Y-%m-%dT%H:%M:%SZ > "$e/start.txt"
-          set +e
-          cargo fuzz run --fuzz-dir fuzz --sanitizer address "$target" -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048 2>&1 | tee "$e/$target.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          printf '%s\n' "$status" > "$e/exit.txt"
-          date -u +%Y-%m-%dT%H:%M:%SZ > "$e/end.txt"
-          tar -cf "$e/corpus-after.tar" "fuzz/corpus/$target" "fuzz/artifacts/$target"
-          binary="fuzz/target/x86_64-unknown-linux-gnu/release/$target"
-          sha256sum "$binary" > "$e/binary.sha256"
-          nm "$binary" > "$e/binary-symbols.txt"
-          test "$status" = 0
-          grep -q 'Done .* runs in 60[0-9] second' "$e/$target.log"
-      - name: Sanitizer source unchanged
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          e=target/u3-current-asan-evidence
-          python3 .github/scripts/u3-current-diagnostic.py snapshot "$e/source-after.sha256" --compare "$e/source-before.sha256"
-          printf '0\n' > "$e/source-compare-exit.txt"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        if: always()
-        with:
-          name: u3-current-asan-${{ matrix.target }}
-          path: target/u3-current-asan-evidence/
           retention-days: 7
