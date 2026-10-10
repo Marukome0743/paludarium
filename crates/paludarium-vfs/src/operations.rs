@@ -77,7 +77,7 @@ impl HostFs for MemFs {
                 unreachable!()
             };
             b.clear();
-            n.mtime_ns = modified;
+            n.mtime_ns = i128::from(modified);
         }
         drop(n);
         let owner = t.owner;

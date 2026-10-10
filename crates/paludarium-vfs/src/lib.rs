@@ -110,7 +110,7 @@ struct Node {
     mode: u32,
     links: u64,
     locks: BTreeMap<u64, u32>,
-    mtime_ns: u64,
+    mtime_ns: i128,
     clock: Arc<dyn Fn() -> Result<u64, Errno> + Send + Sync>,
 }
 impl Node {
@@ -148,7 +148,7 @@ impl Tree {
         self.nodes.get(&id).cloned().ok_or(Errno::ENOENT)
     }
     fn allocate(&mut self, kind: Kind, mode: u32) -> Result<u64, Errno> {
-        let mtime_ns = (self.clock)()?;
+        let mtime_ns = i128::from((self.clock)()?);
         let links = if matches!(kind, Kind::Dir(_)) { 2 } else { 1 };
         let id = self.next;
         self.next += 1;

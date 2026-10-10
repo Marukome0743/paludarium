@@ -24,6 +24,9 @@ version = "0.0.0"
 edition = "2024"
 license = "Apache-2.0"
 rust-version = "1.101"
+repository = "https://github.com/aletheia-works/paludarium"
+readme = "README.md"
+license-file = "LICENSE"
 
 [workspace.dependencies]
 paludarium-types = { path = "crates/paludarium-types", version = "0.0.0" }

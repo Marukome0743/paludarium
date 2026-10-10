@@ -14,8 +14,15 @@ try {
   assert.throws(() => second.run({ program: "/file", filesystem }), /another launcher/);
   await assert.rejects(filesystem.remove("/", { recursive: true }), /removal/);
   await filesystem.remove("/file"); assert.equal((await filesystem.snapshot()).some(entry => entry.path === "/file"), false);
-  await filesystem.dispose(); await filesystem.dispose();
+  await Promise.all([filesystem.dispose(), filesystem.dispose()]); await filesystem.dispose();
   await assert.rejects(filesystem.snapshot(), /disposed/);
+  const large = await first.createFileSystem({ files: {
+    "/large-a": new Uint8Array(34 * 1024 * 1024),
+    "/large-b": new Uint8Array(34 * 1024 * 1024),
+  } });
+  await assert.rejects(large.snapshot(), /snapshot/);
+  await Promise.all([large.dispose(), large.dispose()]); await large.dispose();
+  await assert.rejects(large.snapshot(), /disposed/);
   assert.throws(() => first.run({ program: "/file", filesystem }), /another launcher/);
   assert.throws(() => first.run({ program: "/file", tty: { columns: -1, rows: 24 } }), /terminal/);
   assert.throws(() => first.run({ program: "/file", cwd: "relative" }), /current directory/);
@@ -36,8 +43,19 @@ try {
   const drain = async stream => { const reader = stream.getReader(); while (!(await reader.read()).done) {} };
   const streams = Promise.all([drain(guest.stdout), drain(guest.stderr)]);
   await assert.rejects(active.snapshot(), /active/); await assert.rejects(active.remove("/infinite"), /removal/);
-  await assert.rejects(active.dispose(), /active/);
+  const busyDisposals = await Promise.allSettled([active.dispose(), active.dispose()]);
+  assert.ok(busyDisposals.every(result => result.status === "rejected" && /active/.test(result.reason.message)));
   guest.kill(); assert.equal((await guest.exited).kind, "signaled"); await streams;
-  await active.snapshot(); await active.dispose();
-  console.log("U11 API: modes, ownership, disposal, busy lease, terminal validation, kill/release PASS");
+  await active.snapshot(); await Promise.all([active.dispose(), active.dispose()]); await active.dispose();
+  const diagnostics = await first.diagnostics();
+  const probe = diagnostics.sharedProbe;
+  assert.equal(probe.value, "2000");
+  assert.equal(probe.allocations.length, 2);
+  assert.ok(probe.allocations.every(row => row.allocations === 128 && row.atomicAdds === 1000));
+  assert.equal(probe.workers.length, 2);
+  assert.equal(probe.notified, 1); assert.equal(probe.waited, 0);
+  assert.equal(new Set(probe.workers.map(worker => worker.threadToken)).size, 2);
+  assert.equal(new Set(probe.workers.map(worker => worker.tlsAfter)).size, 2);
+  assert.ok(probe.workers.every(worker => worker.token === 73 && worker.tlsAfter > 0));
+  console.log("U11 API: modes, ownership, concurrent disposal, large FS, busy rejection/retry, terminal validation, kill/release PASS");
 } finally { clearTimeout(deadline); await first.dispose(); await second.dispose(); }

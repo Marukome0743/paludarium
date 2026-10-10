@@ -869,6 +869,14 @@ pub struct AddressSpace {
     serialization: Arc<Mutex<()>>,
 }
 
+/// Owned instruction bytes and their epoch, captured under one MMU lock.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CodeSnapshot {
+    pub address_space: u64,
+    pub generation: u64,
+    pub bytes: Vec<u8>,
+}
+
 struct AddressSpaceGuard<'a> {
     data: MutexGuard<'a, AddressSpaceData>,
     _serialization: MutexGuard<'a, ()>,
@@ -888,6 +896,8 @@ impl std::ops::DerefMut for AddressSpaceGuard<'_> {
 #[cfg(test)]
 mod u8_tests;
 
+#[cfg(test)]
+mod u14_tests;
 #[cfg(test)]
 mod u5_tests;
 impl Default for AddressSpace {
@@ -969,6 +979,41 @@ impl AddressSpace {
     #[must_use]
     pub fn code_generation(&self) -> u64 {
         self.locked().code_generation()
+    }
+    /// Reads cache identity and generation under the same serialization guard.
+    #[must_use]
+    pub fn code_epoch(&self) -> (u64, u64) {
+        let data = self.locked();
+        (data.id(), data.code_generation())
+    }
+    /// Captures executable bytes without a fetch/generation race. JIT blocks
+    /// are bounded to 960 bytes; callers cannot request unbounded allocations.
+    pub fn code_snapshot(&self, address: GuestAddr, maximum: usize) -> Result<CodeSnapshot, Fault> {
+        let data = self.locked();
+        let mut bytes = vec![0; maximum.min(960)];
+        let count = data.fetch_partial(address, &mut bytes)?;
+        bytes.truncate(count);
+        Ok(CodeSnapshot {
+            address_space: data.id(),
+            generation: data.code_generation(),
+            bytes,
+        })
+    }
+    /// Checks the captured epoch and serializes translated execution with all
+    /// memory and mapping changes, including another process's shared writes.
+    /// The callback must not reenter this AddressSpace: it may only execute
+    /// register-only translated code against its private CPU scratch buffer.
+    pub fn with_code_epoch<T>(
+        &self,
+        address_space: u64,
+        generation: u64,
+        execute: impl FnOnce() -> T,
+    ) -> Option<T> {
+        let data = self.locked();
+        if data.id() != address_space || data.code_generation() != generation {
+            return None;
+        }
+        Some(execute())
     }
     /// A consistent mapping snapshot; borrowed entries cannot outlive the lock.
     pub fn mappings(&self) -> impl Iterator<Item = Mapping> {

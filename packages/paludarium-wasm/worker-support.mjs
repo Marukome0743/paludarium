@@ -15,11 +15,14 @@ export function listen(worker, message, error) {
   else { worker.addEventListener("message", event => message(event.data)); worker.addEventListener("error", event => error(new Error(event.message))); }
 }
 export async function stopWorker(worker) { await worker.terminate(); }
-export function imports(memory, { spawnTask } = {}) {
+export function imports(memory, { spawnTask, cost } = {}) {
   const sleepWord = new Int32Array(new SharedArrayBuffer(4));
+  const jit = jitImports(memory, cost);
   return {
     env: { memory },
     paludarium: {
+      jit_prepare: (...arguments_) => jit.prepare(...arguments_),
+      jit_execute: (...arguments_) => jit.execute(...arguments_),
       spawn_task(handle) {
         try { if (!spawnTask || !Number.isInteger(handle) || handle <= 0) return -1; spawnTask(handle); return 0; }
         catch { return -1; }
@@ -77,3 +80,4 @@ export function takeBuffer(exports, id, memory) {
     return bytes;
   } finally { exports.buffer_drop(id); }
 }
+import { jitImports } from "./jit-support.mjs";

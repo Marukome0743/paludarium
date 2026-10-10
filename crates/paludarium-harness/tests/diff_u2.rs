@@ -34,6 +34,7 @@ cases!(
     u2_control_forms => "insn-u2-control",
     u2_bmi_forms => "insn-u2-bmi",
     u2_frame_forms => "insn-u2-frame",
+    u2_frame_caller_boundaries => "insn-u2-frame-boundary",
     u2_segment_atomic_forms => "insn-u2-segment-atomic",
 );
 

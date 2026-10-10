@@ -1,5 +1,7 @@
 //! Native filesystem operations relative to a retained directory capability.
 use crate::{DirectoryEntry, FileHandle, FileStat, HostFs};
+#[cfg(windows)]
+use cap_fs_ext::OpenOptionsMaybeDirExt;
 use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt};
 use cap_std::fs::{Dir, OpenOptions};
 use fs2::FileExt;
@@ -62,15 +64,17 @@ fn bytes(p: &Path) -> Vec<u8> {
         p.to_string_lossy().as_bytes().to_vec()
     }
 }
+fn mtime_ns(time: std::time::SystemTime) -> Result<i128, Errno> {
+    match time.duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => i128::try_from(duration.as_nanos()).map_err(|_| Errno(75)),
+        Err(before) => i128::try_from(before.duration().as_nanos())
+            .ok()
+            .and_then(i128::checked_neg)
+            .ok_or(Errno(75)),
+    }
+}
 fn stat(m: std::fs::Metadata) -> Result<FileStat, Errno> {
-    let mtime_ns = u64::try_from(
-        m.modified()
-            .map_err(|_| Errno::EIO)?
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| Errno::EIO)?
-            .as_nanos(),
-    )
-    .map_err(|_| Errno::EIO)?;
+    let mtime_ns = mtime_ns(m.modified().map_err(|_| Errno::EIO)?)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -85,14 +89,17 @@ fn stat(m: std::fs::Metadata) -> Result<FileStat, Errno> {
     #[cfg(not(unix))]
     {
         #[cfg(windows)]
-        let links = {
+        let (inode, links) = {
             use std::os::windows::fs::MetadataExt;
-            u64::from(m.number_of_links().ok_or(Errno::EIO)?)
+            (
+                m.file_index().ok_or(Errno::EIO)?,
+                u64::from(m.number_of_links().ok_or(Errno::EIO)?),
+            )
         };
         #[cfg(not(windows))]
-        let links = 1;
+        let (inode, links) = (0, 1);
         Ok(FileStat {
-            inode: 0,
+            inode,
             size: m.len(),
             mode: if m.is_dir() {
                 0o040755
@@ -209,6 +216,10 @@ impl HostFs for NativeFs {
             return Err(Errno::EINVAL);
         }
         let mut o = OpenOptions::new();
+        // Windows requires an explicit directory-capable open. The existing
+        // post-open metadata check still enforces Linux O_DIRECTORY.
+        #[cfg(windows)]
+        o.maybe_dir(f & 65536 != 0);
         #[cfg(unix)]
         {
             use cap_std::fs::OpenOptionsExt;
@@ -300,7 +311,26 @@ impl HostFs for NativeFs {
         }
         #[cfg(windows)]
         {
-            self.root.symlink_file(path(a)?, path(b)?).map_err(err)
+            let target = path(a)?;
+            let link = path(b)?;
+            // Windows records whether a reparse point targets a directory.
+            // Resolve the target from the link's parent through the retained
+            // capability; never inspect an ambient path to select its type.
+            let resolved = link.parent().unwrap_or(Path::new("")).join(&target);
+            // Creating a link does not access its target. Keep unresolvable
+            // targets as file links, including cross-mount guest targets which
+            // MountedFs resolves separately. Subsequent Host access still uses
+            // the retained capability and rejects targets outside that root.
+            let directory = self
+                .root
+                .metadata(resolved)
+                .is_ok_and(|metadata| metadata.is_dir());
+            if directory {
+                self.root.symlink_dir(target, link)
+            } else {
+                self.root.symlink_file(target, link)
+            }
+            .map_err(err)
         }
     }
     fn readlink(&self, p: &[u8]) -> Result<Vec<u8>, Errno> {
@@ -346,15 +376,7 @@ impl HostFs for NativeFs {
     }
 }
 fn cap_stat(m: cap_std::fs::Metadata) -> Result<FileStat, Errno> {
-    let mtime_ns = u64::try_from(
-        m.modified()
-            .map_err(|_| Errno::EIO)?
-            .into_std()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| Errno::EIO)?
-            .as_nanos(),
-    )
-    .map_err(|_| Errno::EIO)?;
+    let mtime_ns = mtime_ns(m.modified().map_err(|_| Errno::EIO)?.into_std())?;
     #[cfg(unix)]
     {
         use cap_std::fs::MetadataExt;
@@ -369,14 +391,17 @@ fn cap_stat(m: cap_std::fs::Metadata) -> Result<FileStat, Errno> {
     #[cfg(not(unix))]
     {
         #[cfg(windows)]
-        let links = {
+        let (inode, links) = {
             use cap_std::fs::MetadataExt;
-            u64::from(m.number_of_links().ok_or(Errno::EIO)?)
+            (
+                m.file_index().ok_or(Errno::EIO)?,
+                u64::from(m.number_of_links().ok_or(Errno::EIO)?),
+            )
         };
         #[cfg(not(windows))]
-        let links = 1;
+        let (inode, links) = (0, 1);
         Ok(FileStat {
-            inode: 0,
+            inode,
             size: m.len(),
             mode: if m.is_dir() {
                 0o040755
@@ -393,8 +418,141 @@ fn cap_stat(m: cap_std::fs::Metadata) -> Result<FileStat, Errno> {
 #[cfg(test)]
 mod u7_tests {
     use super::*;
+    #[test]
+    fn u7_mtime_system_time_before_epoch() {
+        for ns in [1, 99, 100, 101, 500_000_000, 1_000_000_000] {
+            let represented_ns = if cfg!(windows) { ns / 100 * 100 } else { ns };
+            assert_eq!(
+                mtime_ns(std::time::UNIX_EPOCH - std::time::Duration::from_nanos(ns)),
+                Ok(-i128::from(represented_ns))
+            );
+        }
+    }
+    #[test]
+    fn u7_mtime_system_time_epoch_positive_range() {
+        for ns in [0, 1, 99, 100, 101, 1_500_000_000, u64::MAX] {
+            let represented_ns = if cfg!(windows) { ns / 100 * 100 } else { ns };
+            assert_eq!(
+                mtime_ns(std::time::UNIX_EPOCH + std::time::Duration::from_nanos(ns)),
+                Ok(i128::from(represented_ns))
+            );
+        }
+    }
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
+    // Fixture-only policy: open descendants can temporarily deny a Windows
+    // parent-directory rename (independently verified by the test below).
+    // Never change NativeFs error mapping or retry permission errors elsewhere.
+    fn retry_fixture_exchange(
+        name: &str,
+        directory_rename: bool,
+        deadline: std::time::Instant,
+        conflicts: &AtomicU64,
+        mut operation: impl FnMut() -> std::io::Result<()>,
+    ) -> std::io::Result<()> {
+        loop {
+            match operation() {
+                Ok(()) => return Ok(()),
+                Err(error)
+                    if error.raw_os_error() == Some(32)
+                        || (directory_rename && error.raw_os_error() == Some(5)) =>
+                {
+                    conflicts.fetch_add(1, Ordering::Relaxed);
+                    if std::time::Instant::now() >= deadline {
+                        return Err(error);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(error) => {
+                    eprintln!(
+                        "U7_WINDOWS_EXCHANGE operation={name} os_error={:?} error={error}",
+                        error.raw_os_error()
+                    );
+                    return Err(error);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn u7_fixture_directory_rename_retries_transient_handle_denial() {
+        for code in [5, 32] {
+            let conflicts = AtomicU64::new(0);
+            let mut calls = 0;
+            retry_fixture_exchange(
+                "directory-rename",
+                true,
+                std::time::Instant::now() + std::time::Duration::from_secs(1),
+                &conflicts,
+                || {
+                    calls += 1;
+                    if calls == 1 {
+                        Err(std::io::Error::from_raw_os_error(code))
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
+            .unwrap();
+            assert_eq!(calls, 2);
+            assert_eq!(conflicts.load(Ordering::Relaxed), 1);
+        }
+    }
+
+    #[test]
+    fn u7_fixture_persistent_directory_permission_is_deadline_failure() {
+        let conflicts = AtomicU64::new(0);
+        let mut calls = 0;
+        let error = retry_fixture_exchange(
+            "directory-rename",
+            true,
+            std::time::Instant::now(),
+            &conflicts,
+            || {
+                calls += 1;
+                Err(std::io::Error::from_raw_os_error(5))
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(5));
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn u7_fixture_nonrename_permission_is_not_retried() {
+        let conflicts = AtomicU64::new(0);
+        let mut calls = 0;
+        let error = retry_fixture_exchange(
+            "remove-symlink",
+            false,
+            std::time::Instant::now() + std::time::Duration::from_secs(1),
+            &conflicts,
+            || {
+                calls += 1;
+                Err(std::io::Error::from_raw_os_error(5))
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(5));
+        assert_eq!(calls, 1);
+        assert_eq!(conflicts.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn u7_fixture_unrelated_errors_propagate_unchanged() {
+        let conflicts = AtomicU64::new(0);
+        let error = retry_fixture_exchange(
+            "directory-rename",
+            true,
+            std::time::Instant::now() + std::time::Duration::from_secs(1),
+            &conflicts,
+            || Err(std::io::Error::from_raw_os_error(13)),
+        )
+        .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(13));
+        assert_eq!(conflicts.load(Ordering::Relaxed), 0);
+    }
+
     struct Fixture {
         base: PathBuf,
         fs: Option<NativeFs>,
@@ -430,6 +588,25 @@ mod u7_tests {
         let mut b = [0; 3];
         assert_eq!(f.read(&mut b), Ok(3));
         assert_eq!(&b, b"abc");
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn u7_mtime_retained_file_and_path_stat_pre_epoch() {
+        let x = Fixture::new();
+        let handle = x.fs().open(b"mtime", 66, 0o600).unwrap();
+        let file = std::fs::File::open(x.base.join("root/mtime")).unwrap();
+        for ns in [1, 500_000_000, 1_000_000_000] {
+            file.set_times(
+                std::fs::FileTimes::new()
+                    .set_modified(std::time::UNIX_EPOCH - std::time::Duration::from_nanos(ns)),
+            )
+            .unwrap();
+            assert_eq!(handle.stat().unwrap().mtime_ns, -i128::from(ns));
+            assert_eq!(
+                x.fs().metadata(b"mtime", true).unwrap().mtime_ns,
+                -i128::from(ns)
+            );
+        }
     }
     #[test]
     fn u7_native_links() {
@@ -606,6 +783,74 @@ mod u7_tests {
 
     #[cfg(windows)]
     #[test]
+    fn u7_native_windows_recreated_symlink_has_distinct_handle_identity() {
+        use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+        let x = Fixture::new();
+        let outside = x.base.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("sentinel"), b"outside").unwrap();
+        let link = x.base.join("root/pending-link");
+        std::os::windows::fs::symlink_dir(&outside, &link).unwrap();
+        // Retain the old reparse-point handle across name deletion/recreation.
+        // Windows CI permits recreation with DELETE sharing; validate identity
+        // and cleanup rather than assuming a delete-pending permission failure.
+        let handle = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(7) // FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
+            .custom_flags(0x0220_0000) // BACKUP_SEMANTICS | OPEN_REPARSE_POINT
+            .open(&link)
+            .unwrap();
+        let old_id = handle.metadata().unwrap().file_index().unwrap();
+        std::fs::remove_dir(&link).unwrap();
+        std::os::windows::fs::symlink_dir(&outside, &link).unwrap();
+        let replacement = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(7)
+            .custom_flags(0x0220_0000)
+            .open(&link)
+            .unwrap();
+        let new_id = replacement.metadata().unwrap().file_index().unwrap();
+        assert_ne!(old_id, new_id, "old handle must not alias replacement link");
+        assert_eq!(handle.metadata().unwrap().file_index(), Some(old_id));
+        drop(handle);
+        assert_eq!(replacement.metadata().unwrap().file_index(), Some(new_id));
+        assert_eq!(std::fs::read_link(&link).unwrap(), outside);
+        assert_eq!(std::fs::read(link.join("sentinel")).unwrap(), b"outside");
+        drop(replacement);
+        std::fs::remove_dir(&link).unwrap();
+        assert_eq!(std::fs::read(outside.join("sentinel")).unwrap(), b"outside");
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 1);
+        let base = x.base.clone();
+        drop(x);
+        assert!(!base.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn u7_native_windows_open_child_blocks_parent_rename_until_close() {
+        let x = Fixture::new();
+        let root = x.base.join("root");
+        x.fs().mkdir(b"parent", 0o700).unwrap();
+        let child = x.fs().open(b"parent/child", 66, 0o600).unwrap();
+        child.write(b"inside").unwrap();
+        let error = std::fs::rename(root.join("parent"), root.join("moved")).unwrap_err();
+        println!(
+            "U7_WINDOWS_OPEN_CHILD_RENAME os_error={:?}",
+            error.raw_os_error()
+        );
+        assert_eq!(error.raw_os_error(), Some(5));
+        assert!(root.join("parent").is_dir());
+        assert!(!root.join("moved").exists());
+        drop(child);
+        std::fs::rename(root.join("parent"), root.join("moved")).unwrap();
+        assert_eq!(std::fs::read(root.join("moved/child")).unwrap(), b"inside");
+        let base = x.base.clone();
+        drop(x);
+        assert!(!base.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn u7_native_windows_symlink_rename_race() {
         use std::sync::{Barrier, atomic::AtomicBool};
         const NAME: &str = "native_fs::u7_tests::u7_native_windows_symlink_rename_race";
@@ -658,49 +903,53 @@ mod u7_tests {
         let stop = Arc::new(AtomicBool::new(false));
         let exchanges = Arc::new(AtomicU64::new(0));
         let sharing_conflicts = Arc::new(AtomicU64::new(0));
+        let active_operation = Arc::new(AtomicU64::new(0));
         let barrier = Arc::new(Barrier::new(2));
         let done = Arc::clone(&stop);
         let count = Arc::clone(&exchanges);
         let conflicts = Arc::clone(&sharing_conflicts);
+        let active = Arc::clone(&active_operation);
         let ready = Arc::clone(&barrier);
         let attacker = std::thread::spawn(move || -> std::io::Result<()> {
-            fn retry_sharing(
-                deadline: std::time::Instant,
-                conflicts: &AtomicU64,
-                mut operation: impl FnMut() -> std::io::Result<()>,
-            ) -> std::io::Result<()> {
-                loop {
-                    match operation() {
-                        Ok(()) => return Ok(()),
-                        Err(error) if error.raw_os_error() == Some(32) => {
-                            conflicts.fetch_add(1, Ordering::Relaxed);
-                            if std::time::Instant::now() >= deadline {
-                                return Err(error);
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(1));
-                        }
-                        Err(error) => return Err(error),
-                    }
-                }
-            }
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
             ready.wait();
             while !done.load(Ordering::Acquire) {
                 // Windows can temporarily deny renaming an open directory.
                 // Count only complete real directory/symlink exchanges.
-                retry_sharing(deadline, &conflicts, || {
-                    std::fs::rename(root.join("pivot"), root.join("held"))
+                retry_fixture_exchange("rename-pivot-to-held", true, deadline, &conflicts, || {
+                    let result = std::fs::rename(root.join("pivot"), root.join("held"));
+                    if result
+                        .as_ref()
+                        .is_err_and(|error| error.raw_os_error() == Some(5))
+                    {
+                        eprintln!(
+                            "U7_WINDOWS_RENAME_CONTEXT active_operation={} pivot_metadata={:?} held_exists={}",
+                            active.load(Ordering::Acquire),
+                            std::fs::symlink_metadata(root.join("pivot"))
+                                .map(|m| (m.is_dir(), m.is_symlink())),
+                            root.join("held").exists()
+                        );
+                    }
+                    result
                 })?;
                 let link = std::os::windows::fs::symlink_dir(&outside, root.join("pivot"));
                 if let Err(error) = link {
+                    eprintln!(
+                        "U7_WINDOWS_EXCHANGE operation=create-pivot-symlink os_error={:?} error={error}",
+                        error.raw_os_error()
+                    );
                     std::fs::rename(root.join("held"), root.join("pivot"))?;
                     return Err(error);
                 }
                 std::thread::yield_now();
-                retry_sharing(deadline, &conflicts, || {
-                    std::fs::remove_dir(root.join("pivot"))
-                })?;
-                retry_sharing(deadline, &conflicts, || {
+                retry_fixture_exchange(
+                    "remove-pivot-symlink",
+                    false,
+                    deadline,
+                    &conflicts,
+                    || std::fs::remove_dir(root.join("pivot")),
+                )?;
+                retry_fixture_exchange("rename-held-to-pivot", true, deadline, &conflicts, || {
                     std::fs::rename(root.join("held"), root.join("pivot"))
                 })?;
                 count.fetch_add(1, Ordering::Release);
@@ -709,16 +958,25 @@ mod u7_tests {
         });
         barrier.wait();
         for _ in 0..1000 {
+            active_operation.store(1, Ordering::Release); // open/write sentinel
             if let Ok(file) = x.fs().open(b"pivot/sentinel", 2, 0) {
                 let _ = file.write(b"inside");
             }
+            active_operation.store(2, Ordering::Release); // metadata
             let _ = x.fs().metadata(b"pivot/sentinel", true);
+            active_operation.store(3, Ordering::Release); // directory iteration
             let _ = x.fs().read_dir(b"pivot");
+            active_operation.store(4, Ordering::Release); // create file
             let _ = x.fs().open(b"pivot/new", 66, 0o600);
+            active_operation.store(5, Ordering::Release); // hard link
             let _ = x.fs().link(b"pivot/sentinel", b"pivot/link");
+            active_operation.store(6, Ordering::Release); // file rename
             let _ = x.fs().rename(b"pivot/new", b"pivot/renamed");
+            active_operation.store(7, Ordering::Release); // unlink renamed file
             let _ = x.fs().unlink(b"pivot/renamed", false);
+            active_operation.store(8, Ordering::Release); // unlink hard link
             let _ = x.fs().unlink(b"pivot/link", false);
+            active_operation.store(0, Ordering::Release);
         }
         stop.store(true, Ordering::Release);
         attacker

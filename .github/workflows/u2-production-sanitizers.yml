@@ -21,7 +21,7 @@ jobs:
       options: --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined --ulimit=stack=-1
     env:
       CARGO_TERM_COLOR: never
-      RUSTUP_TOOLCHAIN: nightly-2026-10-01
+      RUSTUP_TOOLCHAIN: nightly-2026-10-10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -42,11 +42,11 @@ jobs:
           ln -s "$GITHUB_WORKSPACE" /work
           apt-get update
           apt-get install -y --no-install-recommends llvm binutils
-          rustup toolchain install nightly-2026-10-01 --profile minimal
-          cargo +nightly-2026-10-01 install --locked --version 0.13.2 cargo-fuzz
-          rustc +nightly-2026-10-01 -Vv
-          cargo +nightly-2026-10-01 -V
-          cargo +nightly-2026-10-01 fuzz --version
+          rustup toolchain install nightly-2026-10-10 --profile minimal
+          cargo +nightly-2026-10-10 install --locked --version 0.13.2 cargo-fuzz
+          rustc +nightly-2026-10-10 -Vv
+          cargo +nightly-2026-10-10 -V
+          cargo +nightly-2026-10-10 fuzz --version
           cc --version
           dpkg-query -W libc6 gcc llvm
           find crates tests packages scripts fuzz/fuzz_targets -type f -print0 | sort -z | xargs -0 sha256sum > target/u2-asan-evidence/source-before.sha256
@@ -89,7 +89,7 @@ jobs:
           printf 'seed=1\nsanitizer=address\nLSAN_OPTIONS=%s\nASAN_OPTIONS=%s\nCI_HEAD=%s\n' "$LSAN_OPTIONS" "$ASAN_OPTIONS" "$GITHUB_SHA" > "$evidence/settings.txt"
           date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/start.txt"
           set +e
-          cargo +nightly-2026-10-01 fuzz run --fuzz-dir fuzz --sanitizer address "$target" -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048 "${extra[@]}" 2>&1 | tee "$evidence/$target.log"
+          cargo +nightly-2026-10-10 fuzz run --fuzz-dir fuzz --sanitizer address "$target" -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048 "${extra[@]}" 2>&1 | tee "$evidence/$target.log"
           status=${PIPESTATUS[0]}
           set -e
           printf '%s\n' "$status" > "$evidence/exit.txt"

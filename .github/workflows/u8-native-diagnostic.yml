@@ -14,10 +14,10 @@ jobs:
         with:
           persist-credentials: false
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools strace
-      - run: rustup toolchain install nightly-2026-10-01 --profile minimal
-      - run: rustup target add x86_64-unknown-linux-musl --toolchain nightly-2026-10-01
+      - run: rustup toolchain install nightly-2026-10-10 --profile minimal
+      - run: rustup target add x86_64-unknown-linux-musl --toolchain nightly-2026-10-10
       - name: Verify U8 bounded runner
-        run: cargo +nightly-2026-10-01 test --locked -p paludarium-harness --test diff_u8 u8_runner_ready -- --exact
+        run: cargo +nightly-2026-10-10 test --locked -p paludarium-harness --test diff_u8 u8_runner_ready -- --exact
       - name: Build U8 static-musl guests
         run: bash tests/guests/u8/build.sh target/guests/u8
       - name: Observe native process and Rust Command behavior before implementation
@@ -38,7 +38,7 @@ jobs:
         with:
           persist-credentials: false
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
-      - run: rustup toolchain install nightly-2026-10-01 --profile minimal --component clippy,rustfmt
+      - run: rustup toolchain install nightly-2026-10-10 --profile minimal --component clippy,rustfmt
       - name: U8 internal component tests
         run: |
           cargo test --locked -p paludarium-mmu -p paludarium-kernel -p paludarium-runtime --lib u8_

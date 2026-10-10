@@ -125,6 +125,7 @@ pub struct Session {
     mounts: Vec<(Vec<u8>, Arc<dyn HostFs>)>,
     host: Arc<dyn Host>,
     code_cache: Arc<dyn CodeCache>,
+    accelerated: bool,
     budget: u64,
     kill_requested: Arc<AtomicBool>,
     signal_inbox: Arc<SignalInbox>,
@@ -133,6 +134,14 @@ pub struct Session {
 }
 
 impl Session {
+    /// Selects a synchronous execution cache supplied by the wasm launcher.
+    /// Native/default sessions retain the interpreter-only cache.
+    #[must_use]
+    pub fn with_code_cache(mut self, cache: Arc<dyn CodeCache>) -> Self {
+        self.code_cache = cache;
+        self.accelerated = true;
+        self
+    }
     /// Validates the configuration. Mounts are not implemented in U1.
     pub fn new(config: Config, host: Arc<dyn Host>) -> Result<Self, Error> {
         if let Some(cwd) = &config.cwd
@@ -188,6 +197,7 @@ impl Session {
             file_modes,
             host,
             code_cache: Arc::new(NoopCodeCache),
+            accelerated: false,
             budget: DEFAULT_BUDGET,
             kill_requested: Arc::new(AtomicBool::new(false)),
             signal_inbox: Arc::new(SignalInbox::default()),
@@ -319,6 +329,7 @@ impl Session {
             Arc::clone(&self.stopped),
             Arc::clone(&self.last_stop),
             Arc::clone(&self.code_cache),
+            self.accelerated,
             self.budget,
         ));
         execution.execute(kernel, thread);

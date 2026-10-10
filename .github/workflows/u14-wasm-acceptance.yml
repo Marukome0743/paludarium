@@ -1,0 +1,122 @@
+name: U14 on-off wasm guest acceptance
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.15.0'
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools cmake perl make pkg-config
+      - run: rustup toolchain install nightly-2026-10-11 --profile minimal --component rust-src
+      - run: rustup target add x86_64-unknown-linux-musl wasm32-unknown-unknown --toolchain nightly-2026-10-11
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe
+        with:
+          tool: cargo-deny
+      - name: Runner tests
+        run: python3 -m unittest discover -s tests/guests/u11/runner-tests -p 'test_*.py'
+      - name: Build fixed guests and audit dependencies
+        run: python3 tests/guests/u10/build.py target/guests/u10 --advisory-policy u15-fixed-aube-zip9-name
+      - name: Fresh Linux oracle with filesystem metadata
+        run: sudo unshare --net python3 scripts/u11-run.py --native-only --guest-dir target/guests/u10 --output target/u11/native
+      - name: Build one production wasm module for every environment
+        run: bash scripts/build-wasm.sh
+      - name: Preserve inputs and fresh oracle
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u11-acceptance-inputs
+          path: |
+            target/guests/u10/probe
+            target/guests/u10/aube
+            target/guests/u10/build-receipt.json
+            target/guests/u10/*-build.log
+            target/guests/u10/*-dependencies.log
+            target/guests/u10/aube-deny.toml
+            target/guests/u10/licenses/
+            target/u11/native/
+            packages/paludarium-wasm/paludarium.wasm
+          retention-days: 7
+  differential:
+    needs: build-oracle
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            environment: node
+          - os: ubuntu-latest
+            environment: chromium
+          - os: ubuntu-latest
+            environment: firefox
+          - os: macos-latest
+            environment: safari
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.15.0'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '26.12.0'
+      - name: Latest independently pinned npm CLI
+        run: |
+          npm install --global npm@12.2.0
+          test "$(npm --version)" = 12.2.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: u11-acceptance-inputs
+          path: .
+      - name: Install pinned browser driver
+        if: matrix.environment == 'chromium' || matrix.environment == 'firefox'
+        run: |
+          npm ci --prefix spikes/wasm-threads
+          node spikes/wasm-threads/node_modules/playwright/cli.js install --with-deps ${{ matrix.environment }}
+      - name: Enable actual Safari on CI runner
+        if: matrix.environment == 'safari'
+        run: sudo safaridriver --enable
+      - name: Project Rust source for strict control module
+        if: matrix.environment == 'node'
+        run: rustup toolchain install nightly-2026-10-11 --profile minimal --component rust-src
+      - name: Fresh same-source control for existing Node boundary entry
+        if: matrix.environment == 'node'
+        run: python3 -B scripts/build-u14-cost-profile.py --kind acceptance-control --baseline-head "${{ github.sha }}"
+      - name: Launcher component and C12 boundary tests
+        env:
+          PALUDARIUM_U14_CONTROL_WASM: target/u14-cost-profile/acceptance-control.wasm
+        if: matrix.environment == 'node'
+        run: |
+          mkdir -p target/u11/node/v8
+          export NODE_V8_COVERAGE="$PWD/target/u11/node/v8"
+          node --test packages/paludarium-wasm/tests/u11-*.test.mjs packages/paludarium-wasm/tests/u14-*.test.mjs
+          node packages/paludarium-wasm/tests/u11-api-check.mjs packages/paludarium-wasm/paludarium.wasm
+      - name: Compare identical fourteen cases in both execution modes
+        env:
+          U14_ENVIRONMENT: ${{ matrix.environment }}
+        run: python3 -B scripts/u14-run.py --environment "$U14_ENVIRONMENT" --wasm packages/paludarium-wasm/paludarium.wasm --native target/u11/native/observations.json --guests target/guests/u10 --output "target/u11/$U14_ENVIRONMENT"
+      - name: Fixed production JavaScript coverage
+        if: matrix.environment == 'node'
+        run: node packages/paludarium-wasm/tests/u14-coverage.mjs target/u11/node/v8 target/u11/node/js-coverage.json
+      - name: Frozen paired full-probe performance
+        if: matrix.environment == 'node' && github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        run: node packages/paludarium-wasm/tests/u14-performance-check.mjs packages/paludarium-wasm/paludarium.wasm target/u11/native/observations.json target/guests/u10 target/u11/node/performance
+      - name: Preserve raw results and cleanup evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u11-${{ matrix.environment }}
+          path: target/u11/${{ matrix.environment }}/
+          retention-days: 7

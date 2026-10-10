@@ -46,7 +46,7 @@ For full documentation, see `docs/guide/` (User Guide), `docs/harness-engineerin
 
 ## Session Resumption
 
-On startup, resolve the active intent (the `aidlc/spaces/<active-space>/intents/active-intent` cursor) and check for its `<record>/aidlc-state.md`. If found, load prior context and offer to resume from last checkpoint. (A brand-new project has no work recorded yet; the first AI-DLC run creates that record for you.)
+On startup, resolve the active intent (the `aidlc/spaces/<active-space>/intents/active-intent` cursor) and check for its `<record>/aidlc-state.md`. If found, load prior context and wait for the person: when they invoke AI-DLC, the work carries on from the last checkpoint with no resume menu, and they can ask to redo, jump to a stage, or start fresh. (A brand-new project has no work recorded yet; the first AI-DLC run creates that record for you.)
 
 ## Git Integration
 
@@ -62,6 +62,7 @@ Commit the `aidlc/` workspace tree — the record (state, the per-clone audit sh
 
 ## このリポジトリの開発ルール
 
+- 開発・検証に使うツール全般は最新バージョンを確認して使用する。Playwrightだけに限定しない。既存ツールの更新は作業の区切りで行い、設定・lockfileと必要な検証も更新する。
 - SCM 操作には Jujutsu（jj）を使う。colocated でも git / sl で操作しない。PowerShell の `@` は必ずクォートする（`jj log -r '@'`）。fork 構成の取得は `jj git fetch --all-remotes`。
 - mise 管理ツールは `mise exec` や shim を使わず、`~/AppData/Local/mise/installs/<tool>/*/` の直下または `bin/` の実体を glob で解決して実行する。バージョンを固定しない。`mise run <task>` はそのまま使う。見つからない場合は `mise ls` を確認する。
 - 単純なコンテナ作業は wslc（`C:\Program Files\WSL\wslc`）を優先する。compose や複雑な構成は Docker Desktop を使う。

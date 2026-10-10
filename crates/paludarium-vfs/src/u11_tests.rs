@@ -1,4 +1,15 @@
 use crate::*;
+#[test]
+fn u7_mtime_preserves_unsigned_clock_maximum() {
+    let fs = MemFs::with_clock(Arc::new(|| Ok(u64::MAX)));
+    let file = fs.open(b"/maximum", 0o100 | 2, 0o644).unwrap();
+    assert_eq!(file.stat().unwrap().mtime_ns, i128::from(u64::MAX));
+    file.write(b"maximum").unwrap();
+    assert_eq!(
+        fs.metadata(b"/maximum", false).unwrap().mtime_ns,
+        i128::from(u64::MAX)
+    );
+}
 use std::sync::atomic::{AtomicU64, Ordering};
 fn fixture() -> (MemFs, Arc<AtomicU64>) {
     let time = Arc::new(AtomicU64::new(1_000_000_001));

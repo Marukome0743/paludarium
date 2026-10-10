@@ -21,11 +21,69 @@ static CONFIGS: Table<Config> = OnceLock::new();
 static RUNS: Table<Arc<Run>> = OnceLock::new();
 static REGIONS: Table<Box<[u128]>> = OnceLock::new();
 static FILESYSTEMS: Table<Arc<PrivateFs>> = OnceLock::new();
+#[cfg(feature = "u14-cost-profile")]
+static MICRO: Table<paludarium_jit::microbench::DiagnosticBench> = OnceLock::new();
+#[cfg(feature = "u14-cost-profile")]
+static LENGTH: Table<paludarium_jit::microbench::LengthBench> = OnceLock::new();
 struct Run {
     session: Option<Arc<Session>>,
     host: Arc<WasmHost>,
     error: Mutex<Option<Error>>,
     filesystem: Option<Lease>,
+    jit: Option<Arc<paludarium_jit::WasmCodeCache>>,
+}
+
+#[link(wasm_import_module = "paludarium")]
+unsafe extern "C" {
+    fn jit_prepare(module: u32, code: *const u8, length: usize) -> i32;
+    fn jit_execute(
+        module: u32,
+        code: *const u8,
+        length: usize,
+        state: *mut u64,
+        state_length: usize,
+    ) -> i32;
+}
+struct WorkerJit;
+impl paludarium_jit::ExecutionBridge for WorkerJit {
+    #[cfg(feature = "u14-cost-profile")]
+    fn diagnostic_prepared(&self, module: u32, wasm: &[u8]) -> Option<bool> {
+        paludarium_jit::jit_cost::add(paludarium_jit::jit_cost::Counter::JsTransitions, 1);
+        // SAFETY: immutable live Rust code; length0/null state is a diagnostic
+        // no-touch query accepted only by the cost-enabled launcher import.
+        match unsafe { jit_execute(module, wasm.as_ptr(), wasm.len(), std::ptr::null_mut(), 0) } {
+            0 => Some(true),
+            -2 => Some(false),
+            _ => None,
+        }
+    }
+    fn execute_ready(&self, module: u32, wasm: &[u8], state: &mut [u64; 18]) -> Option<bool> {
+        #[cfg(feature = "u14-cost-profile")]
+        {
+            use paludarium_jit::jit_cost::{self, Counter};
+            jit_cost::add(Counter::JsTransitions, 1);
+            jit_cost::add(Counter::ExecuteCalls, 1);
+        }
+        // SAFETY: live immutable code and exclusively borrowed Rust scratch;
+        // the import cannot compile and reports missing Worker-local entries.
+        match unsafe { jit_execute(module, wasm.as_ptr(), wasm.len(), state.as_mut_ptr(), 144) } {
+            -2 => None,
+            result => Some(result == 0),
+        }
+    }
+    fn prepare(&self, module: u32, wasm: &[u8]) -> bool {
+        #[cfg(feature = "u14-cost-profile")]
+        paludarium_jit::jit_cost::add(paludarium_jit::jit_cost::Counter::JsTransitions, 1);
+        // SAFETY: immutable Rust code bytes stay live for the synchronous import.
+        unsafe { jit_prepare(module, wasm.as_ptr(), wasm.len()) == 0 }
+    }
+    fn execute(&self, module: u32, wasm: &[u8], state: &mut [u64; 18]) -> bool {
+        #[cfg(feature = "u14-cost-profile")]
+        paludarium_jit::jit_cost::add(paludarium_jit::jit_cost::Counter::JsTransitions, 1);
+        // SAFETY: both buffers belong to Rust, are live for this synchronous
+        // import, and state is exclusively borrowed scratch, never guest memory.
+        unsafe { jit_execute(module, wasm.as_ptr(), wasm.len(), state.as_mut_ptr(), 144) == 0 }
+    }
 }
 fn table<T>(t: &Table<T>) -> &Mutex<BTreeMap<u32, T>> {
     t.get_or_init(Default::default)
@@ -125,6 +183,177 @@ pub extern "C" fn config_new(program: u32) -> u32 {
         return 0;
     };
     insert(&CONFIGS, Config::new(program, Vec::new()))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn config_jit(id: u32, enabled: u32) -> i32 {
+    if enabled > 1 {
+        return -1;
+    }
+    let mut configs = table(&CONFIGS)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let Some(config) = configs.get_mut(&id) else {
+        return -1;
+    };
+    config.jit = enabled == 1;
+    0
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn session_jit_stat(id: u32, field: u32) -> u64 {
+    let Some(run) = run(id) else {
+        return 0;
+    };
+    let Some(cache) = &run.jit else {
+        return 0;
+    };
+    let stats = cache.statistics();
+    match field {
+        0 => stats.translated_blocks,
+        1 => stats.executed_blocks,
+        2 => stats.executed_instructions,
+        3 => stats.fallbacks,
+        _ => 0,
+    }
+}
+// Diagnostic-only ABI. None of these exports or collector operations is
+// present in the ordinary acceptance module. The fresh coordinator resets
+// before spawning Workers; all reads/additions are lock-free counters.
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_version() -> u32 {
+    3
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_measurement(enabled: u32) -> i32 {
+    if enabled > 1 {
+        return -1;
+    }
+    i32::from(paludarium_jit::jit_cost::set_measurement_enabled(
+        enabled == 1,
+    ))
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_site_count() -> u32 {
+    paludarium_jit::jit_cost::site_count() as u32
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_site_stat(index: u32, field: u32) -> u64 {
+    paludarium_jit::jit_cost::site_field(index as usize, field as usize).unwrap_or(0)
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_fields() -> u32 {
+    paludarium_jit::jit_cost::FIELD_COUNT as u32
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_stat(field: u32) -> u64 {
+    paludarium_jit::jit_cost::get(field as usize).unwrap_or(0)
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_overflow() -> u32 {
+    u32::from(paludarium_jit::jit_cost::overflowed())
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_add(field: u32, value: u64) -> i32 {
+    if paludarium_jit::jit_cost::add_field(field as usize, value) {
+        0
+    } else {
+        -1
+    }
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_reset() {
+    paludarium_jit::jit_cost::reset();
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_micro_new(kind: u32, maximum: u32, observe: u32) -> u32 {
+    if maximum > 1 || observe > 1 {
+        return 0;
+    }
+    paludarium_jit::microbench::DiagnosticBench::new(
+        kind,
+        maximum == 1,
+        observe == 1,
+        Arc::new(WorkerJit),
+    )
+    .map_or(0, |bench| insert(&MICRO, bench))
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_micro_chunk(id: u32, count: u32) -> u64 {
+    table(&MICRO)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get_mut(&id)
+        .and_then(|bench| bench.chunk(count))
+        .unwrap_or(u64::MAX)
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_micro_operations(id: u32) -> u64 {
+    table(&MICRO)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&id)
+        .map_or(u64::MAX, |bench| bench.operations())
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_micro_drop(id: u32) {
+    table(&MICRO)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&id);
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_length_new(kind: u32, length: u32, observe: u32) -> u32 {
+    if observe > 1 {
+        return 0;
+    }
+    paludarium_jit::microbench::LengthBench::new(kind, length, observe == 1, Arc::new(WorkerJit))
+        .map_or(0, |bench| insert(&LENGTH, bench))
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_length_chunk(id: u32, count: u32) -> u64 {
+    table(&LENGTH)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get_mut(&id)
+        .and_then(|bench| bench.chunk(count))
+        .unwrap_or(u64::MAX)
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_length_stat(id: u32, field: u32) -> u64 {
+    table(&LENGTH)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&id)
+        .and_then(|bench| match field {
+            0 => Some(bench.operations()),
+            1 => Some(bench.warmups()),
+            _ => None,
+        })
+        .unwrap_or(u64::MAX)
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_length_drop(id: u32) {
+    table(&LENGTH)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&id);
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn config_arg(id: u32, arg: u32) -> i32 {
@@ -277,11 +506,18 @@ pub extern "C" fn filesystem_new(id: u32) -> u32 {
     PrivateFs::new(config, Arc::new(WasmHost::default())).map_or(0, |fs| insert(&FILESYSTEMS, fs))
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn filesystem_drop(id: u32) {
-    table(&FILESYSTEMS)
+pub extern "C" fn filesystem_drop(id: u32) -> i32 {
+    let mut filesystems = table(&FILESYSTEMS)
         .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .remove(&id);
+        .unwrap_or_else(PoisonError::into_inner);
+    let Some(fs) = filesystems.get(&id) else {
+        return -1;
+    };
+    if fs.close().is_err() {
+        return -1;
+    }
+    filesystems.remove(&id);
+    0
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn filesystem_remove(id: u32, path: u32, recursive: u32) -> i32 {
@@ -311,20 +547,9 @@ pub extern "C" fn filesystem_snapshot(id: u32) -> u32 {
     let Ok(entries) = fs.snapshot() else {
         return 0;
     };
-    let mut data = (entries.len() as u32).to_le_bytes().to_vec();
-    for entry in entries {
-        data.extend_from_slice(&(entry.path.len() as u32).to_le_bytes());
-        data.extend_from_slice(&entry.path);
-        data.extend_from_slice(&entry.mode.to_le_bytes());
-        data.extend_from_slice(&entry.inode.to_le_bytes());
-        data.extend_from_slice(&entry.links.to_le_bytes());
-        data.extend_from_slice(&entry.mtime_ns.to_le_bytes());
-        data.extend_from_slice(&(entry.content.len() as u32).to_le_bytes());
-        data.extend_from_slice(&entry.content);
-        if data.len() > 64 * 1024 * 1024 {
-            return 0;
-        }
-    }
+    let Some(data) = crate::filesystem::snapshot_bytes(&entries) else {
+        return 0;
+    };
     insert(&BUFFERS, data)
 }
 #[unsafe(no_mangle)]
@@ -358,8 +583,24 @@ pub extern "C" fn session_from_config_fs(id: u32, stdin: u32, filesystem: u32) -
         return 0;
     };
     let host = Arc::new(WasmHost::streaming(bytes(stdin).unwrap_or_default()));
+    // The measured two-instruction warm bridge cannot amortize its cost.
+    // This excludes that case; it does not assert profitability of all >=3.
+    const MINIMUM_WASM_JIT_BLOCK: usize = 3;
+    let jit = config.jit.then(|| {
+        Arc::new(
+            paludarium_jit::WasmCodeCache::new(Arc::new(WorkerJit))
+                .with_minimum_block(MINIMUM_WASM_JIT_BLOCK),
+        )
+    });
     let (session, error) = match Session::new(config, host.clone()) {
-        Ok(s) => (Some(Arc::new(s)), None),
+        Ok(s) => (
+            Some(Arc::new(if let Some(cache) = &jit {
+                s.with_code_cache(cache.clone())
+            } else {
+                s
+            })),
+            None,
+        ),
         Err(e) => (None, Some(e)),
     };
     insert(
@@ -369,6 +610,7 @@ pub extern "C" fn session_from_config_fs(id: u32, stdin: u32, filesystem: u32) -
             host,
             error: Mutex::new(error),
             filesystem,
+            jit,
         }),
     )
 }

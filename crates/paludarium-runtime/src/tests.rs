@@ -27,6 +27,47 @@ fn runs_a_program_to_exit_and_captures_output() {
 }
 
 #[test]
+fn u14_runtime_cache_fallback_preserves_syscall_output_and_exit() {
+    struct Fallback(std::sync::atomic::AtomicUsize);
+    impl CodeCache for Fallback {
+        fn try_run(
+            &self,
+            _: &mut paludarium_cpu::CpuState,
+            _: &AddressSpace,
+        ) -> Option<ExitReason> {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            None
+        }
+        fn invalidate(&self, _: paludarium_types::GuestAddr) {}
+    }
+    let host = Arc::new(RecordingHost::new());
+    let cache = Arc::new(Fallback(std::sync::atomic::AtomicUsize::new(0)));
+    let s = session(&HELLO, host.clone()).with_code_cache(cache.clone());
+    assert_eq!(s.run(), Ok(ExitStatus::Exited(3)));
+    assert_eq!(host.stdout(), b"hi\n");
+    assert!(cache.0.load(Ordering::Relaxed) > 0);
+    assert_eq!(s.termination_detail(), None);
+}
+
+#[test]
+fn u14_runtime_default_and_explicit_fallback_preserve_fault_detail() {
+    for explicit_cache in [false, true] {
+        let host = Arc::new(RecordingHost::new());
+        let s = session(&[0x0f, 0x0b], host);
+        let s = if explicit_cache {
+            s.with_code_cache(Arc::new(NoopCodeCache))
+        } else {
+            s
+        };
+        assert_eq!(s.run(), Ok(ExitStatus::Signaled(signal::SIGILL)));
+        assert!(matches!(
+            s.termination_detail(),
+            Some(ExitReason::InvalidOpcode { .. })
+        ));
+    }
+}
+
+#[test]
 fn guest_exceptions_become_signals() {
     let host = Arc::new(RecordingHost::new());
     let s = session(&[0x0f, 0x0b], host.clone());
