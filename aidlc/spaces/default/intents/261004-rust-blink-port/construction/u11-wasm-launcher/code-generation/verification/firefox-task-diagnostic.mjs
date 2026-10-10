@@ -5,7 +5,7 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
-const [modulePath, probePath, outputDirectory] = process.argv.slice(2);
+const [modulePath, probePath, outputDirectory, playwrightPath] = process.argv.slice(2);
 if (!outputDirectory) throw new Error("usage: diagnostic module probe output");
 const root = resolve("."), trace = [], rows = [];
 const wasm = await readFile(modulePath), probe = await readFile(probePath);
@@ -55,7 +55,7 @@ const server = createServer(async (request,response) => {
 });
 await mkdir(outputDirectory,{recursive:true});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-const {firefox}=await import(pathToFileURL(resolve('spikes/wasm-threads/node_modules/playwright/index.mjs')));
+const {firefox}=await import(pathToFileURL(resolve(playwrightPath??'spikes/wasm-threads/node_modules/playwright/index.mjs')));
 let browser,error,version;
 try {
  browser=await firefox.launch({timeout:30000});version=browser.version();const tab=await browser.newPage();

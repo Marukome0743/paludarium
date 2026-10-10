@@ -37,16 +37,12 @@ jobs:
         run: |
           npm ci --prefix spikes/wasm-threads
           node spikes/wasm-threads/node_modules/playwright/cli.js install --with-deps firefox
-      - name: Build current authorized MMU read-path candidate
+      - name: Build current authorized U11 source
         run: |
           rustup toolchain install nightly-2026-10-01 --profile minimal --component rust-src
           rustup target add wasm32-unknown-unknown --toolchain nightly-2026-10-01
           bash scripts/build-wasm.sh
       - name: Observe three bounded full probes with test-only task tracing
-        env:
-          MOZ_PROFILER_STARTUP: '1'
-          MOZ_PROFILER_STARTUP_FILTERS: 'GeckoMain,DOM Worker'
-          MOZ_PROFILER_SHUTDOWN: '${{ github.workspace }}/target/u11/firefox-task-diagnostic/gecko-profile.json'
         run: node aidlc/spaces/default/intents/261004-rust-blink-port/construction/u11-wasm-launcher/code-generation/verification/firefox-task-diagnostic.mjs packages/paludarium-wasm/paludarium.wasm target/guests/u10/probe target/u11/firefox-task-diagnostic
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

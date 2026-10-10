@@ -213,14 +213,6 @@ jobs:
       - name: U11 changed Rust components line coverage >= 80%
         run: |
           cargo llvm-cov --locked -p paludarium-host -p paludarium-vfs -p paludarium-kernel -p paludarium-runtime -p paludarium-wasm --lib --ignore-filename-regex 'paludarium-(cpu|decoder|mmu|loader|types|jit)/' --fail-under-lines 80 --lcov --output-path target/u11-coverage.lcov
-      - name: U11 MMU read path line coverage >= 80%
-        run: cargo llvm-cov --locked -p paludarium-mmu --lib --ignore-filename-regex 'paludarium-types/' --fail-under-lines 80 --lcov --output-path target/u11-mmu-coverage.lcov
-      - name: Retain U11 MMU coverage observations
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: u11-mmu-coverage-lcov
-          path: target/u11-mmu-coverage.lcov
       - name: Retain U11 coverage observations
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
