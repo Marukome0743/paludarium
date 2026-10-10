@@ -6,6 +6,21 @@ on:
 permissions:
   contents: read
 jobs:
+  fixture-metadata-oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: sudo unshare --net python3 tests/guests/u10/metadata.py target/u10/metadata/native-stat.json
+      - name: Retain native stat evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u10-native-metadata
+          path: target/u10/metadata/
+          retention-days: 7
   native-first:
     runs-on: ubuntu-latest
     timeout-minutes: 60
