@@ -21,6 +21,8 @@ def main():
     parser.add_argument('--browser', choices=('chromium', 'firefox', 'safari'))
     parser.add_argument('--wasm', type=pathlib.Path)
     parser.add_argument('--native', type=pathlib.Path)
+    parser.add_argument('--baseline', action='store_true')
+    parser.add_argument('--node', type=pathlib.Path)
     args = parser.parse_args()
     config = configuration(ROOT)
     if args.self_test:
@@ -46,6 +48,20 @@ def main():
                        'packages/paludarium-wasm/index.mjs', 'packages/paludarium-wasm/coordinator.mjs',
                        'packages/paludarium-wasm/execution.mjs', 'packages/paludarium-wasm/worker-support.mjs')}}
         (output / 'u11-oracle-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+        return
+    if args.baseline:
+        if not all((args.node, args.wasm, args.native, args.guest_dir, args.output)) or args.browser:
+            parser.error('baseline requires --node --wasm --native --guest-dir --output')
+        from supervisor import supervise
+        output = args.output.resolve()
+        output.mkdir(parents=True, exist_ok=True)
+        result = supervise([str(args.node.resolve()), str(ROOT / 'packages/paludarium-wasm/tests/u11-baseline.mjs'),
+                            str(args.wasm.resolve()), str(args.native.resolve()),
+                            str(args.guest_dir.resolve()), str(output)], cwd=ROOT)
+        (output / 'suite-supervisor.json').write_text(json.dumps(result, indent=2) + '\n')
+        print(json.dumps({key: result[key] for key in ('exit', 'timed_out', 'seconds', 'process_group_cleaned')}))
+        if result['exit'] != 0 or result['timed_out']:
+            raise RuntimeError('pre-U11 baseline suite failed; raw partial observations retained')
         return
     parser.error('browser runner is not implemented yet; no browser result is claimed')
 
