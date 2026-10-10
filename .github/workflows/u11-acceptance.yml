@@ -77,6 +77,11 @@ jobs:
       - name: Enable actual Safari on CI runner
         if: matrix.environment == 'safari'
         run: sudo safaridriver --enable
+      - name: Launcher component and C12 boundary tests
+        if: matrix.environment == 'node'
+        run: |
+          node --test packages/paludarium-wasm/tests/u11-*.test.mjs
+          node packages/paludarium-wasm/tests/u11-api-check.mjs packages/paludarium-wasm/paludarium.wasm
       - name: Compare fourteen actual guest executions with fresh Linux
         env:
           U11_ENVIRONMENT: ${{ matrix.environment }}

@@ -1,1 +1,1 @@
-{"name":"@paludarium/wasm","version":"0.0.0","type":"module","exports":{"types":"./index.d.ts","import":"./index.mjs"},"license":"Apache-2.0"}
+{"name":"@paludarium/wasm","version":"0.0.0","type":"module","exports":{"types":"./index.d.ts","import":"./index.mjs"},"files":["paludarium.wasm","index.mjs","index.d.ts","coordinator.mjs","execution.mjs","worker-support.mjs","LICENSE","README.md"],"license":"Apache-2.0"}

@@ -210,6 +210,15 @@ jobs:
           # Instrumented independent cases run serially; race cases still
           # launch their own host workers and retain the 30-second watchdog.
           RUST_TEST_THREADS: "1"
+      - name: U11 changed Rust components line coverage >= 80%
+        run: |
+          cargo llvm-cov --locked -p paludarium-host -p paludarium-vfs -p paludarium-kernel -p paludarium-runtime -p paludarium-wasm --lib --ignore-filename-regex 'paludarium-(cpu|decoder|mmu|loader|types|jit)/' --fail-under-lines 80 --lcov --output-path target/u11-coverage.lcov
+      - name: Retain U11 coverage observations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u11-coverage-lcov
+          path: target/u11-coverage.lcov
       - name: U1 package line coverage >= 80%
         # Keep the same U1 production file set; fresh architectural tests live
         # in Harness and must execute when measuring the newly shared CPU code.

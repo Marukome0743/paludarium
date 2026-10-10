@@ -507,4 +507,6 @@ mod u5_tests;
 mod u6_tests;
 
 #[cfg(test)]
+mod u11_tests;
+#[cfg(test)]
 mod u8_tests;

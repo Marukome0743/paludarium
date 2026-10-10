@@ -20,6 +20,16 @@ try {
   assert.throws(() => first.run({ program: "/file", tty: { columns: -1, rows: 24 } }), /terminal/);
   assert.throws(() => first.run({ program: "/file", cwd: "relative" }), /current directory/);
   assert.throws(() => first.run({ program: "/file", files: { "/file": new Uint8Array() }, fileModes: { "/file": 65536 } }), /modes/);
+  const drainFailure = async stream => { const reader = stream.getReader(); try { while (!(await reader.read()).done) {} } catch {} finally { reader.releaseLock(); } };
+  const invalid = first.run({ program: "/bad", files: { "/bad": new Uint8Array([73]) } });
+  const invalidStreams = Promise.all([drainFailure(invalid.stdout), drainFailure(invalid.stderr)]);
+  await assert.rejects(invalid.exited, error => error.kind === "invalid-program"); await invalidStreams;
+  const hello = new Uint8Array(await readFile(new URL("guests/hello", import.meta.url)));
+  for (const cwd of ["/missing", "/hello"]) {
+    const invalidCwd = first.run({ program: "/hello", files: { "/hello": hello }, cwd });
+    const outputs = Promise.all([drainFailure(invalidCwd.stdout), drainFailure(invalidCwd.stderr)]);
+    await assert.rejects(invalidCwd.exited, error => error.kind === "invalid-program"); await outputs;
+  }
   const infinite = new Uint8Array(await readFile(new URL("guests/infinite", import.meta.url)));
   const active = await first.createFileSystem({ files: { "/infinite": infinite } });
   const guest = first.run({ program: "/infinite", filesystem: active, tty: { columns: 0, rows: 65535 } });

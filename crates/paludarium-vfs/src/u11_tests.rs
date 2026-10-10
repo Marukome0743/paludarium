@@ -61,3 +61,30 @@ fn u11_mtime_open_truncate_updates_clock() {
     assert_eq!(file.stat().unwrap().mtime_ns, 700);
     assert_eq!(file.stat().unwrap().size, 0);
 }
+#[test]
+fn u11_mtime_default_preserves_epoch() {
+    let fs = MemFs::new();
+    let file = fs.open(b"/a", 66, 0o644).unwrap();
+    file.write(b"bytes").unwrap();
+    file.truncate(1).unwrap();
+    assert_eq!(file.stat().unwrap().mtime_ns, 0);
+}
+#[test]
+fn u11_mtime_failed_write_keeps_bytes_and_time() {
+    let time = Arc::new(AtomicU64::new(9));
+    let clock = time.clone();
+    let fs = MemFs::with_clock(Arc::new(move || {
+        let value = clock.load(Ordering::SeqCst);
+        if value == u64::MAX {
+            Err(Errno::EIO)
+        } else {
+            Ok(value)
+        }
+    }));
+    let file = fs.open(b"/a", 66, 0o644).unwrap();
+    file.write(b"old").unwrap();
+    time.store(u64::MAX, Ordering::SeqCst);
+    assert_eq!(file.write(b"new"), Err(Errno::EIO));
+    assert_eq!(file.stat().unwrap().mtime_ns, 9);
+    assert_eq!(&*fs.read_file(b"/a").unwrap(), b"old");
+}

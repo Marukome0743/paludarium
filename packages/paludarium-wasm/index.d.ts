@@ -45,4 +45,7 @@ export interface Launcher {
   diagnostics(): Promise<unknown>;
   dispose(): Promise<void>;
 }
-export function createPaludarium(options: { wasmUrl: string | URL }): Promise<Launcher>;
+export interface PaludariumOptions { wasmUrl: string | URL; }
+export type RunningGuest = Guest;
+export type Paludarium = Launcher;
+export function createPaludarium(options: PaludariumOptions): Promise<Paludarium>;
