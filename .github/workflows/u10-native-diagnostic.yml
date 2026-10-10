@@ -28,8 +28,8 @@ jobs:
         with:
           persist-credentials: false
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools cmake perl make pkg-config
-      - run: rustup toolchain install nightly-2026-10-01 --profile minimal
-      - run: rustup target add x86_64-unknown-linux-musl --toolchain nightly-2026-10-01
+      - run: rustup toolchain install nightly-2026-10-10 --profile minimal
+      - run: rustup target add x86_64-unknown-linux-musl --toolchain nightly-2026-10-10
       - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0
         with:
           tool: cargo-deny
@@ -69,15 +69,15 @@ jobs:
           name: u10-native-first
           path: target
       - run: chmod +x target/guests/u10/probe target/guests/u10/aube
-      - run: rustup toolchain install nightly-2026-10-01 --profile minimal
+      - run: rustup toolchain install nightly-2026-10-10 --profile minimal
       - name: Compile C10 harness before network isolation
         run: |
           u10_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-          CARGO_HOME="$u10_cargo_home" cargo +nightly-2026-10-01 test --locked -p paludarium-harness --test diff_u10 --no-run
+          CARGO_HOME="$u10_cargo_home" cargo +nightly-2026-10-10 test --locked -p paludarium-harness --test diff_u10 --no-run
       - name: Fresh native oracle then bounded C10 differential without network
         run: |
-          u10_cargo="$(rustup which --toolchain nightly-2026-10-01 cargo)"
-          u10_rustc="$(rustup which --toolchain nightly-2026-10-01 rustc)"
+          u10_cargo="$(rustup which --toolchain nightly-2026-10-10 cargo)"
+          u10_rustc="$(rustup which --toolchain nightly-2026-10-10 rustc)"
           u10_bin="$(dirname "$u10_cargo")"
           u10_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
           sudo unshare --net env PATH="$u10_bin:$PATH" RUSTC="$u10_rustc" CARGO_HOME="$u10_cargo_home" "$u10_cargo" test --locked --offline -p paludarium-harness --test diff_u10 -- --include-ignored --nocapture

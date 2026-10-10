@@ -151,8 +151,10 @@ fn u7_host_signed_mtime_stat_fstat() {
             .unwrap();
             let values: Vec<i64> = native
                 .stdout
-                .chunks_exact(8)
-                .map(|bytes| i64::from_le_bytes(bytes.try_into().unwrap()))
+                .as_chunks::<8>()
+                .0
+                .iter()
+                .map(|bytes| i64::from_le_bytes(*bytes))
                 .collect();
             assert_eq!(
                 values,

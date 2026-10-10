@@ -46,7 +46,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24'
-      - run: rustup component add rust-src --toolchain nightly-2026-10-01
+      - run: rustup component add rust-src --toolchain nightly-2026-10-10
       - name: Generate and execute fresh native fixtures
         run: |
           mkdir -p target/production-wasm-evidence

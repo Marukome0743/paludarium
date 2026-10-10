@@ -13,8 +13,8 @@ jobs:
         with:
           persist-credentials: false
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools cmake perl make pkg-config
-      - run: rustup toolchain install nightly-2026-10-01 --profile minimal --component rust-src
-      - run: rustup target add x86_64-unknown-linux-musl wasm32-unknown-unknown --toolchain nightly-2026-10-01
+      - run: rustup toolchain install nightly-2026-10-10 --profile minimal --component rust-src
+      - run: rustup target add x86_64-unknown-linux-musl wasm32-unknown-unknown --toolchain nightly-2026-10-10
       - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0
         with:
           tool: cargo-deny
