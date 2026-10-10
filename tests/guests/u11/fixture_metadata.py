@@ -1,5 +1,6 @@
 """U11 fixture metadata; inode identity is normalized by first path."""
 import hashlib
+import base64
 import pathlib
 import stat
 
@@ -17,9 +18,12 @@ def snapshot_metadata(directory):
         elif kind == stat.S_IFLNK:
             row.update(kind='symlink', target=str(path.readlink()))
         elif kind == stat.S_IFREG:
+            content = path.read_bytes()
             identity = (info.st_dev, info.st_ino)
-            row.update(kind='file', sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+            row.update(kind='file', sha256=hashlib.sha256(content).hexdigest(),
                        identity=identities.setdefault(identity, relative), links=info.st_nlink)
+            if len(content) <= 65536:
+                row['content_base64'] = base64.b64encode(content).decode('ascii')
         else:
             raise ValueError('unsupported native fixture object: ' + relative)
         result[relative] = row

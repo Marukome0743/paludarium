@@ -23,6 +23,14 @@ class MetadataTests(unittest.TestCase):
     def test_file_hash(self):
         (self.root / 'file').write_bytes(b'')
         self.assertEqual(MODULE.snapshot_metadata(self.root)['file']['sha256'], 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+        self.assertEqual(MODULE.snapshot_metadata(self.root)['file']['content_base64'], '')
+
+    def test_content_capture_is_bounded(self):
+        (self.root / 'small').write_bytes(b'\x00\xff')
+        (self.root / 'large').write_bytes(b'x' * 65537)
+        result = MODULE.snapshot_metadata(self.root)
+        self.assertEqual(result['small']['content_base64'], 'AP8=')
+        self.assertNotIn('content_base64', result['large'])
 
     def test_permissions(self):
         path = self.root / 'file'; path.write_bytes(b'a'); path.chmod(0o644)
