@@ -17,10 +17,11 @@ def snapshot(output,compare):
     print("Audited 322 strict input paths")
 def lib(path):
     assert re.findall(r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;",path.read_text())==[("49","0","0")]
-def observations(directory,cases):
+def observations(directory,cases,nested=True):
     rows=[]
     for case in cases:
-        data=json.loads((directory/str(case)/"manifest.json").read_text());assert len(data)==1 and data[0]["case"]==case
+        case_dir=directory/str(case) if nested else directory
+        data=json.loads((case_dir/"manifest.json").read_text());assert len(data)==1 and data[0]["case"]==case
         row=data[0];n,e=dict(row["native"]),dict(row["emulated"])
         assert not n["timeout"] and not e["timeout"]
         if case in (52,53,54):
@@ -31,14 +32,14 @@ def observations(directory,cases):
             assert n==e
         for mode in ["native","emulated"]:
             for stream in ["stdout","stderr"]:
-                assert (directory/str(case)/f"{mode}-{case}.{stream}").read_bytes().hex()==row[mode][stream]
+                assert (case_dir/f"{mode}-{case}.{stream}").read_bytes().hex()==row[mode][stream]
         rows.append(row)
     return rows
 def diff(path):
     assert "84 passed; 0 failed; 0 ignored" in path.read_text()
     rows=observations(ROOT/"target/u6-diff",[*range(82),"timer","unix"])
     for attempt in range(1,11):
-        rows+=observations(ROOT/f"target/u6-repeat/{attempt}",["timer"])
+        rows+=observations(ROOT/f"target/u6-repeat/{attempt}",["timer"],nested=False)
     (path.parent/"differential-manifest.json").write_text(json.dumps(rows,indent=2)+"\n")
 def browser(path):
     x=json.loads(path.read_text());assert x["pass"] and x["sharedMemory"] and x["productionLauncher"]

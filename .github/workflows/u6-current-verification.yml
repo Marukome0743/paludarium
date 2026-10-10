@@ -30,6 +30,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends musl-tools
           rustup toolchain install nightly-2026-10-10 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview
+          rustup target add x86_64-unknown-linux-musl --toolchain nightly-2026-10-10
           compiler_bin="$(rustup which --toolchain nightly-2026-10-10 rustc | tr '\\' '/')"
           rustdoc_bin="$(rustup which --toolchain nightly-2026-10-10 rustdoc | tr '\\' '/')"
           compiler_dir="${compiler_bin%/*}"
@@ -340,7 +341,7 @@ jobs:
           python3 scripts/u6-native-observe.py --out "$e/u6-native"
           python3 scripts/u6-wasm-guests.py --base-native "$e/base-native.json" --observations "$e/u6-native" --guests target/guests/u6 --destination packages/paludarium-wasm/tests/guests --out "$e/native-results.json"
           export RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals -C link-arg=--import-memory -C link-arg=--shared-memory -C link-arg=--max-memory=1073741824 -C link-arg=--export=__stack_pointer -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base'
-          bash scripts/build-wasm.sh
+          cargo build --locked -Z build-std=std,panic_abort --release --target wasm32-unknown-unknown -p paludarium-wasm
           cp target/wasm32-unknown-unknown/release/paludarium_wasm.wasm packages/paludarium-wasm/paludarium.wasm
           sha256sum packages/paludarium-wasm/paludarium.wasm "$e/native-results.json" > "$e/module-native.sha256"
           node --test packages/paludarium-wasm/tests/import-check.mjs
