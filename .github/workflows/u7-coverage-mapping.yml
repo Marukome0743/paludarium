@@ -1,0 +1,74 @@
+name: U7 coverage mapping diagnosis
+on:
+  push:
+    branches: [codex/u7-coverage-mapping]
+permissions:
+  contents: read
+jobs:
+  coverage:
+    name: U7 scoped Linux coverage and native differential
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: never
+      RUSTUP_TOOLCHAIN: nightly-2026-10-10
+      RUST_TEST_THREADS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Prepare coverage runner
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u7-diagnostic-evidence
+          exec > >(tee target/u7-diagnostic-evidence/environment.log) 2>&1
+          test "$(uname -m)" = x86_64
+          uname -a
+          lscpu
+          printf 'CI_HEAD=%s\n' "$GITHUB_SHA"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          rustup toolchain install nightly-2026-10-10 --profile minimal --component llvm-tools-preview
+          cargo +nightly-2026-10-10 install --locked --version 0.9.1 cargo-llvm-cov
+          rustc +nightly-2026-10-10 -Vv
+          cargo +nightly-2026-10-10 llvm-cov --version
+          find crates tests packages scripts fuzz/fuzz_targets -type f ! -path '*/target/*' ! -name '*.wasm' -print0 | sort -z | xargs -0 sha256sum > target/u7-diagnostic-evidence/source-before.sha256
+          sha256sum Cargo.toml Cargo.lock rust-toolchain.toml fuzz/Cargo.toml fuzz/Cargo.lock fuzz/lsan.supp >> target/u7-diagnostic-evidence/source-before.sha256
+      - name: Run exact U7 scope and 80 percent floor
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=target/u7-diagnostic-evidence
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/start.txt"
+          set +e
+          cargo +nightly-2026-10-10 llvm-cov --locked -p paludarium-vfs -p paludarium-kernel -p paludarium-host -p paludarium-runtime -p paludarium-loader -p paludarium-mmu -p paludarium -p paludarium-harness --lib --test diff_u7 --test command --ignore-filename-regex 'paludarium-(cpu|decoder|jit|types|harness)/' --fail-under-lines 80 -- --test-threads=1 2>&1 | tee "$evidence/coverage.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$evidence/exit.txt"
+          cargo +nightly-2026-10-10 llvm-cov report --ignore-filename-regex 'paludarium-(cpu|decoder|jit|types|harness)/' --json --output-path "$evidence/coverage.json" 2>&1 | tee "$evidence/report.log"
+          report_status=${PIPESTATUS[0]}
+          printf '%s\n' "$report_status" > "$evidence/report-exit.txt"
+          LLVM_COV_FLAGS=-dump cargo +nightly-2026-10-10 llvm-cov report --ignore-filename-regex 'paludarium-(cpu|decoder|jit|types|harness)/' --summary-only 2>&1 | tee "$evidence/mapping-dump.log"
+          dump_status=${PIPESTATUS[0]}
+          printf '%s\n' "$dump_status" > "$evidence/mapping-dump-exit.txt"
+          set -e
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/end.txt"
+          find crates tests packages scripts fuzz/fuzz_targets -type f ! -path '*/target/*' ! -name '*.wasm' -print0 | sort -z | xargs -0 sha256sum > "$evidence/source-after.sha256"
+          sha256sum Cargo.toml Cargo.lock rust-toolchain.toml fuzz/Cargo.toml fuzz/Cargo.lock fuzz/lsan.supp >> "$evidence/source-after.sha256"
+          set +e
+          cmp "$evidence/source-before.sha256" "$evidence/source-after.sha256" > "$evidence/source-compare.log" 2>&1
+          compared=$?
+          printf '%s\n' "$compared" > "$evidence/source-compare-exit.txt"
+          set -e
+          test "$status" = 0
+          test "$report_status" = 0
+          test "$compared" = 0
+      - name: Preserve all coverage evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u7-linux-coverage
+          path: target/u7-diagnostic-evidence/
+          retention-days: 7
