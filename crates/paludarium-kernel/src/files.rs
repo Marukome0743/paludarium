@@ -195,6 +195,11 @@ fn output(c: &Context<'_>, addr: u64, b: &[u8]) -> Result<(), Errno> {
     c.mem.write(GuestAddr(addr), b).map_err(|_| Errno::EFAULT)
 }
 fn stat(c: &Context<'_>, addr: u64, s: FileStat) -> Result<u64, Errno> {
+    output(c, addr, &encode_stat(s)?)?;
+    Ok(0)
+}
+fn encode_stat(s: FileStat) -> Result<[u8; 144], Errno> {
+    let (seconds, nanos) = linux_mtime(s.mtime_ns)?;
     let mut b = [0; 144];
     b[8..16].copy_from_slice(&s.inode.to_le_bytes());
     b[16..24].copy_from_slice(&s.links.to_le_bytes());
@@ -202,10 +207,63 @@ fn stat(c: &Context<'_>, addr: u64, s: FileStat) -> Result<u64, Errno> {
     b[48..56].copy_from_slice(&s.size.to_le_bytes());
     b[56..64].copy_from_slice(&4096u64.to_le_bytes());
     b[64..72].copy_from_slice(&s.size.div_ceil(512).to_le_bytes());
-    b[88..96].copy_from_slice(&(s.mtime_ns / 1_000_000_000).to_le_bytes());
-    b[96..104].copy_from_slice(&(s.mtime_ns % 1_000_000_000).to_le_bytes());
-    output(c, addr, &b)?;
-    Ok(0)
+    b[88..96].copy_from_slice(&seconds.to_le_bytes());
+    b[96..104].copy_from_slice(&nanos.to_le_bytes());
+    Ok(b)
+}
+fn linux_mtime(ns: i128) -> Result<(i64, u64), Errno> {
+    let seconds = i64::try_from(ns.div_euclid(1_000_000_000)).map_err(|_| Errno(75))?;
+    let nanos = u64::try_from(ns.rem_euclid(1_000_000_000)).map_err(|_| Errno(75))?;
+    Ok((seconds, nanos))
+}
+#[cfg(test)]
+mod mtime_tests {
+    use super::*;
+    #[test]
+    fn u7_mtime_stat_codec_signed_boundaries() {
+        for (ns, seconds, nanos) in [
+            (-1_000_000_000, -1i64, 0u64),
+            (-500_000_000, -1, 500_000_000),
+            (-1, -1, 999_999_999),
+            (0, 0, 0),
+            (1, 0, 1),
+            (1_500_000_000, 1, 500_000_000),
+            (i128::from(u64::MAX), 18_446_744_073, 709_551_615),
+        ] {
+            let bytes = encode_stat(FileStat {
+                mtime_ns: ns,
+                ..FileStat::default()
+            })
+            .unwrap();
+            assert_eq!(&bytes[88..96], &seconds.to_le_bytes());
+            assert_eq!(&bytes[96..104], &nanos.to_le_bytes());
+        }
+    }
+    #[test]
+    fn u7_mtime_stat_codec_checked_seconds_overflow() {
+        for ns in [
+            i128::MIN,
+            i128::MAX,
+            (i128::from(i64::MAX) + 1) * 1_000_000_000,
+            i128::from(i64::MIN) * 1_000_000_000 - 1,
+        ] {
+            assert_eq!(
+                encode_stat(FileStat {
+                    mtime_ns: ns,
+                    ..FileStat::default()
+                }),
+                Err(Errno(75))
+            );
+        }
+        assert_eq!(
+            linux_mtime(i128::from(i64::MIN) * 1_000_000_000),
+            Ok((i64::MIN, 0))
+        );
+        assert_eq!(
+            linux_mtime(i128::from(i64::MAX) * 1_000_000_000 + 999_999_999),
+            Ok((i64::MAX, 999_999_999))
+        );
+    }
 }
 pub(crate) fn dispatch(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
     let n = c.cpu.gpr[paludarium_cpu::reg::RAX];

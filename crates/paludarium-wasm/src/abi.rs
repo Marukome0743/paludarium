@@ -311,20 +311,9 @@ pub extern "C" fn filesystem_snapshot(id: u32) -> u32 {
     let Ok(entries) = fs.snapshot() else {
         return 0;
     };
-    let mut data = (entries.len() as u32).to_le_bytes().to_vec();
-    for entry in entries {
-        data.extend_from_slice(&(entry.path.len() as u32).to_le_bytes());
-        data.extend_from_slice(&entry.path);
-        data.extend_from_slice(&entry.mode.to_le_bytes());
-        data.extend_from_slice(&entry.inode.to_le_bytes());
-        data.extend_from_slice(&entry.links.to_le_bytes());
-        data.extend_from_slice(&entry.mtime_ns.to_le_bytes());
-        data.extend_from_slice(&(entry.content.len() as u32).to_le_bytes());
-        data.extend_from_slice(&entry.content);
-        if data.len() > 64 * 1024 * 1024 {
-            return 0;
-        }
-    }
+    let Some(data) = crate::filesystem::snapshot_bytes(&entries) else {
+        return 0;
+    };
     insert(&BUFFERS, data)
 }
 #[unsafe(no_mangle)]

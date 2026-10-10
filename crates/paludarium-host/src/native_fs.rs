@@ -62,15 +62,17 @@ fn bytes(p: &Path) -> Vec<u8> {
         p.to_string_lossy().as_bytes().to_vec()
     }
 }
+fn mtime_ns(time: std::time::SystemTime) -> Result<i128, Errno> {
+    match time.duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => i128::try_from(duration.as_nanos()).map_err(|_| Errno(75)),
+        Err(before) => i128::try_from(before.duration().as_nanos())
+            .ok()
+            .and_then(i128::checked_neg)
+            .ok_or(Errno(75)),
+    }
+}
 fn stat(m: std::fs::Metadata) -> Result<FileStat, Errno> {
-    let mtime_ns = u64::try_from(
-        m.modified()
-            .map_err(|_| Errno::EIO)?
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| Errno::EIO)?
-            .as_nanos(),
-    )
-    .map_err(|_| Errno::EIO)?;
+    let mtime_ns = mtime_ns(m.modified().map_err(|_| Errno::EIO)?)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -346,15 +348,7 @@ impl HostFs for NativeFs {
     }
 }
 fn cap_stat(m: cap_std::fs::Metadata) -> Result<FileStat, Errno> {
-    let mtime_ns = u64::try_from(
-        m.modified()
-            .map_err(|_| Errno::EIO)?
-            .into_std()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| Errno::EIO)?
-            .as_nanos(),
-    )
-    .map_err(|_| Errno::EIO)?;
+    let mtime_ns = mtime_ns(m.modified().map_err(|_| Errno::EIO)?.into_std())?;
     #[cfg(unix)]
     {
         use cap_std::fs::MetadataExt;
@@ -393,6 +387,24 @@ fn cap_stat(m: cap_std::fs::Metadata) -> Result<FileStat, Errno> {
 #[cfg(test)]
 mod u7_tests {
     use super::*;
+    #[test]
+    fn u7_mtime_system_time_before_epoch() {
+        for ns in [1, 500_000_000, 1_000_000_000] {
+            assert_eq!(
+                mtime_ns(std::time::UNIX_EPOCH - std::time::Duration::from_nanos(ns)),
+                Ok(-i128::from(ns))
+            );
+        }
+    }
+    #[test]
+    fn u7_mtime_system_time_epoch_positive_range() {
+        for ns in [0, 1, 1_500_000_000, u64::MAX] {
+            assert_eq!(
+                mtime_ns(std::time::UNIX_EPOCH + std::time::Duration::from_nanos(ns)),
+                Ok(i128::from(ns))
+            );
+        }
+    }
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
     struct Fixture {
@@ -430,6 +442,25 @@ mod u7_tests {
         let mut b = [0; 3];
         assert_eq!(f.read(&mut b), Ok(3));
         assert_eq!(&b, b"abc");
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn u7_mtime_retained_file_and_path_stat_pre_epoch() {
+        let x = Fixture::new();
+        let handle = x.fs().open(b"mtime", 66, 0o600).unwrap();
+        let file = std::fs::File::open(x.base.join("root/mtime")).unwrap();
+        for ns in [1, 500_000_000, 1_000_000_000] {
+            file.set_times(
+                std::fs::FileTimes::new()
+                    .set_modified(std::time::UNIX_EPOCH - std::time::Duration::from_nanos(ns)),
+            )
+            .unwrap();
+            assert_eq!(handle.stat().unwrap().mtime_ns, -i128::from(ns));
+            assert_eq!(
+                x.fs().metadata(b"mtime", true).unwrap().mtime_ns,
+                -i128::from(ns)
+            );
+        }
     }
     #[test]
     fn u7_native_links() {

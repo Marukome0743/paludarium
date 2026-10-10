@@ -119,7 +119,14 @@ cases!(u7_host_read_write=>3,u7_host_hard_link=>4,u7_host_symlink=>5,u7_host_ren
 fn u7_host_signed_mtime_stat_fstat() {
     let name = "u7_host_signed_mtime_stat_fstat";
     let out = workspace_root().join("target/guests/u7");
-    assert!(std::process::Command::new("bash").arg(workspace_root().join("tests/guests/u7/build.sh")).arg(&out).status().unwrap().success());
+    assert!(
+        std::process::Command::new("bash")
+            .arg(workspace_root().join("tests/guests/u7/build.sh"))
+            .arg(&out)
+            .status()
+            .unwrap()
+            .success()
+    );
     support::bounded(name, || {
         let root = std::env::temp_dir().join(format!("paludarium-u7-mtime-{}", std::process::id()));
         std::fs::create_dir(&root).unwrap();
@@ -127,22 +134,63 @@ fn u7_host_signed_mtime_stat_fstat() {
         let file = std::fs::File::create(&path).unwrap();
         let mut mismatches = Vec::new();
         for ns in [-1_000_000_000i128, -500_000_000, -1, 0, 1, 1_500_000_000] {
-            let duration = std::time::Duration::from_nanos(u64::try_from(ns.unsigned_abs()).unwrap());
-            let time = if ns < 0 { std::time::UNIX_EPOCH - duration } else { std::time::UNIX_EPOCH + duration };
-            file.set_times(std::fs::FileTimes::new().set_modified(time)).unwrap();
-            let native = run_native(&out.join("mtime"), "mtime", &[path.to_str().unwrap().to_owned()]).unwrap();
-            let values: Vec<i64> = native.stdout.chunks_exact(8).map(|bytes| i64::from_le_bytes(bytes.try_into().unwrap())).collect();
-            assert_eq!(values, vec![0, i64::try_from(ns.div_euclid(1_000_000_000)).unwrap(), i64::try_from(ns.rem_euclid(1_000_000_000)).unwrap(), 0, i64::try_from(ns.div_euclid(1_000_000_000)).unwrap(), i64::try_from(ns.rem_euclid(1_000_000_000)).unwrap()]);
+            let duration =
+                std::time::Duration::from_nanos(u64::try_from(ns.unsigned_abs()).unwrap());
+            let time = if ns < 0 {
+                std::time::UNIX_EPOCH - duration
+            } else {
+                std::time::UNIX_EPOCH + duration
+            };
+            file.set_times(std::fs::FileTimes::new().set_modified(time))
+                .unwrap();
+            let native = run_native(
+                &out.join("mtime"),
+                "mtime",
+                &[path.to_str().unwrap().to_owned()],
+            )
+            .unwrap();
+            let values: Vec<i64> = native
+                .stdout
+                .chunks_exact(8)
+                .map(|bytes| i64::from_le_bytes(bytes.try_into().unwrap()))
+                .collect();
+            assert_eq!(
+                values,
+                vec![
+                    0,
+                    i64::try_from(ns.div_euclid(1_000_000_000)).unwrap(),
+                    i64::try_from(ns.rem_euclid(1_000_000_000)).unwrap(),
+                    0,
+                    i64::try_from(ns.div_euclid(1_000_000_000)).unwrap(),
+                    i64::try_from(ns.rem_euclid(1_000_000_000)).unwrap()
+                ]
+            );
             println!("U7_MTIME_NATIVE ns={ns} values={values:?}");
-            let mut config = paludarium::Config::new("/program", vec![b"mtime".to_vec(), b"/fixture/mtime".to_vec()]).with_file("/program", std::fs::read(out.join("mtime")).unwrap());
-            config.mounts.push(paludarium::Mount { host: root.clone(), guest: b"/fixture".to_vec() });
-            let host = std::sync::Arc::new(MountedHost { record: RecordingHost::new() });
+            let mut config = paludarium::Config::new(
+                "/program",
+                vec![b"mtime".to_vec(), b"/fixture/mtime".to_vec()],
+            )
+            .with_file("/program", std::fs::read(out.join("mtime")).unwrap());
+            config.mounts.push(paludarium::Mount {
+                host: root.clone(),
+                guest: b"/fixture".to_vec(),
+            });
+            let host = std::sync::Arc::new(MountedHost {
+                record: RecordingHost::new(),
+            });
             let session = paludarium::Session::new(config, host.clone()).unwrap();
             let start = std::time::Instant::now();
             let status = session.run().unwrap();
-            let emulated = paludarium_harness::Outcome { stdout: host.record.stdout(), stderr: host.record.stderr(), status, elapsed: start.elapsed() };
+            let emulated = paludarium_harness::Outcome {
+                stdout: host.record.stdout(),
+                stderr: host.record.stderr(),
+                status,
+                elapsed: start.elapsed(),
+            };
             println!("U7_MTIME_EMULATED ns={ns} bytes={:?}", emulated.stdout);
-            if let Err(error) = compare(&native, &emulated) { mismatches.push(format!("ns={ns}: {error}")); }
+            if let Err(error) = compare(&native, &emulated) {
+                mismatches.push(format!("ns={ns}: {error}"));
+            }
         }
         drop(file);
         std::fs::remove_dir_all(root).unwrap();
