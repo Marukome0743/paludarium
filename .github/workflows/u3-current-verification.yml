@@ -1,0 +1,239 @@
+name: U3 current native matrix coverage and sanitizers
+on:
+  push:
+    branches: [codex/u3-current-verification]
+permissions:
+  contents: read
+env:
+  RUSTUP_TOOLCHAIN: nightly-2026-10-10
+  CARGO_TERM_COLOR: never
+jobs:
+  native-matrix-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Fresh Linux observations
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u3-current-evidence
+          mkdir -p "$e"
+          exec > >(tee "$e/environment.log") 2>&1
+          test "$(uname -m)" = x86_64
+          uname -a
+          lscpu
+          printf 'CI_HEAD=%s\n' "$GITHUB_SHA"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          rustup toolchain install nightly-2026-10-10 --profile minimal --component llvm-tools-preview
+          cargo install --locked --version 0.9.1 cargo-llvm-cov
+          rustc -Vv
+          cargo llvm-cov --version
+          python3 .github/scripts/u3-current-diagnostic.py snapshot "$e/source-before.sha256"
+          bash tests/guests/u3/build.sh target/u3-guests
+          python3 .github/scripts/u3-current-diagnostic.py native "$e/native"
+          python3 .github/scripts/u3-current-diagnostic.py bind "$e/native"
+      - name: Independent matrix and Linux differential
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u3-current-evidence
+          cargo llvm-cov clean --workspace
+          set +e
+          cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib --no-report -- u3_tests:: 2>&1 | tee "$e/matrix.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/matrix-exit.txt"
+          test "$status" = 0
+          grep -q '40 passed; 0 failed; 0 ignored' "$e/matrix.log"
+          grep -q '12 passed; 0 failed; 0 ignored' "$e/matrix.log"
+          set +e
+          cargo test --locked -p paludarium-harness --test diff_u3 -- --nocapture 2>&1 | tee "$e/diff-u3.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/diff-exit.txt"
+          test "$status" = 0
+          grep -q 'test u3_fresh_native_differential ... ok' "$e/diff-u3.log"
+          grep -q '2 passed; 0 failed; 2 ignored' "$e/diff-u3.log"
+      - name: Separate empty-profile shared nine file coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u3-current-evidence
+          cargo llvm-cov clean --workspace
+          set +e
+          cargo llvm-cov --locked -p paludarium-cpu -p paludarium-decoder --lib --fail-under-lines 80 2>&1 | tee "$e/coverage.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/coverage-exit.txt"
+          cargo llvm-cov report --locked -p paludarium-cpu -p paludarium-decoder --lcov --output-path "$e/coverage.lcov"
+          cargo llvm-cov report --locked -p paludarium-cpu -p paludarium-decoder --json --output-path "$e/coverage.json"
+          printf '0\n' > "$e/report-exit.txt"
+          test "$status" = 0
+      - name: Preserve unchanged full inputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u3-current-evidence
+          python3 .github/scripts/u3-current-diagnostic.py snapshot "$e/source-after.sha256" --compare "$e/source-before.sha256"
+          printf '0\n' > "$e/source-compare-exit.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u3-current-native-matrix-coverage
+          path: target/u3-current-evidence/
+          retention-days: 7
+  scoped:
+    needs: native-matrix-coverage
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: u3-current-native-matrix-coverage
+          path: target/u3-current-native
+      - name: Same fresh native input U3 CPU and Decoder
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u3-scoped-evidence
+          mkdir -p "$e"
+          rustup toolchain install nightly-2026-10-10 --profile minimal
+          rustc -Vv > "$e/environment.log"
+          python .github/scripts/u3-current-diagnostic.py snapshot "$e/source-before.sha256" --compare target/u3-current-native/source-before.sha256
+          python .github/scripts/u3-current-diagnostic.py bind target/u3-current-native/native
+      - name: Explicitly run native replay with no ignored tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u3-scoped-evidence
+          set +e
+          cargo test --locked -p paludarium-cpu --lib u3_tests:: -- --include-ignored --nocapture 2>&1 | tee "$e/cpu.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/cpu-exit.txt"
+          test "$status" = 0
+          grep -q '40 passed; 0 failed; 0 ignored' "$e/cpu.log"
+          set +e
+          cargo test --locked -p paludarium-decoder --lib u3_tests:: -- --include-ignored --nocapture 2>&1 | tee "$e/decoder.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/decoder-exit.txt"
+          test "$status" = 0
+          grep -q '12 passed; 0 failed; 0 ignored' "$e/decoder.log"
+      - name: Scoped source unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u3-scoped-evidence
+          python .github/scripts/u3-current-diagnostic.py snapshot "$e/source-after.sha256" --compare "$e/source-before.sha256"
+          printf '0\n' > "$e/source-compare-exit.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u3-current-scoped-${{ matrix.os }}
+          path: target/u3-scoped-evidence/
+          retention-days: 7
+  asan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [cpu_u2, mmu_u2, decode]
+    container:
+      image: rust:1-bookworm
+      options: --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined --ulimit=stack=-1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Compiler and independent sanitizer readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u3-current-asan-evidence
+          mkdir -p "$e"
+          exec > >(tee "$e/environment.log") 2>&1
+          ln -s "$GITHUB_WORKSPACE" /work
+          test "$(uname -m)" = x86_64
+          uname -a
+          lscpu
+          apt-get update
+          apt-get install -y --no-install-recommends llvm binutils python3
+          rustup toolchain install nightly-2026-10-10 --profile minimal
+          cargo install --locked --version 0.13.2 cargo-fuzz
+          rustc -Vv
+          cargo -V
+          cargo fuzz --version
+          cc --version
+          dpkg-query -W libc6 gcc llvm
+          env | sort > "$e/environment-variables.log"
+          python3 .github/scripts/u3-current-diagnostic.py snapshot "$e/source-before.sha256"
+          export LSAN_OPTIONS=suppressions=/work/fuzz/lsan.supp
+          export ASAN_OPTIONS=detect_leaks=1
+          printf 'int main(void) { return 0; }\n' > "$e/minimal.c"
+          cc -fsanitize=address -g -O1 "$e/minimal.c" -o "$e/minimal-asan"
+          for attempt in 1 2; do
+            set +e
+            "$e/minimal-asan" > "$e/minimal-$attempt.log" 2>&1
+            status=$?
+            set -e
+            printf '%s\n' "$status" > "$e/minimal-$attempt-exit.txt"
+            test "$status" = 0
+          done
+      - name: Current target ASan and LSan at least 600 seconds
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /work
+          e=target/u3-current-asan-evidence
+          target='${{ matrix.target }}'
+          mkdir -p "fuzz/corpus/$target" "fuzz/artifacts/$target"
+          tar -cf "$e/corpus-before.tar" "fuzz/corpus/$target" "fuzz/artifacts/$target"
+          export LSAN_OPTIONS=suppressions=/work/fuzz/lsan.supp
+          export ASAN_OPTIONS=detect_leaks=1
+          printf 'seed=1\nsanitizer=address\nLSAN_OPTIONS=%s\nASAN_OPTIONS=%s\nCI_HEAD=%s\n' "$LSAN_OPTIONS" "$ASAN_OPTIONS" "$GITHUB_SHA" > "$e/settings.txt"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$e/start.txt"
+          set +e
+          cargo fuzz run --fuzz-dir fuzz --sanitizer address "$target" -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048 2>&1 | tee "$e/$target.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$e/exit.txt"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$e/end.txt"
+          tar -cf "$e/corpus-after.tar" "fuzz/corpus/$target" "fuzz/artifacts/$target"
+          binary="fuzz/target/x86_64-unknown-linux-gnu/release/$target"
+          sha256sum "$binary" > "$e/binary.sha256"
+          nm "$binary" > "$e/binary-symbols.txt"
+          test "$status" = 0
+          grep -q 'Done .* runs in 60[0-9] second' "$e/$target.log"
+      - name: Sanitizer source unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u3-current-asan-evidence
+          python3 .github/scripts/u3-current-diagnostic.py snapshot "$e/source-after.sha256" --compare "$e/source-before.sha256"
+          printf '0\n' > "$e/source-compare-exit.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u3-current-asan-${{ matrix.target }}
+          path: target/u3-current-asan-evidence/
+          retention-days: 7
