@@ -1,0 +1,129 @@
+name: U1 current R04 source verification
+on:
+  push:
+    branches: [codex/u1-r04-current-verification]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-10
+      CARGO_TERM_COLOR: never
+      RUST_TEST_THREADS: '1'
+      PALUDARIUM_U3_FULL_REPLAY: '1'
+      PALUDARIUM_U3_NATIVE_OBSERVATIONS: ${{ github.workspace }}/target/u3-guests/observe.native
+      PALUDARIUM_U3_NATIVE_FAULTS: ${{ github.workspace }}/target/u3-guests/fault-observe.native
+      PALUDARIUM_U3_NATIVE_CPUID: ${{ github.workspace }}/target/u3-guests/cpuid-observe.native
+      PALUDARIUM_U5_EMULATOR: ${{ github.workspace }}/target/llvm-cov-target/debug/paludarium
+      PALUDARIUM_U6_EMULATOR: ${{ github.workspace }}/target/llvm-cov-target/debug/paludarium
+      U1_PACKAGES: >-
+        -p paludarium-types -p paludarium-decoder -p paludarium-mmu
+        -p paludarium-cpu -p paludarium-loader -p paludarium-vfs
+        -p paludarium-kernel -p paludarium-host -p paludarium-jit
+        -p paludarium-runtime -p paludarium
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Prepare latest fixed tools and input audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u1-current-evidence
+          exec > >(tee target/u1-current-evidence/environment.log) 2>&1
+          test "$(uname -m)" = x86_64
+          uname -a
+          printf 'CI_HEAD=%s\n' "$GITHUB_SHA"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          rustup toolchain install nightly-2026-10-10 --profile minimal --component llvm-tools-preview --target x86_64-unknown-linux-musl
+          cargo install --locked --version 0.9.1 cargo-llvm-cov
+          rustc -Vv
+          cargo llvm-cov --version
+          find crates tests packages scripts fuzz/fuzz_targets -type f ! -path '*/target/*' ! -name '*.wasm' -print0 | sort -z | xargs -0 sha256sum > target/u1-current-evidence/source-before.sha256
+          sha256sum Cargo.toml Cargo.lock rust-toolchain.toml fuzz/Cargo.toml fuzz/Cargo.lock fuzz/lsan.supp >> target/u1-current-evidence/source-before.sha256
+      - name: Native hello versus current emulator and diff U1
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=target/u1-current-evidence
+          exec > >(tee "$evidence/hello.log") 2>&1
+          bash tests/guests/build.sh
+          cargo build --locked -p paludarium
+          python3 - <<'PY'
+          import json, pathlib, subprocess
+          out = pathlib.Path("target/u1-current-evidence")
+          rows = []
+          for name, args in [("hello-c", []), ("hello-rs", []), ("hello-rs", ["--flag", "two words"])]:
+              tag = name + ("-args" if args else "")
+              guest = str(pathlib.Path("target/guests", name).resolve())
+              native = subprocess.run([guest, *args], capture_output=True, timeout=30)
+              emulated = subprocess.run(["target/debug/paludarium", "--no-jit", guest, *args], capture_output=True, timeout=30)
+              for kind, result in [("native", native), ("emulated", emulated)]:
+                  (out / (tag + "-" + kind + ".stdout")).write_bytes(result.stdout)
+                  (out / (tag + "-" + kind + ".stderr")).write_bytes(result.stderr)
+                  (out / (tag + "-" + kind + ".exit")).write_text(str(result.returncode) + "\n")
+              row = {"case": tag, "native_exit": native.returncode, "emulated_exit": emulated.returncode,
+                     "stdout_equal": native.stdout == emulated.stdout, "stderr_equal": native.stderr == emulated.stderr}
+              rows.append(row)
+              print(json.dumps(row), flush=True)
+              assert native.returncode == emulated.returncode == 0 and row["stdout_equal"] and row["stderr_equal"]
+          (out / "hello-comparison.json").write_text(json.dumps(rows, indent=2) + "\n")
+          PY
+          set +e
+          cargo test --locked -p paludarium-harness --test diff_u1 -- --test-threads=1 --nocapture 2>&1 | tee "$evidence/diff-u1.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$evidence/diff-u1-exit.txt"
+          test "$status" = 0
+      - name: Exact existing U1 production scope coverage 80 percent
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=target/u1-current-evidence
+          bash tests/guests/u3/build.sh target/u3-guests
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          out = Path("target/u3-guests")
+          for name, expected_rows in [("observe", 23576), ("fault-observe", 1162), ("cpuid-observe", 12)]:
+              result = subprocess.run([str((out / name).resolve())], capture_output=True, timeout=30)
+              (out / (name + ".native")).write_bytes(result.stdout)
+              (out / (name + ".stderr")).write_bytes(result.stderr)
+              assert result.returncode == 0 and len(result.stdout.splitlines()) == expected_rows and not result.stderr
+          PY
+          cargo llvm-cov clean --workspace
+          (
+            source <(cargo llvm-cov show-env --sh)
+            cargo build --locked -p paludarium --target-dir target/llvm-cov-target
+          )
+          set +e
+          cargo llvm-cov --no-clean --locked $U1_PACKAGES -p paludarium-harness --ignore-filename-regex 'paludarium-harness/' --fail-under-lines 80 -- --test-threads=1 --nocapture 2>&1 | tee "$evidence/coverage.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$evidence/coverage-exit.txt"
+          cargo llvm-cov report --ignore-filename-regex 'paludarium-harness/' --json --output-path "$evidence/coverage.json" 2>&1 | tee "$evidence/coverage-report.log"
+          reported=${PIPESTATUS[0]}
+          printf '%s\n' "$reported" > "$evidence/report-exit.txt"
+          test "$status" = 0
+          test "$reported" = 0
+      - name: Preserve every input and result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=target/u1-current-evidence
+          find crates tests packages scripts fuzz/fuzz_targets -type f ! -path '*/target/*' ! -name '*.wasm' -print0 | sort -z | xargs -0 sha256sum > "$evidence/source-after.sha256"
+          sha256sum Cargo.toml Cargo.lock rust-toolchain.toml fuzz/Cargo.toml fuzz/Cargo.lock fuzz/lsan.supp >> "$evidence/source-after.sha256"
+          set +e
+          cmp "$evidence/source-before.sha256" "$evidence/source-after.sha256" > "$evidence/source-compare.log" 2>&1
+          status=$?
+          printf '%s\n' "$status" > "$evidence/source-compare-exit.txt"
+          set -e
+          test "$status" = 0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u1-current-r04-evidence
+          path: target/u1-current-evidence/
+          retention-days: 7
