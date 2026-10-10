@@ -1,0 +1,44 @@
+name: U7 R04 native first
+on:
+  push:
+    branches: [codex/u7-r04-native-first]
+permissions:
+  contents: read
+jobs:
+  native-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Native-first boundary and current emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u7-r04-red
+          exec > >(tee target/u7-r04-red/raw.log) 2>&1
+          uname -a
+          test "$(uname -m)" = x86_64
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          rustup toolchain install nightly-2026-10-10 --profile minimal
+          rustc -Vv
+          find crates tests packages scripts fuzz/fuzz_targets -type f ! -path '*/target/*' ! -name '*.wasm' -print0 | sort -z | xargs -0 sha256sum > target/u7-r04-red/source-before.sha256
+          sha256sum Cargo.toml Cargo.lock rust-toolchain.toml fuzz/Cargo.toml fuzz/Cargo.lock fuzz/lsan.supp >> target/u7-r04-red/source-before.sha256
+          set +e
+          cargo test --locked -p paludarium-harness --test diff_u7 u7_host_signed_mtime_stat_fstat -- --exact --nocapture --test-threads=1
+          status=$?
+          set -e
+          printf '%s\n' "$status" > target/u7-r04-red/exit.txt
+          test "$status" -ne 0
+          grep -F 'U7_MTIME_NATIVE ns=-1000000000 values=[0, -1, 0, 0, -1, 0]' target/u7-r04-red/raw.log
+          grep -F 'stdout differs' target/u7-r04-red/raw.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u7-r04-native-red
+          path: target/u7-r04-red/
+          retention-days: 7
