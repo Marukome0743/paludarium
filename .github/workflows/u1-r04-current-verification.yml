@@ -105,6 +105,7 @@ jobs:
           cargo llvm-cov report --ignore-filename-regex 'paludarium-harness/' --json --output-path "$evidence/coverage.json" 2>&1 | tee "$evidence/coverage-report.log"
           reported=${PIPESTATUS[0]}
           printf '%s\n' "$reported" > "$evidence/report-exit.txt"
+          set -e
           test "$status" = 0
           test "$reported" = 0
       - name: Preserve every input and result
