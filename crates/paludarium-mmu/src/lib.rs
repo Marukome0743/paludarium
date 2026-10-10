@@ -15,9 +15,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
-use std::sync::{
-    Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
-};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use paludarium_types::{Errno, GuestAddr, PAGE_SIZE, USER_ADDRESS_LIMIT};
 
@@ -875,17 +873,28 @@ pub struct AtomicResult {
     pub exchanged: bool,
 }
 
-/// A shared address space. Every memory and mapping operation serializes on
-/// this one lock, including ordinary reads/writes/fetches. The private data
-/// implementation never calls back through this public wrapper (no reentry).
+/// A shared address space. Reads/fetches share guards; writes, atomics, mapping
+/// changes and fork snapshots take exclusive guards. Forks share the outer
+/// serialization lock so MAP_SHARED reads cannot tear an atomic update.
+/// The private implementation never calls through this wrapper (no reentry).
 pub struct AddressSpace {
-    data: Mutex<AddressSpaceData>,
-    serialization: Arc<Mutex<()>>,
+    data: RwLock<AddressSpaceData>,
+    serialization: Arc<RwLock<()>>,
 }
 
 struct AddressSpaceGuard<'a> {
-    data: MutexGuard<'a, AddressSpaceData>,
-    _serialization: MutexGuard<'a, ()>,
+    data: RwLockWriteGuard<'a, AddressSpaceData>,
+    _serialization: RwLockWriteGuard<'a, ()>,
+}
+struct AddressSpaceReadGuard<'a> {
+    data: RwLockReadGuard<'a, AddressSpaceData>,
+    _serialization: RwLockReadGuard<'a, ()>,
+}
+impl std::ops::Deref for AddressSpaceReadGuard<'_> {
+    type Target = AddressSpaceData;
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
 }
 impl std::ops::Deref for AddressSpaceGuard<'_> {
     type Target = AddressSpaceData;
@@ -913,17 +922,27 @@ impl AddressSpace {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            data: Mutex::new(AddressSpaceData::new()),
+            data: RwLock::new(AddressSpaceData::new()),
             serialization: Arc::default(),
         }
     }
     fn locked(&self) -> AddressSpaceGuard<'_> {
         let serialization = self
             .serialization
-            .lock()
+            .write()
             .unwrap_or_else(PoisonError::into_inner);
         AddressSpaceGuard {
-            data: self.data.lock().unwrap_or_else(PoisonError::into_inner),
+            data: self.data.write().unwrap_or_else(PoisonError::into_inner),
+            _serialization: serialization,
+        }
+    }
+    fn read_locked(&self) -> AddressSpaceReadGuard<'_> {
+        let serialization = self
+            .serialization
+            .read()
+            .unwrap_or_else(PoisonError::into_inner);
+        AddressSpaceReadGuard {
+            data: self.data.read().unwrap_or_else(PoisonError::into_inner),
             _serialization: serialization,
         }
     }
@@ -932,7 +951,7 @@ impl AddressSpace {
     #[must_use]
     pub fn fork(&self) -> Self {
         Self {
-            data: Mutex::new(self.locked().fork()),
+            data: RwLock::new(self.locked().fork()),
             serialization: self.serialization.clone(),
         }
     }
@@ -978,15 +997,15 @@ impl AddressSpace {
     }
     #[must_use]
     pub fn id(&self) -> u64 {
-        self.locked().id()
+        self.read_locked().id()
     }
     #[must_use]
     pub fn code_generation(&self) -> u64 {
-        self.locked().code_generation()
+        self.read_locked().code_generation()
     }
     /// A consistent mapping snapshot; borrowed entries cannot outlive the lock.
     pub fn mappings(&self) -> impl Iterator<Item = Mapping> {
-        self.locked()
+        self.read_locked()
             .mappings()
             .copied()
             .collect::<Vec<_>>()
@@ -996,32 +1015,32 @@ impl AddressSpace {
         self.locked().set_mmap_top(top);
     }
     pub fn read(&self, addr: GuestAddr, buf: &mut [u8]) -> Result<(), Fault> {
-        self.locked().read(addr, buf)
+        self.read_locked().read(addr, buf)
     }
     pub fn write(&self, addr: GuestAddr, buf: &[u8]) -> Result<(), Fault> {
         self.locked().write(addr, buf)
     }
     /// Checks a syscall buffer's read permission before allocating a copy.
     pub fn check_read(&self, addr: GuestAddr, len: usize) -> Result<(), Fault> {
-        let data = self.locked();
+        let data = self.read_locked();
         data.check(&data.read_directory(), addr, len, Access::Read)
     }
     /// Checks a stack allocation's write permission without changing bytes.
     pub fn check_write(&self, addr: GuestAddr, len: usize) -> Result<(), Fault> {
-        let data = self.locked();
+        let data = self.read_locked();
         data.check(&data.read_directory(), addr, len, Access::Write)
     }
     pub fn fetch(&self, addr: GuestAddr, buf: &mut [u8]) -> Result<(), Fault> {
-        self.locked().fetch(addr, buf)
+        self.read_locked().fetch(addr, buf)
     }
     pub fn fetch_partial(&self, addr: GuestAddr, buf: &mut [u8]) -> Result<usize, Fault> {
-        self.locked().fetch_partial(addr, buf)
+        self.read_locked().fetch_partial(addr, buf)
     }
     pub fn write_initial(&self, addr: GuestAddr, buf: &[u8]) -> Result<(), Fault> {
         self.locked().write_initial(addr, buf)
     }
     pub fn read_u64(&self, addr: GuestAddr) -> Result<u64, Fault> {
-        self.locked().read_u64(addr)
+        self.read_locked().read_u64(addr)
     }
     pub fn write_u64(&self, addr: GuestAddr, value: u64) -> Result<(), Fault> {
         self.locked().write_u64(addr, value)
@@ -1062,11 +1081,11 @@ impl AddressSpace {
     }
     #[must_use]
     pub fn initial_break(&self) -> GuestAddr {
-        self.locked().initial_break()
+        self.read_locked().initial_break()
     }
     #[must_use]
     pub fn current_break(&self) -> GuestAddr {
-        self.locked().current_break()
+        self.read_locked().current_break()
     }
     pub fn set_break(&mut self, addr: GuestAddr) -> GuestAddr {
         self.locked().set_break(addr)
