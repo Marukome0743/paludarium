@@ -1,0 +1,53 @@
+name: U11 fresh native filesystem metadata
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/u11-wasm-launcher]
+    paths:
+      - .github/workflows/u11-native-metadata.yml
+      - tests/guests/u11/fixture_metadata.py
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: u11-native-first
+          run-id: 38012795386
+          github-token: ${{ github.token }}
+          path: target/native-first
+      - name: Verify trusted guest bytes and successful build receipt
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          root = pathlib.Path('target/native-first/guests/u10')
+          receipt = json.loads((root / 'build-receipt.json').read_text())
+          assert receipt['exit'] == 0 and receipt['source_unchanged']
+          assert receipt['audits'] == {'probe': 0, 'aube': 0}
+          assert receipt['aube']['revision'] == 'bd94e42f54d3b5e3dd102716b7197f316cb5f4ed'
+          expected = {'probe': '3e2a3c772017bfc6cb5dd275c83b6d4f730bc7f219bfad8b1266f0a4cb66b5a9',
+                      'aube': '7bd0dabbfa230d3b9a1b182d766ce5abbef7a5dfce7046f54e4672765a4cda79'}
+          for name, digest in expected.items():
+              path = root / name
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+              assert receipt['binaries'][name]['sha256'] == digest
+              assert receipt['binaries'][name]['static_elf']
+              path.chmod(0o755)
+          PY
+      - name: Runner tests
+        run: python3 -m unittest discover -s tests/guests/u11/runner-tests -p 'test_*.py'
+      - name: Fresh network-isolated native execution with full metadata
+        run: sudo unshare --net python3 scripts/u11-run.py --native-only --guest-dir target/native-first/guests/u10 --output target/u11/native-metadata
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: u11-native-metadata
+          path: target/u11/native-metadata/
+          retention-days: 7

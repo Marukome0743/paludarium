@@ -38,7 +38,8 @@ def main():
         from native import observe
         from evidence import digest
         output = args.output.resolve()
-        observe(args.guest_dir.resolve(), output, config)
+        from fixture_metadata import snapshot_metadata
+        observe(args.guest_dir.resolve(), output, config, extra_snapshot=snapshot_metadata)
         receipt = {'unit': 'u11-wasm-launcher', 'native_oracle_sha256': digest(output / 'observations.json'),
                    'cases_sha256': digest(ROOT / 'tests/guests/u10/cases.json'),
                    'source_lock_sha256': digest(ROOT / 'tests/guests/u10/source-lock.json'),

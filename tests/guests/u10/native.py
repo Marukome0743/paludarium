@@ -14,7 +14,7 @@ from metadata import fixture_inputs
 HERE = pathlib.Path(__file__).resolve().parent
 
 
-def observe(guests, output, config):
+def observe(guests, output, config, *, extra_snapshot=None):
     if platform.system() != 'Linux' or platform.machine() != 'x86_64':
         raise RuntimeError('native oracle requires x86-64 Linux')
     if os.readlink('/proc/self/ns/net') == os.readlink('/proc/1/ns/net'):
@@ -49,6 +49,8 @@ def observe(guests, output, config):
                 shutil.rmtree(app / 'node_modules')
             row = run([str(guests / 'aube')] + case['args'], cwd=app, env=env)
             row['filesystem'] = snapshot(root / 'fixture')
+            if extra_snapshot is not None:
+                row['filesystem_metadata'] = extra_snapshot(root / 'fixture')
             observations['rows'][case['name']] = row
             (output / 'observations.json').write_text(json.dumps(observations, indent=2) + '\n')
             if row['exit'] != 0 or row['timed_out']:
