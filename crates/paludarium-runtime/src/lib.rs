@@ -6,6 +6,7 @@
 //! slices the loop checks whether [`Session::kill`] was requested (BR4.3).
 #![forbid(unsafe_code)]
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -64,6 +65,9 @@ pub struct Config {
     pub env: Vec<(Vec<u8>, Vec<u8>)>,
     /// Files placed in the virtual file system before start: (path, content).
     pub files: Vec<(Vec<u8>, Vec<u8>)>,
+    /// Optional initial permission overrides. Entries must name configured
+    /// files once each and contain only Linux permission bits (0o7777).
+    pub file_modes: Vec<(Vec<u8>, u32)>,
     pub mounts: Vec<Mount>,
     pub tty: Option<TerminalInfo>,
     /// Only meaningful in wasm; the native build has no JIT.
@@ -94,11 +98,28 @@ impl Config {
         self.files.push((path.into(), content.into()));
         self
     }
+
+    /// Adds a file with explicit initial permissions. Existing `with_file`
+    /// callers retain the default 0o755 mode. Invalid overrides are rejected
+    /// by [`Session::new`], before any guest executes.
+    #[must_use]
+    pub fn with_file_mode(
+        mut self,
+        path: impl Into<Vec<u8>>,
+        content: impl Into<Vec<u8>>,
+        mode: u32,
+    ) -> Self {
+        let path = path.into();
+        self.files.push((path.clone(), content.into()));
+        self.file_modes.push((path, mode));
+        self
+    }
 }
 
 /// One guest run.
 pub struct Session {
     config: Config,
+    file_modes: BTreeMap<Vec<u8>, u32>,
     mounts: Vec<(Vec<u8>, Arc<dyn HostFs>)>,
     host: Arc<dyn Host>,
     code_cache: Arc<dyn CodeCache>,
@@ -115,6 +136,31 @@ impl Session {
         if config.program.is_empty() {
             return Err(Error::new(ErrorKind::InvalidProgram, "no program given"));
         }
+        let mut file_modes = BTreeMap::new();
+        for (path, mode) in &config.file_modes {
+            let path = paludarium_vfs::normalize_path(path)
+                .map_err(|_| Error::new(ErrorKind::InvalidProgram, "invalid file mode path"))?;
+            if path == b"/" || mode & !0o7777 != 0 {
+                return Err(Error::new(
+                    ErrorKind::InvalidProgram,
+                    "invalid file mode override",
+                ));
+            }
+            if !config.files.iter().any(|(configured, _)| {
+                paludarium_vfs::normalize_path(configured).as_ref() == Ok(&path)
+            }) {
+                return Err(Error::new(
+                    ErrorKind::InvalidProgram,
+                    "file mode path has no configured file",
+                ));
+            }
+            if file_modes.insert(path, *mode).is_some() {
+                return Err(Error::new(
+                    ErrorKind::InvalidProgram,
+                    "duplicate file mode override",
+                ));
+            }
+        }
         let mut mounts = Vec::new();
         let mut validate = MountedFs::new(MemFs::new());
         for mount in &config.mounts {
@@ -129,6 +175,7 @@ impl Session {
         Ok(Session {
             mounts,
             config,
+            file_modes,
             host,
             code_cache: Arc::new(NoopCodeCache),
             budget: DEFAULT_BUDGET,
@@ -179,7 +226,13 @@ impl Session {
         fs.mkdir(b"/tmp", 0o1777)
             .map_err(|_| Error::new(ErrorKind::Internal, "temporary directory"))?;
         for (path, content) in &self.config.files {
-            fs.add_file(GuestFile::new(path.clone(), content.clone()))
+            let mut file = GuestFile::new(path.clone(), content.clone());
+            let normalized = paludarium_vfs::normalize_path(path)
+                .map_err(|_| Error::new(ErrorKind::InvalidProgram, "invalid file placement"))?;
+            if let Some(mode) = self.file_modes.get(&normalized) {
+                file.mode = *mode;
+            }
+            fs.add_file(file)
                 .map_err(|_| Error::new(ErrorKind::InvalidProgram, "invalid file placement"))?;
         }
         let mut mounted = MountedFs::new(fs);
@@ -244,6 +297,9 @@ mod tests;
 
 #[cfg(test)]
 mod u9_tests;
+
+#[cfg(test)]
+mod u10_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod u5_tests;

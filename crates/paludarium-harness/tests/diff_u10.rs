@@ -4,6 +4,7 @@ mod support;
 
 /// Python owns the per-operation process-group watchdog and fresh oracle.
 #[test]
+#[ignore = "fixed guest artifacts and isolated x86 Linux namespace required"]
 fn u10_differential() {
     assert_eq!(
         (std::env::consts::OS, std::env::consts::ARCH),

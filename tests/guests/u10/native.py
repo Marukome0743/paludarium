@@ -9,6 +9,7 @@ import tempfile
 from comparison import probe_pass, reproduced
 from evidence import digest, snapshot, validate
 from runner import run
+from metadata import fixture_inputs
 
 HERE = pathlib.Path(__file__).resolve().parent
 
@@ -42,6 +43,7 @@ def observe(guests, output, config):
                 probe_pass(row, config['probe'] if name == 'all' else [name])
         shutil.copytree(HERE / 'fixtures', root / 'fixture')
         app = root / 'fixture/app'
+        observations['fixture_input_modes'] = fixture_inputs(root / 'fixture')
         for case in config['aube']:
             if case.get('before') == 'remove-node-modules':
                 shutil.rmtree(app / 'node_modules')

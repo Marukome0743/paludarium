@@ -15,6 +15,8 @@ def compare(expected, actual, expected_root, actual_root):
         raise ValueError('exit mismatch')
     if normalized(expected['stdout'], expected_root) != normalized(actual['stdout'], actual_root):
         raise ValueError('stdout mismatch')
+    if normalized(expected['stderr'], expected_root) != normalized(actual['stderr'], actual_root):
+        raise ValueError('stderr mismatch')
 
 
 def probe_pass(result, items):

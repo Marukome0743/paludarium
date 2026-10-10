@@ -44,11 +44,29 @@ fn fixture_files(config: &mut Config, directory: &Path, guest: &str) {
         if entry.file_type().unwrap().is_dir() {
             fixture_files(config, &entry.path(), &path);
         } else {
-            config
-                .files
-                .push((path.into_bytes(), std::fs::read(entry.path()).unwrap()));
+            let mode = fixture_mode(&entry.path());
+            assert_eq!(
+                mode, 0o644,
+                "U10 fixture permissions must match native 0644"
+            );
+            *config = std::mem::take(config).with_file_mode(
+                path,
+                std::fs::read(entry.path()).unwrap(),
+                mode,
+            );
         }
     }
+}
+
+#[cfg(unix)]
+fn fixture_mode(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o7777
+}
+
+#[cfg(not(unix))]
+fn fixture_mode(_path: &Path) -> u32 {
+    panic!("U10 fixture metadata requires Unix")
 }
 
 /// Executed only as a child of the 30-second Python group watchdog.
@@ -92,6 +110,15 @@ pub fn operation() {
         }
     }
     let host = Arc::new(CaptureHost(RecordingHost::new()));
+    std::fs::write(
+        directory.join("fixture-modes"),
+        config
+            .file_modes
+            .iter()
+            .map(|(path, mode)| format!("{}\t{mode}\n", String::from_utf8_lossy(path)))
+            .collect::<String>(),
+    )
+    .unwrap();
     let session = Session::new(config, host.clone()).unwrap();
     let started = Instant::now();
     let result = session.run();

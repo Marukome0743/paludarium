@@ -59,6 +59,13 @@ class ComparisonTests(unittest.TestCase):
         actual['stdout'] = actual['stdout'].replace('0.0.0', '1.0.0')
         with self.assertRaises(ValueError):
             compare(expected, actual, '/native', '/guest')
+        actual = copy.deepcopy(expected)
+        actual['stderr'] = 'FAIL unexpected stderr\n'
+        with self.assertRaises(ValueError):
+            compare(expected, actual, '/native', '/guest')
+        expected = {'stdout': '', 'stderr': 'installed in 12ms\n', 'exit': 0, 'timed_out': False}
+        actual = {'stdout': '', 'stderr': '\x1b[32minstalled in 2.4s\x1b[0m\n', 'exit': 0, 'timed_out': False}
+        compare(expected, actual, '/native', '/guest')
 
 
 if __name__ == '__main__':

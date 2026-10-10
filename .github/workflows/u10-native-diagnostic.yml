@@ -1,7 +1,6 @@
 name: U10 native expectations
 on:
-  push:
-    branches: [codex/u10-native-diagnostic]
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read
@@ -81,7 +80,7 @@ jobs:
           u10_rustc="$(rustup which --toolchain nightly-2026-10-01 rustc)"
           u10_bin="$(dirname "$u10_cargo")"
           u10_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-          sudo unshare --net env PATH="$u10_bin:$PATH" RUSTC="$u10_rustc" CARGO_HOME="$u10_cargo_home" "$u10_cargo" test --locked --offline -p paludarium-harness --test diff_u10 -- --nocapture
+          sudo unshare --net env PATH="$u10_bin:$PATH" RUSTC="$u10_rustc" CARGO_HOME="$u10_cargo_home" "$u10_cargo" test --locked --offline -p paludarium-harness --test diff_u10 -- --include-ignored --nocapture
       - name: Make differential evidence readable after isolated execution
         if: always()
         run: |

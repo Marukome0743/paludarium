@@ -13,6 +13,17 @@ from runner import run
 HERE = pathlib.Path(__file__).resolve().parent
 
 
+def fixture_inputs(directory):
+    result = {}
+    for source, guest in [('app/package.json', '/package.json'),
+                          ('app/filedep/package.json', '/filedep/package.json'),
+                          ('outside/linked/package.json', '/outside/linked/package.json')]:
+        result[guest] = stat.S_IMODE((directory / source).stat().st_mode)
+    if len(result) != 3 or any(mode != 0o644 for mode in result.values()):
+        raise ValueError('fixture metadata changed from native 0644 inputs')
+    return result
+
+
 def child(directory):
     fixture_modes = {str(p.relative_to(directory)): p.stat().st_mode
                      for p in sorted(directory.rglob('package.json'))}

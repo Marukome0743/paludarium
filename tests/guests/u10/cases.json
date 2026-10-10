@@ -10,5 +10,5 @@
   ],
   "environment": {"PATH": "/u10-no-node", "HOME": "/home/u10", "TMPDIR": "/tmp", "NO_COLOR": "1", "TERM": "dumb", "LANG": "C", "LC_ALL": "C", "TZ": "UTC"},
   "network": "native network namespace; emulator network disabled",
-  "comparison": {"stdout": true, "exit": true, "stderr": "diagnostic; time fields normalized explicitly", "filesystem": "diagnostic snapshot"}
+  "comparison": {"stdout": true, "exit": true, "stderr": true, "filesystem": "diagnostic snapshot"}
 }

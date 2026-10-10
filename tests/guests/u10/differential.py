@@ -10,6 +10,7 @@ from comparison import compare, probe_pass, reproduced
 from evidence import snapshot
 from native import observe
 from runner import run
+from metadata import fixture_inputs
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
@@ -36,6 +37,11 @@ def operation(executable, binary, args, directory, environment, fixture=None, mo
            'wall_seconds': float((directory / 'seconds').read_text()), 'stop': (directory / 'stop').read_text()}
     if fixture is not None:
         row['filesystem'] = snapshot(fixture)
+        recorded = (directory / 'fixture-modes').read_text()
+        row['fixture_input_modes'] = fixture_inputs(fixture) if mounted else {
+            line.split('\t')[0]: int(line.split('\t')[1]) for line in recorded.splitlines()}
+        if not mounted and row['fixture_input_modes'] != fixture_inputs(fixture):
+            raise ValueError('private VFS fixture metadata differs from native input')
     return row
 
 
@@ -72,6 +78,8 @@ def differential(executable):
                 probe_pass(row, config['probe'] if name == 'all' else [name])
         fixture = scratch / 'fixture'
         shutil.copytree(HERE / 'fixtures', fixture)
+        if fixture_inputs(fixture) != native['fixture_input_modes']:
+            raise ValueError('native/emulated fixture input mode mismatch')
         for case in config['aube'][:2]:
             name = 'default-' + case['name']
             row = operation(executable, guests / 'aube', case['args'], operations / name,
@@ -79,6 +87,10 @@ def differential(executable):
             store(name, row)
             compare(native['rows'][case['name']], row, str(pathlib.Path(native['fixture_root']) / 'fixture/app'), '/')
         rows = {}
+        # A root mount routes /tmp and /home descendants into this bounded
+        # fixture. Prepare the same runtime directories as the native oracle.
+        (fixture / 'app/tmp').mkdir()
+        (fixture / 'app/home/u10').mkdir(parents=True)
         for case in config['aube']:
             if case.get('before') == 'remove-node-modules':
                 shutil.rmtree(fixture / 'app/node_modules')
