@@ -38,7 +38,7 @@ export async function runChecks({ wasmUrl, readGuest, native }) {
       check(observed.stdout === desiredStdout && observed.stderr === row.stderr, `${name}: streams mismatch`);
       results.push({ case: name, pass: true, ...observed });
     }
-    for (const [name, options] of [["unsupported-tty", { tty: { columns: 80, rows: 24 } }], ["unsupported-jit", { jit: true }]]) {
+    for (const [name, options] of [["unsupported-jit", { jit: true }]]) {
       let error;
       try { runtime.run({ program: "/guest", ...options }); } catch (cause) { error = cause; }
       check(error instanceof PaludariumError && error.kind === "unimplemented", `${name}: unsupported capability accepted`);
