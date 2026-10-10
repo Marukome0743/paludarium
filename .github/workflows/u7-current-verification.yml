@@ -1,0 +1,248 @@
+name: U7 current source verification
+
+on:
+  push:
+    branches: [codex/u7-current-verification]
+
+permissions:
+  contents: read
+
+jobs:
+  asan:
+    name: ASan ${{ matrix.target }} (10 min)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [vfs_paths]
+    container:
+      image: rust:1-bookworm
+      options: --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined --ulimit=stack=-1
+    env:
+      CARGO_TERM_COLOR: never
+      RUSTUP_TOOLCHAIN: nightly-2026-10-10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Prepare native runner and record source
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u7-asan-evidence
+          exec > >(tee target/u7-asan-evidence/environment.log) 2>&1
+          test "$(uname -m)" = x86_64
+          uname -a
+          lscpu
+          id
+          cat /proc/self/status
+          printf 'CI_HEAD=%s\nTARGET=%s\n' "$GITHUB_SHA" '${{ matrix.target }}'
+          ln -s "$GITHUB_WORKSPACE" /work
+          apt-get update
+          apt-get install -y --no-install-recommends llvm binutils
+          rustup toolchain install nightly-2026-10-10 --profile minimal
+          cargo +nightly-2026-10-10 install --locked --version 0.13.2 cargo-fuzz
+          rustc +nightly-2026-10-10 -Vv
+          cargo +nightly-2026-10-10 -V
+          cargo +nightly-2026-10-10 fuzz --version
+          cc --version
+          dpkg-query -W libc6 gcc llvm
+          find crates tests packages scripts fuzz/fuzz_targets -type f ! -path '*/target/*' ! -name '*.wasm' -print0 | sort -z | xargs -0 sha256sum > target/u7-asan-evidence/source-before.sha256
+          sha256sum Cargo.toml Cargo.lock rust-toolchain.toml fuzz/Cargo.toml fuzz/Cargo.lock fuzz/lsan.supp >> target/u7-asan-evidence/source-before.sha256
+      - name: Check sanitizer exit independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /work
+          evidence=target/u7-asan-evidence
+          export LSAN_OPTIONS=suppressions=/work/fuzz/lsan.supp
+          export ASAN_OPTIONS=detect_leaks=1
+          printf 'int main(void) { return 0; }\n' > "$evidence/minimal.c"
+          cc -fsanitize=address -g -O1 "$evidence/minimal.c" -o "$evidence/minimal-asan"
+          for attempt in 1 2; do
+            set +e
+            "$evidence/minimal-asan" > "$evidence/minimal-$attempt.log" 2>&1
+            status=$?
+            set -e
+            printf '%s\n' "$status" > "$evidence/minimal-$attempt-exit.txt"
+          done
+          printf 'LSAN_OPTIONS=%s\nASAN_OPTIONS=%s\n' "$LSAN_OPTIONS" "$ASAN_OPTIONS" > "$evidence/minimal-settings.txt"
+          test "$(cat "$evidence/minimal-1-exit.txt")" = 0
+          test "$(cat "$evidence/minimal-2-exit.txt")" = 0
+      - name: Run unchanged target for 600 seconds
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /work
+          evidence=target/u7-asan-evidence
+          target='${{ matrix.target }}'
+          mkdir -p "fuzz/corpus/$target" "fuzz/artifacts/$target"
+          tar -cf "$evidence/corpus-before.tar" "fuzz/corpus/$target" "fuzz/artifacts/$target"
+          export LSAN_OPTIONS=suppressions=/work/fuzz/lsan.supp
+          export ASAN_OPTIONS=detect_leaks=1
+          printf 'seed=1\nsanitizer=address\nLSAN_OPTIONS=%s\nASAN_OPTIONS=%s\nCI_HEAD=%s\n' "$LSAN_OPTIONS" "$ASAN_OPTIONS" "$GITHUB_SHA" > "$evidence/settings.txt"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/start.txt"
+          set +e
+          cargo +nightly-2026-10-10 fuzz run --fuzz-dir fuzz --sanitizer address "$target" -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048 2>&1 | tee "$evidence/$target.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$evidence/exit.txt"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/end.txt"
+          find crates tests packages scripts fuzz/fuzz_targets -type f ! -path '*/target/*' ! -name '*.wasm' -print0 | sort -z | xargs -0 sha256sum > "$evidence/source-after.sha256"
+          sha256sum Cargo.toml Cargo.lock rust-toolchain.toml fuzz/Cargo.toml fuzz/Cargo.lock fuzz/lsan.supp >> "$evidence/source-after.sha256"
+          set +e
+          cmp "$evidence/source-before.sha256" "$evidence/source-after.sha256" > "$evidence/source-compare.log" 2>&1
+          compared=$?
+          set -e
+          printf '%s\n' "$compared" > "$evidence/source-compare-exit.txt"
+          tar -cf "$evidence/corpus-after.tar" "fuzz/corpus/$target" "fuzz/artifacts/$target"
+          binary="fuzz/target/x86_64-unknown-linux-gnu/release/$target"
+          if [ -f "$binary" ]; then
+            sha256sum "$binary" > "$evidence/binary.sha256"
+            nm "$binary" > "$evidence/binary-symbols.txt"
+          fi
+          test "$status" = 0
+          test "$compared" = 0
+      - name: Preserve logs and inputs for every result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u7-asan-${{ matrix.target }}
+          path: target/u7-asan-evidence/
+          retention-days: 7
+  coverage:
+    name: U7 scoped Linux coverage and native differential
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: never
+      RUSTUP_TOOLCHAIN: nightly-2026-10-10
+      RUST_TEST_THREADS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Prepare coverage runner
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u7-diagnostic-evidence
+          exec > >(tee target/u7-diagnostic-evidence/environment.log) 2>&1
+          test "$(uname -m)" = x86_64
+          uname -a
+          lscpu
+          printf 'CI_HEAD=%s\n' "$GITHUB_SHA"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          rustup toolchain install nightly-2026-10-10 --profile minimal --component llvm-tools-preview
+          cargo +nightly-2026-10-10 install --locked --version 0.9.1 cargo-llvm-cov
+          rustc +nightly-2026-10-10 -Vv
+          cargo +nightly-2026-10-10 llvm-cov --version
+          find crates tests packages scripts fuzz/fuzz_targets -type f ! -path '*/target/*' ! -name '*.wasm' -print0 | sort -z | xargs -0 sha256sum > target/u7-diagnostic-evidence/source-before.sha256
+          sha256sum Cargo.toml Cargo.lock rust-toolchain.toml fuzz/Cargo.toml fuzz/Cargo.lock fuzz/lsan.supp >> target/u7-diagnostic-evidence/source-before.sha256
+      - name: Run exact U7 scope and 80 percent floor
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=target/u7-diagnostic-evidence
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/start.txt"
+          set +e
+          cargo +nightly-2026-10-10 llvm-cov --locked -p paludarium-vfs -p paludarium-kernel -p paludarium-host -p paludarium-runtime -p paludarium-loader -p paludarium-mmu -p paludarium -p paludarium-harness --lib --test diff_u7 --test command --ignore-filename-regex 'paludarium-(cpu|decoder|jit|types|harness)/' --fail-under-lines 80 -- --test-threads=1 2>&1 | tee "$evidence/coverage.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$evidence/exit.txt"
+          cargo +nightly-2026-10-10 llvm-cov report --ignore-filename-regex 'paludarium-(cpu|decoder|jit|types|harness)/' --json --output-path "$evidence/coverage.json" 2>&1 | tee "$evidence/report.log"
+          report_status=${PIPESTATUS[0]}
+          printf '%s\n' "$report_status" > "$evidence/report-exit.txt"
+          set -e
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/end.txt"
+          find crates tests packages scripts fuzz/fuzz_targets -type f ! -path '*/target/*' ! -name '*.wasm' -print0 | sort -z | xargs -0 sha256sum > "$evidence/source-after.sha256"
+          sha256sum Cargo.toml Cargo.lock rust-toolchain.toml fuzz/Cargo.toml fuzz/Cargo.lock fuzz/lsan.supp >> "$evidence/source-after.sha256"
+          set +e
+          cmp "$evidence/source-before.sha256" "$evidence/source-after.sha256" > "$evidence/source-compare.log" 2>&1
+          compared=$?
+          printf '%s\n' "$compared" > "$evidence/source-compare-exit.txt"
+          set -e
+          test "$status" = 0
+          test "$report_status" = 0
+          test "$compared" = 0
+      - name: Preserve all coverage evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u7-linux-coverage
+          path: target/u7-diagnostic-evidence/
+          retention-days: 7
+  windows-fixture:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+        with:
+          persist-credentials: false
+      - name: Record environment and source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force target/u7-windows-evidence | Out-Null
+          $e = 'target/u7-windows-evidence'
+          Get-Date -AsUTC -Format o | Set-Content "$e/start.txt"
+          "CI_HEAD=$env:GITHUB_SHA" | Set-Content "$e/environment.log"
+          [System.Environment]::OSVersion.VersionString | Add-Content "$e/environment.log"
+          whoami | Add-Content "$e/environment.log"
+          rustup toolchain install nightly-2026-10-10 --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'fixed nightly installation failed' }
+          rustc -Vv | Add-Content "$e/environment.log"
+          cargo -V | Add-Content "$e/environment.log"
+          $paths = @(Get-ChildItem crates,tests,packages,scripts,fuzz/fuzz_targets -File -Recurse | Where-Object { $_.FullName -notmatch '[\\/]target[\\/]' -and $_.Extension -ne '.wasm' } | ForEach-Object { $_.FullName }) + @('Cargo.toml','Cargo.lock','rust-toolchain.toml','fuzz/Cargo.toml','fuzz/Cargo.lock','fuzz/lsan.supp')
+          $paths | Sort-Object | ForEach-Object { $relative = [IO.Path]::GetRelativePath($pwd.Path, (Resolve-Path $_).Path).Replace('\','/'); "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $relative" } | Set-Content "$e/source-before.sha256"
+      - name: Build exact host test binary
+        shell: pwsh
+        run: |
+          $e = 'target/u7-windows-evidence'
+          cargo +nightly-2026-10-10 test --locked -p paludarium-host --lib --no-run --message-format=json 2> "$e/build.stderr.log" | Set-Content "$e/build.jsonl"
+          $code = $LASTEXITCODE
+          $code | Set-Content "$e/build-exit.txt"
+          if ($code -ne 0) { throw "host test build failed: $code" }
+          $messages = Get-Content "$e/build.jsonl" | ForEach-Object { $_ | ConvertFrom-Json }
+          $binary = @($messages | Where-Object { $_.reason -eq 'compiler-artifact' -and $_.profile.test -and $_.executable })[-1].executable
+          if (-not $binary) { throw 'test executable missing' }
+          $binary | Set-Content "$e/binary-path.txt"
+          Get-FileHash $binary -Algorithm SHA256 | Format-List | Out-String | Set-Content "$e/binary-sha256.txt"
+          & $binary --list | Set-Content "$e/tests.txt"
+          if (-not (Select-String -Path "$e/tests.txt" -SimpleMatch 'native_fs::u7_tests::u7_native_windows_symlink_rename_race: test')) { throw 'required Windows test missing' }
+      - name: Execute fixture regression with whole-child watchdog
+        shell: pwsh
+        run: |
+          $e = 'target/u7-windows-evidence'
+          cargo +nightly-2026-10-10 test --locked -p paludarium-host --lib native_fs::u7_tests::u7_native_windows_symlink_rename_race -- --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$e/test.log"
+          $code = $LASTEXITCODE
+          $code | Set-Content "$e/exit.txt"
+          Get-Date -AsUTC -Format o | Set-Content "$e/end.txt"
+          $paths = @(Get-ChildItem crates,tests,packages,scripts,fuzz/fuzz_targets -File -Recurse | Where-Object { $_.FullName -notmatch '[\\/]target[\\/]' -and $_.Extension -ne '.wasm' } | ForEach-Object { $_.FullName }) + @('Cargo.toml','Cargo.lock','rust-toolchain.toml','fuzz/Cargo.toml','fuzz/Cargo.lock','fuzz/lsan.supp')
+          $paths | Sort-Object | ForEach-Object { $relative = [IO.Path]::GetRelativePath($pwd.Path, (Resolve-Path $_).Path).Replace('\','/'); "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $relative" } | Set-Content "$e/source-after.sha256"
+          $difference = Compare-Object (Get-Content "$e/source-before.sha256") (Get-Content "$e/source-after.sha256")
+          $difference | Out-String | Set-Content "$e/source-compare.log"
+          if ($difference) { 1 | Set-Content "$e/source-compare-exit.txt"; throw 'source bytes changed' }
+          0 | Set-Content "$e/source-compare-exit.txt"
+          if ($code -ne 0) { throw "fixture test failed: $code" }
+          $log = Get-Content "$e/test.log" -Raw
+          if ($log -notmatch 'U7_WINDOWS_RACE iterations=1000 exchanges=[1-9][0-9]* outside_unchanged=true cleanup=true') { throw 'actual fixture metrics missing; no skip allowed' }
+          if ($log -notmatch 'U7_WINDOWS_SYMLINK_PERMISSION=true' -or $log -notmatch 'U7_WINDOWS_WATCHDOG') { throw 'permission or watchdog evidence missing' }
+      - name: Preserve every result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u7-windows-fixture
+          path: target/u7-windows-evidence/
+          retention-days: 7
