@@ -30,11 +30,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends musl-tools
           rustup toolchain install nightly-2026-10-10 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview
-          compiler_bin="$(rustup which --toolchain nightly-2026-10-10 rustc)"
+          compiler_bin="$(rustup which --toolchain nightly-2026-10-10 rustc | tr '\\' '/')"
+          rustdoc_bin="$(rustup which --toolchain nightly-2026-10-10 rustdoc | tr '\\' '/')"
           compiler_dir="${compiler_bin%/*}"
           echo "$compiler_dir" >> "$GITHUB_PATH"
           echo "RUSTC=$compiler_bin" >> "$GITHUB_ENV"
-          echo "RUSTDOC=$compiler_dir/rustdoc" >> "$GITHUB_ENV"
+          echo "RUSTDOC=$rustdoc_bin" >> "$GITHUB_ENV"
           "$compiler_bin" -Vv > "$e/compiler.txt"
           "$compiler_dir/cargo" -V > "$e/cargo.txt"
           "$compiler_dir/cargo" install --locked --version 0.9.1 cargo-llvm-cov
@@ -126,11 +127,12 @@ jobs:
           e=target/u5-current-evidence
           mkdir -p "$e"
           rustup toolchain install nightly-2026-10-10 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview
-          compiler_bin="$(rustup which --toolchain nightly-2026-10-10 rustc)"
+          compiler_bin="$(rustup which --toolchain nightly-2026-10-10 rustc | tr '\\' '/')"
+          rustdoc_bin="$(rustup which --toolchain nightly-2026-10-10 rustdoc | tr '\\' '/')"
           compiler_dir="${compiler_bin%/*}"
           echo "$compiler_dir" >> "$GITHUB_PATH"
           echo "RUSTC=$compiler_bin" >> "$GITHUB_ENV"
-          echo "RUSTDOC=$compiler_dir/rustdoc" >> "$GITHUB_ENV"
+          echo "RUSTDOC=$rustdoc_bin" >> "$GITHUB_ENV"
           "$compiler_bin" -Vv > "$e/compiler.txt"
           "$compiler_dir/cargo" -V > "$e/cargo.txt"
           python .github/scripts/u5-current-diagnostic.py snapshot "$e/source-before.sha256"
@@ -229,13 +231,16 @@ jobs:
           set -euo pipefail
           e=target/u5-current-evidence
           mkdir -p "$e"
+          apt-get update
+          apt-get install -y --no-install-recommends python3 python-is-python3 binutils
           ln -s "$GITHUB_WORKSPACE" /work
           rustup toolchain install nightly-2026-10-10 --profile minimal --component rustfmt --component clippy --component llvm-tools-preview
-          compiler_bin="$(rustup which --toolchain nightly-2026-10-10 rustc)"
+          compiler_bin="$(rustup which --toolchain nightly-2026-10-10 rustc | tr '\\' '/')"
+          rustdoc_bin="$(rustup which --toolchain nightly-2026-10-10 rustdoc | tr '\\' '/')"
           compiler_dir="${compiler_bin%/*}"
           echo "$compiler_dir" >> "$GITHUB_PATH"
           echo "RUSTC=$compiler_bin" >> "$GITHUB_ENV"
-          echo "RUSTDOC=$compiler_dir/rustdoc" >> "$GITHUB_ENV"
+          echo "RUSTDOC=$rustdoc_bin" >> "$GITHUB_ENV"
           "$compiler_bin" -Vv > "$e/compiler.txt"
           "$compiler_dir/cargo" -V > "$e/cargo.txt"
           "$compiler_dir/cargo" install --locked --version 0.13.2 cargo-fuzz
