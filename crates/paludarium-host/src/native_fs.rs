@@ -389,19 +389,21 @@ mod u7_tests {
     use super::*;
     #[test]
     fn u7_mtime_system_time_before_epoch() {
-        for ns in [1, 500_000_000, 1_000_000_000] {
+        for ns in [1, 99, 100, 101, 500_000_000, 1_000_000_000] {
+            let represented_ns = if cfg!(windows) { ns / 100 * 100 } else { ns };
             assert_eq!(
                 mtime_ns(std::time::UNIX_EPOCH - std::time::Duration::from_nanos(ns)),
-                Ok(-i128::from(ns))
+                Ok(-i128::from(represented_ns))
             );
         }
     }
     #[test]
     fn u7_mtime_system_time_epoch_positive_range() {
-        for ns in [0, 1, 1_500_000_000, u64::MAX] {
+        for ns in [0, 1, 99, 100, 101, 1_500_000_000, u64::MAX] {
+            let represented_ns = if cfg!(windows) { ns / 100 * 100 } else { ns };
             assert_eq!(
                 mtime_ns(std::time::UNIX_EPOCH + std::time::Duration::from_nanos(ns)),
-                Ok(i128::from(ns))
+                Ok(i128::from(represented_ns))
             );
         }
     }
