@@ -1,5 +1,5 @@
 //! Worker host facilities; imports never receive guest pointers.
-use crate::{ClockId, Host, WaitOutcome};
+use crate::{ClockId, Host, ThreadHandle, WaitOutcome};
 use paludarium_types::{Errno, Error, ErrorKind};
 use std::sync::{
     Mutex, PoisonError,
@@ -10,6 +10,7 @@ unsafe extern "C" {
     fn random_fill(ptr: *mut u8, len: usize) -> i32;
     fn clock_ms(kind: i32) -> f64;
     fn sleep_ms(ms: f64);
+    fn spawn_task(handle: u32) -> i32;
 }
 #[derive(Default)]
 struct Streams {
@@ -72,6 +73,20 @@ impl WasmHost {
     }
 }
 impl Host for WasmHost {
+    fn spawn_thread(&self, task: Box<dyn FnOnce() + Send>) -> Result<Box<dyn ThreadHandle>, Errno> {
+        let id = crate::wasm_tasks::register(task)?;
+        // The handle retains the closure before notification. Worker creation
+        // is owned by JS; its failures discard the complete shared runtime.
+        // SAFETY: only a validated scalar closure handle crosses the import.
+        if unsafe { spawn_task(id) } != 0 {
+            crate::wasm_tasks::unregister(id);
+            return Err(Errno::EAGAIN);
+        }
+        Ok(Box::new(crate::wasm_tasks::WasmThread::new(
+            id,
+            std::sync::Arc::new(Self::default()),
+        )?))
+    }
     fn read_stdin(&self, buf: &mut [u8]) -> Result<usize, Errno> {
         if buf.is_empty() {
             return Ok(0);

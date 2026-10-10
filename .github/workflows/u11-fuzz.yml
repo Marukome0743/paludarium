@@ -1,0 +1,54 @@
+name: U11 affected filesystem and kernel fuzz
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [vfs_paths, load_elf, syscall_args, kernel_threads_u5, kernel_futex_u5, kernel_events_u6, kernel_sockets_u6]
+    container:
+      image: rust:1-bookworm
+      options: --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined --ulimit=stack=-1
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-01
+      ASAN_OPTIONS: detect_leaks=1
+      LSAN_OPTIONS: suppressions=/work/fuzz/lsan.supp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: ln -s "$GITHUB_WORKSPACE" /work
+      - run: rustup toolchain install nightly-2026-10-01 --profile minimal
+      - run: cargo install --locked --version 0.13.2 cargo-fuzz
+      - run: cargo check --locked --manifest-path fuzz/Cargo.toml --bins
+      - name: Fresh 600 second ASan and LSan observation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /work
+          mkdir -p target/u11-fuzz
+          rustc -Vv > target/u11-fuzz/toolchain.txt
+          sha256sum fuzz/Cargo.lock > target/u11-fuzz/lock-before.sha256
+          date -u > target/u11-fuzz/start.txt
+          set +e
+          cargo fuzz run --fuzz-dir fuzz --sanitizer address '${{ matrix.target }}' -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048 2>&1 | tee target/u11-fuzz/raw.log
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > target/u11-fuzz/exit.txt
+          date -u > target/u11-fuzz/end.txt
+          sha256sum fuzz/Cargo.lock > target/u11-fuzz/lock-after.sha256
+          cmp target/u11-fuzz/lock-before.sha256 target/u11-fuzz/lock-after.sha256
+          test "$status" = 0
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u11-fuzz-${{ matrix.target }}
+          path: |
+            target/u11-fuzz
+            fuzz/artifacts

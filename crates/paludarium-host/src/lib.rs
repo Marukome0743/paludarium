@@ -9,6 +9,7 @@
 //! implementation does not need any.
 
 #![cfg_attr(windows, feature(windows_by_handle))]
+#![cfg_attr(target_arch = "wasm32", feature(stdarch_wasm_atomic_wait))]
 
 use std::io;
 #[cfg(not(target_arch = "wasm32"))]
@@ -19,7 +20,11 @@ use paludarium_types::{Errno, Error, ErrorKind};
 
 mod clock;
 mod threads;
+#[cfg(any(target_arch = "wasm32", test))]
+mod wasm_tasks;
 pub use threads::{ThreadHandle, WaitToken};
+#[cfg(target_arch = "wasm32")]
+pub use wasm_tasks::run_task;
 pub mod fs;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_fs;

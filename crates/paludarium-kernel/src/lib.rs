@@ -175,6 +175,11 @@ impl Kernel {
         self.files.fs = fs;
         self
     }
+    /// Sets an existing virtual directory as the initial guest cwd.
+    pub fn with_current_directory(mut self, path: &[u8]) -> Result<Self, paludarium_types::Errno> {
+        self.files.set_current_directory(path)?;
+        Ok(self)
+    }
 
     /// Connects the session's bounded-wait cancellation token.
     pub fn with_cancellation(mut self, cancellation: Arc<AtomicBool>) -> Self {

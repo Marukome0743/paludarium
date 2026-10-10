@@ -55,6 +55,7 @@ impl FileHandle for MemFile {
             return Err(Errno::EBADF);
         }
         let mut n = lock(&self.node);
+        let modified = (n.clock)()?;
         let Kind::File(data) = &mut n.kind else {
             return Err(Errno::EISDIR);
         };
@@ -70,6 +71,9 @@ impl FileHandle for MemFile {
         }
         data[pos..end].copy_from_slice(b);
         s.0 = end as u64;
+        if !b.is_empty() {
+            n.mtime_ns = modified;
+        }
         Ok(b.len())
     }
     fn seek(&self, off: i64, w: u32) -> Result<u64, Errno> {
@@ -95,6 +99,7 @@ impl FileHandle for MemFile {
             return Err(Errno::EINVAL);
         }
         let mut n = lock(&self.node);
+        let modified = (n.clock)()?;
         let Kind::File(b) = &mut n.kind else {
             return Err(Errno::EISDIR);
         };
@@ -103,6 +108,7 @@ impl FileHandle for MemFile {
             b.try_reserve(len - b.len()).map_err(|_| Errno::ENOMEM)?;
         }
         b.resize(len, 0);
+        n.mtime_ns = modified;
         Ok(())
     }
     fn flock(&self, op: u32) -> Result<(), Errno> {

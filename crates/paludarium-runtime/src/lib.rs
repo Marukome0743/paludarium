@@ -60,6 +60,8 @@ impl TerminalInfo {
 pub struct Config {
     /// Absolute guest path of the program.
     pub program: Vec<u8>,
+    /// Optional absolute initial working directory; omitted means `/`.
+    pub cwd: Option<Vec<u8>>,
     /// argv, including argv[0].
     pub args: Vec<Vec<u8>>,
     pub env: Vec<(Vec<u8>, Vec<u8>)>,
@@ -133,6 +135,14 @@ pub struct Session {
 impl Session {
     /// Validates the configuration. Mounts are not implemented in U1.
     pub fn new(config: Config, host: Arc<dyn Host>) -> Result<Self, Error> {
+        if let Some(cwd) = &config.cwd
+            && (!cwd.starts_with(b"/") || paludarium_vfs::normalize_path(cwd).is_err())
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidProgram,
+                "invalid current directory",
+            ));
+        }
         if config.program.is_empty() {
             return Err(Error::new(ErrorKind::InvalidProgram, "no program given"));
         }
@@ -222,7 +232,10 @@ impl Session {
     }
 
     fn file_system(&self) -> Result<MountedFs, Error> {
-        let mut fs = MemFs::new();
+        let host = self.host.clone();
+        let mut fs = MemFs::with_clock(Arc::new(move || {
+            host.clock(paludarium_host::ClockId::Realtime)
+        }));
         fs.mkdir(b"/tmp", 0o1777)
             .map_err(|_| Error::new(ErrorKind::Internal, "temporary directory"))?;
         for (path, content) in &self.config.files {
@@ -246,7 +259,23 @@ impl Session {
 
     /// Runs the guest to completion (W2–W4).
     pub fn run(&self) -> Result<ExitStatus, Error> {
-        let fs: Arc<dyn paludarium_vfs::FileSystem> = Arc::new(self.file_system()?);
+        self.run_with_file_system(self.initial_file_system()?)
+    }
+
+    /// Creates the validated initial filesystem without executing the guest.
+    /// Callers may retain it for explicitly shared, sequential guest runs.
+    pub fn initial_file_system(&self) -> Result<Arc<dyn paludarium_vfs::FileSystem>, Error> {
+        Ok(Arc::new(self.file_system()?))
+    }
+
+    /// Runs using an explicitly supplied filesystem. Initial `files`, mode
+    /// overrides and mounts are applied by `initial_file_system`, not again
+    /// here. The caller owns synchronization and its filesystem's lifetime.
+    /// Ordinary `run()` continues to create an independent filesystem.
+    pub fn run_with_file_system(
+        &self,
+        fs: Arc<dyn paludarium_vfs::FileSystem>,
+    ) -> Result<ExitStatus, Error> {
         let mut random = [0u8; 16];
         self.host.random_bytes(&mut random)?;
         let envp: Vec<Vec<u8>> = self
@@ -273,6 +302,11 @@ impl Session {
             .with_signal_inbox(Arc::clone(&self.signal_inbox));
         if let Some(tty) = self.config.tty {
             kernel = kernel.with_terminal_size(tty.columns, tty.rows);
+        }
+        if let Some(cwd) = &self.config.cwd {
+            kernel = kernel.with_current_directory(cwd).map_err(|_| {
+                Error::new(ErrorKind::InvalidProgram, "current directory unavailable")
+            })?;
         }
         let thread = kernel.spawn_initial(&image);
         let execution = Arc::new(Execution::new(

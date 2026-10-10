@@ -1,0 +1,111 @@
+name: U11 wasm guest acceptance
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools cmake perl make pkg-config
+      - run: rustup toolchain install nightly-2026-10-01 --profile minimal --component rust-src
+      - run: rustup target add x86_64-unknown-linux-musl wasm32-unknown-unknown --toolchain nightly-2026-10-01
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0
+        with:
+          tool: cargo-deny
+      - name: Runner tests
+        run: python3 -m unittest discover -s tests/guests/u11/runner-tests -p 'test_*.py'
+      - name: Build fixed guests and audit dependencies
+        run: bash scripts/u10-build-guests.sh target/guests/u10
+      - name: Fresh Linux oracle with filesystem metadata
+        run: sudo unshare --net python3 scripts/u11-run.py --native-only --guest-dir target/guests/u10 --output target/u11/native
+      - name: Build one production wasm module for every environment
+        run: bash scripts/build-wasm.sh
+      - name: Preserve inputs and fresh oracle
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u11-acceptance-inputs
+          path: |
+            target/guests/u10/probe
+            target/guests/u10/aube
+            target/guests/u10/build-receipt.json
+            target/guests/u10/*-build.log
+            target/guests/u10/*-dependencies.log
+            target/guests/u10/aube-deny.toml
+            target/guests/u10/licenses/
+            target/u11/native/
+            packages/paludarium-wasm/paludarium.wasm
+          retention-days: 7
+  differential:
+    needs: build-oracle
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            environment: node
+          - os: ubuntu-latest
+            environment: chromium
+          - os: ubuntu-latest
+            environment: firefox
+          - os: macos-latest
+            environment: safari
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: u11-acceptance-inputs
+          path: .
+      - name: Install pinned browser driver
+        if: matrix.environment == 'chromium' || matrix.environment == 'firefox'
+        run: |
+          npm ci --prefix spikes/wasm-threads
+          node spikes/wasm-threads/node_modules/playwright/cli.js install --with-deps ${{ matrix.environment }}
+      - name: Enable actual Safari on CI runner
+        if: matrix.environment == 'safari'
+        run: sudo safaridriver --enable
+      - name: Compare fourteen actual guest executions with fresh Linux
+        env:
+          U11_ENVIRONMENT: ${{ matrix.environment }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+          sys.path.insert(0, 'tests/guests/u11')
+          from supervisor import supervise
+          environment = os.environ['U11_ENVIRONMENT']
+          output = pathlib.Path('target/u11') / environment
+          output.mkdir(parents=True, exist_ok=True)
+          if environment == 'node':
+              command = ['node', 'packages/paludarium-wasm/tests/u11-node-check.mjs']
+          else:
+              command = ['node', 'packages/paludarium-wasm/tests/u11-browser-check.mjs', environment]
+          command += ['packages/paludarium-wasm/paludarium.wasm', 'target/u11/native/observations.json', 'target/guests/u10', str(output)]
+          result = supervise(command, cwd=pathlib.Path.cwd())
+          (output / 'suite-supervisor.json').write_text(json.dumps(result, indent=2) + '\n')
+          print(result['stdout'])
+          print(result['stderr'], file=sys.stderr)
+          assert result['exit'] == 0 and not result['timed_out'] and result['process_group_cleaned'], result
+          report = json.loads((output / 'observations.json').read_text())
+          assert report['complete'] is True and len(report['rows']) == 14
+          assert all(row['pass'] and row['exit'] == 0 and not row['timed_out'] for row in report['rows'].values())
+          PY
+      - name: Preserve raw results and cleanup evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u11-${{ matrix.environment }}
+          path: target/u11/${{ matrix.environment }}/
+          retention-days: 7

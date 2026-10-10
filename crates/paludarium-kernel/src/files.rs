@@ -39,6 +39,14 @@ impl Default for Files {
     }
 }
 impl Files {
+    pub(crate) fn set_current_directory(&mut self, path: &[u8]) -> Result<(), Errno> {
+        let path = paludarium_vfs::normalize_path(path)?;
+        if self.fs.metadata(&path, true)?.mode & 0o170000 != 0o040000 {
+            return Err(Errno::ENOTDIR);
+        }
+        *self.cwd.lock().unwrap_or_else(PoisonError::into_inner) = path;
+        Ok(())
+    }
     pub(crate) fn release_descriptors(&mut self) {
         // Detach this worker's table reference without closing a table still
         // shared by live CLONE_FILES siblings.
@@ -194,6 +202,8 @@ fn stat(c: &Context<'_>, addr: u64, s: FileStat) -> Result<u64, Errno> {
     b[48..56].copy_from_slice(&s.size.to_le_bytes());
     b[56..64].copy_from_slice(&4096u64.to_le_bytes());
     b[64..72].copy_from_slice(&s.size.div_ceil(512).to_le_bytes());
+    b[88..96].copy_from_slice(&(s.mtime_ns / 1_000_000_000).to_le_bytes());
+    b[96..104].copy_from_slice(&(s.mtime_ns % 1_000_000_000).to_le_bytes());
     output(c, addr, &b)?;
     Ok(0)
 }
@@ -700,6 +710,7 @@ impl FileHandle for StandardFile {
             size: 0,
             mode: 0o010666,
             links: 1,
+            mtime_ns: 0,
         })
     }
     fn truncate(&self, _n: u64) -> Result<(), Errno> {

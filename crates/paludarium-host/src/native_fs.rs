@@ -63,6 +63,14 @@ fn bytes(p: &Path) -> Vec<u8> {
     }
 }
 fn stat(m: std::fs::Metadata) -> Result<FileStat, Errno> {
+    let mtime_ns = u64::try_from(
+        m.modified()
+            .map_err(|_| Errno::EIO)?
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| Errno::EIO)?
+            .as_nanos(),
+    )
+    .map_err(|_| Errno::EIO)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -71,6 +79,7 @@ fn stat(m: std::fs::Metadata) -> Result<FileStat, Errno> {
             size: m.len(),
             mode: m.mode(),
             links: m.nlink(),
+            mtime_ns,
         })
     }
     #[cfg(not(unix))]
@@ -93,6 +102,7 @@ fn stat(m: std::fs::Metadata) -> Result<FileStat, Errno> {
                 0o100644
             },
             links,
+            mtime_ns,
         })
     }
 }
@@ -336,6 +346,15 @@ impl HostFs for NativeFs {
     }
 }
 fn cap_stat(m: cap_std::fs::Metadata) -> Result<FileStat, Errno> {
+    let mtime_ns = u64::try_from(
+        m.modified()
+            .map_err(|_| Errno::EIO)?
+            .into_std()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| Errno::EIO)?
+            .as_nanos(),
+    )
+    .map_err(|_| Errno::EIO)?;
     #[cfg(unix)]
     {
         use cap_std::fs::MetadataExt;
@@ -344,6 +363,7 @@ fn cap_stat(m: cap_std::fs::Metadata) -> Result<FileStat, Errno> {
             size: m.len(),
             mode: m.mode(),
             links: m.nlink(),
+            mtime_ns,
         })
     }
     #[cfg(not(unix))]
@@ -366,6 +386,7 @@ fn cap_stat(m: cap_std::fs::Metadata) -> Result<FileStat, Errno> {
                 0o100644
             },
             links,
+            mtime_ns,
         })
     }
 }

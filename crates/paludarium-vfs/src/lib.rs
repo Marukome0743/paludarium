@@ -110,6 +110,8 @@ struct Node {
     mode: u32,
     links: u64,
     locks: BTreeMap<u64, u32>,
+    mtime_ns: u64,
+    clock: Arc<dyn Fn() -> Result<u64, Errno> + Send + Sync>,
 }
 impl Node {
     fn stat(&self, id: u64) -> FileStat {
@@ -121,6 +123,7 @@ impl Node {
             },
             mode: self.mode,
             links: self.links,
+            mtime_ns: self.mtime_ns,
         }
     }
 }
@@ -128,6 +131,7 @@ struct Tree {
     nodes: BTreeMap<u64, Arc<Mutex<Node>>>,
     next: u64,
     owner: u64,
+    clock: Arc<dyn Fn() -> Result<u64, Errno> + Send + Sync>,
 }
 impl Tree {
     fn require_trailing_directory(&self, path: &[u8]) -> Result<(), Errno> {
@@ -143,7 +147,8 @@ impl Tree {
     fn node(&self, id: u64) -> Result<Arc<Mutex<Node>>, Errno> {
         self.nodes.get(&id).cloned().ok_or(Errno::ENOENT)
     }
-    fn allocate(&mut self, kind: Kind, mode: u32) -> u64 {
+    fn allocate(&mut self, kind: Kind, mode: u32) -> Result<u64, Errno> {
+        let mtime_ns = (self.clock)()?;
         let links = if matches!(kind, Kind::Dir(_)) { 2 } else { 1 };
         let id = self.next;
         self.next += 1;
@@ -154,9 +159,11 @@ impl Tree {
                 mode,
                 links,
                 locks: BTreeMap::new(),
+                mtime_ns,
+                clock: self.clock.clone(),
             })),
         );
-        id
+        Ok(id)
     }
     fn resolve(&self, path: &[u8], follow: bool) -> Result<u64, Errno> {
         validate(path)?;
@@ -244,7 +251,7 @@ impl Tree {
             return Err(Errno::EEXIST);
         }
         let directory = matches!(kind, Kind::Dir(_));
-        let id = self.allocate(kind, mode);
+        let id = self.allocate(kind, mode)?;
         children.insert(name, id);
         if directory {
             n.links += 1;
@@ -257,17 +264,27 @@ pub struct MemFs {
 }
 impl Default for MemFs {
     fn default() -> Self {
+        Self::with_clock(Arc::new(|| Ok(0)))
+    }
+}
+impl MemFs {
+    /// Typed realtime clock used for created and modified files. The default
+    /// preserves deterministic epoch metadata for existing standalone callers.
+    pub fn with_clock(clock: Arc<dyn Fn() -> Result<u64, Errno> + Send + Sync>) -> Self {
         let root = Node {
             kind: Kind::Dir(BTreeMap::new()),
             mode: 0o040755,
             links: 2,
             locks: BTreeMap::new(),
+            mtime_ns: 0,
+            clock: clock.clone(),
         };
         Self {
             tree: Arc::new(Mutex::new(Tree {
                 nodes: BTreeMap::from([(1, Arc::new(Mutex::new(root)))]),
                 next: 2,
                 owner: 1,
+                clock,
             })),
         }
     }
@@ -294,14 +311,17 @@ impl MemFs {
                 t.insert(&prefix, Kind::Dir(BTreeMap::new()), 0o040755)?;
             }
         }
-        t.insert(
+        let id = t.insert(
             &path,
             Kind::File(file.content),
             0o100000 | (file.mode & 0o7777),
         )?;
+        lock(&*t.node(id)?).mtime_ns = 0;
         Ok(())
     }
 }
+#[cfg(test)]
+mod u11_tests;
 #[cfg(test)]
 mod u1_tests;
 #[cfg(test)]

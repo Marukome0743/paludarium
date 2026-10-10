@@ -7,6 +7,7 @@ pub struct FileStat {
     pub size: u64,
     pub mode: u32,
     pub links: u64,
+    pub mtime_ns: u64,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DirectoryEntry {

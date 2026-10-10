@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createPaludarium } from "../index.mjs";
+const [modulePath] = process.argv.slice(2);
+if (!modulePath) throw new Error("usage: u11-api-check.mjs module");
+const wasmUrl = pathToFileURL(resolve(modulePath));
+const first = await createPaludarium({ wasmUrl }), second = await createPaludarium({ wasmUrl });
+const deadline = setTimeout(() => { console.error("U11 API test deadline"); process.exit(1); }, 30000);
+try {
+  const filesystem = await first.createFileSystem({ files: { "/file": new Uint8Array([73]) }, fileModes: { "/file": 0o644 } });
+  assert.equal((await filesystem.snapshot()).find(entry => entry.path === "/file").mode, 0o100644);
+  assert.throws(() => second.run({ program: "/file", filesystem }), /another launcher/);
+  await assert.rejects(filesystem.remove("/", { recursive: true }), /removal/);
+  await filesystem.remove("/file"); assert.equal((await filesystem.snapshot()).some(entry => entry.path === "/file"), false);
+  await filesystem.dispose(); await filesystem.dispose();
+  await assert.rejects(filesystem.snapshot(), /disposed/);
+  assert.throws(() => first.run({ program: "/file", filesystem }), /another launcher/);
+  assert.throws(() => first.run({ program: "/file", tty: { columns: -1, rows: 24 } }), /terminal/);
+  assert.throws(() => first.run({ program: "/file", cwd: "relative" }), /current directory/);
+  assert.throws(() => first.run({ program: "/file", files: { "/file": new Uint8Array() }, fileModes: { "/file": 65536 } }), /modes/);
+  const infinite = new Uint8Array(await readFile(new URL("guests/infinite", import.meta.url)));
+  const active = await first.createFileSystem({ files: { "/infinite": infinite } });
+  const guest = first.run({ program: "/infinite", filesystem: active, tty: { columns: 0, rows: 65535 } });
+  const drain = async stream => { const reader = stream.getReader(); while (!(await reader.read()).done) {} };
+  const streams = Promise.all([drain(guest.stdout), drain(guest.stderr)]);
+  await assert.rejects(active.snapshot(), /active/); await assert.rejects(active.remove("/infinite"), /removal/);
+  await assert.rejects(active.dispose(), /active/);
+  guest.kill(); assert.equal((await guest.exited).kind, "signaled"); await streams;
+  await active.snapshot(); await active.dispose();
+  console.log("U11 API: modes, ownership, disposal, busy lease, terminal validation, kill/release PASS");
+} finally { clearTimeout(deadline); await first.dispose(); await second.dispose(); }

@@ -8,16 +8,20 @@ const childWorkers = new Set();
 let abandoned = false;
 const failure = (kind, message) => ({ kind, message });
 function check(value, name) { if (value < 0) throw new Error(`${name} rejected`); return value; }
-function withBytes(bytes, callback) { const id = putBuffer(e, bytes); try { return callback(id); } finally { e.buffer_drop(id); } }
+function withBytes(bytes, callback) { const id = putBuffer(e, bytes, memory); try { return callback(id); } finally { e.buffer_drop(id); } }
 function errorFor(handle) {
   const kind = e.session_error_kind(handle);
   const names = ["internal", "unimplemented", "internal", "invalid-program", "host"];
-  const message = decoder.decode(takeBuffer(e, e.session_error_message(handle)));
-  return failure(names[kind] ?? "internal", message || "Guest session failed");
+  const message = decoder.decode(takeBuffer(e, e.session_error_message(handle), memory));
+  const error = failure(names[kind] ?? "internal", message || "Guest session failed"), presence = e.session_error_presence(handle);
+  if (presence & 1) error.rip = e.session_error_rip(handle);
+  if (presence & 2) error.bytes = takeBuffer(e, e.session_error_bytes(handle), memory);
+  if (presence & 4) error.syscall = e.session_error_syscall(handle);
+  return error;
 }
 function flush(job) {
   for (const [stream, name] of [[1, "stdout"], [2, "stderr"]]) {
-    const bytes = takeBuffer(e, e.session_output(job.handle, stream));
+    const bytes = takeBuffer(e, e.session_output(job.handle, stream), memory);
     const offset = job.offsets[name];
     if (bytes.length > offset) port.send({ type: "output", id: job.id, stream: name, bytes: bytes.slice(offset) });
     job.offsets[name] = bytes.length;
@@ -80,24 +84,58 @@ async function finish(job, result, error) {
   clearTimeout(job.timer); clearInterval(job.poll);
   try { flush(job); } catch (cause) { error ??= failure("internal", String(cause)); }
   if (job.worker) await stopWorker(job.worker);
+  await Promise.all([...job.tasks.values()].map(task => task.done));
   if (abandoned) return;
   childWorkers.delete(job.worker);
   // Parent owns these allocations until the child is gone; never free an active stack.
   // This path is reached only after Rust returned, including a typed guest error.
   // Traps and forced failures discard the complete runtime through fatal().
   e.region_drop(job.region); e.buffer_drop(job.token);
+  e.session_drop(job.handle); jobs.delete(job.id);
   if (error) port.send({ type: "failed", id: job.id, error });
   else port.send({ type: "finished", id: job.id, status: result >= 256 ? { kind: "signaled", signal: result - 256 } : { kind: "exited", code: result }, diagnostics: job.diagnostics });
-  e.session_drop(job.handle); jobs.delete(job.id);
+}
+async function launchTask(job, handle) {
+  if (abandoned || job.finished || job.tasks.has(handle)) { fatal("invalid or stale guest task spawn"); return; }
+  const tlsSize = Number(e.__tls_size.value), align = Math.max(16, Number(e.__tls_align.value));
+  const region = e.region_new(2 * 1024 * 1024 + tlsSize + align + 16);
+  if (!region) { fatal("guest Worker region allocation failed"); return; }
+  const pointer = e.region_pointer(region), tlsPointer = Math.ceil(pointer / align) * align;
+  const stackTop = Math.ceil((tlsPointer + tlsSize) / 16) * 16 + 2 * 1024 * 1024;
+  const token = putBuffer(e, new Uint8Array([73]), memory);
+  let resolveDone;
+  const task = { region, token, done: new Promise(resolve => { resolveDone = resolve; }) };
+  job.tasks.set(handle, task);
+  try {
+    const worker = await spawnWorker(new URL("execution.mjs", import.meta.url));
+    task.worker = worker; childWorkers.add(worker);
+    listen(worker, report => {
+      if (report.type === "spawn-task") void launchTask(job, report.handle);
+      else if (report.type === "started") {
+        latestDiagnostics.push({ ...report.diagnostics, taskHandle: handle, guestThread: true, regionPointer: pointer,
+          coordinatorTls: e.__tls_base.value, coordinatorThreadToken: String(e.thread_token()), sharedMemory: memory.buffer instanceof SharedArrayBuffer, nestedWorker: true });
+      } else if (report.type === "task-finished") {
+        if (report.result !== 0) { fatal("guest task execution rejected"); resolveDone(); return; }
+        void stopWorker(worker).then(() => {
+          childWorkers.delete(worker);
+          if (!abandoned) { e.region_drop(region); e.buffer_drop(token); }
+          resolveDone();
+        }).catch(cause => { fatal(String(cause)); resolveDone(); });
+      } else if (report.type === "failed") { fatal(report.error); resolveDone(); }
+    }, cause => { fatal(String(cause)); resolveDone(); });
+    worker.postMessage({ type: "execute", operation: "task", module, memory, sessionHandle: job.handle, taskHandle: handle, stackTop, tlsPointer, tokenHandle: token });
+  } catch (cause) { fatal(`guest Worker start failed: ${cause}`); resolveDone(); }
 }
 async function launch(message) {
   const config = withBytes(encoder.encode(message.options.program), id => e.config_new(id));
   if (!config) throw new Error("invalid program configuration");
   try {
+    if (message.options.cwd !== undefined) withBytes(encoder.encode(message.options.cwd), id => check(e.config_cwd(config, id), "current directory"));
+    if (message.options.tty != null) check(e.config_terminal(config, message.options.tty.columns, message.options.tty.rows), "terminal");
     for (const arg of message.options.args ?? [message.options.program]) withBytes(encoder.encode(arg), id => check(e.config_arg(config, id), "argument"));
     for (const [key, value] of Object.entries(message.options.env ?? {})) withBytes(encoder.encode(key), keyId => withBytes(encoder.encode(value), valueId => check(e.config_env(config, keyId, valueId), "environment")));
-    for (const [path, bytes] of Object.entries(message.options.files ?? {})) withBytes(encoder.encode(path), pathId => withBytes(bytes, dataId => check(e.config_file(config, pathId, dataId), "file")));
-    const handle = withBytes(new Uint8Array(), id => e.session_from_config(config, id));
+    for (const [path, bytes] of Object.entries(message.options.files ?? {})) withBytes(encoder.encode(path), pathId => withBytes(bytes, dataId => check(e.config_file_mode(config, pathId, dataId, message.options.fileModes?.[path] ?? 0o755), "file")));
+    const handle = withBytes(new Uint8Array(), id => e.session_from_config_fs(config, id, message.options.filesystemHandle ?? 0));
     if (!handle) throw new Error("session creation failed");
     const tlsSize = Number(e.__tls_size.value), tlsAlign = Math.max(16, Number(e.__tls_align.value));
     const region = e.region_new(2 * 1024 * 1024 + tlsSize + tlsAlign + 16);
@@ -105,15 +143,15 @@ async function launch(message) {
     const pointer = e.region_pointer(region);
     const tlsPointer = Math.ceil(pointer / tlsAlign) * tlsAlign;
     const stackTop = Math.ceil((tlsPointer + tlsSize) / 16) * 16 + 2 * 1024 * 1024;
-    const token = putBuffer(e, new Uint8Array([73]));
-    const job = { id: message.id, handle, region, token, offsets: { stdout: 0, stderr: 0 }, finished: false, diagnostics: null };
+    const token = putBuffer(e, new Uint8Array([73]), memory);
+    const job = { id: message.id, handle, region, token, offsets: { stdout: 0, stderr: 0 }, finished: false, diagnostics: null, tasks: new Map() };
     jobs.set(message.id, job);
     port.send({ type: "accepted", id: message.id });
-    job.timer = setTimeout(() => fatal("30 second Worker watchdog; discard shared heap"), 30000);
     job.worker = await spawnWorker(new URL("execution.mjs", import.meta.url));
     childWorkers.add(job.worker);
     listen(job.worker, report => {
       if (report.type === "started") { job.diagnostics = { ...report.diagnostics, regionPointer: pointer, coordinatorTls: e.__tls_base.value, coordinatorThreadToken: String(e.thread_token()), sharedMemory: memory.buffer instanceof SharedArrayBuffer, nestedWorker: true }; latestDiagnostics.push(job.diagnostics); }
+      else if (report.type === "spawn-task") void launchTask(job, report.handle);
       else if (report.type === "finished") void finish(job, report.result, report.result < 0 ? errorFor(handle) : null);
       else if (report.type === "failed") fatal(report.error);
     }, cause => fatal(String(cause)));
@@ -128,6 +166,26 @@ port.listen(async message => {
       module = message.module; memory = message.memory;
       e = (await WebAssembly.instantiate(module, imports(memory))).exports;
       port.send({ type: "ready", exports: WebAssembly.Module.exports(module), imports: WebAssembly.Module.imports(module) });
+    } else if (message.type === "filesystem-new") {
+      const config = withBytes(encoder.encode("/"), id => e.config_new(id));
+      try {
+        for (const [path, bytes] of Object.entries(message.options.files ?? {})) withBytes(encoder.encode(path), pathId => withBytes(bytes, dataId => check(e.config_file_mode(config, pathId, dataId, message.options.fileModes?.[path] ?? 0o755), "file")));
+        const handle = e.filesystem_new(config);
+        if (!handle) throw new Error("filesystem creation failed");
+        port.send({ type: "control", id: message.id, value: handle });
+      } finally { e.config_drop(config); }
+    } else if (message.type === "filesystem-snapshot") {
+      const handle = e.filesystem_snapshot(message.handle);
+      if (!handle) throw new Error("filesystem snapshot rejected (active or stale handle)");
+      port.send({ type: "control", id: message.id, value: takeBuffer(e, handle, memory) });
+    } else if (message.type === "filesystem-remove") {
+      withBytes(encoder.encode(message.path), id => check(e.filesystem_remove(message.handle, id, message.recursive ? 1 : 0), "filesystem removal"));
+      port.send({ type: "control", id: message.id });
+    } else if (message.type === "filesystem-drop") {
+      const snapshot = e.filesystem_snapshot(message.handle);
+      if (!snapshot) throw new Error("filesystem disposal rejected (active or stale handle)");
+      e.buffer_drop(snapshot); e.filesystem_drop(message.handle);
+      port.send({ type: "control", id: message.id });
     } else if (message.type === "run") await launch(message);
     else if (message.type === "diagnostics") port.send({ type: "diagnostics", id: message.id, diagnostics: { workers: latestDiagnostics, sharedProbe: await sharedProbe() } });
     else if (message.type === "stdin") {

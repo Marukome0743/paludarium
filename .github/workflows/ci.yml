@@ -8,7 +8,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, codex/native-x86-diagnostic, codex/u2-asan-diagnostic, codex/u8-native-diagnostic, codex/u10-native-diagnostic]
+    branches: [main, codex/native-x86-diagnostic, codex/u2-asan-diagnostic, codex/u8-native-diagnostic, codex/u10-native-diagnostic, codex/u11-wasm-launcher]
 
 permissions:
   contents: read
@@ -27,6 +27,10 @@ env:
     -p paludarium-runtime -p paludarium
 
 jobs:
+  u11-programs:
+    uses: ./.github/workflows/u11-acceptance.yml
+  u11-fuzz:
+    uses: ./.github/workflows/u11-fuzz.yml
   u10-programs:
     name: U10 fixed guests and fresh native differential
     uses: ./.github/workflows/u10-native-diagnostic.yml

@@ -3,8 +3,9 @@
 //! Guest data is copied through bounded buffers; it is never dereferenced as a
 //! host pointer. JS stack/TLS regions are trusted launcher resources and must
 //! stay owned until their Worker is terminated.
+use crate::filesystem::{Lease, PrivateFs};
 use paludarium_host::WasmHost;
-use paludarium_runtime::{Config, Session};
+use paludarium_runtime::{Config, Session, TerminalInfo};
 use paludarium_types::{Error, ErrorKind, ExitStatus};
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -19,10 +20,12 @@ static BUFFERS: Table<Vec<u8>> = OnceLock::new();
 static CONFIGS: Table<Config> = OnceLock::new();
 static RUNS: Table<Arc<Run>> = OnceLock::new();
 static REGIONS: Table<Box<[u128]>> = OnceLock::new();
+static FILESYSTEMS: Table<Arc<PrivateFs>> = OnceLock::new();
 struct Run {
     session: Option<Arc<Session>>,
     host: Arc<WasmHost>,
     error: Mutex<Option<Error>>,
+    filesystem: Option<Lease>,
 }
 fn table<T>(t: &Table<T>) -> &Mutex<BTreeMap<u32, T>> {
     t.get_or_init(Default::default)
@@ -83,6 +86,22 @@ pub extern "C" fn buffer_len(id: u32) -> i32 {
         .unwrap_or_else(PoisonError::into_inner)
         .get(&id)
         .map_or(-1, |b| b.len() as i32)
+}
+/// Trusted launcher bulk-copy address, never a guest memory address. The
+/// caller owns the validated buffer handle until its synchronous copy ends.
+#[unsafe(no_mangle)]
+pub extern "C" fn buffer_pointer(id: u32) -> u32 {
+    table(&BUFFERS)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&id)
+        .and_then(|buffer| u32::try_from(buffer.as_ptr() as usize).ok())
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn host_task_run(id: u32) -> i32 {
+    paludarium_host::run_task(id).map_or(-1, |()| 0)
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn buffer_get(id: u32, index: u32) -> i32 {
@@ -149,7 +168,187 @@ pub extern "C" fn config_drop(id: u32) {
         .remove(&id);
 }
 #[unsafe(no_mangle)]
+pub extern "C" fn config_file_mode(id: u32, path: u32, content: u32, mode: u32) -> i32 {
+    let (Some(path), Some(content)) = (bytes(path), bytes(content)) else {
+        return -1;
+    };
+    if mode > 0o7777 {
+        return -1;
+    }
+    let mut configs = table(&CONFIGS)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let Some(config) = configs.get_mut(&id) else {
+        return -1;
+    };
+    config.files.push((path.clone(), content));
+    config.file_modes.push((path, mode));
+    0
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn config_terminal(id: u32, columns: u32, rows: u32) -> i32 {
+    let (Ok(columns), Ok(rows)) = (u16::try_from(columns), u16::try_from(rows)) else {
+        return -1;
+    };
+    let mut configs = table(&CONFIGS)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let Some(config) = configs.get_mut(&id) else {
+        return -1;
+    };
+    config.tty = Some(TerminalInfo::new(columns, rows));
+    0
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn config_cwd(id: u32, path: u32) -> i32 {
+    let Some(path) = bytes(path) else {
+        return -1;
+    };
+    let mut configs = table(&CONFIGS)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let Some(config) = configs.get_mut(&id) else {
+        return -1;
+    };
+    config.cwd = Some(path);
+    0
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn session_error_presence(id: u32) -> u32 {
+    run(id)
+        .and_then(|r| {
+            r.error
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
+        })
+        .map_or(0, |error| {
+            u32::from(error.rip.is_some())
+                | (u32::from(error.bytes.is_some()) << 1)
+                | (u32::from(error.syscall.is_some()) << 2)
+        })
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn session_error_rip(id: u32) -> u64 {
+    run(id)
+        .and_then(|r| {
+            r.error
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .as_ref()
+                .and_then(|error| error.rip)
+        })
+        .map_or(0, |addr| addr.0)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn session_error_syscall(id: u32) -> u64 {
+    run(id)
+        .and_then(|r| {
+            r.error
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .as_ref()
+                .and_then(|error| error.syscall)
+        })
+        .unwrap_or(0)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn session_error_bytes(id: u32) -> u32 {
+    run(id)
+        .and_then(|r| {
+            r.error
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .as_ref()
+                .and_then(|error| error.bytes.clone())
+        })
+        .map_or(0, |bytes| insert(&BUFFERS, bytes))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn filesystem_new(id: u32) -> u32 {
+    let config = table(&CONFIGS)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&id)
+        .cloned();
+    let Some(config) = config else {
+        return 0;
+    };
+    PrivateFs::new(config, Arc::new(WasmHost::default())).map_or(0, |fs| insert(&FILESYSTEMS, fs))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn filesystem_drop(id: u32) {
+    table(&FILESYSTEMS)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&id);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn filesystem_remove(id: u32, path: u32, recursive: u32) -> i32 {
+    let Some(path) = bytes(path) else {
+        return -1;
+    };
+    if recursive > 1 {
+        return -1;
+    }
+    let fs = table(&FILESYSTEMS)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&id)
+        .cloned();
+    fs.map_or(-1, |fs| fs.remove(&path, recursive == 1).map_or(-1, |()| 0))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn filesystem_snapshot(id: u32) -> u32 {
+    let fs = table(&FILESYSTEMS)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&id)
+        .cloned();
+    let Some(fs) = fs else {
+        return 0;
+    };
+    let Ok(entries) = fs.snapshot() else {
+        return 0;
+    };
+    let mut data = (entries.len() as u32).to_le_bytes().to_vec();
+    for entry in entries {
+        data.extend_from_slice(&(entry.path.len() as u32).to_le_bytes());
+        data.extend_from_slice(&entry.path);
+        data.extend_from_slice(&entry.mode.to_le_bytes());
+        data.extend_from_slice(&entry.inode.to_le_bytes());
+        data.extend_from_slice(&entry.links.to_le_bytes());
+        data.extend_from_slice(&entry.mtime_ns.to_le_bytes());
+        data.extend_from_slice(&(entry.content.len() as u32).to_le_bytes());
+        data.extend_from_slice(&entry.content);
+        if data.len() > 64 * 1024 * 1024 {
+            return 0;
+        }
+    }
+    insert(&BUFFERS, data)
+}
+#[unsafe(no_mangle)]
 pub extern "C" fn session_from_config(id: u32, stdin: u32) -> u32 {
+    session_from_config_fs(id, stdin, 0)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn session_from_config_fs(id: u32, stdin: u32, filesystem: u32) -> u32 {
+    let filesystem = if filesystem == 0 {
+        None
+    } else {
+        let fs = table(&FILESYSTEMS)
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&filesystem)
+            .cloned();
+        let Some(fs) = fs else {
+            return 0;
+        };
+        let Ok(lease) = fs.acquire() else {
+            return 0;
+        };
+        Some(lease)
+    };
     let Some(config) = table(&CONFIGS)
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -169,6 +368,7 @@ pub extern "C" fn session_from_config(id: u32, stdin: u32) -> u32 {
             session,
             host,
             error: Mutex::new(error),
+            filesystem,
         }),
     )
 }
@@ -176,7 +376,11 @@ pub extern "C" fn session_from_config(id: u32, stdin: u32) -> u32 {
 pub extern "C" fn session_run(id: u32) -> i32 {
     let Some(r) = run(id) else { return -1 };
     let Some(s) = &r.session else { return -2 };
-    match s.run() {
+    let result = match &r.filesystem {
+        Some(lease) => s.run_with_file_system(lease.filesystem()),
+        None => s.run(),
+    };
+    match result {
         Ok(ExitStatus::Exited(code)) => code,
         Ok(ExitStatus::Signaled(signal)) => 256 + signal,
         Err(e) => {

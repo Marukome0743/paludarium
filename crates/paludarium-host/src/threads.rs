@@ -28,6 +28,12 @@ impl WaitToken {
         self.state.fetch_add(1, Ordering::SeqCst);
         #[cfg(not(target_arch = "wasm32"))]
         self.changed.notify_all();
+        #[cfg(target_arch = "wasm32")]
+        // SAFETY: this host-owned AtomicU32 remains aligned and live for the
+        // whole call. It is a retained ticket, never a guest address.
+        unsafe {
+            core::arch::wasm32::memory_atomic_notify(self.state.as_ptr().cast(), u32::MAX);
+        }
     }
 }
 
@@ -60,8 +66,34 @@ pub fn wait<H: Host + ?Sized>(
 ) -> Result<WaitOutcome, Errno> {
     #[cfg(target_arch = "wasm32")]
     {
-        let _ = (host, token, expected, deadline, cancel);
-        Err(Errno::ENOSYS)
+        loop {
+            if token.value() != expected {
+                return Ok(WaitOutcome::Complete);
+            }
+            if cancel.load(Ordering::SeqCst) {
+                return Ok(WaitOutcome::Interrupted);
+            }
+            let remaining = match deadline {
+                Some((clock, end)) => {
+                    let now = host.clock(clock)?;
+                    if now >= end {
+                        return Ok(WaitOutcome::Complete);
+                    }
+                    end - now
+                }
+                None => 10_000_000,
+            };
+            // SAFETY: borrowed WaitToken pins its host-owned aligned AtomicU32.
+            // No Rust lock is held during the bounded wait. Only atomics
+            // access the word; cancellation is checked every ten milliseconds.
+            unsafe {
+                core::arch::wasm32::memory_atomic_wait32(
+                    token.state.as_ptr().cast(),
+                    expected as i32,
+                    remaining.min(10_000_000) as i64,
+                );
+            }
+        }
     }
     #[cfg(not(target_arch = "wasm32"))]
     {

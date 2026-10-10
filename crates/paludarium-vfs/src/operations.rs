@@ -71,10 +71,13 @@ impl HostFs for MemFs {
         if matches!(n.kind, Kind::Dir(_)) && (flags & 3 != 0 || flags & 512 != 0) {
             return Err(Errno::EISDIR);
         }
-        if flags & 512 != 0
-            && let Kind::File(b) = &mut n.kind
-        {
+        if flags & 512 != 0 && matches!(n.kind, Kind::File(_)) {
+            let modified = (n.clock)()?;
+            let Kind::File(b) = &mut n.kind else {
+                unreachable!()
+            };
             b.clear();
+            n.mtime_ns = modified;
         }
         drop(n);
         let owner = t.owner;

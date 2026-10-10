@@ -18,7 +18,7 @@ port.listen(async message => {
       port.send({ type: "wait-done", result }); return;
     }
     if (message.type !== "execute") return;
-    const instance = await WebAssembly.instantiate(message.module, imports(message.memory));
+    const instance = await WebAssembly.instantiate(message.module, imports(message.memory, { spawnTask: handle => port.send({ type: "spawn-task", handle }) }));
     e = instance.exports;
     const tlsBefore = e.__tls_base.value;
     // Child must not call Rust before it owns a stack and TLS region.
@@ -28,6 +28,10 @@ port.listen(async message => {
     const sharedToken = e.buffer_get(message.tokenHandle, 0);
     port.send({ type: "started", diagnostics: { stackTop: e.__stack_pointer.value, tlsBefore, tlsAfter, token: sharedToken, sessionHandle: message.sessionHandle, threadToken: String(e.thread_token()) } });
     if (message.operation === "probe") return;
+    if (message.operation === "task") {
+      const result = e.host_task_run(message.taskHandle);
+      port.send({ type: "task-finished", result }); return;
+    }
     const result = e.session_run(message.sessionHandle);
     port.send({ type: "finished", result });
   } catch (error) { port.send({ type: "failed", error: String(error) }); }
