@@ -12,7 +12,7 @@ const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const oracle = validateOracle(JSON.parse((await readFile(oraclePath, "utf8")).replace(/("mtime_ns"\s*:\s*)(\d+)/g, '$1"$2"')));
 const probe = new Uint8Array(await readFile(resolve(guestDirectory, "probe")));
 if (hash(probe) !== oracle.binary_hashes.probe) throw new Error("Probe differs from fresh native binary");
-const config = JSON.parse(await readFile("tests/guests/u10/cases.json", "utf8"));
+const config = oracle.case_config ?? JSON.parse(await readFile("tests/guests/u10/cases.json", "utf8"));
 const report = { schema: 1, environment: "node", version: process.version, module_sha256: hash(await readFile(modulePath)),
   oracle_sha256: hash(await readFile(oraclePath)), guest_hashes: oracle.binary_hashes, slice: slice ?? "full", rows: {}, complete: false };
 await mkdir(outputDirectory, { recursive: true });

@@ -39,5 +39,11 @@ class SettingsTests(unittest.TestCase):
         self.config['comparison']['stderr'] = False
         with self.assertRaises(ValueError): validate(self.config)
 
+    def test_reporter_is_exact_and_u10_is_unchanged(self):
+        import json
+        self.assertEqual(self.config['aube'][1]['args'], ['install', '--reporter=append-only'])
+        self.assertEqual(self.config['aube'][2]['args'], ['install', '--frozen-lockfile', '--reporter=append-only'])
+        self.assertEqual(json.loads((ROOT / 'tests/guests/u10/cases.json').read_text())['aube'][1]['args'], ['install'])
+
 
 if __name__ == '__main__': unittest.main()

@@ -16,7 +16,7 @@ function errorFor(handle) {
   const error = failure(names[kind] ?? "internal", message || "Guest session failed"), presence = e.session_error_presence(handle);
   if (presence & 1) error.rip = e.session_error_rip(handle);
   if (presence & 2) error.bytes = takeBuffer(e, e.session_error_bytes(handle), memory);
-  if (presence & 4) error.syscall = e.session_error_syscall(handle);
+  if (presence & 4) error.syscall = Number(e.session_error_syscall(handle));
   return error;
 }
 function flush(job) {

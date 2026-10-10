@@ -6,6 +6,9 @@ on:
     paths:
       - .github/workflows/u11-native-metadata.yml
       - tests/guests/u11/fixture_metadata.py
+      - tests/guests/u11/settings.py
+      - tests/guests/u10/native.py
+      - scripts/u11-run.py
 permissions:
   contents: read
   actions: read

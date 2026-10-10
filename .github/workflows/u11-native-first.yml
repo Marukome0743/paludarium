@@ -2,6 +2,11 @@ name: U11 native expectations before wasm changes
 on:
   push:
     branches: [codex/u11-wasm-launcher]
+    paths:
+      - .github/workflows/u11-native-first.yml
+      - scripts/u10-build-guests.sh
+      - tests/guests/u10/source-lock.json
+      - tests/guests/u10/probe/**
   workflow_dispatch:
 permissions:
   contents: read

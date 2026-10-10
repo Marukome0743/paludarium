@@ -33,6 +33,7 @@ def observe(guests, output, config, *, extra_snapshot=None, prepare_fixture=None
         observations['fixture_root'] = str(root)
         if prepare_fixture is not None:
             observations['guest_environment'] = env
+            observations['case_config'] = config
         for name in config['probe'] + ['all', 'environment']:
             args = [] if name == 'all' else [name]
             row = run([str(guests / 'probe')] + args, cwd=root, env=env)

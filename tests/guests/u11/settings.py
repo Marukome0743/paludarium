@@ -11,7 +11,9 @@ def validate(config):
         raise ValueError('fixed probe inventory changed')
     commands = [('version', ['--version']), ('install', ['install']),
                 ('frozen', ['install', '--frozen-lockfile']), ('list', ['list'])]
-    if [(row.get('name'), row.get('args')) for row in config.get('aube', [])] != commands:
+    reporter_commands = [('version', ['--version']), ('install', ['install', '--reporter=append-only']),
+                         ('frozen', ['install', '--frozen-lockfile', '--reporter=append-only']), ('list', ['list'])]
+    if [(row.get('name'), row.get('args')) for row in config.get('aube', [])] not in (commands, reporter_commands):
         raise ValueError('fixed aube inventory changed')
     if config['aube'][2].get('before') != 'remove-node-modules':
         raise ValueError('frozen command must remove node_modules')
@@ -23,4 +25,8 @@ def validate(config):
 
 
 def configuration(root):
-    return validate(json.loads((root / 'tests/guests/u10/cases.json').read_text()))
+    config = validate(json.loads((root / 'tests/guests/u10/cases.json').read_text()))
+    for row in config['aube']:
+        if row['name'] in ('install', 'frozen'):
+            row['args'].append('--reporter=append-only')
+    return validate(config)

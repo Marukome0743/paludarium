@@ -11,7 +11,7 @@ const probe = await readFile(resolve(guestDirectory, "probe")), aube = await rea
 if (hash(probe) !== oracle.binary_hashes.probe || hash(aube) !== oracle.binary_hashes.aube) throw new Error("Guest hash mismatch");
 const fixtures = {};
 for (const path of ["app/package.json", "app/filedep/package.json", "outside/linked/package.json"]) fixtures[path] = encode(await readFile("tests/guests/u10/fixtures/" + path));
-const input = { oracle, config: JSON.parse(await readFile("tests/guests/u10/cases.json", "utf8")), probe: encode(probe), aube: encode(aube), fixtures };
+const input = { oracle, config: oracle.case_config ?? JSON.parse(await readFile("tests/guests/u10/cases.json", "utf8")), probe: encode(probe), aube: encode(aube), fixtures };
 const report = { schema: 1, environment: browser, module_sha256: hash(await readFile(modulePath)), oracle_sha256: hash(rawOracle), guest_hashes: oracle.binary_hashes, rows: {}, complete: false };
 await mkdir(outputDirectory, { recursive: true });
 const persist = () => writeFile(resolve(outputDirectory, "observations.json"), JSON.stringify(report, null, 2) + "\n"); await persist();

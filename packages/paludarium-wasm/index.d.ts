@@ -3,7 +3,7 @@ export class PaludariumError extends Error {
   kind: "unimplemented" | "internal" | "invalid-program" | "host";
   rip?: bigint;
   bytes?: Uint8Array;
-  syscall?: bigint;
+  syscall?: number;
 }
 export interface FileSystemOptions {
   files?: Record<string, Uint8Array>;
