@@ -1,0 +1,46 @@
+name: U11 Firefox task lifecycle diagnostic
+on:
+  push:
+    branches: [codex/u11-firefox-diagnostic]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: u11-acceptance-inputs
+          run-id: 38016346988
+          github-token: ${{ github.token }}
+          path: .
+      - name: Verify exact module and probe used in the failing run
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib
+          for path, expected in {
+            'packages/paludarium-wasm/paludarium.wasm': 'f459285f6bdc6f282d409533cc3daf25af3d46860a6cb86adb074f93fd242d1f',
+            'target/guests/u10/probe': '3e2a3c772017bfc6cb5dd275c83b6d4f730bc7f219bfad8b1266f0a4cb66b5a9'
+          }.items():
+              assert hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest() == expected
+          PY
+      - name: Install pinned Firefox driver
+        run: |
+          npm ci --prefix spikes/wasm-threads
+          node spikes/wasm-threads/node_modules/playwright/cli.js install --with-deps firefox
+      - name: Observe three bounded full probes with test-only task tracing
+        run: node aidlc/spaces/default/intents/261004-rust-blink-port/construction/u11-wasm-launcher/code-generation/verification/firefox-task-diagnostic.mjs packages/paludarium-wasm/paludarium.wasm target/guests/u10/probe target/u11/firefox-task-diagnostic
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u11-firefox-task-diagnostic
+          path: target/u11/firefox-task-diagnostic/
