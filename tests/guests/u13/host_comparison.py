@@ -22,6 +22,12 @@ def validate_stop(row):
         raise ValueError('guest did not exit within the boundary')
 
 
+def comparison_root(native_root, name):
+    # The oracle ran on Linux, even when this comparator runs on Windows.
+    return native_root if name.startswith('probe-') else str(
+        pathlib.PurePosixPath(native_root) / 'fixture/app')
+
+
 def observe(executable, guests, native_path, output, root, *, original=False):
     config = configuration(root, original=original)
     native = load(native_path, guests, root, original=original)
@@ -35,9 +41,7 @@ def observe(executable, guests, native_path, output, root, *, original=False):
         data['default_rows' if default else 'rows'][name] = row
         (output / 'observations.json').write_text(json.dumps(data, indent=2) + '\n')
         expected = native['rows'][name]
-        expected_root = native['fixture_root']
-        if not name.startswith('probe-'):
-            expected_root = str(pathlib.Path(expected_root) / 'fixture/app')
+        expected_root = comparison_root(native['fixture_root'], name)
         if original and name in ('install', 'frozen'):
             compare_original(expected, row, expected_root, '/')
         else:

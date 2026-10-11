@@ -9,7 +9,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / 'tests/guests/u13'))
 sys.path.insert(1, str(ROOT / 'tests/guests/u10'))
 import fixture
-from host_comparison import validate_stop
+from host_comparison import comparison_root, validate_stop
+from comparison import compare
 
 
 class Directory:
@@ -19,6 +20,26 @@ class Directory:
 
 
 class Boundaries(unittest.TestCase):
+    def test_linux_oracle_root_on_windows(self):
+        with patch.object(pathlib, 'Path', pathlib.PureWindowsPath):
+            self.assertEqual(comparison_root('/tmp/native', 'list'), '/tmp/native/fixture/app')
+            self.assertEqual(comparison_root('/tmp/native', 'probe-all'), '/tmp/native')
+
+    def test_linux_root_matches_guest_without_new_mask(self):
+        expected = {'stdout': 'app@1.0.0 /tmp/native/fixture/app\nfiledep 0.0.0\n',
+                    'stderr': '', 'exit': 0, 'timed_out': False}
+        actual = dict(expected, stdout='app@1.0.0 /\nfiledep 0.0.0\n')
+        compare(expected, actual, comparison_root('/tmp/native', 'list'), '/')
+        with self.assertRaises(ValueError):
+            compare(expected, actual, str(pathlib.PureWindowsPath('/tmp/native') / 'fixture/app'), '/')
+
+    def test_root_binding_preserves_strict_comparison(self):
+        expected = {'stdout': 'app@1.0.0 /tmp/native/fixture/app\nfiledep 0.0.0\n',
+                    'stderr': '', 'exit': 0, 'timed_out': False}
+        for text in ['app@1.0.0 /\nfiledep 1.0.0\n', 'app@1.0.0 /different\nfiledep 0.0.0\n']:
+            with self.assertRaises(ValueError):
+                compare(expected, dict(expected, stdout=text), comparison_root('/tmp/native', 'list'), '/')
+
     def test_guest_stop_success(self):
         validate_stop({'wall_seconds': 30, 'exit': 0, 'timed_out': False, 'stop': 'None\nOk(Exited(0))'})
 
