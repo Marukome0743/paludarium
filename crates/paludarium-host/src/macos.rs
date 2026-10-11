@@ -230,9 +230,17 @@ mod tests {
         value.c_ospeed = libc::B9600;
         value.c_ispeed = libc::B9600;
         assert_eq!(attributes(&value).unwrap().control_flags, 0x4bd);
-        for (host, guest) in [(libc::CS5, 0), (libc::CS6, 0x10), (libc::CS7, 0x20), (libc::CS8, 0x30)] {
+        for (host, guest) in [
+            (libc::CS5, 0),
+            (libc::CS6, 0x10),
+            (libc::CS7, 0x20),
+            (libc::CS8, 0x30),
+        ] {
             value.c_cflag = host | libc::CRTSCTS;
-            assert_eq!(attributes(&value).unwrap().control_flags, 0x8000000d | guest);
+            assert_eq!(
+                attributes(&value).unwrap().control_flags,
+                0x8000000d | guest
+            );
         }
     }
     #[test]
