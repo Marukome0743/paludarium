@@ -1,0 +1,76 @@
+name: U2 MMU 4608 bounded revalidation
+on:
+  push:
+    branches: [codex/u2-mmu-4608-revalidation]
+permissions:
+  contents: read
+jobs:
+  mmu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    container:
+      image: rust:1-bookworm
+      options: --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined --ulimit=stack=-1
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-11
+      ASAN_OPTIONS: detect_leaks=1
+      LSAN_OPTIONS: suppressions=/work/fuzz/lsan.supp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: ln -s "$GITHUB_WORKSPACE" /work
+      - run: rustup toolchain install nightly-2026-10-11 --profile minimal
+      - run: cargo install --locked --version 0.13.2 cargo-fuzz
+      - name: Existing LLVM symbolizer and suppression
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl
+          curl --fail --location https://apt.llvm.org/llvm-snapshot.gpg.key -o /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          printf '%s\n' 'deb https://apt.llvm.org/bookworm/ llvm-toolchain-bookworm main' > /etc/apt/sources.list.d/llvm-symbolizer.list
+          apt-get update
+          apt-get install -y --no-install-recommends llvm-24
+      - name: MMU only 4608 bytes 600 seconds
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /work
+          evidence=target/u2-mmu-4608
+          mkdir -p "$evidence" fuzz/corpus/mmu_u2 fuzz/artifacts/mmu_u2
+          git -c safe.directory="$GITHUB_WORKSPACE" ls-files -z | sort -z | xargs -0 sha256sum > "$evidence/source-before.sha256"
+          sha256sum Cargo.lock fuzz/Cargo.lock > "$evidence/locks-before.sha256"
+          sha256sum fuzz/lsan.supp > "$evidence/suppression.sha256"
+          rustc -Vv > "$evidence/toolchain.txt"
+          cargo -V > "$evidence/cargo.txt"
+          cargo fuzz --version > "$evidence/cargo-fuzz.txt"
+          uname -a > "$evidence/environment.txt"
+          export ASAN_SYMBOLIZER_PATH="$(command -v llvm-symbolizer-24)"
+          "$ASAN_SYMBOLIZER_PATH" --version > "$evidence/symbolizer.txt"
+          printf 'ASAN_OPTIONS=%s\nLSAN_OPTIONS=%s\nASAN_SYMBOLIZER_PATH=%s\nseed=1\nmax_len=4608\nmax_total_time=600\ntimeout=30\nrss_limit_mb=2048\nsanitizer=address\nRUSTFLAGS=%s\n' "$ASAN_OPTIONS" "$LSAN_OPTIONS" "$ASAN_SYMBOLIZER_PATH" "${RUSTFLAGS:-}" > "$evidence/settings.txt"
+          tar -cf "$evidence/corpus-before.tar" fuzz/corpus/mmu_u2 fuzz/artifacts/mmu_u2
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/start.txt"
+          set +e
+          cargo fuzz run --fuzz-dir fuzz --sanitizer address mmu_u2 -- -max_len=4608 -max_total_time=600 -timeout=30 -rss_limit_mb=2048 -seed=1 2>&1 | tee "$evidence/raw.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$evidence/exit.txt"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$evidence/end.txt"
+          git -c safe.directory="$GITHUB_WORKSPACE" ls-files -z | sort -z | xargs -0 sha256sum > "$evidence/source-after.sha256"
+          sha256sum Cargo.lock fuzz/Cargo.lock > "$evidence/locks-after.sha256"
+          tar -cf "$evidence/corpus-after.tar" fuzz/corpus/mmu_u2 fuzz/artifacts/mmu_u2
+          if test -f fuzz/target/x86_64-unknown-linux-gnu/release/mmu_u2; then
+            sha256sum fuzz/target/x86_64-unknown-linux-gnu/release/mmu_u2 > "$evidence/binary.sha256"
+          fi
+          cmp "$evidence/source-before.sha256" "$evidence/source-after.sha256"
+          cmp "$evidence/locks-before.sha256" "$evidence/locks-after.sha256"
+          test "$status" = 0
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: u2-mmu-4608
+          path: |
+            target/u2-mmu-4608
+            fuzz/artifacts/mmu_u2
+            fuzz/target/x86_64-unknown-linux-gnu/release/mmu_u2
