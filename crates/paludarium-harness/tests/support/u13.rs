@@ -1,142 +1,10 @@
 use paludarium::{Config, ExitStatus, Mount, Session};
-use paludarium_host::{
-    ClockId, DirectoryEntry, FileHandle, FileStat, Host, HostFs, NativeHost, WaitOutcome,
-    testing::RecordingHost,
-};
-use paludarium_types::Errno;
+use paludarium_host::{ClockId, Host, NativeHost, WaitOutcome, testing::RecordingHost};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, atomic::AtomicBool};
+use std::sync::{Arc, atomic::AtomicBool};
 use std::time::Instant;
 
-struct CaptureHost(RecordingHost, Arc<Mutex<Vec<String>>>);
-
-struct TraceFs {
-    inner: Arc<dyn HostFs>,
-    root: PathBuf,
-    trace: Arc<Mutex<Vec<String>>>,
-}
-impl TraceFs {
-    fn record(&self, event: String) {
-        self.trace
-            .lock()
-            .unwrap()
-            .push(format!("{} {event}", self.root.display()));
-    }
-}
-impl HostFs for TraceFs {
-    fn open(&self, path: &[u8], flags: u32, mode: u32) -> Result<Arc<dyn FileHandle>, Errno> {
-        let result = self.inner.open(path, flags, mode);
-        if path.ends_with(b"package.json") {
-            self.record(format!(
-                "open {:?} flags={flags} => {:?}",
-                String::from_utf8_lossy(path),
-                result.as_ref().map(|_| ())
-            ));
-            return result.map(|inner| {
-                Arc::new(TraceFile {
-                    inner,
-                    path: path.to_vec(),
-                    trace: self.trace.clone(),
-                }) as Arc<dyn FileHandle>
-            });
-        }
-        result
-    }
-    fn metadata(&self, path: &[u8], follow: bool) -> Result<FileStat, Errno> {
-        let result = self.inner.metadata(path, follow);
-        if path.starts_with(b"node_modules") || path.ends_with(b"package.json") {
-            self.record(format!(
-                "metadata {:?} follow={follow} => {result:?}",
-                String::from_utf8_lossy(path)
-            ));
-        }
-        result
-    }
-    fn mkdir(&self, path: &[u8], mode: u32) -> Result<(), Errno> {
-        self.inner.mkdir(path, mode)
-    }
-    fn unlink(&self, path: &[u8], directory: bool) -> Result<(), Errno> {
-        self.inner.unlink(path, directory)
-    }
-    fn link(&self, old: &[u8], new: &[u8]) -> Result<(), Errno> {
-        self.inner.link(old, new)
-    }
-    fn symlink(&self, target: &[u8], path: &[u8]) -> Result<(), Errno> {
-        let result = self.inner.symlink(target, path);
-        self.record(format!(
-            "symlink {:?} target={:?} => {result:?}",
-            String::from_utf8_lossy(path),
-            String::from_utf8_lossy(target)
-        ));
-        result
-    }
-    fn readlink(&self, path: &[u8]) -> Result<Vec<u8>, Errno> {
-        let result = self.inner.readlink(path);
-        self.record(format!(
-            "readlink {:?} => {:?}",
-            String::from_utf8_lossy(path),
-            result.as_ref().map(|bytes| String::from_utf8_lossy(bytes))
-        ));
-        result
-    }
-    fn rename(&self, old: &[u8], new: &[u8]) -> Result<(), Errno> {
-        self.inner.rename(old, new)
-    }
-    fn read_dir(&self, path: &[u8]) -> Result<Vec<DirectoryEntry>, Errno> {
-        self.inner.read_dir(path)
-    }
-}
-struct TraceFile {
-    inner: Arc<dyn FileHandle>,
-    path: Vec<u8>,
-    trace: Arc<Mutex<Vec<String>>>,
-}
-impl FileHandle for TraceFile {
-    fn readiness(&self) -> Result<(u32, u64, u64), Errno> {
-        self.inner.readiness()
-    }
-    fn as_any(&self) -> Option<&dyn std::any::Any> {
-        self.inner.as_any()
-    }
-    fn stdio_channel(&self) -> Option<u32> {
-        self.inner.stdio_channel()
-    }
-    fn guest_path_hint(&self) -> Option<Vec<u8>> {
-        self.inner.guest_path_hint()
-    }
-    fn read(&self, bytes: &mut [u8]) -> Result<usize, Errno> {
-        let result = self.inner.read(bytes);
-        self.trace.lock().unwrap().push(format!(
-            "read {:?} => {:?}",
-            String::from_utf8_lossy(&self.path),
-            result
-                .as_ref()
-                .map(|count| String::from_utf8_lossy(&bytes[..*count]))
-        ));
-        result
-    }
-    fn write(&self, bytes: &[u8]) -> Result<usize, Errno> {
-        self.inner.write(bytes)
-    }
-    fn seek(&self, offset: i64, whence: u32) -> Result<u64, Errno> {
-        self.inner.seek(offset, whence)
-    }
-    fn stat(&self) -> Result<FileStat, Errno> {
-        self.inner.stat()
-    }
-    fn truncate(&self, size: u64) -> Result<(), Errno> {
-        self.inner.truncate(size)
-    }
-    fn flock(&self, op: u32) -> Result<(), Errno> {
-        self.inner.flock(op)
-    }
-    fn flags(&self) -> u32 {
-        self.inner.flags()
-    }
-    fn set_flags(&self, flags: u32) -> Result<(), Errno> {
-        self.inner.set_flags(flags)
-    }
-}
+struct CaptureHost(RecordingHost);
 impl Host for CaptureHost {
     fn read_stdin(&self, bytes: &mut [u8]) -> Result<usize, paludarium_types::Errno> {
         self.0.read_stdin(bytes)
@@ -165,13 +33,7 @@ impl Host for CaptureHost {
         &self,
         root: &Path,
     ) -> Result<Arc<dyn paludarium_host::HostFs>, paludarium_types::Errno> {
-        NativeHost::new().mount_fs(root).map(|inner| {
-            Arc::new(TraceFs {
-                inner,
-                root: root.to_path_buf(),
-                trace: self.1.clone(),
-            }) as Arc<dyn HostFs>
-        })
+        NativeHost::new().mount_fs(root)
     }
 }
 
@@ -253,10 +115,7 @@ pub fn operation() {
             fixture_files(&mut config, &fixture.join("outside"), "/outside");
         }
     }
-    let host = Arc::new(CaptureHost(
-        RecordingHost::new(),
-        Arc::new(Mutex::new(Vec::new())),
-    ));
+    let host = Arc::new(CaptureHost(RecordingHost::new()));
     let fixture_modes = if std::env::var_os("PALUDARIUM_U13_MOUNTED").is_some() {
         let fixture = PathBuf::from(std::env::var_os("PALUDARIUM_U13_FIXTURE").unwrap());
         [
@@ -281,11 +140,6 @@ pub fn operation() {
     let session = Session::new(config, host.clone()).unwrap();
     let started = Instant::now();
     let result = session.run();
-    std::fs::write(
-        directory.join("host-fs-trace.log"),
-        host.1.lock().unwrap().join("\n") + "\n",
-    )
-    .unwrap();
     std::fs::write(directory.join("stdout"), host.0.stdout()).unwrap();
     std::fs::write(directory.join("stderr"), host.0.stderr()).unwrap();
     std::fs::write(
