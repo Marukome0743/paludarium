@@ -180,6 +180,36 @@ fn u13_fs_io_metadata() {
     assert_eq!(f.read(&mut bytes), Ok(3));
     assert_eq!(&bytes, b"abc");
     assert_eq!(f.stat().unwrap().size, 3);
+    x.fs().mkdir(b"filedep", 0o755).unwrap();
+    std::fs::write(x.root.join("root/filedep/package.json"), b"{}").unwrap();
+    assert_eq!(x.fs().read_dir(b"filedep").unwrap().len(), 1);
+    let capability =
+        cap_std::fs::Dir::open_ambient_dir(x.root.join("root"), cap_std::ambient_authority())
+            .unwrap();
+    let mut options = cap_std::fs::OpenOptions::new();
+    options.read(true);
+    let plain = capability.open_with("filedep", &options).map(|_| ());
+    eprintln!(
+        "U13 directory plain open: {:?}",
+        plain
+            .as_ref()
+            .map_err(|error| (error.kind(), error.raw_os_error()))
+    );
+    use cap_fs_ext::OpenOptionsMaybeDirExt;
+    options.maybe_dir(true);
+    let capable = capability.open_with("filedep", &options).map(|_| ());
+    eprintln!(
+        "U13 directory maybe_dir open: {:?}",
+        capable
+            .as_ref()
+            .map_err(|error| (error.kind(), error.raw_os_error()))
+    );
+    capable.unwrap();
+    for flags in [65536, 65536 | 524288 | 2048] {
+        let opened = x.fs().open(b"filedep", flags, 0).map(|_| ());
+        eprintln!("U13 directory Host open flags={flags}: {opened:?}");
+        opened.unwrap();
+    }
 }
 #[test]
 fn u13_fs_nul_rejected() {

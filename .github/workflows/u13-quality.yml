@@ -7,6 +7,11 @@ name: U13 current full quality
 
 on:
   workflow_dispatch:
+    inputs:
+      diagnostic_only:
+        description: Windows directory-handle reproduction
+        type: boolean
+        default: false
   push:
     branches: [codex/u13-windows-host]
 
@@ -31,9 +36,38 @@ defaults:
     shell: bash
 
 jobs:
+  windows-directory-diagnostic:
+    if: ${{ inputs.diagnostic_only }}
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: false
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install nightly-2026-10-11 --profile minimal
+      - name: Observe directory open, sandbox enumeration and raw Windows errno
+        run: |
+          mkdir -p target/u13-directory
+          set +e
+          cargo test --locked -p paludarium-host --lib u13_fs_io_metadata -- --nocapture 2>&1 | tee target/u13-directory/raw.log
+          code=${PIPESTATUS[0]}
+          printf '%s\n' "$code" > target/u13-directory/exit.txt
+          exit "$code"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u13-directory-diagnostic
+          path: target/u13-directory
+          if-no-files-found: error
   u13-oracle:
+    if: ${{ !inputs.diagnostic_only }}
     uses: ./.github/workflows/u13-native-first.yml
   windows-host:
+    if: ${{ !inputs.diagnostic_only }}
     needs: u13-oracle
     runs-on: windows-latest
     timeout-minutes: 40
@@ -156,14 +190,18 @@ jobs:
             target/u13/windows-byte-audit
           retention-days: 14
   u11-programs:
+    if: ${{ !inputs.diagnostic_only }}
     uses: ./.github/workflows/u13-wasm-acceptance.yml
   u13-fuzz:
+    if: ${{ !inputs.diagnostic_only }}
     uses: ./.github/workflows/u12-fuzz.yml
   u10-programs:
+    if: ${{ !inputs.diagnostic_only }}
     name: U10 fixed guests and fresh native differential
     uses: ./.github/workflows/u10-native-diagnostic.yml
 
   production-wasm:
+    if: ${{ !inputs.diagnostic_only }}
     name: production wasm (shared Rust heap, nested Workers)
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -195,6 +233,7 @@ jobs:
             packages/paludarium-wasm/paludarium.wasm
           retention-days: 7
   test:
+    if: ${{ !inputs.diagnostic_only }}
     name: unit tests (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -220,6 +259,7 @@ jobs:
         run: cargo test --locked -p paludarium-harness --lib
 
   lint:
+    if: ${{ !inputs.diagnostic_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -238,6 +278,7 @@ jobs:
         run: cargo build --locked -p paludarium-decoder -p paludarium-mmu -p paludarium-cpu --target wasm32-unknown-unknown
 
   dependencies:
+    if: ${{ !inputs.diagnostic_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -252,6 +293,7 @@ jobs:
       - run: cargo deny --locked check
 
   differential:
+    if: ${{ !inputs.diagnostic_only }}
     name: differential tests (x86-64 Linux)
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -279,6 +321,7 @@ jobs:
           retention-days: 7
 
   coverage:
+    if: ${{ !inputs.diagnostic_only }}
     name: line coverage >= 80%
     runs-on: ubuntu-latest
     timeout-minutes: 30
