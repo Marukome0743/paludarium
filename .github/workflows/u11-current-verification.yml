@@ -30,7 +30,8 @@ jobs:
           curl --fail --location https://apt.llvm.org/llvm-snapshot.gpg.key -o /etc/apt/trusted.gpg.d/apt.llvm.org.asc
           printf '%s\n' 'deb https://apt.llvm.org/bookworm/ llvm-toolchain-bookworm main' > /etc/apt/sources.list.d/llvm-symbolizer.list
           apt-get update
-          apt-get install -y --no-install-recommends llvm-23
+          apt-cache policy llvm-24
+          apt-get install -y --no-install-recommends llvm-24
       - name: Record symbols and the same bounded memory check
         shell: bash
         run: |
@@ -40,9 +41,9 @@ jobs:
           rustc -Vv > target/u11-memory-diagnostic/toolchain.txt
           sha256sum Cargo.lock fuzz/Cargo.lock > target/u11-memory-diagnostic/locks-before.sha256
           find "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin" -maxdepth 1 -type f -executable -print > target/u11-memory-diagnostic/rust-llvm-tools.txt
-          command -v llvm-symbolizer-23 > target/u11-memory-diagnostic/symbolizer-path.txt
-          dpkg-query -W llvm-23 > target/u11-memory-diagnostic/symbolizer-package.txt
-          symbolizer="$(command -v llvm-symbolizer-23)"
+          command -v llvm-symbolizer-24 > target/u11-memory-diagnostic/symbolizer-path.txt
+          dpkg-query -W llvm-24 > target/u11-memory-diagnostic/symbolizer-package.txt
+          symbolizer="$(command -v llvm-symbolizer-24)"
           test -x "$symbolizer"
           export ASAN_SYMBOLIZER_PATH="$symbolizer"
           "$symbolizer" --version > target/u11-memory-diagnostic/symbolizer.txt
