@@ -6,15 +6,17 @@ from evidence import digest, validate
 from settings import configuration
 
 
-def load(path, guests, root):
+def load(path, guests, root, *, original=False):
     receipt = json.loads((guests / 'build-receipt.json').read_text())
     validate(guests, receipt)
     data = json.loads(path.read_text())
-    config = configuration(root)
+    config = configuration(root, original=original)
     expected = ['probe-' + name for name in config['probe'] + ['all', 'environment']]
     expected += [case['name'] for case in config['aube']]
     if data.get('schema') != 1 or data.get('native_complete') is not True:
         raise ValueError('incomplete Linux oracle')
+    if data.get('case_config') != config:
+        raise ValueError('oracle argument configuration mismatch')
     if not str(data.get('machine', '')).startswith('Linux-'):
         raise ValueError('oracle must originate on Linux')
     if not data.get('network_namespace') or data.get('route', '').splitlines()[1:]:

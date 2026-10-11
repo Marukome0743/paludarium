@@ -43,6 +43,9 @@ class SettingsTests(unittest.TestCase):
     def test_schema_rejected(self):
         self.rejects(lambda c: c.update(schema=2))
 
+    def test_original_arguments_preserved(self):
+        self.assertEqual(configuration(Root(self.config), original=True), self.config)
+
     def test_deadline_rejected(self):
         self.rejects(lambda c: c.update(deadline_seconds=31))
 

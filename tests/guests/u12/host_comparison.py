@@ -6,6 +6,7 @@ import shutil
 import tempfile
 
 from comparison import compare, probe_pass, reproduced
+from comparison_args import compare_original
 from differential import operation as guest_operation
 from metadata import fixture_inputs
 from oracle import load
@@ -21,9 +22,9 @@ def validate_stop(row):
         raise ValueError('guest did not exit within the boundary')
 
 
-def observe(executable, guests, native_path, output, root):
-    config = configuration(root)
-    native = load(native_path, guests, root)
+def observe(executable, guests, native_path, output, root, *, original=False):
+    config = configuration(root, original=original)
+    native = load(native_path, guests, root, original=original)
     output.mkdir(parents=True, exist_ok=True)
     data = {'schema': 1, 'binary_hashes': native['binary_hashes'], 'rows': {},
             'case_config': config, 'oracle': str(native_path), 'default_rows': {},
@@ -37,7 +38,10 @@ def observe(executable, guests, native_path, output, root):
         expected_root = native['fixture_root']
         if not name.startswith('probe-'):
             expected_root = str(pathlib.Path(expected_root) / 'fixture/app')
-        compare(expected, row, expected_root, '/')
+        if original and name in ('install', 'frozen'):
+            compare_original(expected, row, expected_root, '/')
+        else:
+            compare(expected, row, expected_root, '/')
         validate_stop(row)
 
     for name in config['probe'] + ['all', 'environment']:

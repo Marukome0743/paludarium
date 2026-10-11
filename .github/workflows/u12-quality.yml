@@ -71,6 +71,7 @@ jobs:
           if len(binaries) != 1:
               raise RuntimeError('expected exactly one U12 harness executable')
           subprocess.run(['python3', '-m', 'coverage', 'run', '--append', '--data-file=target/u12-python.coverage', '--include=tests/guests/u12/settings.py,tests/guests/u12/oracle.py,tests/guests/u12/host_comparison.py', 'scripts/u12-run.py', '--guest-dir', 'target/guests/u10', '--native', 'target/u12/native/observations.json', '--output', 'target/u12/macos/comparison', '--emulator', binaries[0]], check=True)
+          subprocess.run(['python3', '-m', 'coverage', 'run', '--append', '--data-file=target/u12-python.coverage', '--include=tests/guests/u12/settings.py,tests/guests/u12/oracle.py,tests/guests/u12/host_comparison.py', 'scripts/u12-run.py', '--original-argv', '--guest-dir', 'target/guests/u10', '--native', 'target/u12/native-original/observations.json', '--output', 'target/u12/macos/comparison-original', '--emulator', binaries[0]], check=True)
           PY
           python3 -m coverage json --data-file=target/u12-python.coverage -o target/u12/macos/python-coverage.json
           python3 -m coverage report --data-file=target/u12-python.coverage --fail-under=80

@@ -14,6 +14,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--self-test', action='store_true')
     parser.add_argument('--native-only', action='store_true')
+    parser.add_argument('--original-argv', action='store_true')
     parser.add_argument('--guest-dir', type=pathlib.Path)
     parser.add_argument('--native', type=pathlib.Path)
     parser.add_argument('--output', type=pathlib.Path)
@@ -31,12 +32,12 @@ def main():
             parser.error('native-only requires --guest-dir --output; no --native')
         from native import observe
         from settings import configuration
-        observe(args.guest_dir.resolve(), args.output.resolve(), configuration(ROOT))
+        observe(args.guest_dir.resolve(), args.output.resolve(), configuration(ROOT, original=args.original_argv), prepare_fixture=lambda fixture: {})
         return
     if args.guest_dir is None or args.native is None or args.output is None or args.emulator is None:
         parser.error('comparison requires --guest-dir --native --output --emulator')
     from host_comparison import observe
-    observe(args.emulator.resolve(), args.guest_dir.resolve(), args.native.resolve(), args.output.resolve(), ROOT)
+    observe(args.emulator.resolve(), args.guest_dir.resolve(), args.native.resolve(), args.output.resolve(), ROOT, original=args.original_argv)
 
 
 if __name__ == '__main__':

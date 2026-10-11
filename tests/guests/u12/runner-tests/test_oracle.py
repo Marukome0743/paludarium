@@ -32,7 +32,7 @@ class OracleTests(unittest.TestCase):
         names += [case['name'] for case in config['aube']]
         self.data = {'schema': 1, 'native_complete': True, 'machine': 'Linux-test-x86_64',
                      'network_namespace': 'net:[isolated]', 'route': 'header\n',
-                     'binary_hashes': {'probe': 'probe', 'aube': 'aube'},
+                     'binary_hashes': {'probe': 'probe', 'aube': 'aube'}, 'case_config': config,
                      'rows': {name: {'wall_seconds': 0.1, 'exit': 0, 'timed_out': False} for name in names}}
 
     def load(self, data):
@@ -41,6 +41,10 @@ class OracleTests(unittest.TestCase):
 
     def test_complete_exact_fourteen(self):
         self.assertEqual(len(self.load(self.data)['rows']), 14)
+
+    def test_reporter_configuration_mismatch(self):
+        self.data['case_config'] = configuration(ROOT, original=True)
+        with self.assertRaises(ValueError): self.load(self.data)
 
     def test_incomplete(self):
         self.data['native_complete'] = False

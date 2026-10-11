@@ -60,6 +60,10 @@ jobs:
           printf '%s\n' "$status" > target/u12-native-first/native-exit.txt
           test "$status" = 0
           python -c 'import json; r=json.load(open("target/u12/native/observations.json")); assert r["native_complete"] and len(r["rows"])==14; assert all(x["exit"]==0 and not x["timed_out"] and 0<=x["wall_seconds"]<=30 for x in r["rows"].values())'
+          sudo unshare --net "$(command -v python)" scripts/u12-run.py --native-only --original-argv --guest-dir target/guests/u10 --output target/u12/native-original 2>&1 | tee target/u12-native-first/native-original.log
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > target/u12-native-first/native-original-exit.txt
+          test "$status" = 0
       - name: Unchanged lock inputs
         if: always()
         shell: bash
@@ -74,6 +78,7 @@ jobs:
           path: |
             target/u12-native-first/
             target/u12/native/
+            target/u12/native-original/
             target/guests/u10/build-receipt.json
             target/guests/u10/*-build.log
             target/guests/u10/*-dependencies.log

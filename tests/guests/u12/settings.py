@@ -5,7 +5,7 @@ PROBE_ITEMS = ('tokio-timer', 'unix-stream-pair', 'rayon', 'mutex-condvar',
                'fs-basic', 'fs-hardlink', 'fs-symlink', 'fs-flock')
 
 
-def configuration(root):
+def configuration(root, *, original=False):
     config = json.loads((root / 'tests/guests/u10/cases.json').read_text())
     if (config['schema'] != 1 or config['deadline_seconds'] != 30
             or tuple(config['probe']) != PROBE_ITEMS):
@@ -21,6 +21,6 @@ def configuration(root):
     if any(config['comparison'][key] is not True for key in ('stdout', 'stderr', 'exit')):
         raise ValueError('required comparison removed')
     for row in config['aube']:
-        if row['name'] in ('install', 'frozen'):
+        if not original and row['name'] in ('install', 'frozen'):
             row['args'].append('--reporter=append-only')
     return config
