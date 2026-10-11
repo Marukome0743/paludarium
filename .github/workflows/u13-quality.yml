@@ -7,6 +7,11 @@ name: U13 current full quality
 
 on:
   workflow_dispatch:
+    inputs:
+      diagnostic_only:
+        description: Read-only Windows signed-byte audit
+        type: boolean
+        default: false
   push:
     branches: [codex/u13-windows-host]
 
@@ -31,9 +36,50 @@ defaults:
     shell: bash
 
 jobs:
+  windows-byte-audit:
+    if: ${{ inputs.diagnostic_only }}
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.15'
+      - name: Preserve checkout bytes and read-only signed blobs
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib, json, pathlib, subprocess
+          root = pathlib.Path('target/u13/windows-byte-audit')
+          names = ['deny.toml', 'Cargo.lock', 'fuzz/Cargo.lock', 'rust-toolchain.toml', 'tests/guests/u10/fixtures/outside/linked/package.json', 'tests/guests/u10/fixtures/app/package.json', 'tests/guests/u10/fixtures/app/filedep/package.json']
+          rows = []
+          for name in names:
+              actual = pathlib.Path(name).read_bytes()
+              signed = subprocess.check_output(['git', 'cat-file', 'blob', 'HEAD:' + name])
+              row = {'path': name}
+              for origin, data in [('checkout', actual), ('signed', signed)]:
+                  dest = root / origin / name
+                  dest.parent.mkdir(parents=True, exist_ok=True)
+                  dest.write_bytes(data)
+                  row[origin] = {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data), 'lf': data.count(b'\n'), 'crlf': data.count(b'\r\n')}
+              rows.append(row)
+          config = subprocess.run(['git', 'config', '--show-origin', '--get', 'core.autocrlf'], capture_output=True, text=True, check=False)
+          report = {'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(), 'autocrlf': {'code': config.returncode, 'stdout': config.stdout, 'stderr': config.stderr}, 'files': rows}
+          (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report, indent=2))
+          PYCODE
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u13-windows-byte-audit
+          path: target/u13/windows-byte-audit
+          if-no-files-found: error
   u13-oracle:
+    if: ${{ !inputs.diagnostic_only }}
     uses: ./.github/workflows/u13-native-first.yml
   windows-host:
+    if: ${{ !inputs.diagnostic_only }}
     needs: u13-oracle
     runs-on: windows-latest
     timeout-minutes: 40
@@ -126,14 +172,18 @@ jobs:
           path: target/u13/windows
           retention-days: 14
   u11-programs:
+    if: ${{ !inputs.diagnostic_only }}
     uses: ./.github/workflows/u13-wasm-acceptance.yml
   u13-fuzz:
+    if: ${{ !inputs.diagnostic_only }}
     uses: ./.github/workflows/u12-fuzz.yml
   u10-programs:
+    if: ${{ !inputs.diagnostic_only }}
     name: U10 fixed guests and fresh native differential
     uses: ./.github/workflows/u10-native-diagnostic.yml
 
   production-wasm:
+    if: ${{ !inputs.diagnostic_only }}
     name: production wasm (shared Rust heap, nested Workers)
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -165,6 +215,7 @@ jobs:
             packages/paludarium-wasm/paludarium.wasm
           retention-days: 7
   test:
+    if: ${{ !inputs.diagnostic_only }}
     name: unit tests (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -190,6 +241,7 @@ jobs:
         run: cargo test --locked -p paludarium-harness --lib
 
   lint:
+    if: ${{ !inputs.diagnostic_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -208,6 +260,7 @@ jobs:
         run: cargo build --locked -p paludarium-decoder -p paludarium-mmu -p paludarium-cpu --target wasm32-unknown-unknown
 
   dependencies:
+    if: ${{ !inputs.diagnostic_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -222,6 +275,7 @@ jobs:
       - run: cargo deny --locked check
 
   differential:
+    if: ${{ !inputs.diagnostic_only }}
     name: differential tests (x86-64 Linux)
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -249,6 +303,7 @@ jobs:
           retention-days: 7
 
   coverage:
+    if: ${{ !inputs.diagnostic_only }}
     name: line coverage >= 80%
     runs-on: ubuntu-latest
     timeout-minutes: 30

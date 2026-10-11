@@ -65,6 +65,65 @@ fn u13_native_ticket_and_empty_stdio() {
     assert_eq!(NativeHost::new().write_stderr(b""), Ok(0));
 }
 
+#[test]
+fn u13_native_ticket_future_deadline() {
+    let host = NativeHost::new();
+    let token = WaitToken::default();
+    let deadline = host.clock(ClockId::Monotonic).unwrap() + 5_000_000;
+    assert_eq!(
+        threads::wait(
+            &host,
+            &token,
+            0,
+            Some((ClockId::Monotonic, deadline)),
+            &AtomicBool::new(false),
+        ),
+        Ok(WaitOutcome::Complete)
+    );
+    assert!(host.clock(ClockId::Monotonic).unwrap() >= deadline);
+    assert_eq!(token.value(), 0);
+}
+
+#[test]
+fn u13_native_one_notify_releases_two_waiters() {
+    let token = Arc::new(WaitToken::default());
+    let ready = Arc::new(std::sync::Barrier::new(3));
+    let completed = Arc::new(AtomicUsize::new(0));
+    let deadline = NativeHost::new().clock(ClockId::Monotonic).unwrap() + 5_000_000_000;
+    let mut workers = Vec::new();
+    for _ in 0..2 {
+        let token = Arc::clone(&token);
+        let ready = Arc::clone(&ready);
+        let completed = Arc::clone(&completed);
+        workers.push(
+            threads::spawn(Box::new(move || {
+                ready.wait();
+                assert_eq!(
+                    threads::wait(
+                        &NativeHost::new(),
+                        &token,
+                        0,
+                        Some((ClockId::Monotonic, deadline)),
+                        &AtomicBool::new(false),
+                    ),
+                    Ok(WaitOutcome::Complete)
+                );
+                assert_eq!(token.value(), 1);
+                completed.fetch_add(1, Ordering::SeqCst);
+            }))
+            .unwrap(),
+        );
+    }
+    ready.wait();
+    assert_eq!(completed.load(Ordering::SeqCst), 0);
+    token.notify();
+    for worker in workers {
+        worker.join().unwrap();
+    }
+    assert_eq!(completed.load(Ordering::SeqCst), 2);
+    assert_eq!(token.value(), 1);
+}
+
 struct Fixture {
     root: std::path::PathBuf,
     fs: Option<Arc<dyn HostFs>>,
