@@ -1,5 +1,7 @@
 //! Native filesystem operations relative to a retained directory capability.
 use crate::{DirectoryEntry, FileHandle, FileStat, HostFs};
+#[cfg(windows)]
+use cap_fs_ext::OpenOptionsMaybeDirExt;
 use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt};
 use cap_std::fs::{Dir, OpenOptions};
 use fs2::FileExt;
@@ -211,6 +213,10 @@ impl HostFs for NativeFs {
             return Err(Errno::EINVAL);
         }
         let mut o = OpenOptions::new();
+        // Windows requires an explicit directory-capable open. The existing
+        // post-open metadata check still enforces Linux O_DIRECTORY.
+        #[cfg(windows)]
+        o.maybe_dir(f & 65536 != 0);
         #[cfg(unix)]
         {
             use cap_std::fs::OpenOptionsExt;

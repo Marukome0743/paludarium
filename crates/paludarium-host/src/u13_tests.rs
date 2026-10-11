@@ -210,6 +210,11 @@ fn u13_fs_io_metadata() {
         eprintln!("U13 directory Host open flags={flags}: {opened:?}");
         opened.unwrap();
     }
+    assert!(matches!(x.fs().open(b"io", 65536, 0), Err(Errno::ENOTDIR)));
+    assert!(matches!(
+        x.fs().open(b"filedep", 65536 | 64, 0),
+        Err(Errno::EINVAL)
+    ));
 }
 #[test]
 fn u13_fs_nul_rejected() {

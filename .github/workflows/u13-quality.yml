@@ -64,10 +64,8 @@ jobs:
           path: target/u13-directory
           if-no-files-found: error
   u13-oracle:
-    if: ${{ !inputs.diagnostic_only }}
     uses: ./.github/workflows/u13-native-first.yml
   windows-host:
-    if: ${{ !inputs.diagnostic_only }}
     needs: u13-oracle
     runs-on: windows-latest
     timeout-minutes: 40
