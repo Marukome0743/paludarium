@@ -27,6 +27,17 @@ jobs:
       - run: rustup toolchain install nightly-2026-10-10 --profile minimal
       - run: cargo install --locked --version 0.13.2 cargo-fuzz
       - run: cargo check --locked --manifest-path fuzz/Cargo.toml --bins
+      - name: Prepare the observed LLVM symbolizer for the decoder-table suppression
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl
+          curl --fail --location https://apt.llvm.org/llvm-snapshot.gpg.key -o /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          printf '%s\n' 'deb https://apt.llvm.org/bookworm/ llvm-toolchain-bookworm main' > /etc/apt/sources.list.d/llvm-symbolizer.list
+          apt-get update
+          apt-cache policy llvm-24
+          apt-get install -y --no-install-recommends llvm-24
       - name: Fresh 600 second ASan and LSan observation
         shell: bash
         run: |
@@ -34,6 +45,12 @@ jobs:
           cd /work
           mkdir -p target/u11-fuzz
           rustc -Vv > target/u11-fuzz/toolchain.txt
+          sha256sum Cargo.lock fuzz/Cargo.lock > target/u11-fuzz/locks-before.sha256
+          export ASAN_SYMBOLIZER_PATH="$(command -v llvm-symbolizer-24)"
+          printf '%s\n' "$ASAN_SYMBOLIZER_PATH" > target/u11-fuzz/symbolizer-path.txt
+          "$ASAN_SYMBOLIZER_PATH" --version > target/u11-fuzz/symbolizer-version.txt
+          dpkg-query -W llvm-24 > target/u11-fuzz/symbolizer-package.txt
+          printf 'ASAN_OPTIONS=%s\nLSAN_OPTIONS=%s\nASAN_SYMBOLIZER_PATH=%s\n' "$ASAN_OPTIONS" "$LSAN_OPTIONS" "${ASAN_SYMBOLIZER_PATH:-}" > target/u11-fuzz/settings.txt
           sha256sum fuzz/Cargo.lock > target/u11-fuzz/lock-before.sha256
           date -u > target/u11-fuzz/start.txt
           set +e
@@ -44,6 +61,9 @@ jobs:
           date -u > target/u11-fuzz/end.txt
           sha256sum fuzz/Cargo.lock > target/u11-fuzz/lock-after.sha256
           cmp target/u11-fuzz/lock-before.sha256 target/u11-fuzz/lock-after.sha256
+          sha256sum Cargo.lock fuzz/Cargo.lock > target/u11-fuzz/locks-after.sha256
+          cmp target/u11-fuzz/locks-before.sha256 target/u11-fuzz/locks-after.sha256
+          sha256sum 'fuzz/target/x86_64-unknown-linux-gnu/release/${{ matrix.target }}' > target/u11-fuzz/binary.sha256
           test "$status" = 0
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -52,3 +72,4 @@ jobs:
           path: |
             target/u11-fuzz
             fuzz/artifacts
+            fuzz/target/x86_64-unknown-linux-gnu/release/${{ matrix.target }}
