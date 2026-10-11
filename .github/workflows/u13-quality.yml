@@ -61,7 +61,11 @@ jobs:
         run: |
           mkdir -p target/u13/windows
           rustc -Vv > target/u13/windows/compiler.txt
-          shasum -a 256 Cargo.lock fuzz/Cargo.lock rust-toolchain.toml > target/u13/windows/inputs-before.sha256
+          python3 - <<'PY' > target/u13/windows/inputs-before.sha256
+          import hashlib, pathlib
+          for name in ('Cargo.lock', 'fuzz/Cargo.lock', 'rust-toolchain.toml'):
+              print(hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() + '  ' + name)
+          PY
           cargo llvm-cov clean --workspace
           cargo llvm-cov test --no-report --locked -p paludarium-host --lib -- --test-threads=1
       - name: Same fixed bytes through Windows emulator, instrumented
@@ -89,7 +93,7 @@ jobs:
           import json, pathlib
           expected = {'lib.rs', 'clock.rs', 'threads.rs', 'native_fs.rs', 'fs.rs', 'windows.rs'}
           data = json.loads(pathlib.Path('target/u13/windows/coverage.json').read_text())
-          files = [row for row in data['data'][0]['files'] if '/paludarium-host/src/' in row['filename'] and pathlib.Path(row['filename']).name in expected]
+          files = [row for row in data['data'][0]['files'] if '/paludarium-host/src/' in pathlib.Path(row['filename']).as_posix() and pathlib.Path(row['filename']).name in expected]
           if {pathlib.Path(row['filename']).name for row in files} != expected:
               raise RuntimeError('coverage denominator missing a native Host file')
           lines = sum(row['summary']['lines']['count'] for row in files)
@@ -109,7 +113,11 @@ jobs:
               raise RuntimeError('Windows implementation coverage below eighty percent')
           pathlib.Path('target/u13/windows/coverage-windows.json').write_text(json.dumps(windows[0]['summary']['lines'], indent=2) + '\n')
           PY
-          shasum -a 256 Cargo.lock fuzz/Cargo.lock rust-toolchain.toml > target/u13/windows/inputs-after.sha256
+          python3 - <<'PY' > target/u13/windows/inputs-after.sha256
+          import hashlib, pathlib
+          for name in ('Cargo.lock', 'fuzz/Cargo.lock', 'rust-toolchain.toml'):
+              print(hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() + '  ' + name)
+          PY
           cmp target/u13/windows/inputs-before.sha256 target/u13/windows/inputs-after.sha256
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
