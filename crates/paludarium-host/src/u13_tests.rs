@@ -158,7 +158,12 @@ fn u13_fs_flock_contention() {
 fn u13_fs_negative_mtime() {
     let x = Fixture::new();
     let h = x.fs().open(b"mtime", 66, 0o600).unwrap();
-    let f = std::fs::File::open(x.root.join("root/mtime")).unwrap();
+    // Windows SetFileTime needs write access to the fixture's attributes.
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(x.root.join("root/mtime"))
+        .unwrap();
     f.set_times(std::fs::FileTimes::new().set_modified(UNIX_EPOCH - Duration::from_secs(1)))
         .unwrap();
     assert_eq!(

@@ -118,7 +118,7 @@ jobs:
           path: target/u13/windows
           retention-days: 14
   u11-programs:
-    uses: ./.github/workflows/u11-acceptance.yml
+    uses: ./.github/workflows/u13-wasm-acceptance.yml
   u13-fuzz:
     uses: ./.github/workflows/u12-fuzz.yml
   u10-programs:

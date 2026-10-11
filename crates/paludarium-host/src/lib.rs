@@ -21,11 +21,11 @@ use paludarium_types::{Errno, Error, ErrorKind};
 mod clock;
 #[cfg(target_os = "macos")]
 mod macos;
-#[cfg(windows)]
-mod windows;
 mod threads;
 #[cfg(any(target_arch = "wasm32", test))]
 mod wasm_tasks;
+#[cfg(windows)]
+mod windows;
 pub use threads::{ThreadHandle, WaitToken};
 #[cfg(target_arch = "wasm32")]
 pub use wasm_tasks::run_task;
