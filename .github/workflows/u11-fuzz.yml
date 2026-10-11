@@ -18,7 +18,7 @@ jobs:
       image: rust:1-bookworm
       options: --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined --ulimit=stack=-1
     env:
-      RUSTUP_TOOLCHAIN: nightly-2026-10-10
+      RUSTUP_TOOLCHAIN: nightly-2026-10-11
       ASAN_OPTIONS: detect_leaks=1
       LSAN_OPTIONS: suppressions=/work/fuzz/lsan.supp
     steps:
@@ -26,7 +26,7 @@ jobs:
         with:
           persist-credentials: false
       - run: ln -s "$GITHUB_WORKSPACE" /work
-      - run: rustup toolchain install nightly-2026-10-10 --profile minimal
+      - run: rustup toolchain install nightly-2026-10-11 --profile minimal
       - run: cargo install --locked --version 0.13.2 cargo-fuzz
       - run: cargo check --locked --manifest-path fuzz/Cargo.toml --bins
       - name: Prepare the observed LLVM symbolizer for the decoder-table suppression
@@ -68,7 +68,7 @@ jobs:
           sha256sum 'fuzz/target/x86_64-unknown-linux-gnu/release/${{ matrix.target }}' > target/u11-fuzz/binary.sha256
           test "$status" = 0
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: u11-fuzz-${{ matrix.target }}
           path: |

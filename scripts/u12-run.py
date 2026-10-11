@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""U12 native-host entry point; Linux expectations are built before host changes."""
+import argparse
+import pathlib
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(ROOT / 'tests/guests/u12'))
+sys.path.insert(1, str(ROOT / 'tests/guests/u10'))
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--self-test', action='store_true')
+    parser.add_argument('--native-only', action='store_true')
+    parser.add_argument('--guest-dir', type=pathlib.Path)
+    parser.add_argument('--native', type=pathlib.Path)
+    parser.add_argument('--output', type=pathlib.Path)
+    parser.add_argument('--emulator', type=pathlib.Path)
+    args = parser.parse_args()
+    if args.self_test:
+        from runner import run
+        row = run([sys.executable, '-c', 'pass'], cwd=ROOT, env={})
+        if row['exit'] != 0 or row['timed_out']:
+            raise RuntimeError('U12 bounded runner not ready')
+        print('U12 runner ready: fixed fourteen cases, external thirty-second deadline')
+        return
+    if args.native_only:
+        if args.guest_dir is None or args.output is None or args.native is not None:
+            parser.error('native-only requires --guest-dir --output; no --native')
+        from native import observe
+        from settings import configuration
+        observe(args.guest_dir.resolve(), args.output.resolve(), configuration(ROOT))
+        return
+    parser.error('U12 emulator comparison not ready yet; no result claimed')
+
+
+if __name__ == '__main__':
+    main()
