@@ -16,6 +16,13 @@ try {
   await filesystem.remove("/file"); assert.equal((await filesystem.snapshot()).some(entry => entry.path === "/file"), false);
   await filesystem.dispose(); await filesystem.dispose();
   await assert.rejects(filesystem.snapshot(), /disposed/);
+  const large = await first.createFileSystem({ files: {
+    "/large-a": new Uint8Array(34 * 1024 * 1024),
+    "/large-b": new Uint8Array(34 * 1024 * 1024),
+  } });
+  await assert.rejects(large.snapshot(), /snapshot/);
+  await large.dispose(); await large.dispose();
+  await assert.rejects(large.snapshot(), /disposed/);
   assert.throws(() => first.run({ program: "/file", filesystem }), /another launcher/);
   assert.throws(() => first.run({ program: "/file", tty: { columns: -1, rows: 24 } }), /terminal/);
   assert.throws(() => first.run({ program: "/file", cwd: "relative" }), /current directory/);

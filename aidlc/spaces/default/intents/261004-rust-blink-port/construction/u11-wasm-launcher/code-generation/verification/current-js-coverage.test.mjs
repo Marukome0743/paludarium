@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { lines, population } from './current-js-coverage.mjs';
+const script = ranges => ({ functions: [{ ranges }] });
+test('five complete product files are fixed', () => assert.equal(population.length, 5));
+test('missing script counts uncovered source', () => assert.deepEqual(lines('let x = 1;', []), [{ line: 1, hit: false }]));
+test('executed outer range covers line', () => assert.equal(lines('x();', [script([{ startOffset: 0, endOffset: 4, count: 1 }])])[0].hit, true));
+test('uncalled nested function does not inherit coverage', () => assert.equal(lines('x();', [script([{ startOffset: 0, endOffset: 100, count: 1 }, { startOffset: 0, endOffset: 4, count: 0 }])])[0].hit, false));
+test('Workers and processes merge hits', () => assert.equal(lines('x();', [script([{ startOffset: 0, endOffset: 4, count: 0 }]), script([{ startOffset: 0, endOffset: 4, count: 1 }])])[0].hit, true));
+test('blank and comment-only lines are outside population', () => assert.equal(lines('// comment\n\n/* block\ncontinued\n*/\nx();', []).length, 1));
+test('UTF16 offsets and final line are preserved', () => assert.deepEqual(lines('"😀";\nx();', [script([{ startOffset: 6, endOffset: 10, count: 1 }])]), [{ line: 1, hit: false }, { line: 2, hit: true }]));

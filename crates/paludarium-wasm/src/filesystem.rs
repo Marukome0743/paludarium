@@ -7,7 +7,13 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 pub(crate) struct PrivateFs {
     filesystem: Arc<dyn FileSystem>,
-    active: Mutex<bool>,
+    state: Mutex<State>,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum State {
+    Idle,
+    Active,
+    Closed,
 }
 pub(crate) struct Lease {
     owner: Arc<PrivateFs>,
@@ -19,11 +25,14 @@ impl Lease {
 }
 impl Drop for Lease {
     fn drop(&mut self) {
-        *self
+        let mut state = self
             .owner
-            .active
+            .state
             .lock()
-            .unwrap_or_else(PoisonError::into_inner) = false;
+            .unwrap_or_else(PoisonError::into_inner);
+        if *state == State::Active {
+            *state = State::Idle;
+        }
     }
 }
 #[derive(Debug, PartialEq, Eq)]
@@ -59,27 +68,35 @@ impl PrivateFs {
         let session = Session::new(config, host)?;
         Ok(Arc::new(Self {
             filesystem: session.initial_file_system()?,
-            active: Mutex::new(false),
+            state: Mutex::new(State::Idle),
         }))
     }
     pub(crate) fn acquire(self: &Arc<Self>) -> Result<Lease, Errno> {
-        let mut active = self.active.lock().unwrap_or_else(PoisonError::into_inner);
-        if *active {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if *state != State::Idle {
             return Err(Errno::EAGAIN);
         }
-        *active = true;
+        *state = State::Active;
         Ok(Lease {
             owner: self.clone(),
         })
     }
     pub(crate) fn snapshot(&self) -> Result<Vec<Entry>, Errno> {
-        let active = self.active.lock().unwrap_or_else(PoisonError::into_inner);
-        if *active {
+        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if *state != State::Idle {
             return Err(Errno::EAGAIN);
         }
         let mut entries = Vec::new();
         self.walk(b"/", &mut entries)?;
         Ok(entries)
+    }
+    pub(crate) fn close(&self) -> Result<(), Errno> {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if *state != State::Idle {
+            return Err(Errno::EAGAIN);
+        }
+        *state = State::Closed;
+        Ok(())
     }
     fn walk(&self, path: &[u8], entries: &mut Vec<Entry>) -> Result<(), Errno> {
         let stat = self.filesystem.metadata(path, false)?;
@@ -116,8 +133,8 @@ impl PrivateFs {
         Ok(())
     }
     pub(crate) fn remove(&self, path: &[u8], recursive: bool) -> Result<(), Errno> {
-        let active = self.active.lock().unwrap_or_else(PoisonError::into_inner);
-        if *active {
+        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if *state != State::Idle {
             return Err(Errno::EAGAIN);
         }
         let path = normalize_path(path)?;
@@ -179,6 +196,48 @@ mod tests {
             Arc::new(RecordingHost::default()),
         )
         .unwrap()
+    }
+    #[test]
+    fn u11_filesystem_close_idle() {
+        assert_eq!(fixture().close(), Ok(()));
+    }
+    #[test]
+    fn u11_filesystem_close_active_rejected() {
+        let fs = fixture();
+        let _lease = fs.acquire().unwrap();
+        assert_eq!(fs.close(), Err(Errno::EAGAIN));
+    }
+    #[test]
+    fn u11_filesystem_close_after_release() {
+        let fs = fixture();
+        let lease = fs.acquire().unwrap();
+        assert_eq!(fs.close(), Err(Errno::EAGAIN));
+        drop(lease);
+        assert_eq!(fs.close(), Ok(()));
+    }
+    #[test]
+    fn u11_filesystem_closed_acquire_rejected() {
+        let fs = fixture();
+        fs.close().unwrap();
+        assert!(matches!(fs.acquire(), Err(Errno::EAGAIN)));
+    }
+    #[test]
+    fn u11_filesystem_closed_snapshot_rejected() {
+        let fs = fixture();
+        fs.close().unwrap();
+        assert_eq!(fs.snapshot(), Err(Errno::EAGAIN));
+    }
+    #[test]
+    fn u11_filesystem_closed_remove_rejected() {
+        let fs = fixture();
+        fs.close().unwrap();
+        assert_eq!(fs.remove(b"/guest", false), Err(Errno::EAGAIN));
+    }
+    #[test]
+    fn u11_filesystem_closed_close_rejected() {
+        let fs = fixture();
+        fs.close().unwrap();
+        assert_eq!(fs.close(), Err(Errno::EAGAIN));
     }
     #[test]
     fn u11_filesystem_modes_and_contents() {

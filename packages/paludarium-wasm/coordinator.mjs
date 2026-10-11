@@ -182,9 +182,7 @@ port.listen(async message => {
       withBytes(encoder.encode(message.path), id => check(e.filesystem_remove(message.handle, id, message.recursive ? 1 : 0), "filesystem removal"));
       port.send({ type: "control", id: message.id });
     } else if (message.type === "filesystem-drop") {
-      const snapshot = e.filesystem_snapshot(message.handle);
-      if (!snapshot) throw new Error("filesystem disposal rejected (active or stale handle)");
-      e.buffer_drop(snapshot); e.filesystem_drop(message.handle);
+      if (e.filesystem_drop(message.handle) !== 0) throw new Error("filesystem disposal rejected (active or stale handle)");
       port.send({ type: "control", id: message.id });
     } else if (message.type === "run") await launch(message);
     else if (message.type === "diagnostics") port.send({ type: "diagnostics", id: message.id, diagnostics: { workers: latestDiagnostics, sharedProbe: await sharedProbe() } });

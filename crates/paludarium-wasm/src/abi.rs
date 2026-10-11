@@ -277,11 +277,18 @@ pub extern "C" fn filesystem_new(id: u32) -> u32 {
     PrivateFs::new(config, Arc::new(WasmHost::default())).map_or(0, |fs| insert(&FILESYSTEMS, fs))
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn filesystem_drop(id: u32) {
-    table(&FILESYSTEMS)
+pub extern "C" fn filesystem_drop(id: u32) -> i32 {
+    let mut filesystems = table(&FILESYSTEMS)
         .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .remove(&id);
+        .unwrap_or_else(PoisonError::into_inner);
+    let Some(fs) = filesystems.get(&id) else {
+        return -1;
+    };
+    if fs.close().is_err() {
+        return -1;
+    }
+    filesystems.remove(&id);
+    0
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn filesystem_remove(id: u32, path: u32, recursive: u32) -> i32 {
