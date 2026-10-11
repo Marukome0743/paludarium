@@ -36,7 +36,11 @@ def main():
                 configuration(ROOT, original=args.original_argv),
                 prepare_fixture=lambda fixture: {})
         return
-    parser.error('Windows comparison is not implemented yet; Linux preparation only')
+    if args.guests is None or args.native_report is None or args.output is None or args.emulator is None:
+        parser.error('comparison requires --guests --native-report --output --emulator')
+    from host_comparison import observe
+    observe(args.emulator.resolve(), args.guests.resolve(), args.native_report.resolve(),
+            args.output.resolve(), ROOT, original=args.original_argv)
 
 
 if __name__ == '__main__':

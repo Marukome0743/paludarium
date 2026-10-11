@@ -21,6 +21,8 @@ use paludarium_types::{Errno, Error, ErrorKind};
 mod clock;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(windows)]
+mod windows;
 mod threads;
 #[cfg(any(target_arch = "wasm32", test))]
 mod wasm_tasks;
@@ -402,6 +404,7 @@ fn native_terminal_info(stream: StreamId) -> Result<Option<TerminalInfo>, Errno>
 #[cfg(all(
     not(target_arch = "wasm32"),
     not(target_os = "macos"),
+    not(windows),
     not(all(target_os = "linux", target_arch = "x86_64"))
 ))]
 fn native_terminal_info(_stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
@@ -413,10 +416,17 @@ fn native_terminal_info(stream: StreamId) -> Result<Option<TerminalInfo>, Errno>
     macos::terminal_info(stream.index() as i32)
 }
 
+#[cfg(windows)]
+fn native_terminal_info(stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+    windows::terminal_info(stream)
+}
+
 #[cfg(test)]
 mod u9_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod u12_tests;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod u13_tests;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod u5_tests;
