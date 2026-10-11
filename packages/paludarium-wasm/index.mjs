@@ -64,7 +64,7 @@ export async function createPaludarium({ wasmUrl }) {
     async createFileSystem(options = {}) {
       validate({ ...options, program: "/" });
       const handle = await control("filesystem-new", { options });
-      let disposed = false;
+      let disposed = false, filesystemDisposal;
       const available = () => { if (disposed) throw new PaludariumError("host", "Filesystem is disposed"); };
       const filesystem = Object.freeze({
         async snapshot() { available(); return decodeSnapshot(await control("filesystem-snapshot", { handle })); },
@@ -73,7 +73,14 @@ export async function createPaludarium({ wasmUrl }) {
           if (typeof path !== "string" || !path.startsWith("/") || path.includes("\0") || typeof recursive !== "boolean") throw new PaludariumError("invalid-program", "invalid filesystem removal");
           await control("filesystem-remove", { handle, path, recursive });
         },
-        async dispose() { if (disposed) return; await control("filesystem-drop", { handle }); disposed = true; filesystems.delete(filesystem); },
+        async dispose() {
+          if (disposed) return;
+          // A single drop owns the handle; concurrent callers share its result.
+          filesystemDisposal ??= control("filesystem-drop", { handle }).then(() => {
+            disposed = true; filesystems.delete(filesystem);
+          }).finally(() => { filesystemDisposal = undefined; });
+          await filesystemDisposal;
+        },
       });
       filesystems.set(filesystem, handle); return filesystem;
     },
