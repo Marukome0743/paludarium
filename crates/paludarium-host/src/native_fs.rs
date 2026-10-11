@@ -89,14 +89,17 @@ fn stat(m: std::fs::Metadata) -> Result<FileStat, Errno> {
     #[cfg(not(unix))]
     {
         #[cfg(windows)]
-        let links = {
+        let (inode, links) = {
             use std::os::windows::fs::MetadataExt;
-            u64::from(m.number_of_links().ok_or(Errno::EIO)?)
+            (
+                m.file_index().ok_or(Errno::EIO)?,
+                u64::from(m.number_of_links().ok_or(Errno::EIO)?),
+            )
         };
         #[cfg(not(windows))]
-        let links = 1;
+        let (inode, links) = (0, 1);
         Ok(FileStat {
-            inode: 0,
+            inode,
             size: m.len(),
             mode: if m.is_dir() {
                 0o040755
@@ -314,11 +317,14 @@ impl HostFs for NativeFs {
             // Resolve the target from the link's parent through the retained
             // capability; never inspect an ambient path to select its type.
             let resolved = link.parent().unwrap_or(Path::new("")).join(&target);
-            let directory = match self.root.metadata(resolved) {
-                Ok(metadata) => metadata.is_dir(),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
-                Err(error) => return Err(err(error)),
-            };
+            // Creating a link does not access its target. Keep unresolvable
+            // targets as file links, including cross-mount guest targets which
+            // MountedFs resolves separately. Subsequent Host access still uses
+            // the retained capability and rejects targets outside that root.
+            let directory = self
+                .root
+                .metadata(resolved)
+                .is_ok_and(|metadata| metadata.is_dir());
             if directory {
                 self.root.symlink_dir(target, link)
             } else {
@@ -385,14 +391,17 @@ fn cap_stat(m: cap_std::fs::Metadata) -> Result<FileStat, Errno> {
     #[cfg(not(unix))]
     {
         #[cfg(windows)]
-        let links = {
+        let (inode, links) = {
             use cap_std::fs::MetadataExt;
-            u64::from(m.number_of_links().ok_or(Errno::EIO)?)
+            (
+                m.file_index().ok_or(Errno::EIO)?,
+                u64::from(m.number_of_links().ok_or(Errno::EIO)?),
+            )
         };
         #[cfg(not(windows))]
-        let links = 1;
+        let (inode, links) = (0, 1);
         Ok(FileStat {
-            inode: 0,
+            inode,
             size: m.len(),
             mode: if m.is_dir() {
                 0o040755

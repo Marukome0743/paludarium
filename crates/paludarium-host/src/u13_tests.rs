@@ -283,9 +283,61 @@ fn u13_fs_symlink_hardlink() {
     x.fs().symlink(b"missing", b"dangling").unwrap();
     assert_eq!(x.fs().readlink(b"dangling"), Ok(b"missing".to_vec()));
     assert_eq!(x.fs().metadata(b"dangling", true), Err(Errno::ENOENT));
-    #[cfg(windows)]
-    assert!(x.fs().symlink(b"../outside", b"escape-link").is_err());
+    x.fs().symlink(b"../outside", b"escape-link").unwrap();
+    assert!(x.fs().metadata(b"escape-link", true).is_err());
+    assert!(x.fs().open(b"escape-link", 0, 0).is_err());
     assert_eq!(std::fs::read(x.root.join("outside")).unwrap(), b"sentinel");
+    let symlinks = [
+        b"sym".as_slice(),
+        b"dependency-link",
+        b"links/nested",
+        b"dangling",
+        b"escape-link",
+    ];
+    let mut inodes = std::collections::BTreeSet::new();
+    for name in symlinks {
+        let inode = x.fs().metadata(name, false).unwrap().inode;
+        eprintln!(
+            "U13 symlink Host inode {}: {inode}",
+            String::from_utf8_lossy(name)
+        );
+        assert!(
+            inodes.insert(inode),
+            "distinct symlinks must not alias their identity"
+        );
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+            // Read the link's own identity from a real handle, without
+            // dereferencing its possibly dangling or out-of-root target.
+            let raw = std::fs::OpenOptions::new()
+                .access_mode(0x80)
+                .custom_flags(0x02200000)
+                .open(x.root.join("root").join(std::str::from_utf8(name).unwrap()))
+                .unwrap()
+                .metadata()
+                .unwrap()
+                .file_index();
+            eprintln!(
+                "U13 symlink Windows file_index {}: {raw:?}",
+                String::from_utf8_lossy(name)
+            );
+            assert_eq!(Some(inode), raw);
+        }
+    }
+    assert_eq!(
+        x.fs().metadata(b"original", true).unwrap().inode,
+        x.fs().metadata(b"hard", true).unwrap().inode
+    );
+    assert_eq!(
+        x.fs()
+            .open(b"original", 0, 0)
+            .unwrap()
+            .stat()
+            .unwrap()
+            .inode,
+        x.fs().metadata(b"original", true).unwrap().inode
+    );
 }
 #[test]
 fn u13_fs_flock_contention() {
