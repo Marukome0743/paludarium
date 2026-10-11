@@ -223,6 +223,64 @@ jobs:
       # the emulator, compares stdout/stderr/exit status (BR7.1) and prints
       # the run times (NFR6.1).
       - run: cargo test --locked -p paludarium-harness --test diff_u1 --test diff_u2 --test parallel_u2 --test diff_u4 --test diff_u9 --test diff_u3 --test diff_u8 -- --nocapture
+      - name: Capture actual hello exit states
+        shell: bash
+        run: |
+          cargo build --locked -p paludarium
+          python3 - <<'PY'
+          import hashlib, json, os, signal, subprocess, time
+          from pathlib import Path
+          root=Path.cwd()
+          out=root/'target/u1-hello-receipts'
+          out.mkdir(parents=True, exist_ok=True)
+          cli=root/'target/debug/paludarium'
+          guests=root/'target/guests'
+          sha=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          rows=[]
+          for name,binary,args in [('hello-c','hello-c',[]),('hello-rs','hello-rs',[]),('hello-rs-args','hello-rs',['--flag','two words'])]:
+              guest=guests/binary
+              pair=[]
+              for mode in ('native','emulated'):
+                  command=[binary,*args] if mode=='native' else [str(cli),binary,*args]
+                  start=time.monotonic()
+                  process=subprocess.Popen(command, executable=str(guest) if mode=='native' else None,
+                      cwd=guests, env={}, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                      stderr=subprocess.PIPE, start_new_session=True)
+                  timed_out=False
+                  try:
+                      stdout,stderr=process.communicate(timeout=30)
+                  except subprocess.TimeoutExpired:
+                      timed_out=True
+                      os.killpg(process.pid,signal.SIGKILL)
+                      stdout,stderr=process.communicate()
+                  elapsed=time.monotonic()-start
+                  prefix=name+'-'+mode
+                  (out/(prefix+'.stdout')).write_bytes(stdout)
+                  (out/(prefix+'.stderr')).write_bytes(stderr)
+                  row={'name':name,'mode':mode,'arguments':args,'argv0':binary,
+                      'returncode':process.returncode,'signal':-process.returncode if process.returncode<0 else None,
+                      'timed_out':timed_out,'seconds':elapsed,'guest_sha256':sha(guest),
+                      'cli_sha256':sha(cli),'stdout_sha256':hashlib.sha256(stdout).hexdigest(),
+                      'stderr_sha256':hashlib.sha256(stderr).hexdigest()}
+                  rows.append(row)
+                  pair.append((stdout,stderr))
+              assert pair[0]==pair[1], name+' output mismatch'
+          receipt={'schemaVersion':1,'head':os.environ['GITHUB_SHA'],
+              'compiler':subprocess.check_output(['rustc','--version','--verbose']).decode(),'rows':rows}
+          (out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          (out/'paludarium').write_bytes(cli.read_bytes())
+          for name in ('hello-c','hello-rs'):
+              (out/name).write_bytes((guests/name).read_bytes())
+          assert len(rows)==6 and all(r['returncode']==0 and r['signal'] is None and not r['timed_out'] and 0<=r['seconds']<=30 for r in rows)
+          PY
+      - name: Retain actual hello results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u1-hello-exit-receipts
+          path: target/u1-hello-receipts/
+          if-no-files-found: error
+          retention-days: 7
       - name: Retain fresh U3 architectural observations
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
