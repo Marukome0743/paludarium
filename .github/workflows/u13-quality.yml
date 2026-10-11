@@ -128,10 +128,29 @@ jobs:
           PY
           cargo llvm-cov clean --workspace
           cargo llvm-cov test --no-report --locked -p paludarium-host --lib -- --test-threads=1
+      - name: Diagnostic timing with uninstrumented Windows emulator
+        if: ${{ inputs.diagnostic_only }}
+        continue-on-error: true
+        env:
+          CARGO_TARGET_DIR: target/u13-uninstrumented
+        run: |
+          set -euo pipefail
+          mkdir -p target/u13/windows/uninstrumented
+          cargo test --locked -p paludarium-harness --test diff_u13 --no-run --message-format=json > target/u13/windows/uninstrumented/build.jsonl
+          python3 - <<'PY'
+          import json, pathlib, subprocess
+          rows = [json.loads(line) for line in pathlib.Path('target/u13/windows/uninstrumented/build.jsonl').read_text().splitlines()]
+          binaries = [row['executable'] for row in rows if row.get('reason') == 'compiler-artifact' and row.get('target', {}).get('name') == 'diff_u13' and row.get('executable')]
+          if len(binaries) != 1:
+              raise RuntimeError('expected exactly one uninstrumented U13 harness executable')
+          for original, oracle, output in [(False, 'native', 'comparison'), (True, 'native-original', 'comparison-original')]:
+              command = ['python3', 'scripts/u13-run.py', '--guests', 'target/guests/u10', '--native-report', f'target/u13/{oracle}/observations.json', '--output', f'target/u13/windows/uninstrumented/{output}', '--emulator', binaries[0]]
+              if original:
+                  command.append('--original-argv')
+              subprocess.run(command, check=True)
+          PY
       - name: Same fixed bytes through Windows emulator, instrumented
         shell: bash
-        env:
-          PALUDARIUM_U13_DIAGNOSTIC: ${{ inputs.diagnostic_only && '1' || '' }}
         run: |
           set -euo pipefail
           # shellcheck disable=SC1090
