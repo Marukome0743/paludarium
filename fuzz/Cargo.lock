@@ -255,6 +255,7 @@ dependencies = [
  "cap-std",
  "fs2",
  "getrandom",
+ "libc",
  "paludarium-types",
  "rustix",
 ]
