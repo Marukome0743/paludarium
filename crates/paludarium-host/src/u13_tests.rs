@@ -237,6 +237,42 @@ fn u13_fs_symlink_hardlink() {
     x.fs().link(b"original", b"hard").unwrap();
     assert_eq!(x.fs().readlink(b"sym"), Ok(b"original".to_vec()));
     assert_eq!(x.fs().metadata(b"hard", true).unwrap().links, 2);
+    x.fs().mkdir(b"dependency", 0o755).unwrap();
+    std::fs::write(
+        x.root.join("root/dependency/package.json"),
+        b"{\"version\":\"1.0.0\"}",
+    )
+    .unwrap();
+    x.fs().symlink(b"dependency", b"dependency-link").unwrap();
+    let linked = x.root.join("root/dependency-link");
+    eprintln!(
+        "U13 directory symlink std metadata: {:?}",
+        std::fs::metadata(&linked)
+    );
+    eprintln!(
+        "U13 directory symlink std read_dir: {:?}",
+        std::fs::read_dir(&linked).map(|_| ())
+    );
+    eprintln!(
+        "U13 directory symlink canonicalize: {:?}",
+        std::fs::canonicalize(&linked)
+    );
+    eprintln!(
+        "U13 directory symlink Host metadata: {:?}",
+        x.fs().metadata(b"dependency-link", true)
+    );
+    eprintln!(
+        "U13 directory symlink Host read_dir: {:?}",
+        x.fs().read_dir(b"dependency-link")
+    );
+    let read = x.fs().open(b"dependency-link/package.json", 0, 0);
+    eprintln!(
+        "U13 directory symlink Host nested open: {:?}",
+        read.as_ref().map(|_| ())
+    );
+    let mut bytes = [0; 19];
+    assert_eq!(read.unwrap().read(&mut bytes), Ok(19));
+    assert_eq!(&bytes, b"{\"version\":\"1.0.0\"}");
 }
 #[test]
 fn u13_fs_flock_contention() {

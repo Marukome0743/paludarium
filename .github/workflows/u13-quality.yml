@@ -53,7 +53,7 @@ jobs:
         run: |
           mkdir -p target/u13-directory
           set +e
-          cargo test --locked -p paludarium-host --lib u13_fs_io_metadata -- --nocapture 2>&1 | tee target/u13-directory/raw.log
+          cargo test --locked -p paludarium-host --lib u13_fs_symlink_hardlink -- --nocapture 2>&1 | tee target/u13-directory/raw.log
           code=${PIPESTATUS[0]}
           printf '%s\n' "$code" > target/u13-directory/exit.txt
           exit "$code"
