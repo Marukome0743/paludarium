@@ -33,7 +33,10 @@ def main():
         from settings import configuration
         observe(args.guest_dir.resolve(), args.output.resolve(), configuration(ROOT))
         return
-    parser.error('U12 emulator comparison not ready yet; no result claimed')
+    if args.guest_dir is None or args.native is None or args.output is None or args.emulator is None:
+        parser.error('comparison requires --guest-dir --native --output --emulator')
+    from host_comparison import observe
+    observe(args.emulator.resolve(), args.guest_dir.resolve(), args.native.resolve(), args.output.resolve(), ROOT)
 
 
 if __name__ == '__main__':

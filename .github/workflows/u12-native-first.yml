@@ -1,5 +1,6 @@
 name: U12 fresh Linux oracle before macOS Host changes
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches: [codex/u12-macos-host]
