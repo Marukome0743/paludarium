@@ -124,7 +124,8 @@ fn attributes(value: &libc::termios) -> Result<TerminalAttributes, Errno> {
         (15, 14),
         (16, 2),
     ] {
-        chars[guest] = if value.c_cc[host] == 255 {
+        // VMIN and VTIME are byte-valued counts, not disable-able controls.
+        chars[guest] = if value.c_cc[host] == 255 && guest != 5 && guest != 6 {
             0
         } else {
             value.c_cc[host]
@@ -261,6 +262,10 @@ mod tests {
             (chars[0], chars[4], chars[6], chars[7], chars[18]),
             (3, 4, 1, 0, 0)
         );
+        value.c_cc[libc::VMIN] = 255;
+        value.c_cc[libc::VTIME] = 255;
+        let chars = attributes(&value).unwrap().control_chars;
+        assert_eq!((chars[5], chars[6]), (255, 255));
     }
     #[test]
     fn u12_input_speed_and_extended_baud() {
