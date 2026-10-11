@@ -2,7 +2,7 @@ name: U11 current verification
 on:
   workflow_dispatch:
   push:
-    branches: [codex/u11-wasm-launcher]
+    branches: [codex/u11-wasm-launcher, codex/u11-current-verification]
 permissions:
   contents: read
 jobs:
@@ -29,6 +29,13 @@ jobs:
       - run: bash scripts/u10-build-guests.sh target/guests/u10
       - run: sudo unshare --net "$(command -v python)" scripts/u11-run.py --native-only --guest-dir target/guests/u10 --output target/u11/native
       - run: bash scripts/build-wasm.sh
+      - name: Fresh U5 U6 shared-node regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u11/shared-regressions
+          cargo build --locked -p paludarium
+          cargo test --locked -p paludarium-harness --test diff_u5 --test diff_u6 -- --nocapture 2>&1 | tee target/u11/shared-regressions/differential.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
@@ -36,6 +43,7 @@ jobs:
           path: |
             target/guests/u10/
             target/u11/native/
+            target/u11/shared-regressions/
             packages/paludarium-wasm/paludarium.wasm
           retention-days: 14
   consumer:

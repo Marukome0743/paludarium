@@ -46,5 +46,15 @@ try {
   await assert.rejects(active.dispose(), /active/);
   guest.kill(); assert.equal((await guest.exited).kind, "signaled"); await streams;
   await active.snapshot(); await active.dispose();
+  const diagnostics = await first.diagnostics();
+  const probe = diagnostics.sharedProbe;
+  assert.equal(probe.value, "2000");
+  assert.equal(probe.allocations.length, 2);
+  assert.ok(probe.allocations.every(row => row.allocations === 128 && row.atomicAdds === 1000));
+  assert.equal(probe.workers.length, 2);
+  assert.equal(probe.notified, 1); assert.equal(probe.waited, 0);
+  assert.equal(new Set(probe.workers.map(worker => worker.threadToken)).size, 2);
+  assert.equal(new Set(probe.workers.map(worker => worker.tlsAfter)).size, 2);
+  assert.ok(probe.workers.every(worker => worker.token === 73 && worker.tlsAfter > 0));
   console.log("U11 API: modes, ownership, disposal, busy lease, terminal validation, kill/release PASS");
 } finally { clearTimeout(deadline); await first.dispose(); await second.dispose(); }
