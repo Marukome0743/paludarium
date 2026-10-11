@@ -130,6 +130,8 @@ jobs:
           cargo llvm-cov test --no-report --locked -p paludarium-host --lib -- --test-threads=1
       - name: Same fixed bytes through Windows emulator, instrumented
         shell: bash
+        env:
+          PALUDARIUM_U13_DIAGNOSTIC: ${{ inputs.diagnostic_only && '1' || '' }}
         run: |
           set -euo pipefail
           # shellcheck disable=SC1090

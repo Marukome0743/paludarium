@@ -1,14 +1,29 @@
 use paludarium::{Config, ExitStatus, Mount, Session};
 use paludarium_host::{
-    ClockId, DirectoryEntry, FileHandle, FileStat, Host, HostFs, NativeHost, WaitOutcome,
-    testing::RecordingHost,
+    ClockId, DirectoryEntry, FileHandle, FileStat, Host, HostFs, NativeHost, StreamId,
+    TerminalInfo, ThreadHandle, WaitOutcome, WaitToken, testing::RecordingHost,
 };
 use paludarium_types::Errno;
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, atomic::AtomicBool};
-use std::time::Instant;
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
+use std::time::{Duration, Instant};
 
-struct CaptureHost(RecordingHost, Arc<Mutex<Vec<String>>>);
+type DiagnosticCalls = Option<Arc<Mutex<VecDeque<String>>>>;
+struct CaptureHost(RecordingHost, Arc<Mutex<Vec<String>>>, DiagnosticCalls);
+
+fn record_call(calls: &DiagnosticCalls, event: impl FnOnce() -> String) {
+    if let Some(calls) = calls {
+        let mut calls = calls.lock().unwrap();
+        if calls.len() == 64 {
+            calls.pop_front();
+        }
+        calls.push_back(format!("{:?} {}", std::thread::current().id(), event()));
+    }
+}
 
 struct TraceFs {
     inner: Arc<dyn HostFs>,
@@ -138,6 +153,37 @@ impl FileHandle for TraceFile {
     }
 }
 impl Host for CaptureHost {
+    fn spawn_thread(&self, task: Box<dyn FnOnce() + Send>) -> Result<Box<dyn ThreadHandle>, Errno> {
+        let calls = self.2.clone();
+        NativeHost::new().spawn_thread(Box::new(move || {
+            record_call(&calls, || "worker start".to_owned());
+            task();
+            record_call(&calls, || "worker return".to_owned());
+        }))
+    }
+    fn wait_on(
+        &self,
+        token: &WaitToken,
+        expected: u32,
+        deadline: Option<(ClockId, u64)>,
+        cancel: &AtomicBool,
+    ) -> Result<WaitOutcome, Errno> {
+        record_call(&self.2, || {
+            format!("wait_on {token:p} expected={expected} deadline={deadline:?} start")
+        });
+        let result = NativeHost::new().wait_on(token, expected, deadline, cancel);
+        record_call(&self.2, || format!("wait_on {token:p} => {result:?}"));
+        result
+    }
+    fn wake(&self, token: &WaitToken) {
+        record_call(&self.2, || format!("wake {token:p}"));
+        NativeHost::new().wake(token);
+    }
+    fn terminal_info(&self, stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+        // CaptureHost previously used Host's non-terminal default unchanged.
+        record_call(&self.2, || format!("terminal_info {stream:?} => Ok(None)"));
+        Ok(None)
+    }
     fn read_stdin(&self, bytes: &mut [u8]) -> Result<usize, paludarium_types::Errno> {
         self.0.read_stdin(bytes)
     }
@@ -151,7 +197,9 @@ impl Host for CaptureHost {
         NativeHost::new().random_bytes(bytes)
     }
     fn clock(&self, clock: ClockId) -> Result<u64, paludarium_types::Errno> {
-        NativeHost::new().clock(clock)
+        let result = NativeHost::new().clock(clock);
+        record_call(&self.2, || format!("clock {clock:?} => {result:?}"));
+        result
     }
     fn wait_until(
         &self,
@@ -159,7 +207,14 @@ impl Host for CaptureHost {
         deadline: u64,
         aborted: &AtomicBool,
     ) -> Result<WaitOutcome, paludarium_types::Errno> {
-        NativeHost::new().wait_until(clock, deadline, aborted)
+        record_call(&self.2, || {
+            format!("wait_until {clock:?} deadline={deadline} start")
+        });
+        let result = NativeHost::new().wait_until(clock, deadline, aborted);
+        record_call(&self.2, || {
+            format!("wait_until {clock:?} deadline={deadline} => {result:?}")
+        });
+        result
     }
     fn mount_fs(
         &self,
@@ -256,6 +311,10 @@ pub fn operation() {
     let host = Arc::new(CaptureHost(
         RecordingHost::new(),
         Arc::new(Mutex::new(Vec::new())),
+        std::env::var("PALUDARIUM_U13_DIAGNOSTIC")
+            .ok()
+            .filter(|s| s == "1")
+            .map(|_| Arc::new(Mutex::new(VecDeque::new()))),
     ));
     let fixture_modes = if std::env::var_os("PALUDARIUM_U13_MOUNTED").is_some() {
         let fixture = PathBuf::from(std::env::var_os("PALUDARIUM_U13_FIXTURE").unwrap());
@@ -278,9 +337,54 @@ pub fn operation() {
             .collect::<String>()
     };
     std::fs::write(directory.join("fixture-modes"), fixture_modes).unwrap();
-    let session = Session::new(config, host.clone()).unwrap();
+    let session = Arc::new(Session::new(config, host.clone()).unwrap());
+    let finished = Arc::new(AtomicBool::new(false));
+    if host.2.is_some() {
+        let host = host.clone();
+        let directory = directory.clone();
+        let session = session.clone();
+        let finished = finished.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(25));
+            if finished.load(Ordering::Acquire) {
+                return;
+            }
+            // Diagnostic-only host files; no guest FS call, kill, signal or stop.
+            let calls = host
+                .2
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            std::fs::write(
+                directory.join("diagnostic-calls.log"),
+                calls.join("\n") + "\n",
+            )
+            .unwrap();
+            std::fs::write(
+                directory.join("diagnostic-fs.log"),
+                host.1.lock().unwrap().join("\n") + "\n",
+            )
+            .unwrap();
+            std::fs::write(directory.join("diagnostic-stdout"), host.0.stdout()).unwrap();
+            std::fs::write(directory.join("diagnostic-stderr"), host.0.stderr()).unwrap();
+            std::fs::write(
+                directory.join("diagnostic-state"),
+                format!(
+                    "process={} elapsed=25s completed=false stopped={}\n",
+                    std::process::id(),
+                    session.is_stopped()
+                ),
+            )
+            .unwrap();
+        });
+    }
     let started = Instant::now();
     let result = session.run();
+    finished.store(true, Ordering::Release);
     std::fs::write(
         directory.join("host-fs-trace.log"),
         host.1.lock().unwrap().join("\n") + "\n",
