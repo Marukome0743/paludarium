@@ -308,7 +308,23 @@ impl HostFs for NativeFs {
         }
         #[cfg(windows)]
         {
-            self.root.symlink_file(path(a)?, path(b)?).map_err(err)
+            let target = path(a)?;
+            let link = path(b)?;
+            // Windows records whether a reparse point targets a directory.
+            // Resolve the target from the link's parent through the retained
+            // capability; never inspect an ambient path to select its type.
+            let resolved = link.parent().unwrap_or(Path::new("")).join(&target);
+            let directory = match self.root.metadata(resolved) {
+                Ok(metadata) => metadata.is_dir(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+                Err(error) => return Err(err(error)),
+            };
+            if directory {
+                self.root.symlink_dir(target, link)
+            } else {
+                self.root.symlink_file(target, link)
+            }
+            .map_err(err)
         }
     }
     fn readlink(&self, p: &[u8]) -> Result<Vec<u8>, Errno> {

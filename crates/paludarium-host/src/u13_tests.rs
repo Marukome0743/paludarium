@@ -273,6 +273,19 @@ fn u13_fs_symlink_hardlink() {
     let mut bytes = [0; 19];
     assert_eq!(read.unwrap().read(&mut bytes), Ok(19));
     assert_eq!(&bytes, b"{\"version\":\"1.0.0\"}");
+    x.fs().mkdir(b"links", 0o755).unwrap();
+    x.fs().symlink(b"../dependency", b"links/nested").unwrap();
+    assert_eq!(x.fs().read_dir(b"links/nested").unwrap().len(), 1);
+    assert_eq!(
+        x.fs().readlink(b"links/nested"),
+        Ok(b"../dependency".to_vec())
+    );
+    x.fs().symlink(b"missing", b"dangling").unwrap();
+    assert_eq!(x.fs().readlink(b"dangling"), Ok(b"missing".to_vec()));
+    assert_eq!(x.fs().metadata(b"dangling", true), Err(Errno::ENOENT));
+    #[cfg(windows)]
+    assert!(x.fs().symlink(b"../outside", b"escape-link").is_err());
+    assert_eq!(std::fs::read(x.root.join("outside")).unwrap(), b"sentinel");
 }
 #[test]
 fn u13_fs_flock_contention() {
