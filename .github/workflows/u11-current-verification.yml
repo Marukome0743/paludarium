@@ -33,9 +33,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p target/u11/shared-regressions
+          mkdir -p target/u11-shared-regressions
           cargo build --locked -p paludarium
-          cargo test --locked -p paludarium-harness --test diff_u5 --test diff_u6 -- --nocapture 2>&1 | tee target/u11/shared-regressions/differential.log
+          cargo test --locked -p paludarium-harness --test diff_u5 --test diff_u6 -- --nocapture 2>&1 | tee target/u11-shared-regressions/differential.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
@@ -43,7 +43,7 @@ jobs:
           path: |
             target/guests/u10/
             target/u11/native/
-            target/u11/shared-regressions/
+            target/u11-shared-regressions/
             packages/paludarium-wasm/paludarium.wasm
           retention-days: 14
   consumer:
@@ -76,6 +76,10 @@ jobs:
         with:
           name: u11-current-inputs
           path: .
+      - name: Use the approved current npm
+        run: |
+          npm install --global npm@12.2.0
+          npm --version
       - if: matrix.environment == 'chromium' || matrix.environment == 'firefox'
         run: |
           npm ci --prefix spikes/wasm-threads
