@@ -1,0 +1,44 @@
+name: U14 fresh native oracle before wasm translation
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/u14-jit-wasm]
+    paths:
+      - .github/workflows/u14-native-first.yml
+      - scripts/u14-native-first.py
+      - tests/guests/u14/**
+permissions:
+  contents: read
+jobs:
+  fixed-guests-native:
+    uses: ./.github/workflows/u13-native-first.yml
+  instruction-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.15.0'
+      - name: Bounded native instruction observations
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u14-native-first
+          uname -a > target/u14-native-first/platform.txt
+          gcc --version > target/u14-native-first/compiler.txt
+          python --version > target/u14-native-first/python.txt
+          sha256sum tests/guests/u14/native.c tests/guests/u14/validation.py scripts/u14-native-first.py Cargo.lock fuzz/Cargo.lock rust-toolchain.toml > target/u14-native-first/before.sha256
+          python -m unittest discover -s tests/guests/u14 -p 'test_*.py' -v
+          gcc -std=gnu11 -O2 -Wall -Wextra -Werror -fno-pie -no-pie tests/guests/u14/native.c -o target/u14-native-first/oracle
+          python scripts/u14-native-first.py --binary target/u14-native-first/oracle --output target/u14-native-first/observations.json
+          sha256sum tests/guests/u14/native.c tests/guests/u14/validation.py scripts/u14-native-first.py Cargo.lock fuzz/Cargo.lock rust-toolchain.toml > target/u14-native-first/after.sha256
+          cmp target/u14-native-first/before.sha256 target/u14-native-first/after.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u14-instruction-native
+          path: target/u14-native-first/
+          retention-days: 14
