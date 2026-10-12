@@ -26,6 +26,31 @@ struct Run {
     host: Arc<WasmHost>,
     error: Mutex<Option<Error>>,
     filesystem: Option<Lease>,
+    jit: Option<Arc<paludarium_jit::WasmCodeCache>>,
+}
+
+#[link(wasm_import_module = "paludarium")]
+unsafe extern "C" {
+    fn jit_prepare(module: u32, code: *const u8, length: usize) -> i32;
+    fn jit_execute(
+        module: u32,
+        code: *const u8,
+        length: usize,
+        state: *mut u64,
+        state_length: usize,
+    ) -> i32;
+}
+struct WorkerJit;
+impl paludarium_jit::ExecutionBridge for WorkerJit {
+    fn prepare(&self, module: u32, wasm: &[u8]) -> bool {
+        // SAFETY: immutable Rust code bytes stay live for the synchronous import.
+        unsafe { jit_prepare(module, wasm.as_ptr(), wasm.len()) == 0 }
+    }
+    fn execute(&self, module: u32, wasm: &[u8], state: &mut [u64; 18]) -> bool {
+        // SAFETY: both buffers belong to Rust, are live for this synchronous
+        // import, and state is exclusively borrowed scratch, never guest memory.
+        unsafe { jit_execute(module, wasm.as_ptr(), wasm.len(), state.as_mut_ptr(), 144) == 0 }
+    }
 }
 fn table<T>(t: &Table<T>) -> &Mutex<BTreeMap<u32, T>> {
     t.get_or_init(Default::default)
@@ -125,6 +150,38 @@ pub extern "C" fn config_new(program: u32) -> u32 {
         return 0;
     };
     insert(&CONFIGS, Config::new(program, Vec::new()))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn config_jit(id: u32, enabled: u32) -> i32 {
+    if enabled > 1 {
+        return -1;
+    }
+    let mut configs = table(&CONFIGS)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let Some(config) = configs.get_mut(&id) else {
+        return -1;
+    };
+    config.jit = enabled == 1;
+    0
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn session_jit_stat(id: u32, field: u32) -> u64 {
+    let Some(run) = run(id) else {
+        return 0;
+    };
+    let Some(cache) = &run.jit else {
+        return 0;
+    };
+    let stats = cache.statistics();
+    match field {
+        0 => stats.translated_blocks,
+        1 => stats.executed_blocks,
+        2 => stats.executed_instructions,
+        3 => stats.fallbacks,
+        _ => 0,
+    }
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn config_arg(id: u32, arg: u32) -> i32 {
@@ -354,8 +411,18 @@ pub extern "C" fn session_from_config_fs(id: u32, stdin: u32, filesystem: u32) -
         return 0;
     };
     let host = Arc::new(WasmHost::streaming(bytes(stdin).unwrap_or_default()));
+    let jit = config.jit.then(|| {
+        Arc::new(paludarium_jit::WasmCodeCache::new(Arc::new(WorkerJit)).with_minimum_block(2))
+    });
     let (session, error) = match Session::new(config, host.clone()) {
-        Ok(s) => (Some(Arc::new(s)), None),
+        Ok(s) => (
+            Some(Arc::new(if let Some(cache) = &jit {
+                s.with_code_cache(cache.clone())
+            } else {
+                s
+            })),
+            None,
+        ),
         Err(e) => (None, Some(e)),
     };
     insert(
@@ -365,6 +432,7 @@ pub extern "C" fn session_from_config_fs(id: u32, stdin: u32, filesystem: u32) -
             host,
             error: Mutex::new(error),
             filesystem,
+            jit,
         }),
     )
 }

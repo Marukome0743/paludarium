@@ -13,7 +13,7 @@ async function moduleBytes(url) {
 function validate(options) {
   if (!options || typeof options.program !== "string" || !options.program.startsWith("/") || options.program.includes("\0")) throw new PaludariumError("invalid-program", "program must be an absolute guest path");
   if (options.tty != null && [options.tty.columns, options.tty.rows].some(value => !Number.isInteger(value) || value < 0 || value > 65535)) throw new PaludariumError("invalid-program", "invalid guest terminal size");
-  if (options.jit === true) throw new PaludariumError("unimplemented", "Worker JIT is unavailable");
+  if (options.jit !== undefined && typeof options.jit !== "boolean") throw new PaludariumError("invalid-program", "jit must be a boolean");
   if (options.cwd !== undefined && (typeof options.cwd !== "string" || !options.cwd.startsWith("/") || options.cwd.includes("\0"))) throw new PaludariumError("invalid-program", "invalid guest current directory");
   if (options.args && (!Array.isArray(options.args) || options.args.some(arg => typeof arg !== "string" || arg.includes("\0")))) throw new PaludariumError("invalid-program", "invalid guest arguments");
   if (Object.entries(options.env ?? {}).some(([key, value]) => !key || key.includes("=") || key.includes("\0") || typeof value !== "string" || value.includes("\0"))) throw new PaludariumError("invalid-program", "invalid guest environment");

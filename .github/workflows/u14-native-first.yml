@@ -1,5 +1,6 @@
 name: U14 fresh native oracle before wasm translation
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches: [codex/u14-jit-wasm]

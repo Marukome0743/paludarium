@@ -12,6 +12,7 @@ paludarium-host.workspace=true
 paludarium-types.workspace=true
 paludarium-mmu.workspace=true
 paludarium-vfs.workspace=true
+paludarium-jit.workspace=true
 [dev-dependencies]
 paludarium-runtime.workspace=true
 paludarium-host.workspace=true

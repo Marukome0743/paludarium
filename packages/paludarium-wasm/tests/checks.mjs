@@ -10,8 +10,8 @@ async function collect(stream) {
 function hex(bytes) { return [...bytes].map(value => value.toString(16).padStart(2, "0")).join(""); }
 async function digest(bytes) { return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))); }
 function check(condition, label) { if (!condition) throw new Error(label); }
-async function observe(runtime, bytes, stdin) {
-  const run = runtime.run({ program: "/guest", files: { "/guest": bytes }, jit: false });
+async function observe(runtime, bytes, stdin, jit = false) {
+  const run = runtime.run({ program: "/guest", files: { "/guest": bytes }, jit });
   const outputs = Promise.all([collect(run.stdout), collect(run.stderr), run.exited]);
   const writer = run.stdin.getWriter(); if (stdin) await writer.write(stdin); await writer.close();
   const [stdout, stderr, status] = await outputs;
@@ -38,11 +38,14 @@ export async function runChecks({ wasmUrl, readGuest, native }) {
       check(observed.stdout === desiredStdout && observed.stderr === row.stderr, `${name}: streams mismatch`);
       results.push({ case: name, pass: true, ...observed });
     }
-    for (const [name, options] of [["unsupported-jit", { jit: true }]]) {
-      let error;
-      try { runtime.run({ program: "/guest", ...options }); } catch (cause) { error = cause; }
-      check(error instanceof PaludariumError && error.kind === "unimplemented", `${name}: unsupported capability accepted`);
-      results.push({ case: name, pass: true });
+    {
+      const observed = await observe(runtime, await readGuest("hello"), undefined, true);
+      check(observed.stdout === expected.get("hello").stdout && observed.stderr === expected.get("hello").stderr
+        && observed.status.kind === "exited" && observed.status.code === expected.get("hello").returncode, "jit-enabled guest comparison failed");
+      const diagnostics = await runtime.diagnostics();
+      const jit = diagnostics.workers.at(-1)?.jit;
+      check(jit && BigInt(jit.executedBlocks) > 0n && BigInt(jit.executedInstructions) > 0n, "jit-enabled guest executed no translated blocks");
+      results.push({ case: "jit-enabled", pass: true, ...observed, jit });
     }
     {
       let error;

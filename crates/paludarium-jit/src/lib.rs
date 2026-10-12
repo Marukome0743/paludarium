@@ -5,6 +5,55 @@
 //! translated code; U14 provides the wasm implementation (ADR-005).
 #![forbid(unsafe_code)]
 
+mod block;
+mod bridge;
+mod cache;
+mod emit;
+pub use bridge::{ExecutionBridge, JitStatistics, WasmCodeCache};
+
+/// Bounded native sanitizer entry points; absent from production builds.
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing {
+    /// Exercises actual extraction and wasm emission on untrusted code bytes.
+    #[must_use]
+    pub fn translate(bytes: &[u8], rip: u64) -> Option<Vec<u8>> {
+        let block = super::block::extract(&bytes[..bytes.len().min(960)], rip)?;
+        super::emit::emit(&block)
+    }
+
+    /// Exercises cache insert/hit/stale/invalidation with bounded keys.
+    pub fn cache(bytes: &[u8]) {
+        let cache = super::cache::EpochCache::new();
+        let mut expected = std::collections::BTreeMap::new();
+        for row in bytes.as_chunks::<4>().0.iter().take(512) {
+            let space = u64::from(row[1] & 3);
+            let rip = u64::from(row[2]) * 4096;
+            let generation = u64::from(row[3]);
+            match row[0] % 3 {
+                0 => {
+                    assert!(cache.insert(space, rip, generation, 1, generation));
+                    expected.insert((space, rip), generation);
+                }
+                1 => {
+                    let actual = cache.get(space, rip, generation);
+                    let wanted = expected
+                        .get(&(space, rip))
+                        .copied()
+                        .filter(|value| *value == generation);
+                    assert_eq!(actual, wanted);
+                    if wanted.is_none() {
+                        expected.remove(&(space, rip));
+                    }
+                }
+                _ => {
+                    cache.invalidate(rip);
+                    expected.retain(|&(_, address), _| address != rip);
+                }
+            }
+        }
+    }
+}
+
 use paludarium_cpu::CpuState;
 use paludarium_mmu::AddressSpace;
 use paludarium_types::{ExitReason, GuestAddr};

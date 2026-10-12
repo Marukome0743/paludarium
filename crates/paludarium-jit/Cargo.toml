@@ -10,6 +10,10 @@ rust-version.workspace = true
 paludarium-types.workspace = true
 paludarium-cpu.workspace = true
 paludarium-mmu.workspace = true
+paludarium-decoder.workspace = true
+
+[features]
+fuzzing = []
 
 [lints]
 workspace = true

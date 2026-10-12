@@ -251,6 +251,37 @@ pub fn run_cached(
     ExitReason::BudgetExhausted { rip: state.rip }
 }
 
+/// Offers instruction boundaries to a synchronous accelerator. Its successful
+/// budget exit is conservatively charged `maximum_block` instructions. This
+/// never postpones the caller's checkpoint beyond its original guest budget.
+/// Other exit reasons return immediately. `remaining` includes current RIP.
+pub fn run_cached_with_hook(
+    state: &mut CpuState,
+    mem: &AddressSpace,
+    budget: u64,
+    cache: &mut DecodeCache,
+    maximum_block: u64,
+    mut accelerate: impl FnMut(&mut CpuState, u64) -> Option<ExitReason>,
+) -> ExitReason {
+    let mut consumed = 0;
+    while consumed < budget {
+        let remaining = budget - consumed;
+        if maximum_block > 0 && remaining >= maximum_block
+            && let Some(reason) = accelerate(state, remaining) {
+                if matches!(reason, ExitReason::BudgetExhausted { .. }) {
+                    consumed += maximum_block;
+                    continue;
+                }
+                return reason;
+        }
+        if let Err(reason) = step_cached(state, mem, cache) {
+            return reason;
+        }
+        consumed += 1;
+    }
+    ExitReason::BudgetExhausted { rip: state.rip }
+}
+
 /// Address of the instruction a state would execute next.
 #[must_use]
 pub fn current_rip(state: &CpuState) -> GuestAddr {
@@ -283,6 +314,181 @@ mod tests {
         .unwrap();
         mem.write_initial(GuestAddr(CODE), code).unwrap();
         (CpuState::new(GuestAddr(CODE), GuestAddr(STACK_TOP)), mem)
+    }
+
+    #[test]
+    fn u14_hook_reaches_supported_boundary_after_interpreter_instruction() {
+        let (mut state, memory) = machine(&[0x90, 0xb8, 42, 0, 0, 0, 0xf4]);
+        let mut seen = Vec::new();
+        let result = run_cached_with_hook(
+            &mut state,
+            &memory,
+            65,
+            &mut DecodeCache::new(),
+            64,
+            |state, remaining| {
+                seen.push((state.rip.0, remaining));
+                if state.rip.0 == CODE + 1 {
+                    state.gpr[reg::RAX] = 42;
+                    state.rip = GuestAddr(CODE + 6);
+                    Some(ExitReason::BudgetExhausted { rip: state.rip })
+                } else {
+                    None
+                }
+            },
+        );
+        assert_eq!(seen, [(CODE, 65), (CODE + 1, 64)]);
+        assert_eq!(
+            result,
+            ExitReason::BudgetExhausted {
+                rip: GuestAddr(CODE + 6)
+            }
+        );
+        assert_eq!(state.gpr[reg::RAX], 42);
+    }
+
+    #[test]
+    fn u14_hook_none_preserves_interpreter_exit_and_state() {
+        for code in [
+            vec![0x90, 0xf4],
+            vec![0xb8, 60, 0, 0, 0, 0x0f, 0x05],
+            vec![0x0f, 0x0b],
+            vec![0x48, 0x8b, 0x07],
+        ] {
+            let (mut expected, memory) = machine(&code);
+            let mut actual = expected.clone();
+            let expected_exit = run_cached(&mut expected, &memory, 100, &mut DecodeCache::new());
+            let actual_exit = run_cached_with_hook(
+                &mut actual,
+                &memory,
+                100,
+                &mut DecodeCache::new(),
+                64,
+                |_, _| None,
+            );
+            assert_eq!(actual_exit, expected_exit);
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn u14_hook_respects_zero_and_exact_remaining_budget() {
+        let (mut state, memory) = machine(&[0x90, 0x90, 0xf4]);
+        let mut remaining = Vec::new();
+        let zero = run_cached_with_hook(
+            &mut state,
+            &memory,
+            0,
+            &mut DecodeCache::new(),
+            64,
+            |_, _| panic!("zero budget cannot execute accelerator"),
+        );
+        assert_eq!(
+            zero,
+            ExitReason::BudgetExhausted {
+                rip: GuestAddr(CODE)
+            }
+        );
+        run_cached_with_hook(
+            &mut state,
+            &memory,
+            2,
+            &mut DecodeCache::new(),
+            1,
+            |_, budget| {
+                remaining.push(budget);
+                None
+            },
+        );
+        assert_eq!(remaining, [2, 1]);
+        assert_eq!(state.rip, GuestAddr(CODE + 2));
+    }
+
+    #[test]
+    fn u14_hook_short_budget_never_accelerates() {
+        let (mut state, memory) = machine(&[0x90, 0xf4]);
+        let result = run_cached_with_hook(
+            &mut state,
+            &memory,
+            1,
+            &mut DecodeCache::new(),
+            64,
+            |_, _| panic!("block would exceed remaining budget"),
+        );
+        assert_eq!(
+            result,
+            ExitReason::BudgetExhausted {
+                rip: GuestAddr(CODE + 1)
+            }
+        );
+    }
+
+    #[test]
+    fn u14_hook_backward_blocks_remain_finitely_charged() {
+        let (mut state, memory) = machine(&[0x90]);
+        let mut calls = 0;
+        let result = run_cached_with_hook(
+            &mut state,
+            &memory,
+            128,
+            &mut DecodeCache::new(),
+            64,
+            |state, _| {
+                calls += 1;
+                Some(ExitReason::BudgetExhausted { rip: state.rip })
+            },
+        );
+        assert_eq!(calls, 2);
+        assert_eq!(
+            result,
+            ExitReason::BudgetExhausted {
+                rip: GuestAddr(CODE)
+            }
+        );
+    }
+
+    #[test]
+    fn u14_hook_continues_to_syscall_after_charged_block() {
+        let (mut state, memory) = machine(&[0x90, 0x0f, 0x05]);
+        state.gpr[reg::RAX] = 60;
+        let result = run_cached_with_hook(
+            &mut state,
+            &memory,
+            65,
+            &mut DecodeCache::new(),
+            64,
+            |state, _| {
+                state.rip = GuestAddr(CODE + 1);
+                Some(ExitReason::BudgetExhausted { rip: state.rip })
+            },
+        );
+        assert_eq!(
+            result,
+            ExitReason::Syscall {
+                rip: GuestAddr(CODE + 3)
+            }
+        );
+    }
+
+    #[test]
+    fn u14_hook_continues_to_fault_after_charged_block() {
+        let (mut state, memory) = machine(&[0x90, 0x48, 0x8b, 0x07]);
+        let mut expected = state.clone();
+        expected.rip = GuestAddr(CODE + 1);
+        let expected_exit = run_cached(&mut expected, &memory, 1, &mut DecodeCache::new());
+        let actual = run_cached_with_hook(
+            &mut state,
+            &memory,
+            65,
+            &mut DecodeCache::new(),
+            64,
+            |state, _| {
+                state.rip = GuestAddr(CODE + 1);
+                Some(ExitReason::BudgetExhausted { rip: state.rip })
+            },
+        );
+        assert_eq!(actual, expected_exit);
+        assert_eq!(state, expected);
     }
 
     #[test]

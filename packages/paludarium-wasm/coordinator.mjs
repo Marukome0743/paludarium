@@ -8,6 +8,15 @@ const childWorkers = new Set();
 let abandoned = false;
 const failure = (kind, message) => ({ kind, message });
 function check(value, name) { if (value < 0) throw new Error(`${name} rejected`); return value; }
+function jitDiagnostics(job) {
+  if (!job.diagnostics || typeof e.session_jit_stat !== "function") return;
+  job.diagnostics.jit = {
+    translatedBlocks: String(e.session_jit_stat(job.handle, 0)),
+    executedBlocks: String(e.session_jit_stat(job.handle, 1)),
+    executedInstructions: String(e.session_jit_stat(job.handle, 2)),
+    fallbacks: String(e.session_jit_stat(job.handle, 3)),
+  };
+}
 function withBytes(bytes, callback) { const id = putBuffer(e, bytes, memory); try { return callback(id); } finally { e.buffer_drop(id); } }
 function errorFor(handle) {
   const kind = e.session_error_kind(handle);
@@ -91,6 +100,7 @@ async function finish(job, result, error) {
   // This path is reached only after Rust returned, including a typed guest error.
   // Traps and forced failures discard the complete runtime through fatal().
   e.region_drop(job.region); e.buffer_drop(job.token);
+  jitDiagnostics(job);
   e.session_drop(job.handle); jobs.delete(job.id);
   if (error) port.send({ type: "failed", id: job.id, error });
   else port.send({ type: "finished", id: job.id, status: result >= 256 ? { kind: "signaled", signal: result - 256 } : { kind: "exited", code: result }, diagnostics: job.diagnostics });
@@ -132,6 +142,7 @@ async function launch(message) {
   try {
     if (message.options.cwd !== undefined) withBytes(encoder.encode(message.options.cwd), id => check(e.config_cwd(config, id), "current directory"));
     if (message.options.tty != null) check(e.config_terminal(config, message.options.tty.columns, message.options.tty.rows), "terminal");
+    if (message.options.jit !== undefined) check(e.config_jit(config, message.options.jit ? 1 : 0), "JIT");
     for (const arg of message.options.args ?? [message.options.program]) withBytes(encoder.encode(arg), id => check(e.config_arg(config, id), "argument"));
     for (const [key, value] of Object.entries(message.options.env ?? {})) withBytes(encoder.encode(key), keyId => withBytes(encoder.encode(value), valueId => check(e.config_env(config, keyId, valueId), "environment")));
     for (const [path, bytes] of Object.entries(message.options.files ?? {})) withBytes(encoder.encode(path), pathId => withBytes(bytes, dataId => check(e.config_file_mode(config, pathId, dataId, message.options.fileModes?.[path] ?? 0o755), "file")));
@@ -185,7 +196,9 @@ port.listen(async message => {
       if (e.filesystem_drop(message.handle) !== 0) throw new Error("filesystem disposal rejected (active or stale handle)");
       port.send({ type: "control", id: message.id });
     } else if (message.type === "run") await launch(message);
-    else if (message.type === "diagnostics") port.send({ type: "diagnostics", id: message.id, diagnostics: { workers: latestDiagnostics, sharedProbe: await sharedProbe() } });
+    else if (message.type === "diagnostics") {
+      port.send({ type: "diagnostics", id: message.id, diagnostics: { workers: latestDiagnostics, sharedProbe: await sharedProbe() } });
+    }
     else if (message.type === "stdin") {
       const job = jobs.get(message.id);
       if (job) withBytes(message.bytes, id => check(e.session_stdin_write(job.handle, id), "stdin"));

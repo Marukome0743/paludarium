@@ -1,5 +1,5 @@
 //! Each real Host worker owns CPU/decoder/thread context and shares only process resources.
-use paludarium_cpu::{DecodeCache, reg, run_cached};
+use paludarium_cpu::{DecodeCache, reg, run_cached, run_cached_with_hook};
 use paludarium_host::{ClockId, Host, ThreadHandle};
 use paludarium_jit::CodeCache;
 use paludarium_kernel::{Kernel, Next, Processes, SignalInbox, Thread, ThreadGroup};
@@ -20,6 +20,7 @@ pub(crate) struct Execution {
     stopped: Arc<AtomicBool>,
     last_stop: Arc<Mutex<Option<ExitReason>>>,
     cache: Arc<dyn CodeCache>,
+    accelerated: bool,
     budget: u64,
     handles: Mutex<Vec<Box<dyn ThreadHandle>>>,
     results: Mutex<Vec<Result<ExitStatus, Error>>>,
@@ -36,6 +37,7 @@ impl Execution {
         stopped: Arc<AtomicBool>,
         last_stop: Arc<Mutex<Option<ExitReason>>>,
         cache: Arc<dyn CodeCache>,
+        accelerated: bool,
         budget: u64,
     ) -> Self {
         Self {
@@ -48,6 +50,7 @@ impl Execution {
             stopped,
             last_stop,
             cache,
+            accelerated,
             budget,
             handles: Mutex::new(Vec::new()),
             results: Mutex::new(Vec::new()),
@@ -106,10 +109,24 @@ impl Execution {
                 }
                 _ => self.stopped.store(false, Ordering::SeqCst),
             }
-            let reason = self
-                .cache
-                .try_run(&mut thread.cpu, memory)
-                .unwrap_or_else(|| run_cached(&mut thread.cpu, memory, self.budget, &mut decode));
+            // U14 blocks execute at most 64 instructions. Smaller explicit
+            // budgets retain exact interpreter checkpoint/kill semantics.
+            let reason = if self.accelerated && self.budget >= 64 {
+                run_cached_with_hook(
+                    &mut thread.cpu,
+                    memory,
+                    self.budget,
+                    &mut decode,
+                    64,
+                    |state, remaining| {
+                        (remaining >= 64)
+                            .then(|| self.cache.try_run(state, memory))
+                            .flatten()
+                    },
+                )
+            } else {
+                run_cached(&mut thread.cpu, memory, self.budget, &mut decode)
+            };
             let next = kernel.handle(thread, memory, reason);
             if let Some(replacement) = kernel.take_exec_memory() {
                 *memory = replacement;

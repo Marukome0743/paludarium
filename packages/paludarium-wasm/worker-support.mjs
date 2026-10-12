@@ -17,9 +17,12 @@ export function listen(worker, message, error) {
 export async function stopWorker(worker) { await worker.terminate(); }
 export function imports(memory, { spawnTask } = {}) {
   const sleepWord = new Int32Array(new SharedArrayBuffer(4));
+  const jit = jitImports(memory);
   return {
     env: { memory },
     paludarium: {
+      jit_prepare: (...arguments_) => jit.prepare(...arguments_),
+      jit_execute: (...arguments_) => jit.execute(...arguments_),
       spawn_task(handle) {
         try { if (!spawnTask || !Number.isInteger(handle) || handle <= 0) return -1; spawnTask(handle); return 0; }
         catch { return -1; }
@@ -77,3 +80,4 @@ export function takeBuffer(exports, id, memory) {
     return bytes;
   } finally { exports.buffer_drop(id); }
 }
+import { jitImports } from "./jit-support.mjs";

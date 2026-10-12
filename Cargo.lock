@@ -228,6 +228,7 @@ name = "paludarium-jit"
 version = "0.0.0"
 dependencies = [
  "paludarium-cpu",
+ "paludarium-decoder",
  "paludarium-mmu",
  "paludarium-types",
 ]
@@ -291,6 +292,7 @@ name = "paludarium-wasm"
 version = "0.0.0"
 dependencies = [
  "paludarium-host",
+ "paludarium-jit",
  "paludarium-mmu",
  "paludarium-runtime",
  "paludarium-types",
