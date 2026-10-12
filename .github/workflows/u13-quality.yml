@@ -109,8 +109,10 @@ jobs:
           binaries = [row['executable'] for row in rows if row.get('reason') == 'compiler-artifact' and row.get('target', {}).get('name') == 'diff_u13' and row.get('executable')]
           if len(binaries) != 1:
               raise RuntimeError('expected exactly one uninstrumented U13 harness executable')
-          flags = {name: os.environ.get(name) for name in ('RUSTFLAGS', 'CARGO_ENCODEDRUSTFLAGS', 'CARGO_TARGET_DIR')}
-          if any('instrument-coverage' in (flags[name] or '') for name in ('RUSTFLAGS', 'CARGO_ENCODEDRUSTFLAGS')):
+          flags = {name: os.environ.get(name) for name in ('RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'CARGO_TARGET_DIR', 'RUSTC_WRAPPER', '__CARGO_LLVM_COV_RUSTC_WRAPPER', '__CARGO_LLVM_COV_RUSTC_WRAPPER_RUSTFLAGS', '__CARGO_LLVM_COV_RUSTC_WRAPPER_CRATE_NAMES')}
+          if os.environ.get('CARGO_ENCODEDRUSTFLAGS') is not None:
+              raise RuntimeError('misspelled encoded Rust flag variable')
+          if flags['__CARGO_LLVM_COV_RUSTC_WRAPPER'] is not None or any('instrument-coverage' in (flags[name] or '') for name in ('RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', '__CARGO_LLVM_COV_RUSTC_WRAPPER_RUSTFLAGS')):
               raise RuntimeError('required guest executable is coverage instrumented')
           receipt = {'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(), 'compiler': subprocess.check_output(['rustc', '-Vv'], text=True), 'flags': flags, 'binary_sha256': hashlib.sha256(pathlib.Path(binaries[0]).read_bytes()).hexdigest()}
           pathlib.Path('target/u13/windows/native-build-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
@@ -133,8 +135,10 @@ jobs:
           binaries = [row['executable'] for row in rows if row.get('reason') == 'compiler-artifact' and row.get('target', {}).get('name') == 'diff_u13' and row.get('executable')]
           if len(binaries) != 1:
               raise RuntimeError('expected exactly one U13 harness executable')
-          flags = {name: os.environ.get(name) for name in ('RUSTFLAGS', 'CARGO_ENCODEDRUSTFLAGS', 'CARGO_TARGET_DIR')}
-          if not any('instrument-coverage' in (flags[name] or '') for name in ('RUSTFLAGS', 'CARGO_ENCODEDRUSTFLAGS')):
+          flags = {name: os.environ.get(name) for name in ('RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'CARGO_TARGET_DIR', 'RUSTC_WRAPPER', '__CARGO_LLVM_COV_RUSTC_WRAPPER', '__CARGO_LLVM_COV_RUSTC_WRAPPER_RUSTFLAGS', '__CARGO_LLVM_COV_RUSTC_WRAPPER_CRATE_NAMES')}
+          if os.environ.get('CARGO_ENCODEDRUSTFLAGS') is not None:
+              raise RuntimeError('misspelled encoded Rust flag variable')
+          if flags['__CARGO_LLVM_COV_RUSTC_WRAPPER'] != '1' or not flags['RUSTC_WRAPPER'] or 'diff_u13' not in (flags['__CARGO_LLVM_COV_RUSTC_WRAPPER_CRATE_NAMES'] or '').split(',') or 'instrument-coverage' not in (flags['__CARGO_LLVM_COV_RUSTC_WRAPPER_RUSTFLAGS'] or ''):
               raise RuntimeError('coverage executable lacks instrumentation')
           receipt = {'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(), 'compiler': subprocess.check_output(['rustc', '-Vv'], text=True), 'flags': flags, 'binary_sha256': hashlib.sha256(pathlib.Path(binaries[0]).read_bytes()).hexdigest()}
           pathlib.Path('target/u13/windows/coverage-build-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
