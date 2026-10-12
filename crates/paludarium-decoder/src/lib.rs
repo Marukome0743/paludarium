@@ -647,7 +647,16 @@ fn is_string(m: Mnemonic) -> bool {
 
 /// Decodes the instruction at the start of `bytes`, located at `rip`.
 pub fn decode(bytes: &[u8], rip: GuestAddr) -> Result<Instruction, DecodeError> {
-    let mut decoder = iced::Decoder::with_ip(64, bytes, rip.0, iced::DecoderOptions::NONE);
+    // iced-x86 1.21.0 subtracts truncated host pointers when calculating an
+    // instruction's length. Keep the maximum x86 instruction (15 bytes) in a
+    // 16-byte-aligned buffer so that read cannot cross a 4 GiB boundary.
+    #[repr(align(16))]
+    struct AlignedInstruction([u8; 15]);
+    let mut input = AlignedInstruction([0; 15]);
+    let len = bytes.len().min(input.0.len());
+    input.0[..len].copy_from_slice(&bytes[..len]);
+    let mut decoder =
+        iced::Decoder::with_ip(64, &input.0[..len], rip.0, iced::DecoderOptions::NONE);
     let insn = decoder.decode();
     if insn.is_invalid() {
         return Err(match decoder.last_error() {
@@ -780,6 +789,24 @@ pub fn decode(bytes: &[u8], rip: GuestAddr) -> Result<Instruction, DecodeError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decode_fuzz_reproducer_and_instruction_length_boundaries() {
+        // jit_compile's crash input: the first eight bytes are its guest RIP.
+        let bytes = [
+            0xe1, 0x4a, 0x48, 0x05, 0xff, 0x4a, 0x4a, 0xe1, 0x4a, 0x48, 0x05, 0x6e, 0x3b, 0x27,
+            0x4a, 0x4a, 0x05, 0xff, 0x93, 0x3f, 0x93, 0x93, 0x93, 0x93,
+        ];
+        let rip = GuestAddr(0xe14a_4ae1_e100_e100);
+        for len in [0, 1, 14, 15, 16, bytes.len()] {
+            let result = decode(&bytes[..len], rip);
+            if len > 15 {
+                assert_eq!(result, decode(&bytes[..15], rip));
+            }
+        }
+        let nop = [0x90; 16];
+        assert_eq!(decode(&nop, rip), decode(&nop[..15], rip));
+    }
 
     #[test]
     fn u2_cmps_repe_keeps_implicit_width() {
