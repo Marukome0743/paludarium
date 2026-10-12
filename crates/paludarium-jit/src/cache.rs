@@ -83,9 +83,10 @@ impl<T: Clone> EpochCache<T> {
         let key = (space, rip);
         state.remove(&key);
         if state.entries.len() >= 1024
-            && let Some((_, oldest)) = state.accesses.first_key_value() {
-                let oldest = *oldest;
-                state.remove(&oldest);
+            && let Some((_, oldest)) = state.accesses.first_key_value()
+        {
+            let oldest = *oldest;
+            state.remove(&oldest);
         }
         state.entries.insert(
             key,

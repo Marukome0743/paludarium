@@ -266,13 +266,15 @@ pub fn run_cached_with_hook(
     let mut consumed = 0;
     while consumed < budget {
         let remaining = budget - consumed;
-        if maximum_block > 0 && remaining >= maximum_block
-            && let Some(reason) = accelerate(state, remaining) {
-                if matches!(reason, ExitReason::BudgetExhausted { .. }) {
-                    consumed += maximum_block;
-                    continue;
-                }
-                return reason;
+        if maximum_block > 0
+            && remaining >= maximum_block
+            && let Some(reason) = accelerate(state, remaining)
+        {
+            if matches!(reason, ExitReason::BudgetExhausted { .. }) {
+                consumed += maximum_block;
+                continue;
+            }
+            return reason;
         }
         if let Err(reason) = step_cached(state, mem, cache) {
             return reason;
