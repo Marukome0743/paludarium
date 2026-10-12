@@ -7,6 +7,8 @@ name: U1 U14 current-source evidence
 
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/u14-jit-wasm]
 
 permissions:
   contents: read
