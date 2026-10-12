@@ -21,7 +21,9 @@ def command(args, cwd, log, env=None):
         subprocess.run(args, cwd=cwd, env=env, stdout=out, stderr=subprocess.STDOUT, check=True)
 
 
-def build(directory):
+def build(directory, advisory_policy=None):
+    if advisory_policy not in (None, 'u14-fixed-aube'):
+        raise ValueError('unapproved guest advisory policy')
     directory.mkdir(parents=True, exist_ok=True)
     lock = json.loads((HERE / 'source-lock.json').read_text())
     receipt = {'schema': 1, 'exit': None, 'toolchain': lock['toolchain'],
@@ -49,7 +51,14 @@ def build(directory):
         receipt['source_before'] = before
         root_policy = (ROOT / 'deny.toml').read_bytes()
         guest_config = directory / 'aube-deny.toml'
-        guest_config.write_bytes(guest_policy(root_policy, lock['guest_license_exception']))
+        config_bytes = guest_policy(root_policy, lock['guest_license_exception'])
+        if advisory_policy:
+            from evidence import u14_policy_module
+            config_bytes, advisory_receipt = u14_policy_module().generate(
+                root_policy, config_bytes, (upstream / 'Cargo.lock').read_bytes())
+            receipt['advisory_policy'] = advisory_receipt
+            receipt['advisory_lock'] = (upstream / 'Cargo.lock').read_text()
+        guest_config.write_bytes(config_bytes)
         # Metadata fetches crates.io sources but does not compile or mutate
         # the upstream project. Retain the crate's actual full license text.
         metadata = json.loads(subprocess.check_output([
@@ -117,4 +126,9 @@ def build(directory):
 
 
 if __name__ == '__main__':
-    build(pathlib.Path(sys.argv[1]).resolve())
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('directory')
+    parser.add_argument('--advisory-policy', choices=['u14-fixed-aube'])
+    arguments = parser.parse_args()
+    build(pathlib.Path(arguments.directory).resolve(), arguments.advisory_policy)

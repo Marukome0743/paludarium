@@ -2,6 +2,7 @@
 import hashlib
 import pathlib
 import struct
+import importlib.util
 
 LICENSE_EXCEPTION = {'crate': 'webpki-root-certs@1.0.9', 'allow': ['CDLA-Permissive-2.0']}
 LICENSE_SUFFIX = b'\n[[licenses.exceptions]]\ncrate = "webpki-root-certs@1.0.9"\nallow = ["CDLA-Permissive-2.0"]\n'
@@ -13,6 +14,14 @@ def guest_policy(root_bytes, exception):
     return root_bytes + LICENSE_SUFFIX
 
 
+def u14_policy_module():
+    path = pathlib.Path(__file__).resolve().parents[1] / 'u14/guest_policy.py'
+    spec = importlib.util.spec_from_file_location('u14_guest_policy', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def policy_receipt_valid(directory, receipt, root_bytes):
     policy = receipt['license_policy']
     if policy['exception'] != LICENSE_EXCEPTION:
@@ -20,7 +29,16 @@ def policy_receipt_valid(directory, receipt, root_bytes):
     if hashlib.sha256(root_bytes).hexdigest() != policy['root_config_sha256']:
         raise ValueError('root policy changed')
     config = directory / 'aube-deny.toml'
-    if config.read_bytes() != guest_policy(root_bytes, policy['exception']):
+    inherited = guest_policy(root_bytes, policy['exception'])
+    if 'advisory_policy' in receipt:
+        # Bind full pinned source lock, not merely the ignored package row.
+        lock_bytes = receipt['advisory_lock'].encode()
+        source_lock = json_source_lock()
+        if receipt['aube'] != source_lock['aube'] or hashlib.sha256(lock_bytes).hexdigest() != source_lock['aube']['lock_sha256']:
+            raise ValueError('fixed aube Cargo.lock mismatch')
+        u14_policy_module().verify(root_bytes, inherited, lock_bytes,
+                                   config.read_bytes(), receipt['advisory_policy'])
+    elif config.read_bytes() != inherited:
         raise ValueError('guest config does not inherit exact root policy')
     if digest(config) != policy['guest_config_sha256']:
         raise ValueError('guest config hash differs')
@@ -35,6 +53,11 @@ def policy_receipt_valid(directory, receipt, root_bytes):
 
 def digest(path):
     return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+
+
+def json_source_lock():
+    import json
+    return json.loads(pathlib.Path(__file__).with_name('source-lock.json').read_text())
 
 
 def static_elf(data):
