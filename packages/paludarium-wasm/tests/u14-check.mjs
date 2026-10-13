@@ -1,10 +1,11 @@
 import { createServer } from "node:http";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { runBrowser } from "./u11-browser-driver.mjs";
 import { runJitSuite } from "./u14-suite.mjs";
+import { createU14Handler } from "./u14-http.mjs";
 
 const [environment, modulePath, oraclePath, guestDirectory, outputDirectory] = process.argv.slice(2);
 if (!outputDirectory || !["node", "chromium", "firefox", "safari"].includes(environment)) throw new Error("usage: u14-check.mjs node|chromium|firefox|safari module oracle guests output");
@@ -37,24 +38,7 @@ try {
     const page = `<!doctype html><script type="module">
 import{runJitSuite}from'/packages/paludarium-wasm/tests/u14-suite.mjs';
 try{if(!crossOriginIsolated)throw Error('Shared memory unavailable');const input=await(await fetch('/input.json')).json();const decode=text=>Uint8Array.from(atob(text),c=>c.charCodeAt(0));input.probe=decode(input.probe);input.aube=decode(input.aube);for(const name of Object.keys(input.fixtures))input.fixtures[name]=decode(input.fixtures[name]);window.__u11Report=await runJitSuite({...input,wasmUrl:'/production.wasm',onRow:async(mode,name,row)=>{await fetch('/row',{method:'POST',body:JSON.stringify({mode,name,row})});}});}catch(error){window.__u11Report={complete:false,passed:false,error:String(error)};}</script>`;
-    server = createServer(async (request, response) => {
-      const headers = { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp", "Cache-Control": "no-store" };
-      try {
-        if (request.url === "/") response.writeHead(200, { ...headers, "Content-Type": "text/html" }).end(page);
-        else if (request.url === "/input.json") response.writeHead(200, { ...headers, "Content-Type": "application/json" }).end(JSON.stringify(encoded));
-        else if (request.url === "/row" && request.method === "POST") {
-          const chunks = []; let size = 0;
-          for await (const chunk of request) { size += chunk.length; if (size > 16 * 1024 * 1024) throw Error("Evidence row too large"); chunks.push(chunk); }
-          const { mode, name, row } = JSON.parse(Buffer.concat(chunks));
-          if (!["interpreter", "jit"].includes(mode) || !Object.hasOwn(oracle.rows, name)) throw Error("Unknown evidence row");
-          await onRow(mode, name, row); response.writeHead(200, headers).end();
-        } else {
-          const path = request.url === "/production.wasm" ? resolve(modulePath) : resolve(root, "." + new URL(request.url, "http://localhost").pathname);
-          if (request.url !== "/production.wasm" && !path.startsWith(root + sep)) throw Error("Invalid path");
-          response.writeHead(200, { ...headers, "Content-Type": path.endsWith(".wasm") ? "application/wasm" : "text/javascript" }).end(await readFile(path));
-        }
-      } catch (error) { response.writeHead(500, headers).end(String(error)); }
-    });
+    server = createServer(createU14Handler({ root, modulePath, page, encoded, oracle, onRow }));
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     result = await runBrowser(environment, `http://127.0.0.1:${server.address().port}/`, 1200000);
   }

@@ -670,6 +670,41 @@ mod u7_tests {
 
     #[cfg(windows)]
     #[test]
+    fn u7_native_windows_deleted_symlink_name_waits_for_handle_close() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let x = Fixture::new();
+        let outside = x.base.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("sentinel"), b"outside").unwrap();
+        let link = x.base.join("root/pending-link");
+        std::os::windows::fs::symlink_dir(&outside, &link).unwrap();
+        // Open the reparse point itself, retaining DELETE sharing and the handle
+        // that prevents final name removal after remove_dir marks it deleted.
+        let handle = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(7) // FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
+            .custom_flags(0x0220_0000) // BACKUP_SEMANTICS | OPEN_REPARSE_POINT
+            .open(&link)
+            .unwrap();
+        std::fs::remove_dir(&link).unwrap();
+        let error = std::os::windows::fs::symlink_dir(&outside, &link).unwrap_err();
+        assert_eq!(
+            error.raw_os_error(),
+            Some(5),
+            "delete-pending name must deny recreation"
+        );
+        drop(handle);
+        std::os::windows::fs::symlink_dir(&outside, &link).unwrap();
+        std::fs::remove_dir(&link).unwrap();
+        assert_eq!(std::fs::read(outside.join("sentinel")).unwrap(), b"outside");
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 1);
+        let base = x.base.clone();
+        drop(x);
+        assert!(!base.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn u7_native_windows_symlink_rename_race() {
         use std::sync::{Barrier, atomic::AtomicBool};
         const NAME: &str = "native_fs::u7_tests::u7_native_windows_symlink_rename_race";
@@ -729,6 +764,7 @@ mod u7_tests {
         let ready = Arc::clone(&barrier);
         let attacker = std::thread::spawn(move || -> std::io::Result<()> {
             fn retry_sharing(
+                name: &str,
                 deadline: std::time::Instant,
                 conflicts: &AtomicU64,
                 mut operation: impl FnMut() -> std::io::Result<()>,
@@ -743,7 +779,13 @@ mod u7_tests {
                             }
                             std::thread::sleep(std::time::Duration::from_millis(1));
                         }
-                        Err(error) => return Err(error),
+                        Err(error) => {
+                            eprintln!(
+                                "U7_WINDOWS_EXCHANGE operation={name} os_error={:?} error={error}",
+                                error.raw_os_error()
+                            );
+                            return Err(error);
+                        }
                     }
                 }
             }
@@ -752,19 +794,23 @@ mod u7_tests {
             while !done.load(Ordering::Acquire) {
                 // Windows can temporarily deny renaming an open directory.
                 // Count only complete real directory/symlink exchanges.
-                retry_sharing(deadline, &conflicts, || {
+                retry_sharing("rename-pivot-to-held", deadline, &conflicts, || {
                     std::fs::rename(root.join("pivot"), root.join("held"))
                 })?;
                 let link = std::os::windows::fs::symlink_dir(&outside, root.join("pivot"));
                 if let Err(error) = link {
+                    eprintln!(
+                        "U7_WINDOWS_EXCHANGE operation=create-pivot-symlink os_error={:?} error={error}",
+                        error.raw_os_error()
+                    );
                     std::fs::rename(root.join("held"), root.join("pivot"))?;
                     return Err(error);
                 }
                 std::thread::yield_now();
-                retry_sharing(deadline, &conflicts, || {
+                retry_sharing("remove-pivot-symlink", deadline, &conflicts, || {
                     std::fs::remove_dir(root.join("pivot"))
                 })?;
-                retry_sharing(deadline, &conflicts, || {
+                retry_sharing("rename-held-to-pivot", deadline, &conflicts, || {
                     std::fs::rename(root.join("held"), root.join("pivot"))
                 })?;
                 count.fetch_add(1, Ordering::Release);
