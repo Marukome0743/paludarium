@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import signal
+import shutil
 from pathlib import Path
 import subprocess
 import time
@@ -11,6 +12,21 @@ import zipfile
 
 ARCHIVE_SHA = "2cc5ed39794b4843a135f53973b8e4bb459897f3ac7ecb5abd067560d66b04c0"
 ELF_SHA = "dfedbf0f55cf178e8ffce037fd706100ad05b0f1051a01a2ab787c37c1b8481b"
+
+
+def capture_commands():
+    # Execute the original ELF directly. The previous env wrapper combined with
+    # disabled shell startup reported exit during startup in every observation.
+    # GDB itself receives an empty environment instead of wrapping the inferior.
+    return ("set pagination off\nset confirm off\nset disable-randomization off\n"
+            "set startup-with-shell off\nset exec-wrapper\n"
+            "handle SIGSEGV stop print nopass\nrun\npython\n"
+            "if gdb.selected_inferior().threads():\n"
+            "    for command in ('info registers', 'x/32gx $rsp', 'x/16i $rip', 'bt'):\n"
+            "        gdb.execute(command)\n"
+            "else:\n"
+            "    print('DIAGNOSTIC_NORMAL_EXIT_NO_REGISTERS')\n"
+            "end\nquit\n")
 
 
 def original(archive):
@@ -77,10 +93,10 @@ def main():
         if timeout:
             break
     gdb_script = args.output / "capture.gdb"
-    gdb_script.write_text("set pagination off\nset confirm off\nset disable-randomization off\n"
-                          "set startup-with-shell off\nset exec-wrapper env -i\n"
-                          "handle SIGSEGV stop print nopass\nrun\ninfo registers\n"
-                          "x/32gx $rsp\nx/16i $rip\nbt\nquit\n")
+    gdb_script.write_text(capture_commands())
+    gdb_binary = shutil.which("gdb")
+    if gdb_binary is None:
+        raise RuntimeError("GDB executable missing after prerequisite check")
     # Reserve the remaining budget for debugger fault capture after a native
     # signal. No initial core was saved; failure to reproduce stays unresolved.
     metadata["initial_core_available"] = False
@@ -89,7 +105,7 @@ def main():
     metadata["debugger"] = []
     for index in range(attempts):
         out, err, code, timeout, elapsed = bounded(
-            ["gdb", "--batch", "-x", str(gdb_script), str(binary)], environment={"PATH": os.environ["PATH"]})
+            [gdb_binary, "--batch", "-x", str(gdb_script), str(binary)], environment={})
         (args.output / f"debugger-{index:03}.stdout").write_bytes(out)
         (args.output / f"debugger-{index:03}.stderr").write_bytes(err)
         metadata["debugger"].append({"exit": code, "timeout": timeout, "seconds": elapsed, "auxiliary": True})

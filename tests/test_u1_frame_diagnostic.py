@@ -39,6 +39,15 @@ class FrameDiagnosticTests(unittest.TestCase):
         self.assertTrue(run.call_args.kwargs["start_new_session"])
         self.assertEqual(run.call_args.kwargs["executable"], "/original")
 
+    def test_debugger_direct_exec_and_normal_exit(self):
+        commands = diagnostic.capture_commands()
+        self.assertIn("set exec-wrapper\n", commands)
+        self.assertNotIn("exec-wrapper env", commands)
+        self.assertIn("set disable-randomization off\n", commands)
+        self.assertIn("if gdb.selected_inferior().threads():", commands)
+        self.assertIn("DIAGNOSTIC_NORMAL_EXIT_NO_REGISTERS", commands)
+        self.assertIn("'info registers', 'x/32gx $rsp', 'x/16i $rip', 'bt'", commands)
+
 
 if __name__ == "__main__":
     unittest.main()
