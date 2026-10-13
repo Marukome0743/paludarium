@@ -41,7 +41,7 @@ class FrameDiagnosticTests(unittest.TestCase):
 
     def test_debugger_direct_exec_and_normal_exit(self):
         commands = diagnostic.capture_commands()
-        self.assertIn("set exec-wrapper\n", commands)
+        self.assertNotIn("set exec-wrapper", commands)
         self.assertNotIn("exec-wrapper env", commands)
         self.assertIn("set disable-randomization off\n", commands)
         self.assertIn("if gdb.selected_inferior().threads():", commands)

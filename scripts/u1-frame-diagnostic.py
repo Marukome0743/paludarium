@@ -19,7 +19,7 @@ def capture_commands():
     # disabled shell startup reported exit during startup in every observation.
     # GDB itself receives an empty environment instead of wrapping the inferior.
     return ("set pagination off\nset confirm off\nset disable-randomization off\n"
-            "set startup-with-shell off\nset exec-wrapper\n"
+            "set startup-with-shell off\n"
             "handle SIGSEGV stop print nopass\nrun\npython\n"
             "if gdb.selected_inferior().threads():\n"
             "    for command in ('info registers', 'x/32gx $rsp', 'x/16i $rip', 'bt'):\n"
@@ -97,11 +97,11 @@ def main():
     gdb_binary = shutil.which("gdb")
     if gdb_binary is None:
         raise RuntimeError("GDB executable missing after prerequisite check")
-    # Reserve the remaining budget for debugger fault capture after a native
-    # signal. No initial core was saved; failure to reproduce stays unresolved.
+    # Use the remaining budget for debugger fault capture even if these native
+    # runs did not signal. No initial core was saved; no reproduction resolves nothing.
     metadata["initial_core_available"] = False
     budget = 100 - len(metadata["runs"])
-    attempts = budget if any(item["exit"] == -11 for item in metadata["runs"]) else min(1, budget)
+    attempts = budget
     metadata["debugger"] = []
     for index in range(attempts):
         out, err, code, timeout, elapsed = bounded(
