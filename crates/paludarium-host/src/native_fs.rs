@@ -670,31 +670,40 @@ mod u7_tests {
 
     #[cfg(windows)]
     #[test]
-    fn u7_native_windows_deleted_symlink_name_waits_for_handle_close() {
-        use std::os::windows::fs::OpenOptionsExt;
+    fn u7_native_windows_recreated_symlink_has_distinct_handle_identity() {
+        use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
         let x = Fixture::new();
         let outside = x.base.join("outside");
         std::fs::create_dir(&outside).unwrap();
         std::fs::write(outside.join("sentinel"), b"outside").unwrap();
         let link = x.base.join("root/pending-link");
         std::os::windows::fs::symlink_dir(&outside, &link).unwrap();
-        // Open the reparse point itself, retaining DELETE sharing and the handle
-        // that prevents final name removal after remove_dir marks it deleted.
+        // Retain the old reparse-point handle across name deletion/recreation.
+        // Windows CI permits recreation with DELETE sharing; validate identity
+        // and cleanup rather than assuming a delete-pending permission failure.
         let handle = std::fs::OpenOptions::new()
             .read(true)
             .share_mode(7) // FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
             .custom_flags(0x0220_0000) // BACKUP_SEMANTICS | OPEN_REPARSE_POINT
             .open(&link)
             .unwrap();
+        let old_id = handle.metadata().unwrap().file_index().unwrap();
         std::fs::remove_dir(&link).unwrap();
-        let error = std::os::windows::fs::symlink_dir(&outside, &link).unwrap_err();
-        assert_eq!(
-            error.raw_os_error(),
-            Some(5),
-            "delete-pending name must deny recreation"
-        );
-        drop(handle);
         std::os::windows::fs::symlink_dir(&outside, &link).unwrap();
+        let replacement = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(7)
+            .custom_flags(0x0220_0000)
+            .open(&link)
+            .unwrap();
+        let new_id = replacement.metadata().unwrap().file_index().unwrap();
+        assert_ne!(old_id, new_id, "old handle must not alias replacement link");
+        assert_eq!(handle.metadata().unwrap().file_index(), Some(old_id));
+        drop(handle);
+        assert_eq!(replacement.metadata().unwrap().file_index(), Some(new_id));
+        assert_eq!(std::fs::read_link(&link).unwrap(), outside);
+        assert_eq!(std::fs::read(link.join("sentinel")).unwrap(), b"outside");
+        drop(replacement);
         std::fs::remove_dir(&link).unwrap();
         assert_eq!(std::fs::read(outside.join("sentinel")).unwrap(), b"outside");
         assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 1);

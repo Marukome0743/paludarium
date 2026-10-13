@@ -261,6 +261,23 @@ jobs:
           RUST_BACKTRACE: "1"
       - name: Harness unit tests
         run: cargo test --locked -p paludarium-harness --lib
+      - name: Windows symlink exchange ten required diagnostic runs
+        if: matrix.os == 'windows-latest'
+        timeout-minutes: 6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          for ($iteration = 1; $iteration -le 10; $iteration++) {
+            Write-Output "U7_WINDOWS_REQUIRED_RUN=$iteration/10 head=$env:GITHUB_SHA"
+            $lines = & cargo test --locked -p paludarium-host --lib native_fs::u7_tests::u7_native_windows_symlink_rename_race -- --exact --nocapture 2>&1
+            $exitCode = $LASTEXITCODE
+            $lines | Write-Output
+            if ($exitCode -ne 0) { throw "Windows exchange run $iteration failed: exit $exitCode" }
+            $text = $lines -join "`n"
+            if ($text -notmatch 'test result: ok\. 1 passed; 0 failed; 0 ignored;' -or $text -notmatch 'U7_WINDOWS_WATCHDOG elapsed_ms=') {
+              throw "Windows exchange run $iteration did not execute the required watchdog test"
+            }
+          }
 
   lint:
     runs-on: ubuntu-latest
