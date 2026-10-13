@@ -1,6 +1,12 @@
 name: U1 saved native frame investigation
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/u14-jit-wasm]
+    paths:
+      - .github/workflows/u1-frame-diagnostic.yml
+      - scripts/u1-frame-diagnostic.py
+      - tests/test_u1_frame_diagnostic.py
 permissions:
   contents: read
   actions: read
