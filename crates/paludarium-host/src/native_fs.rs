@@ -714,6 +714,30 @@ mod u7_tests {
 
     #[cfg(windows)]
     #[test]
+    fn u7_native_windows_open_child_blocks_parent_rename_until_close() {
+        let x = Fixture::new();
+        let root = x.base.join("root");
+        x.fs().mkdir(b"parent", 0o700).unwrap();
+        let child = x.fs().open(b"parent/child", 66, 0o600).unwrap();
+        child.write(b"inside").unwrap();
+        let error = std::fs::rename(root.join("parent"), root.join("moved")).unwrap_err();
+        println!(
+            "U7_WINDOWS_OPEN_CHILD_RENAME os_error={:?}",
+            error.raw_os_error()
+        );
+        assert_eq!(error.raw_os_error(), Some(5));
+        assert!(root.join("parent").is_dir());
+        assert!(!root.join("moved").exists());
+        drop(child);
+        std::fs::rename(root.join("parent"), root.join("moved")).unwrap();
+        assert_eq!(std::fs::read(root.join("moved/child")).unwrap(), b"inside");
+        let base = x.base.clone();
+        drop(x);
+        assert!(!base.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn u7_native_windows_symlink_rename_race() {
         use std::sync::{Barrier, atomic::AtomicBool};
         const NAME: &str = "native_fs::u7_tests::u7_native_windows_symlink_rename_race";
@@ -766,10 +790,12 @@ mod u7_tests {
         let stop = Arc::new(AtomicBool::new(false));
         let exchanges = Arc::new(AtomicU64::new(0));
         let sharing_conflicts = Arc::new(AtomicU64::new(0));
+        let active_operation = Arc::new(AtomicU64::new(0));
         let barrier = Arc::new(Barrier::new(2));
         let done = Arc::clone(&stop);
         let count = Arc::clone(&exchanges);
         let conflicts = Arc::clone(&sharing_conflicts);
+        let active = Arc::clone(&active_operation);
         let ready = Arc::clone(&barrier);
         let attacker = std::thread::spawn(move || -> std::io::Result<()> {
             fn retry_sharing(
@@ -804,7 +830,20 @@ mod u7_tests {
                 // Windows can temporarily deny renaming an open directory.
                 // Count only complete real directory/symlink exchanges.
                 retry_sharing("rename-pivot-to-held", deadline, &conflicts, || {
-                    std::fs::rename(root.join("pivot"), root.join("held"))
+                    let result = std::fs::rename(root.join("pivot"), root.join("held"));
+                    if result
+                        .as_ref()
+                        .is_err_and(|error| error.raw_os_error() == Some(5))
+                    {
+                        eprintln!(
+                            "U7_WINDOWS_RENAME_CONTEXT active_operation={} pivot_metadata={:?} held_exists={}",
+                            active.load(Ordering::Acquire),
+                            std::fs::symlink_metadata(root.join("pivot"))
+                                .map(|m| (m.is_dir(), m.is_symlink())),
+                            root.join("held").exists()
+                        );
+                    }
+                    result
                 })?;
                 let link = std::os::windows::fs::symlink_dir(&outside, root.join("pivot"));
                 if let Err(error) = link {
@@ -828,16 +867,25 @@ mod u7_tests {
         });
         barrier.wait();
         for _ in 0..1000 {
+            active_operation.store(1, Ordering::Release); // open/write sentinel
             if let Ok(file) = x.fs().open(b"pivot/sentinel", 2, 0) {
                 let _ = file.write(b"inside");
             }
+            active_operation.store(2, Ordering::Release); // metadata
             let _ = x.fs().metadata(b"pivot/sentinel", true);
+            active_operation.store(3, Ordering::Release); // directory iteration
             let _ = x.fs().read_dir(b"pivot");
+            active_operation.store(4, Ordering::Release); // create file
             let _ = x.fs().open(b"pivot/new", 66, 0o600);
+            active_operation.store(5, Ordering::Release); // hard link
             let _ = x.fs().link(b"pivot/sentinel", b"pivot/link");
+            active_operation.store(6, Ordering::Release); // file rename
             let _ = x.fs().rename(b"pivot/new", b"pivot/renamed");
+            active_operation.store(7, Ordering::Release); // unlink renamed file
             let _ = x.fs().unlink(b"pivot/renamed", false);
+            active_operation.store(8, Ordering::Release); // unlink hard link
             let _ = x.fs().unlink(b"pivot/link", false);
+            active_operation.store(0, Ordering::Release);
         }
         stop.store(true, Ordering::Release);
         attacker
