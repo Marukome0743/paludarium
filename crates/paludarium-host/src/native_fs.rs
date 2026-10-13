@@ -440,6 +440,119 @@ mod u7_tests {
     }
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
+    // Fixture-only policy: open descendants can temporarily deny a Windows
+    // parent-directory rename (independently verified by the test below).
+    // Never change NativeFs error mapping or retry permission errors elsewhere.
+    fn retry_fixture_exchange(
+        name: &str,
+        directory_rename: bool,
+        deadline: std::time::Instant,
+        conflicts: &AtomicU64,
+        mut operation: impl FnMut() -> std::io::Result<()>,
+    ) -> std::io::Result<()> {
+        loop {
+            match operation() {
+                Ok(()) => return Ok(()),
+                Err(error)
+                    if error.raw_os_error() == Some(32)
+                        || (directory_rename && error.raw_os_error() == Some(5)) =>
+                {
+                    conflicts.fetch_add(1, Ordering::Relaxed);
+                    if std::time::Instant::now() >= deadline {
+                        return Err(error);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(error) => {
+                    eprintln!(
+                        "U7_WINDOWS_EXCHANGE operation={name} os_error={:?} error={error}",
+                        error.raw_os_error()
+                    );
+                    return Err(error);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn u7_fixture_directory_rename_retries_transient_handle_denial() {
+        for code in [5, 32] {
+            let conflicts = AtomicU64::new(0);
+            let mut calls = 0;
+            retry_fixture_exchange(
+                "directory-rename",
+                true,
+                std::time::Instant::now() + std::time::Duration::from_secs(1),
+                &conflicts,
+                || {
+                    calls += 1;
+                    if calls == 1 {
+                        Err(std::io::Error::from_raw_os_error(code))
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
+            .unwrap();
+            assert_eq!(calls, 2);
+            assert_eq!(conflicts.load(Ordering::Relaxed), 1);
+        }
+    }
+
+    #[test]
+    fn u7_fixture_persistent_directory_permission_is_deadline_failure() {
+        let conflicts = AtomicU64::new(0);
+        let mut calls = 0;
+        let error = retry_fixture_exchange(
+            "directory-rename",
+            true,
+            std::time::Instant::now(),
+            &conflicts,
+            || {
+                calls += 1;
+                Err(std::io::Error::from_raw_os_error(5))
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(5));
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn u7_fixture_nonrename_permission_is_not_retried() {
+        let conflicts = AtomicU64::new(0);
+        let mut calls = 0;
+        let error = retry_fixture_exchange(
+            "remove-symlink",
+            false,
+            std::time::Instant::now() + std::time::Duration::from_secs(1),
+            &conflicts,
+            || {
+                calls += 1;
+                Err(std::io::Error::from_raw_os_error(5))
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(5));
+        assert_eq!(calls, 1);
+        assert_eq!(conflicts.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn u7_fixture_unrelated_errors_propagate_unchanged() {
+        let conflicts = AtomicU64::new(0);
+        let error = retry_fixture_exchange(
+            "directory-rename",
+            true,
+            std::time::Instant::now() + std::time::Duration::from_secs(1),
+            &conflicts,
+            || Err(std::io::Error::from_raw_os_error(13)),
+        )
+        .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(13));
+        assert_eq!(conflicts.load(Ordering::Relaxed), 0);
+    }
+
     struct Fixture {
         base: PathBuf,
         fs: Option<NativeFs>,
@@ -798,38 +911,12 @@ mod u7_tests {
         let active = Arc::clone(&active_operation);
         let ready = Arc::clone(&barrier);
         let attacker = std::thread::spawn(move || -> std::io::Result<()> {
-            fn retry_sharing(
-                name: &str,
-                deadline: std::time::Instant,
-                conflicts: &AtomicU64,
-                mut operation: impl FnMut() -> std::io::Result<()>,
-            ) -> std::io::Result<()> {
-                loop {
-                    match operation() {
-                        Ok(()) => return Ok(()),
-                        Err(error) if error.raw_os_error() == Some(32) => {
-                            conflicts.fetch_add(1, Ordering::Relaxed);
-                            if std::time::Instant::now() >= deadline {
-                                return Err(error);
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(1));
-                        }
-                        Err(error) => {
-                            eprintln!(
-                                "U7_WINDOWS_EXCHANGE operation={name} os_error={:?} error={error}",
-                                error.raw_os_error()
-                            );
-                            return Err(error);
-                        }
-                    }
-                }
-            }
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
             ready.wait();
             while !done.load(Ordering::Acquire) {
                 // Windows can temporarily deny renaming an open directory.
                 // Count only complete real directory/symlink exchanges.
-                retry_sharing("rename-pivot-to-held", deadline, &conflicts, || {
+                retry_fixture_exchange("rename-pivot-to-held", true, deadline, &conflicts, || {
                     let result = std::fs::rename(root.join("pivot"), root.join("held"));
                     if result
                         .as_ref()
@@ -855,10 +942,14 @@ mod u7_tests {
                     return Err(error);
                 }
                 std::thread::yield_now();
-                retry_sharing("remove-pivot-symlink", deadline, &conflicts, || {
-                    std::fs::remove_dir(root.join("pivot"))
-                })?;
-                retry_sharing("rename-held-to-pivot", deadline, &conflicts, || {
+                retry_fixture_exchange(
+                    "remove-pivot-symlink",
+                    false,
+                    deadline,
+                    &conflicts,
+                    || std::fs::remove_dir(root.join("pivot")),
+                )?;
+                retry_fixture_exchange("rename-held-to-pivot", true, deadline, &conflicts, || {
                     std::fs::rename(root.join("held"), root.join("pivot"))
                 })?;
                 count.fetch_add(1, Ordering::Release);
