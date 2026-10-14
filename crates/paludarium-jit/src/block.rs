@@ -180,4 +180,25 @@ mod tests {
     fn u14_block_unsupported_sse_is_clean_fallback() {
         assert!(extract(&[0x66, 0x0f, 0xef, 0xc0], 4096).is_none());
     }
+
+    #[test]
+    fn u14_block_saved_jit_compile_crash_translates_without_panic() {
+        // Original jit_compile crash 4dabc170d4fa7cd3…: eight-byte RIP
+        // header followed by decoder input. This finite regression checks
+        // the saved input, not a replacement for the sanitizer campaign.
+        let input = [
+            0x00, 0xe1, 0x00, 0xe1, 0xe1, 0x4a, 0x4a, 0xe1, 0x4a, 0x48, 0x05, 0xff, 0x4a, 0x4a,
+            0xe1, 0x4a, 0x48, 0x05, 0x6e, 0x3b, 0x27, 0x4a, 0x4a, 0x05, 0xff, 0x93, 0x3f, 0x93,
+            0x93, 0x93, 0x93, 0x93,
+        ];
+        let rip = u64::from_le_bytes(input[..8].try_into().unwrap());
+        for prefix in 0..16 {
+            let mut bytes = vec![0; prefix];
+            bytes.extend_from_slice(&input[8..]);
+            let block = extract(&bytes[prefix..], rip).unwrap();
+            let wasm = crate::emit::emit(&block).unwrap();
+            assert!(wasm.starts_with(b"\0asm\x01\0\0\0"));
+            assert!(wasm.len() <= 65536);
+        }
+    }
 }
