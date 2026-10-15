@@ -47,7 +47,7 @@ impl<T: Clone> EpochCache<T> {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fuzzing"))]
     pub(crate) fn get(&self, space: u64, rip: u64, generation: u64) -> Option<T> {
         self.get_selected(space, rip, generation, |_| true)
     }
