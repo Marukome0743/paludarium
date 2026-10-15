@@ -550,6 +550,10 @@ jobs:
       - run: rustup toolchain install nightly-2026-10-11 --profile minimal --component rust-src
       - name: Fresh same-source control for strict Python/JS regressions
         run: python3 -B scripts/build-u14-cost-profile.py --kind acceptance-control --baseline-head "${{ github.sha }}"
+      - name: Dedicated prepared-control distribution integration
+        env:
+          PALUDARIUM_U14_CONTROL_WASM: target/u14-cost-profile/acceptance-control.wasm
+        run: node --test packages/paludarium-wasm/tests/u14-control-distribution.test.mjs
       - name: Fixed U14 Python coverage and fail-closed boundaries
         run: |
           mkdir -p target/u14

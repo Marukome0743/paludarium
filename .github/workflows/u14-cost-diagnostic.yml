@@ -549,6 +549,10 @@ jobs:
           name: u14-cost-profile-modules
           path: target/u14-cost-profile
       - run: npm install --global npm@12.2.0
+      - name: Dedicated prepared-control distribution integration
+        env:
+          PALUDARIUM_U14_CONTROL_WASM: target/u14-cost-profile/acceptance-control.wasm
+        run: node --test packages/paludarium-wasm/tests/u14-control-distribution.test.mjs
       - name: Fixed U14 Python coverage and fail-closed boundaries
         run: |
           mkdir -p target/u14
@@ -699,7 +703,7 @@ jobs:
       - name: V2 boundary and actual packed control hello
         env:
           PALUDARIUM_U14_CONTROL_WASM: target/u14-cost-profile/acceptance-control.wasm
-        run: node --test packages/paludarium-wasm/tests/u14-cost-profile.test.mjs packages/paludarium-wasm/tests/u14-jit.test.mjs
+        run: node --test packages/paludarium-wasm/tests/u14-cost-profile.test.mjs packages/paludarium-wasm/tests/u14-control-distribution.test.mjs packages/paludarium-wasm/tests/u14-jit.test.mjs
       - name: Finite one-factory observation per mode, no acceptance performance
         run: node packages/paludarium-wasm/tests/u14-cost-profile-check.mjs target/u14-cost-profile/diagnostic.wasm target/u14-diagnostic-inputs/target/u11/native/observations.json target/u14-diagnostic-inputs/target/guests/u10 target/u14-prepared-chain-v2
       - name: Keep diagnostic/control modules and identity receipts

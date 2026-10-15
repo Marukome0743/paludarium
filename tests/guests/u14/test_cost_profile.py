@@ -13,13 +13,11 @@ class CostProfileRegression(unittest.TestCase):
         node = os.environ.get('PALUDARIUM_TEST_NODE') or shutil.which('node')
         if not node or '/shims/' in node:
             self.fail('actual Node executable required via PALUDARIUM_TEST_NODE')
-        env = dict(os.environ)
-        env.setdefault('PALUDARIUM_U14_CONTROL_WASM', 'target/u14-cost-profile/acceptance-control.wasm')
         result = subprocess.run([node, '--test',
                                  'packages/paludarium-wasm/tests/u14-cost-profile.test.mjs'],
-                                cwd=ROOT, capture_output=True, text=True, timeout=180, env=env)
+                                cwd=ROOT, capture_output=True, text=True, timeout=180)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('tests 25', result.stdout)
+        self.assertIn('tests 24', result.stdout)
 
 
 if __name__ == '__main__':
