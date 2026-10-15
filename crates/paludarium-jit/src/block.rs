@@ -34,21 +34,12 @@ pub(crate) struct Block {
     pub operations: Vec<Operation>,
 }
 
-pub(crate) fn extract(bytes: &[u8], entry: u64) -> Option<Block> {
-    let mut block = Block {
-        entry,
-        end: entry,
-        operations: Vec::new(),
-    };
-    let mut offset = 0;
-    while offset < bytes.len() && block.operations.len() < 64 {
-        let Ok(instruction) = decode(&bytes[offset..], GuestAddr(block.end)) else {
-            break;
-        };
-        if instruction.lock || instruction.rep != RepPrefix::None {
-            break;
-        }
-        let operation = match (
+pub(crate) fn operation(instruction: &paludarium_decoder::Instruction) -> Option<Operation> {
+    if instruction.lock || instruction.rep != RepPrefix::None {
+        return None;
+    }
+    Some(
+        match (
             instruction.mnemonic,
             instruction.operand(0),
             instruction.operand(1),
@@ -59,7 +50,7 @@ pub(crate) fn extract(bytes: &[u8], entry: u64) -> Option<Block> {
                 Some(Operand::Immediate(value)),
             ) => {
                 if index >= 16 {
-                    break;
+                    return None;
                 }
                 Operation::Move {
                     register: index,
@@ -78,7 +69,7 @@ pub(crate) fn extract(bytes: &[u8], entry: u64) -> Option<Block> {
                 Some(Operand::Immediate(value)),
             ) => {
                 if index >= 16 {
-                    break;
+                    return None;
                 }
                 let kind = match mnemonic {
                     Mnemonic::Add => Arithmetic::Add,
@@ -100,7 +91,24 @@ pub(crate) fn extract(bytes: &[u8], entry: u64) -> Option<Block> {
                 target: target.0,
                 fallthrough: instruction.next_rip().0,
             },
-            _ => break,
+            _ => return None,
+        },
+    )
+}
+
+pub(crate) fn extract(bytes: &[u8], entry: u64) -> Option<Block> {
+    let mut block = Block {
+        entry,
+        end: entry,
+        operations: Vec::new(),
+    };
+    let mut offset = 0;
+    while offset < bytes.len() && block.operations.len() < 64 {
+        let Ok(instruction) = decode(&bytes[offset..], GuestAddr(block.end)) else {
+            break;
+        };
+        let Some(operation) = operation(&instruction) else {
+            break;
         };
         offset += usize::from(instruction.len);
         block.end = block.end.checked_add(u64::from(instruction.len))?;

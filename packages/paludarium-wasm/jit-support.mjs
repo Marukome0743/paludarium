@@ -1,6 +1,19 @@
 // Synchronous compiler/executor owned by one existing guest Worker. Pointers
 // address trusted Rust scratch buffers, never guest virtual memory.
-export function jitImports(memory) {
+export const COST_FIELDS = [
+  "hookAttempts", "checkpoints", "cacheHits", "negativeHits", "cacheMisses", "epochInvalidations",
+  "lruUpdates", "snapshotBytes", "translatedBlocks", "executedBlocks", "executedInstructions", "fallbacks",
+  "prepareCalls", "executeCalls", "compileAttempts", "compileNanoseconds", "jsTransitions",
+  "comparisonBytesUpperBound", "codeBytesCopied", "stateBytesCopied", "prepareRejections", "executeRejections",
+  "interpreterSteps", "budgetCharged", ...Array.from({ length: 64 }, (_, i) => `blockLength${i + 1}`),
+];
+export function costSnapshot(exports) {
+  if (typeof exports.u14_cost_version !== "function") return null;
+  if (exports.u14_cost_version() !== 1 || exports.u14_cost_fields() !== COST_FIELDS.length) throw Error("Diagnostic ABI mismatch");
+  return { schema: 1, purpose: "u14-cost-profile", overflow: exports.u14_cost_overflow() !== 0,
+    counters: Object.fromEntries(COST_FIELDS.map((name, index) => [name, String(exports.u14_cost_stat(index))])) };
+}
+export function jitImports(memory, cost = null, now = () => performance.now()) {
   const compiled = new Map();
   let running = false;
   const range = (pointer, length) => Number.isInteger(pointer) && pointer > 0
@@ -13,13 +26,21 @@ export function jitImports(memory) {
       try {
         const entry = compiled.get(key);
         if (entry) {
+          if (cost) cost(17, view.length);
           if (entry.bytes.length !== view.length || entry.bytes.some((value, i) => value !== view[i])) return -1;
           compiled.delete(key); compiled.set(key, entry);
           return 0;
         }
         const bytes = view.slice();
-        const module = new WebAssembly.Module(bytes);
-        const instance = new WebAssembly.Instance(module, { env: { memory } });
+        if (cost) cost(18, bytes.length);
+        const started = cost ? now() : 0;
+        let instance;
+        try {
+          const module = new WebAssembly.Module(bytes);
+          instance = new WebAssembly.Instance(module, { env: { memory } });
+        } finally {
+          if (cost) { cost(14, 1); cost(15, Math.round(Math.max(0, now() - started) * 1e6)); }
+        }
         if (typeof instance.exports.run !== "function") return -1;
         if (compiled.size >= 1024) compiled.delete(compiled.keys().next().value);
         compiled.set(key, { bytes, run: instance.exports.run });
@@ -31,13 +52,16 @@ export function jitImports(memory) {
           || stateLength !== 144 || !range(codePointer, codeLength) || !range(statePointer, stateLength)) return -1;
       // A module ID is allocated in shared Rust and never reused. Each Worker
       // separately compiles it; JS objects/handles never cross Worker boundaries.
-      const bytes = new Uint8Array(memory.buffer, codePointer, codeLength).slice();
+      const entry = compiled.get(key);
+      if (!entry) return -2;
+      const bytes = new Uint8Array(memory.buffer, codePointer, codeLength);
+      if (cost) cost(17, bytes.length);
+      if (entry.bytes.length !== bytes.length || entry.bytes.some((value, i) => value !== bytes[i])) return -1;
       const before = new Uint8Array(memory.buffer, statePointer, stateLength).slice();
+      if (cost) cost(19, stateLength);
+      compiled.delete(key); compiled.set(key, entry);
       running = true;
       try {
-        let entry = compiled.get(key);
-        if (entry && (entry.bytes.length !== bytes.length || entry.bytes.some((value, i) => value !== bytes[i]))) return -1;
-        if (!entry) return -1;
         if (entry.run(statePointer) !== 0) throw new Error("JIT result rejected");
         return 0;
       } catch {

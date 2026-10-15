@@ -1,5 +1,5 @@
 //! Each real Host worker owns CPU/decoder/thread context and shares only process resources.
-use paludarium_cpu::{DecodeCache, reg, run_cached, run_cached_with_hook};
+use paludarium_cpu::{DecodeCache, reg, run_cached, run_cached_with_counted_hook};
 use paludarium_host::{ClockId, Host, ThreadHandle};
 use paludarium_jit::CodeCache;
 use paludarium_kernel::{Kernel, Next, Processes, SignalInbox, Thread, ThreadGroup};
@@ -96,6 +96,8 @@ impl Execution {
     ) -> Result<ExitStatus, Error> {
         let mut decode = DecodeCache::new();
         loop {
+            #[cfg(feature = "u14-cost-profile")]
+            paludarium_cpu::jit_cost::add(paludarium_cpu::jit_cost::Counter::Checkpoints, 1);
             if self.kill.load(Ordering::SeqCst) {
                 self.processes
                     .stop_all(ExitStatus::Signaled(signal::SIGKILL));
@@ -112,16 +114,28 @@ impl Execution {
             // U14 blocks execute at most 64 instructions. Smaller explicit
             // budgets retain exact interpreter checkpoint/kill semantics.
             let reason = if self.accelerated && self.budget >= 64 {
-                run_cached_with_hook(
+                run_cached_with_counted_hook(
                     &mut thread.cpu,
                     memory,
                     self.budget,
                     &mut decode,
-                    64,
-                    |state, remaining| {
-                        (remaining >= 64)
-                            .then(|| self.cache.try_run(state, memory))
-                            .flatten()
+                    paludarium_cpu::AccelerationPolicy {
+                        maximum_block: 64,
+                        cache_rejections: self.cache.cache_rejections(),
+                    },
+                    |state, instruction, deterministic_rejection| {
+                        if !self.cache.eligible(instruction) {
+                            *deterministic_rejection = true;
+                            return None;
+                        }
+                        #[cfg(feature = "u14-cost-profile")]
+                        paludarium_cpu::jit_cost::add(
+                            paludarium_cpu::jit_cost::Counter::HookAttempts,
+                            1,
+                        );
+                        let (result, rejected) = self.cache.try_run_with_hint(state, memory);
+                        *deterministic_rejection = rejected;
+                        result
                     },
                 )
             } else {

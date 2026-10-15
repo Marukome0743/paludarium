@@ -49,7 +49,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: "26.11.1"
+          node-version: "26.12.0"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.15'
@@ -210,10 +210,10 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: "26.11.1"
+          node-version: "26.12.0"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: '26.11.1'
+          node-version: '26.12.0'
       - run: rustup component add rust-src --toolchain nightly-2026-10-11
       - name: Generate and execute fresh native fixtures
         run: |
@@ -248,7 +248,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: "26.11.1"
+          node-version: "26.12.0"
       # rustup installs the toolchain pinned in rust-toolchain.toml (NFR9.1).
       - run: rustup show active-toolchain
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -288,7 +288,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: "26.11.1"
+          node-version: "26.12.0"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: rustfmt
         run: |
@@ -309,7 +309,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: "26.11.1"
+          node-version: "26.12.0"
       - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.24
         with:
           tool: cargo-deny
@@ -327,7 +327,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: "26.11.1"
+          node-version: "26.12.0"
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
       - name: Record native architectural profile
         run: |
@@ -364,7 +364,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: "26.11.1"
+          node-version: "26.12.0"
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Record native architectural profile
@@ -482,16 +482,20 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: '26.11.1'
+          node-version: '26.12.0'
       - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe
         with:
           tool: cargo-llvm-cov
       - run: cargo llvm-cov --locked -p paludarium-jit --all-features --lib --fail-under-lines 80 --lcov --output-path target/u14-jit.lcov
+      - name: Diagnostic and selection Rust components, feature enabled fixed population
+        run: cargo llvm-cov --locked -p paludarium-cpu -p paludarium-jit -p paludarium-runtime --features u14-cost-profile --lib --fail-under-lines 80 --lcov --output-path target/u14-cost-profile.lcov
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: u14-jit-coverage
-          path: target/u14-jit.lcov
+          path: |
+            target/u14-jit.lcov
+            target/u14-cost-profile.lcov
 
   u14-python-coverage:
     runs-on: ubuntu-latest
@@ -503,11 +507,14 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.15.0'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '26.12.0'
       - run: python3 -m pip install 'coverage==7.16.2'
       - name: Fixed U14 Python coverage and fail-closed boundaries
         run: |
           mkdir -p target/u14
-          python3 -B -m coverage run --data-file=target/u14/python.coverage --include='*/scripts/u14-run.py,*/tests/guests/u14/guest_policy.py,*/tests/guests/u14/lock_overlay.py,*/tests/guests/u10/build.py,*/tests/guests/u10/evidence.py' -m unittest discover -s tests/guests/u14/runner-tests -p 'test_*.py'
+          python3 -B -m coverage run --data-file=target/u14/python.coverage --include='*/scripts/u14-run.py,*/scripts/build-u14-cost-profile.py,*/tests/guests/u14/guest_policy.py,*/tests/guests/u14/lock_overlay.py,*/tests/guests/u10/build.py,*/tests/guests/u10/evidence.py' -m unittest discover -s tests/guests/u14/runner-tests -p 'test_*.py'
           python3 -B -m coverage report --data-file=target/u14/python.coverage --fail-under=80
           python3 -B -m coverage json --data-file=target/u14/python.coverage -o target/u14/python-coverage.json
       - if: always()

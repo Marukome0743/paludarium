@@ -16,5 +16,8 @@ paludarium-kernel.workspace = true
 paludarium-host.workspace = true
 paludarium-jit.workspace = true
 
+[features]
+u14-cost-profile = ["paludarium-cpu/u14-cost-profile", "paludarium-jit/u14-cost-profile"]
+
 [lints]
 workspace = true

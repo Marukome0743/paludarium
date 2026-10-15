@@ -8,9 +8,14 @@
 #![forbid(unsafe_code)]
 
 mod alu;
+#[cfg(test)]
+mod counted_hook_tests;
 mod cpuid;
 mod crypto;
 mod exec;
+/// Opt-in diagnostic counters; absent from ordinary release builds.
+#[cfg(feature = "u14-cost-profile")]
+pub mod jit_cost;
 mod softfloat;
 mod sse;
 mod state;
@@ -38,7 +43,7 @@ const CACHE_ENTRIES: usize = 4096;
 /// writes to executable memory and mapping changes (self-modifying code,
 /// `mprotect`, `munmap`) are always seen.
 pub struct DecodeCache {
-    entries: Vec<Option<(u64, u64, Instruction)>>,
+    entries: Vec<Option<(u64, u64, Instruction, bool)>>,
 }
 
 impl Default for DecodeCache {
@@ -63,14 +68,27 @@ impl DecodeCache {
 
     fn get(&self, rip: u64, generation: u64) -> Option<Instruction> {
         match self.entries.get(Self::slot(rip)) {
-            Some(Some((r, g, insn))) if *r == rip && *g == generation => Some(*insn),
+            Some(Some((r, g, insn, _))) if *r == rip && *g == generation => Some(*insn),
             _ => None,
         }
     }
 
     fn put(&mut self, rip: u64, generation: u64, insn: Instruction) {
         if let Some(entry) = self.entries.get_mut(Self::slot(rip)) {
-            *entry = Some((rip, generation, insn));
+            *entry = Some((rip, generation, insn, false));
+        }
+    }
+
+    fn acceleration_rejected(&self, rip: u64, generation: u64) -> bool {
+        matches!(self.entries.get(Self::slot(rip)), Some(Some((r, g, _, true))) if *r == rip && *g == generation)
+    }
+
+    fn reject_acceleration(&mut self, rip: u64, generation: u64) {
+        if let Some(Some((r, g, _, rejected))) = self.entries.get_mut(Self::slot(rip))
+            && *r == rip
+            && *g == generation
+        {
+            *rejected = true;
         }
     }
 }
@@ -202,6 +220,8 @@ pub fn step_cached(
     mem: &AddressSpace,
     cache: &mut DecodeCache,
 ) -> Result<(), ExitReason> {
+    #[cfg(feature = "u14-cost-profile")]
+    jit_cost::add(jit_cost::Counter::InterpreterSteps, 1);
     let generation = mem.code_generation();
     let insn = match cache.get(state.rip.0, generation) {
         Some(insn) => insn,
@@ -271,12 +291,88 @@ pub fn run_cached_with_hook(
             && let Some(reason) = accelerate(state, remaining)
         {
             if matches!(reason, ExitReason::BudgetExhausted { .. }) {
+                #[cfg(feature = "u14-cost-profile")]
+                jit_cost::add(jit_cost::Counter::BudgetCharged, maximum_block);
                 consumed += maximum_block;
                 continue;
             }
             return reason;
         }
         if let Err(reason) = step_cached(state, mem, cache) {
+            return reason;
+        }
+        consumed += 1;
+    }
+    ExitReason::BudgetExhausted { rip: state.rip }
+}
+
+/// Accelerator hook with exact successful instruction accounting. The decoded
+/// boundary is shared with fallback execution; rejected boundaries add no fetch.
+/// A hook must report a positive count no larger than `maximum_block` and must
+/// leave state unchanged on rejection, as with `run_cached_with_hook`.
+pub struct AccelerationPolicy {
+    pub maximum_block: u64,
+    /// Opt-in only: rejected boundaries may run interpreted until code changes.
+    pub cache_rejections: bool,
+}
+
+impl From<u64> for AccelerationPolicy {
+    fn from(maximum_block: u64) -> Self {
+        Self {
+            maximum_block,
+            cache_rejections: false,
+        }
+    }
+}
+
+pub fn run_cached_with_counted_hook(
+    state: &mut CpuState,
+    mem: &AddressSpace,
+    budget: u64,
+    cache: &mut DecodeCache,
+    policy: impl Into<AccelerationPolicy>,
+    mut accelerate: impl FnMut(&mut CpuState, &Instruction, &mut bool) -> Option<(ExitReason, u64)>,
+) -> ExitReason {
+    let policy = policy.into();
+    let maximum_block = policy.maximum_block;
+    let mut consumed = 0;
+    while consumed < budget {
+        let generation = mem.code_generation();
+        let instruction = match cache.get(state.rip.0, generation) {
+            Some(instruction) => instruction,
+            None => match fetch_for_state(state, mem) {
+                Ok(instruction) => {
+                    cache.put(state.rip.0, generation, instruction);
+                    instruction
+                }
+                Err(reason) => return reason,
+            },
+        };
+        let mut deterministic_rejection = false;
+        if maximum_block > 0
+            && budget - consumed >= maximum_block
+            && !(policy.cache_rejections && cache.acceleration_rejected(state.rip.0, generation))
+            && let Some((reason, count)) =
+                accelerate(state, &instruction, &mut deterministic_rejection)
+        {
+            assert!(
+                count > 0 && count <= maximum_block,
+                "invalid accelerator instruction count"
+            );
+            if matches!(reason, ExitReason::BudgetExhausted { .. }) {
+                #[cfg(feature = "u14-cost-profile")]
+                jit_cost::add(jit_cost::Counter::BudgetCharged, count);
+                consumed += count;
+                continue;
+            }
+            return reason;
+        }
+        if policy.cache_rejections && deterministic_rejection {
+            cache.reject_acceleration(state.rip.0, generation);
+        }
+        #[cfg(feature = "u14-cost-profile")]
+        jit_cost::add(jit_cost::Counter::InterpreterSteps, 1);
+        if let Err(reason) = execute_decoded(state, mem, &instruction) {
             return reason;
         }
         consumed += 1;

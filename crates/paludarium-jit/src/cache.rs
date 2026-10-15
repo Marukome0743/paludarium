@@ -47,14 +47,38 @@ impl<T: Clone> EpochCache<T> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn get(&self, space: u64, rip: u64, generation: u64) -> Option<T> {
+        self.get_selected(space, rip, generation, |_| true)
+    }
+
+    pub(crate) fn get_selected(
+        &self,
+        space: u64,
+        rip: u64,
+        generation: u64,
+        touch: impl FnOnce(&T) -> bool,
+    ) -> Option<T> {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         let key = (space, rip);
         if state.entries.get(&key)?.generation != generation {
+            #[cfg(feature = "u14-cost-profile")]
+            paludarium_cpu::jit_cost::add(paludarium_cpu::jit_cost::Counter::EpochInvalidations, 1);
             state.remove(&key);
             return None;
         }
+        #[cfg(feature = "u14-cost-profile")]
+        paludarium_cpu::jit_cost::add(paludarium_cpu::jit_cost::Counter::CacheHits, 1);
+        let entry = state.entries.get(&key)?;
+        if !touch(&entry.translation) {
+            return Some(entry.translation.clone());
+        }
         let access = state.tick();
+        #[cfg(feature = "u14-cost-profile")]
+        {
+            use paludarium_cpu::jit_cost::{Counter, add};
+            add(Counter::LruUpdates, 1);
+        }
         let entry = state.entries.get_mut(&key)?;
         let old_access = entry.access;
         entry.access = access;
@@ -80,6 +104,8 @@ impl<T: Clone> EpochCache<T> {
         };
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         let access = state.tick();
+        #[cfg(feature = "u14-cost-profile")]
+        paludarium_cpu::jit_cost::add(paludarium_cpu::jit_cost::Counter::LruUpdates, 1);
         let key = (space, rip);
         state.remove(&key);
         if state.entries.len() >= 1024
@@ -121,6 +147,19 @@ impl<T: Clone> EpochCache<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn u14_negative_cache_hit_does_not_mutate_recency() {
+        let cache = EpochCache::new();
+        cache.insert(1, 4096, 1, 1, None::<u64>);
+        let clock = cache.state.lock().unwrap().clock;
+        for _ in 0..100 {
+            assert_eq!(cache.get_selected(1, 4096, 1, Option::is_some), Some(None));
+        }
+        assert_eq!(cache.state.lock().unwrap().clock, clock);
+        assert_eq!(cache.state.lock().unwrap().accesses.len(), 1);
+        assert_eq!(cache.get_selected(1, 4096, 2, Option::is_some), None);
+    }
 
     #[test]
     fn u14_cache_lru_preserves_hot_low_rip_and_evicts_oldest() {

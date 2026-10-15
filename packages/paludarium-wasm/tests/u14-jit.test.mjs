@@ -65,7 +65,7 @@ test("u14 bridge remains usable after shared memory growth", () => {
 });
 test("u14 execution cannot compile an unprepared module", () => {
   const s = setup();
-  assert.equal(s.bridge.execute(1, 512, s.bytes.length, 64, 144), -1);
+  assert.equal(s.bridge.execute(1, 512, s.bytes.length, 64, 144), -2);
   assert.equal(new BigUint64Array(s.memory.buffer, 64, 18)[0], 0n);
   assert.equal(s.bridge.prepare(1, 512, s.bytes.length), 0);
   assert.equal(s.bridge.execute(1, 512, s.bytes.length, 64, 144), 0);

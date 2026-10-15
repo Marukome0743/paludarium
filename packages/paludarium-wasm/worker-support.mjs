@@ -15,9 +15,9 @@ export function listen(worker, message, error) {
   else { worker.addEventListener("message", event => message(event.data)); worker.addEventListener("error", event => error(new Error(event.message))); }
 }
 export async function stopWorker(worker) { await worker.terminate(); }
-export function imports(memory, { spawnTask } = {}) {
+export function imports(memory, { spawnTask, cost } = {}) {
   const sleepWord = new Int32Array(new SharedArrayBuffer(4));
-  const jit = jitImports(memory);
+  const jit = jitImports(memory, cost);
   return {
     env: { memory },
     paludarium: {

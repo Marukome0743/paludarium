@@ -2,6 +2,8 @@
 //! register-only execution runs inside it and cannot reenter guest memory.
 use crate::{CodeCache, block, cache::EpochCache, emit};
 use paludarium_cpu::CpuState;
+#[cfg(feature = "u14-cost-profile")]
+use paludarium_cpu::jit_cost::{self, Counter};
 use paludarium_mmu::AddressSpace;
 use paludarium_types::{ExitReason, GuestAddr};
 use std::sync::{
@@ -12,6 +14,11 @@ use std::sync::{
 /// One Worker-local synchronous wasm compiler/executor. State is trusted Rust
 /// scratch storage: GPR0..15, rflags, RIP. Failure must never commit guest state.
 pub trait ExecutionBridge: Send + Sync {
+    /// Executes an already prepared Worker-local entry. `None` requests cold
+    /// preparation outside the MMU guard; failures must roll back scratch.
+    fn execute_ready(&self, _module_id: u32, _wasm: &[u8], _state: &mut [u64; 18]) -> Option<bool> {
+        None
+    }
     /// Compiles outside the MMU epoch guard. No guest state may change here.
     fn prepare(&self, _module_id: u32, _wasm: &[u8]) -> bool {
         true
@@ -75,74 +82,123 @@ impl WasmCodeCache {
             fallbacks: self.fallbacks.load(Ordering::Relaxed),
         }
     }
-    fn run(&self, state: &mut CpuState, memory: &AddressSpace) -> Option<ExitReason> {
+    fn run(
+        &self,
+        state: &mut CpuState,
+        memory: &AddressSpace,
+        deterministic_rejection: &mut bool,
+    ) -> Option<(ExitReason, u64)> {
         if state.repeat_continuation.is_some() {
             return None;
         }
         let (space, generation) = memory.code_epoch();
-        let (translation, space, generation) = match self.cache.get(space, state.rip.0, generation)
-        {
-            Some(translation) => (translation?, space, generation),
-            None => {
-                let snapshot = memory.code_snapshot(state.rip, 960).ok()?;
-                let Some(block) = block::extract(&snapshot.bytes, state.rip.0) else {
-                    // Cache a deterministic unsupported first instruction too.
-                    // Any executable mutation changes its epoch before reuse.
-                    self.cache.insert(
+        let (translation, space, generation) =
+            match self
+                .cache
+                .get_selected(space, state.rip.0, generation, Option::is_some)
+            {
+                Some(translation) => {
+                    *deterministic_rejection = translation.is_none();
+                    #[cfg(feature = "u14-cost-profile")]
+                    if translation.is_none() {
+                        jit_cost::add(Counter::NegativeHits, 1);
+                    }
+                    (translation?, space, generation)
+                }
+                None => {
+                    #[cfg(feature = "u14-cost-profile")]
+                    jit_cost::add(Counter::CacheMisses, 1);
+                    let snapshot = memory.code_snapshot(state.rip, 960).ok()?;
+                    #[cfg(feature = "u14-cost-profile")]
+                    jit_cost::add(Counter::SnapshotBytes, snapshot.bytes.len() as u64);
+                    let Some(block) = block::extract(&snapshot.bytes, state.rip.0) else {
+                        *deterministic_rejection = true;
+                        // Cache a deterministic unsupported first instruction too.
+                        // Any executable mutation changes its epoch before reuse.
+                        self.cache.insert(
+                            snapshot.address_space,
+                            state.rip.0,
+                            snapshot.generation,
+                            snapshot.bytes.len(),
+                            None,
+                        );
+                        return None;
+                    };
+                    if block.operations.len() < self.minimum_block {
+                        *deterministic_rejection = true;
+                        self.cache.insert(
+                            snapshot.address_space,
+                            state.rip.0,
+                            snapshot.generation,
+                            snapshot.bytes.len(),
+                            None,
+                        );
+                        return None;
+                    }
+                    let code = emit::emit(&block)?;
+                    // Never reuse an ID, even on exhaustion: Worker-local JS caches
+                    // must not mistake a different module for a previous one.
+                    let id = NEXT_MODULE
+                        .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+                        .ok()?;
+                    let translation = Arc::new(Translation {
+                        id,
+                        code,
+                        instruction_count: block.operations.len(),
+                    });
+                    if !self.cache.insert(
                         snapshot.address_space,
                         state.rip.0,
                         snapshot.generation,
-                        snapshot.bytes.len(),
-                        None,
-                    );
-                    return None;
-                };
-                if block.operations.len() < self.minimum_block {
-                    self.cache.insert(
-                        snapshot.address_space,
-                        state.rip.0,
-                        snapshot.generation,
-                        snapshot.bytes.len(),
-                        None,
-                    );
-                    return None;
+                        usize::try_from(block.end.checked_sub(block.entry)?).ok()?,
+                        Some(translation.clone()),
+                    ) {
+                        return None;
+                    }
+                    self.translated.fetch_add(1, Ordering::Relaxed);
+                    #[cfg(feature = "u14-cost-profile")]
+                    jit_cost::add(Counter::TranslatedBlocks, 1);
+                    (translation, snapshot.address_space, snapshot.generation)
                 }
-                let code = emit::emit(&block)?;
-                // Never reuse an ID, even on exhaustion: Worker-local JS caches
-                // must not mistake a different module for a previous one.
-                let id = NEXT_MODULE
-                    .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-                    .ok()?;
-                let translation = Arc::new(Translation {
-                    id,
-                    code,
-                    instruction_count: block.operations.len(),
-                });
-                if !self.cache.insert(
-                    snapshot.address_space,
-                    state.rip.0,
-                    snapshot.generation,
-                    usize::try_from(block.end.checked_sub(block.entry)?).ok()?,
-                    Some(translation.clone()),
-                ) {
-                    return None;
-                }
-                self.translated.fetch_add(1, Ordering::Relaxed);
-                (translation, snapshot.address_space, snapshot.generation)
-            }
-        };
+            };
         let mut scratch = [0; 18];
         scratch[..16].copy_from_slice(&state.gpr);
         scratch[16] = state.rflags;
         scratch[17] = state.rip.0;
-        if !self.bridge.prepare(translation.id, &translation.code) {
-            return None;
-        }
-        let success = memory.with_code_epoch(space, generation, || {
+        let ready = memory.with_code_epoch(space, generation, || {
             self.bridge
-                .execute(translation.id, &translation.code, &mut scratch)
-        })?;
+                .execute_ready(translation.id, &translation.code, &mut scratch)
+        });
+        #[cfg(feature = "u14-cost-profile")]
+        if ready.is_none() {
+            jit_cost::add(Counter::EpochInvalidations, 1);
+        }
+        let ready = ready?;
+        let success = if let Some(success) = ready {
+            Some(success)
+        } else {
+            #[cfg(feature = "u14-cost-profile")]
+            jit_cost::add(Counter::PrepareCalls, 1);
+            if !self.bridge.prepare(translation.id, &translation.code) {
+                #[cfg(feature = "u14-cost-profile")]
+                jit_cost::add(Counter::PrepareRejections, 1);
+                return None;
+            }
+            memory.with_code_epoch(space, generation, || {
+                #[cfg(feature = "u14-cost-profile")]
+                jit_cost::add(Counter::ExecuteCalls, 1);
+                self.bridge
+                    .execute(translation.id, &translation.code, &mut scratch)
+            })
+        };
+        #[cfg(feature = "u14-cost-profile")]
+        if success.is_none() {
+            jit_cost::add(Counter::EpochInvalidations, 1);
+        }
+        let success = success?;
         if !success {
+            #[cfg(feature = "u14-cost-profile")]
+            jit_cost::add(Counter::ExecuteRejections, 1);
             return None;
         }
         state.gpr.copy_from_slice(&scratch[..16]);
@@ -151,16 +207,52 @@ impl WasmCodeCache {
         self.executed.fetch_add(1, Ordering::Relaxed);
         self.instructions
             .fetch_add(translation.instruction_count as u64, Ordering::Relaxed);
-        Some(ExitReason::BudgetExhausted { rip: state.rip })
+        #[cfg(feature = "u14-cost-profile")]
+        {
+            jit_cost::add(Counter::ExecutedBlocks, 1);
+            jit_cost::add(
+                Counter::ExecutedInstructions,
+                translation.instruction_count as u64,
+            );
+            jit_cost::block_length(translation.instruction_count);
+        }
+        Some((
+            ExitReason::BudgetExhausted { rip: state.rip },
+            translation.instruction_count as u64,
+        ))
     }
 }
 impl CodeCache for WasmCodeCache {
+    fn cache_rejections(&self) -> bool {
+        true
+    }
+    fn eligible(&self, instruction: &paludarium_decoder::Instruction) -> bool {
+        crate::eligible_instruction(instruction)
+    }
     fn try_run(&self, state: &mut CpuState, memory: &AddressSpace) -> Option<ExitReason> {
-        let result = self.run(state, memory);
+        self.try_run_counted(state, memory)
+            .map(|(reason, _)| reason)
+    }
+    fn try_run_counted(
+        &self,
+        state: &mut CpuState,
+        memory: &AddressSpace,
+    ) -> Option<(ExitReason, u64)> {
+        self.try_run_with_hint(state, memory).0
+    }
+    fn try_run_with_hint(
+        &self,
+        state: &mut CpuState,
+        memory: &AddressSpace,
+    ) -> (Option<(ExitReason, u64)>, bool) {
+        let mut deterministic_rejection = false;
+        let result = self.run(state, memory, &mut deterministic_rejection);
         if result.is_none() {
             self.fallbacks.fetch_add(1, Ordering::Relaxed);
+            #[cfg(feature = "u14-cost-profile")]
+            jit_cost::add(Counter::Fallbacks, 1);
         }
-        result
+        (result, deterministic_rejection)
     }
     fn invalidate(&self, page: GuestAddr) {
         self.cache.invalidate(page.0);
@@ -177,6 +269,97 @@ mod tests {
     };
 
     struct NodeBridge;
+    #[derive(Default)]
+    struct WarmBridge {
+        prepared: AtomicU32,
+        prepares: AtomicU32,
+        executes: AtomicU32,
+        fail: bool,
+    }
+    impl ExecutionBridge for WarmBridge {
+        fn execute_ready(&self, id: u32, _: &[u8], scratch: &mut [u64; 18]) -> Option<bool> {
+            if self.prepared.load(Ordering::Relaxed) != id {
+                return None;
+            }
+            scratch[0] = 42;
+            Some(!self.fail)
+        }
+        fn prepare(&self, id: u32, _: &[u8]) -> bool {
+            self.prepares.fetch_add(1, Ordering::Relaxed);
+            self.prepared.store(id, Ordering::Relaxed);
+            true
+        }
+        fn execute(&self, _: u32, _: &[u8], scratch: &mut [u64; 18]) -> bool {
+            self.executes.fetch_add(1, Ordering::Relaxed);
+            scratch[0] = 42;
+            !self.fail
+        }
+    }
+    #[test]
+    fn u14_warm_bridge_reuses_prepared_entry_without_second_prepare() {
+        let (mut state, memory) = machine(&[0xb8, 42, 0, 0, 0], 0);
+        let bridge = Arc::new(WarmBridge::default());
+        let cache = WasmCodeCache::new(bridge.clone());
+        assert!(cache.try_run(&mut state, &memory).is_some());
+        assert!(cache.try_run(&mut state, &memory).is_some());
+        assert_eq!(bridge.prepares.load(Ordering::Relaxed), 1);
+        assert_eq!(bridge.executes.load(Ordering::Relaxed), 1);
+        assert_eq!(cache.statistics().executed_blocks, 2);
+    }
+    #[test]
+    fn u14_warm_bridge_failure_rolls_back_cpu_and_does_not_hint() {
+        let (mut state, memory) = machine(&[0xb8, 42, 0, 0, 0], 17);
+        let bridge = Arc::new(WarmBridge::default());
+        let cache = WasmCodeCache::new(bridge.clone());
+        assert!(cache.try_run(&mut state, &memory).is_some());
+        let failing = WarmBridge {
+            prepared: AtomicU32::new(bridge.prepared.load(Ordering::Relaxed)),
+            fail: true,
+            ..WarmBridge::default()
+        };
+        let mut scratch = [17; 18];
+        assert_eq!(
+            failing.execute_ready(bridge.prepared.load(Ordering::Relaxed), &[], &mut scratch),
+            Some(false)
+        );
+        // Cache must never commit scratch returned by a failed ready execution.
+        let failing = Arc::new(WarmBridge {
+            fail: true,
+            ..WarmBridge::default()
+        });
+        let cache = WasmCodeCache::new(failing);
+        let before = state.clone();
+        assert_eq!(cache.try_run_with_hint(&mut state, &memory), (None, false));
+        assert_eq!(cache.try_run_with_hint(&mut state, &memory), (None, false));
+        assert_eq!(state, before);
+    }
+    #[test]
+    fn u14_warm_bridge_epoch_change_requires_new_module_preparation() {
+        let (mut state, memory) = machine(&[0xb8, 42, 0, 0, 0], 0);
+        let bridge = Arc::new(WarmBridge::default());
+        let cache = WasmCodeCache::new(bridge.clone());
+        cache.try_run(&mut state, &memory).unwrap();
+        let previous = bridge.prepared.load(Ordering::Relaxed);
+        memory.write(GuestAddr(4097), &[17]).unwrap();
+        state.rip = GuestAddr(4096);
+        cache.try_run(&mut state, &memory).unwrap();
+        assert_ne!(previous, bridge.prepared.load(Ordering::Relaxed));
+        assert_eq!(bridge.prepares.load(Ordering::Relaxed), 2);
+    }
+    #[test]
+    fn u14_warm_bridge_separate_workers_prepare_independently() {
+        let (mut state, memory) = machine(&[0xb8, 42, 0, 0, 0], 0);
+        let left = Arc::new(WarmBridge::default());
+        let right = Arc::new(WarmBridge::default());
+        WasmCodeCache::new(left.clone())
+            .try_run(&mut state, &memory)
+            .unwrap();
+        WasmCodeCache::new(right.clone())
+            .try_run(&mut state, &memory)
+            .unwrap();
+        assert_eq!(left.prepares.load(Ordering::Relaxed), 1);
+        assert_eq!(right.prepares.load(Ordering::Relaxed), 1);
+    }
     #[test]
     fn u14_bridge_prepare_failure_never_executes_or_changes_state() {
         struct Reject;
@@ -203,7 +386,7 @@ mod tests {
         let cache = WasmCodeCache::new(Arc::new(Reject));
         let mut state = CpuState::new(GuestAddr(4096), GuestAddr(8192));
         let before = state.clone();
-        assert_eq!(cache.try_run(&mut state, &memory), None);
+        assert_eq!(cache.try_run_with_hint(&mut state, &memory), (None, false));
         assert_eq!(state, before);
         assert_eq!(cache.statistics().executed_blocks, 0);
     }
@@ -245,7 +428,7 @@ mod tests {
         let cache = WasmCodeCache::new(Arc::new(Mutate(memory.clone())));
         let mut state = CpuState::new(GuestAddr(4096), GuestAddr(8192));
         let before = state.clone();
-        assert_eq!(cache.try_run(&mut state, &memory), None);
+        assert_eq!(cache.try_run_with_hint(&mut state, &memory), (None, false));
         assert_eq!(state, before);
         assert_eq!(cache.statistics().executed_blocks, 0);
     }
@@ -266,8 +449,8 @@ mod tests {
         let cache = WasmCodeCache::new(Arc::new(NodeBridge)).with_minimum_block(2);
         let mut state = CpuState::new(GuestAddr(4096), GuestAddr(8192));
         let before = state.clone();
-        assert_eq!(cache.try_run(&mut state, &memory), None);
-        assert_eq!(cache.try_run(&mut state, &memory), None);
+        assert_eq!(cache.try_run_with_hint(&mut state, &memory), (None, true));
+        assert_eq!(cache.try_run_with_hint(&mut state, &memory), (None, true));
         assert_eq!(state, before);
         let statistics = cache.statistics();
         assert_eq!(statistics.translated_blocks, 0);
@@ -372,12 +555,42 @@ mod tests {
             );
         }
     }
+    fn observed_je(rax: u64, next: u64, flags: u64) {
+        let (mut state, memory) = machine(
+            &[
+                0x48, 0x83, 0xf8, 7, 0x74, 6, 0xb8, 42, 0, 0, 0, 0xc3, 0xb8, 9, 0, 0, 0, 0xc3,
+            ],
+            rax,
+        );
+        let mut expected = state.clone();
+        paludarium_cpu::run(&mut expected, &memory, 2);
+        let cache = WasmCodeCache::new(Arc::new(NodeBridge));
+        let (_, count) = cache.try_run_counted(&mut state, &memory).unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(state, expected);
+        assert_eq!(state.rip, GuestAddr(4096 + next));
+        assert_eq!(state.rflags & 0x8d5, flags);
+        assert_eq!(cache.statistics().executed_blocks, 1);
+        assert_eq!(cache.statistics().executed_instructions, 2);
+        paludarium_cpu::run(&mut state, &memory, 1);
+        assert_eq!(state.gpr[0], if rax == 7 { 9 } else { 42 });
+    }
+    #[test]
+    fn u14_bridge_real_wasm_je_zf1_taken_matches_fresh_native() {
+        // c3df1156 native13 oracle: input7 => RAX9, arithmetic flags0x44.
+        observed_je(7, 12, 0x44);
+    }
+    #[test]
+    fn u14_bridge_real_wasm_je_zf0_not_taken_matches_fresh_native() {
+        // c3df1156 native13 oracle: input8 => RAX42, arithmetic flags0.
+        observed_je(8, 6, 0);
+    }
     #[test]
     fn u14_bridge_unsupported_fallback_leaves_all_state_untouched() {
         let (mut state, memory) = machine(&[0x66, 0x0f, 0xef, 0xc0], 17);
         let before = state.clone();
         let cache = WasmCodeCache::new(Arc::new(NodeBridge));
-        assert_eq!(cache.try_run(&mut state, &memory), None);
+        assert_eq!(cache.try_run_with_hint(&mut state, &memory), (None, true));
         assert_eq!(state, before);
         assert_eq!(cache.statistics().executed_blocks, 0);
     }
@@ -393,7 +606,7 @@ mod tests {
         let (mut state, memory) = machine(&[0xb8, 42, 0, 0, 0], 17);
         let before = state.clone();
         let cache = WasmCodeCache::new(Arc::new(Failing));
-        assert_eq!(cache.try_run(&mut state, &memory), None);
+        assert_eq!(cache.try_run_with_hint(&mut state, &memory), (None, false));
         assert_eq!(state, before);
     }
     #[test]

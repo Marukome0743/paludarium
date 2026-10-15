@@ -42,11 +42,29 @@ unsafe extern "C" {
 }
 struct WorkerJit;
 impl paludarium_jit::ExecutionBridge for WorkerJit {
+    fn execute_ready(&self, module: u32, wasm: &[u8], state: &mut [u64; 18]) -> Option<bool> {
+        #[cfg(feature = "u14-cost-profile")]
+        {
+            use paludarium_jit::jit_cost::{self, Counter};
+            jit_cost::add(Counter::JsTransitions, 1);
+            jit_cost::add(Counter::ExecuteCalls, 1);
+        }
+        // SAFETY: live immutable code and exclusively borrowed Rust scratch;
+        // the import cannot compile and reports missing Worker-local entries.
+        match unsafe { jit_execute(module, wasm.as_ptr(), wasm.len(), state.as_mut_ptr(), 144) } {
+            -2 => None,
+            result => Some(result == 0),
+        }
+    }
     fn prepare(&self, module: u32, wasm: &[u8]) -> bool {
+        #[cfg(feature = "u14-cost-profile")]
+        paludarium_jit::jit_cost::add(paludarium_jit::jit_cost::Counter::JsTransitions, 1);
         // SAFETY: immutable Rust code bytes stay live for the synchronous import.
         unsafe { jit_prepare(module, wasm.as_ptr(), wasm.len()) == 0 }
     }
     fn execute(&self, module: u32, wasm: &[u8], state: &mut [u64; 18]) -> bool {
+        #[cfg(feature = "u14-cost-profile")]
+        paludarium_jit::jit_cost::add(paludarium_jit::jit_cost::Counter::JsTransitions, 1);
         // SAFETY: both buffers belong to Rust, are live for this synchronous
         // import, and state is exclusively borrowed scratch, never guest memory.
         unsafe { jit_execute(module, wasm.as_ptr(), wasm.len(), state.as_mut_ptr(), 144) == 0 }
@@ -182,6 +200,43 @@ pub extern "C" fn session_jit_stat(id: u32, field: u32) -> u64 {
         3 => stats.fallbacks,
         _ => 0,
     }
+}
+// Diagnostic-only ABI. None of these exports or collector operations is
+// present in the ordinary acceptance module. The fresh coordinator resets
+// before spawning Workers; all reads/additions are lock-free counters.
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_version() -> u32 {
+    1
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_fields() -> u32 {
+    paludarium_jit::jit_cost::FIELD_COUNT as u32
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_stat(field: u32) -> u64 {
+    paludarium_jit::jit_cost::get(field as usize).unwrap_or(0)
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_overflow() -> u32 {
+    u32::from(paludarium_jit::jit_cost::overflowed())
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_add(field: u32, value: u64) -> i32 {
+    if paludarium_jit::jit_cost::add_field(field as usize, value) {
+        0
+    } else {
+        -1
+    }
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_reset() {
+    paludarium_jit::jit_cost::reset();
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn config_arg(id: u32, arg: u32) -> i32 {
