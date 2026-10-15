@@ -3,5 +3,17 @@
   "toolchain": "nightly-2026-10-11",
   "target": "x86_64-unknown-linux-musl",
   "aube": {"repository": "https://github.com/aubepkg/aube", "tag": "v2.6.1", "revision": "bd94e42f54d3b5e3dd102716b7197f316cb5f4ed", "lock_sha256": "8960ea5673ff7b7bf376d2b1570b2a79875c2bf397c9044f88b203d7375b2668", "primer": "empty file, outside unmodified source tree"},
-  "guest_license_exception": {"crate": "webpki-root-certs@1.0.9", "allow": ["CDLA-Permissive-2.0"]}
+  "guest_license_exception": {"crate": "webpki-root-certs@1.0.9", "allow": ["CDLA-Permissive-2.0"]},
+  "u14_aube_lock_overlay": {
+    "schema": 1, "policy": "u14-fixed-aube", "package": "rustls",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "from_version": "0.23.45", "to_version": "0.23.46",
+    "from_checksum": "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634",
+    "to_checksum": "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf",
+    "original_lock_sha256": "8960ea5673ff7b7bf376d2b1570b2a79875c2bf397c9044f88b203d7375b2668",
+    "build_lock_sha256": "b8d403f2c449da8eb104cca0cbd1c9f1f61ade8249615c246ae6cc8cd531db0e",
+    "package_count": 604,
+    "original_source_sha256": "54952fbb7982b5a046b74aa8323e6ccb8ff87326ba09149e0ce53b06cdef764e",
+    "build_source_sha256": "a5eab8fb7e01a82825e6f44547a41968bc1c8bf2860be284ffec599ccecce352"
+  }
 }

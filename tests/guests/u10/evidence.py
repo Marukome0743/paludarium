@@ -22,6 +22,14 @@ def u14_policy_module():
     return module
 
 
+def u14_overlay_module():
+    path = pathlib.Path(__file__).resolve().parents[1] / 'u14/lock_overlay.py'
+    spec = importlib.util.spec_from_file_location('u14_lock_overlay', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def policy_receipt_valid(directory, receipt, root_bytes):
     policy = receipt['license_policy']
     if policy['exception'] != LICENSE_EXCEPTION:
@@ -34,7 +42,25 @@ def policy_receipt_valid(directory, receipt, root_bytes):
         # Bind full pinned source lock, not merely the ignored package row.
         lock_bytes = receipt['advisory_lock'].encode()
         source_lock = json_source_lock()
-        if receipt['aube'] != source_lock['aube'] or hashlib.sha256(lock_bytes).hexdigest() != source_lock['aube']['lock_sha256']:
+        expected_lock = source_lock['aube']['lock_sha256']
+        if 'lock_overlay' in receipt:
+            overlay = receipt['lock_overlay']
+            helper = u14_overlay_module()
+            helper.verify(overlay)
+            if overlay['policy'] != source_lock['u14_aube_lock_overlay']:
+                raise ValueError('unapproved overlay receipt policy')
+            if (overlay['source_before'] != receipt['source_before']
+                    or overlay['source_after'] != receipt['source_after']
+                    or overlay['original_lock'] == receipt['advisory_lock']
+                    or overlay['build_lock'] != receipt['advisory_lock']):
+                raise ValueError('overlay original/build receipt mismatch')
+            expected_lock = helper.UPDATED
+            if (receipt['metadata_lock_sha256'] != expected_lock
+                    or receipt['binaries']['aube']['lock_sha256'] != expected_lock):
+                raise ValueError('metadata or binary uses original lock')
+            if digest(directory / 'aube-metadata.json') != receipt['metadata_sha256']:
+                raise ValueError('overlay metadata hash mismatch')
+        if receipt['aube'] != source_lock['aube'] or hashlib.sha256(lock_bytes).hexdigest() != expected_lock:
             raise ValueError('fixed aube Cargo.lock mismatch')
         u14_policy_module().verify(root_bytes, inherited, lock_bytes,
                                    config.read_bytes(), receipt['advisory_policy'])
@@ -101,6 +127,17 @@ def static_elf(data):
 def validate(directory, receipt):
     if receipt['exit'] != 0 or not receipt['source_unchanged']:
         raise ValueError('build failure or modified upstream source')
+    if 'lock_overlay' in receipt:
+        if 'advisory_policy' not in receipt:
+            raise ValueError('overlay requires U14 advisory policy')
+        overlay = receipt['lock_overlay']
+        helper = u14_overlay_module()
+        helper.verify(overlay)
+        helper.verify_links(directory / 'source/aube')
+        helper.verify_links(directory / 'build-source/aube')
+        if (snapshot(directory / 'source/aube') != overlay['source_after']
+                or snapshot(directory / 'build-source/aube') != overlay['build_source_after']):
+            raise ValueError('overlay source changed after receipt')
     for name in ('probe', 'aube'):
         binary = directory / name
         if digest(binary) != receipt['binaries'][name]['sha256']:

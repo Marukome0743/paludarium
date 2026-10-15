@@ -9,8 +9,14 @@ def load_tests(loader, tests, pattern):
     root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(root))
     suite = unittest.TestSuite()
-    for name in ("test_runner", "test_validation", "test_guest_policy"):
+    for name in ("test_runner", "test_validation", "test_guest_policy", "test_lock_overlay"):
         spec = importlib.util.spec_from_file_location(f"u14_scoped_{name}", root / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        suite.addTests(loader.loadTestsFromModule(module))
+    for name in ("test_evidence", "test_policy"):
+        path = root.parent / "u10/runner-tests" / f"{name}.py"
+        spec = importlib.util.spec_from_file_location(f"u14_shared_{name}", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         suite.addTests(loader.loadTestsFromModule(module))

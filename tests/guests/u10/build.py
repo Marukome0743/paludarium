@@ -49,21 +49,33 @@ def build(directory, advisory_policy=None):
             raise ValueError('fixed aube Cargo.lock mismatch')
         before = snapshot(upstream)
         receipt['source_before'] = before
+        build_source = upstream
+        if advisory_policy:
+            from evidence import u14_overlay_module
+            build_source = directory / 'build-source/aube'
+            receipt['lock_overlay'] = u14_overlay_module().prepare(
+                upstream, build_source, advisory_policy, lock['u14_aube_lock_overlay'], snapshot)
         root_policy = (ROOT / 'deny.toml').read_bytes()
         guest_config = directory / 'aube-deny.toml'
         config_bytes = guest_policy(root_policy, lock['guest_license_exception'])
         if advisory_policy:
             from evidence import u14_policy_module
             config_bytes, advisory_receipt = u14_policy_module().generate(
-                root_policy, config_bytes, (upstream / 'Cargo.lock').read_bytes())
+                root_policy, config_bytes, (build_source / 'Cargo.lock').read_bytes())
             receipt['advisory_policy'] = advisory_receipt
-            receipt['advisory_lock'] = (upstream / 'Cargo.lock').read_text()
+            receipt['advisory_lock'] = (build_source / 'Cargo.lock').read_text()
         guest_config.write_bytes(config_bytes)
         # Metadata fetches crates.io sources but does not compile or mutate
         # the upstream project. Retain the crate's actual full license text.
-        metadata = json.loads(subprocess.check_output([
+        metadata_text = subprocess.check_output([
             'cargo', '+' + lock['toolchain'], 'metadata', '--locked', '--all-features',
-            '--manifest-path', str(upstream / 'Cargo.toml'), '--format-version', '1'], text=True))
+            '--manifest-path', str(build_source / 'Cargo.toml'), '--format-version', '1'], text=True)
+        metadata = json.loads(metadata_text)
+        if advisory_policy:
+            receipt['metadata_lock_sha256'] = digest(build_source / 'Cargo.lock')
+            metadata_file = directory / 'aube-metadata.json'
+            metadata_file.write_text(metadata_text)
+            receipt['metadata_sha256'] = digest(metadata_file)
         packages = [p for p in metadata['packages'] if p['name'] == 'webpki-root-certs' and p['version'] == '1.0.9']
         if len(packages) != 1 or packages[0]['license'] != 'CDLA-Permissive-2.0':
             raise ValueError('fixed certificate crate identity/license mismatch')
@@ -88,14 +100,22 @@ def build(directory, advisory_policy=None):
         subprocess.run(cargo + ['--version'], check=True)
         receipt['rustc'] = subprocess.check_output(['rustc', '+' + lock['toolchain'], '--version'], text=True).strip()
         receipt['cargo'] = subprocess.check_output(cargo + ['--version'], text=True).strip()
+        if advisory_policy:
+            # Audit the repaired guest before any cross-compilation can fail
+            # on the host linker; every advisory category remains mandatory.
+            command(['cargo', 'deny', '--manifest-path', str(build_source / 'Cargo.toml'),
+                     '--config', str(guest_config), '--locked', 'check'],
+                    ROOT, directory / 'aube-dependencies.log')
+            receipt['audits']['aube'] = 0
         for name, manifest, extra in [
             ('probe', HERE / 'probe/Cargo.toml', []),
-            ('aube', upstream / 'Cargo.toml', ['-p', 'aube', '--bin', 'aube']),
+            ('aube', build_source / 'Cargo.toml', ['-p', 'aube', '--bin', 'aube']),
         ]:
             config = ROOT / 'deny.toml' if name == 'probe' else guest_config
-            command(['cargo', 'deny', '--manifest-path', str(manifest), '--config', str(config),
-                     '--locked', 'check'], ROOT, directory / f'{name}-dependencies.log')
-            receipt['audits'][name] = 0
+            if name not in receipt['audits']:
+                command(['cargo', 'deny', '--manifest-path', str(manifest), '--config', str(config),
+                         '--locked', 'check'], ROOT, directory / f'{name}-dependencies.log')
+                receipt['audits'][name] = 0
             args = cargo + ['build', '--release', '--locked', '--target', lock['target'],
                             '--manifest-path', str(manifest), '--target-dir', str(directory / 'targets' / name)] + extra
             env = dict(os.environ, AUBE_PRIMER_PATH=str(primer))
@@ -113,6 +133,8 @@ def build(directory, advisory_policy=None):
     finally:
         try:
             record_source_after(upstream, receipt)
+            if 'lock_overlay' in receipt:
+                u14_overlay_module().finish(upstream, build_source, receipt['lock_overlay'], snapshot)
         except Exception as error:
             receipt['exit'] = 1
             receipt['source_unchanged'] = False
