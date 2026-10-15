@@ -29,15 +29,31 @@ def need(value, message):
 
 def diff_counts(output):
     clean = re.sub(r'\x1b\[[0-9;]*m', '', output)
-    sections = re.split(r'\s+Running ', clean)
+    sections = re.split(r'(?m)^[ \t]*Running[ \t]+', clean)
     matches = []
     for section in sections:
         first = section.splitlines()[0] if section.splitlines() else ''
-        if 'diff_u9' not in first:
+        if not re.match(r'tests/diff_u9\.rs \(', first):
             continue
-        rows = re.findall(r'test result: ok\. (\d+) passed; 0 failed; (\d+) ignored;', section)
-        need(len(rows) == 1, 'diff_u9 result absent/ambiguous')
-        matches.append(tuple(map(int, rows[0])))
+        stack, outer = [], []
+        for line in section.splitlines()[1:]:
+            start = re.fullmatch(r'running (\d+) tests?', line)
+            if start:
+                need(stack or not outer, 'duplicate diff_u9 outer harness')
+                stack.append(int(start[1]))
+                continue
+            if not line.startswith('test result:'):
+                continue
+            summary = re.match(r'test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out;',line)
+            need(summary and stack, 'unmatched diff_u9 harness summary')
+            passed, failed, ignored, measured, filtered = map(int,summary.groups()[1:])
+            need(summary[1]=='ok' and failed==0 and ignored==0 and measured==0
+                 and passed+failed+ignored+measured==stack.pop(), 'diff_u9 harness failed/incomplete')
+            if not stack:
+                need(filtered==0, 'outer diff_u9 filtered tests')
+                outer.append((passed,ignored))
+        need(not stack and len(outer)==1, 'diff_u9 result absent/ambiguous')
+        matches.append(outer[0])
     need(len(matches) == 1 and matches[0][0] > 0 and matches[0][1] == 0, 'diff_u9 zero/ignored/not executed')
     return matches[0]
 
@@ -53,23 +69,30 @@ class Capture:
             stream.write(raw)
         return dict(path=name, sha256=sha(raw), bytes=len(raw))
 
-    def run(self, stage, argv, timeout=1800):
+    def run(self, stage, argv, timeout=1800, merge=False):
         started = time.time()
+        # Cargo writes suite identity to stderr and the test binary writes
+        # its summary to stdout. Concatenating separately captured streams
+        # destroys that ordering. Only the measured multi-suite invocation
+        # uses one OS pipe; its exact merged bytes are retained as stdout.
+        streams = dict(stdout=subprocess.PIPE, stderr=subprocess.STDOUT) if merge else dict(capture_output=True)
         try:
             r = subprocess.run(argv, cwd=ROOT, env={**os.environ, 'RUST_TEST_THREADS': '1'},
-                               capture_output=True, timeout=timeout, check=False)
+                               **streams, timeout=timeout, check=False)
             row = dict(stage=stage, argv=argv, cwd=str(ROOT), started=started, ended=time.time(),
                        exit=r.returncode, timed_out=False)
-            out, err = r.stdout, r.stderr
+            out, err = r.stdout, r.stderr or b''
         except subprocess.TimeoutExpired as error:
             out, err = error.stdout or b'', error.stderr or b''
             row = dict(stage=stage, argv=argv, cwd=str(ROOT), started=started, ended=time.time(),
                        exit=None, timed_out=True)
+            row['stream_mode'] = 'stderr-merged-into-stdout' if merge else 'separate'
             row['stdout'] = self.save(stage+'.stdout', out)
             row['stderr'] = self.save(stage+'.stderr', err)
             self.commands.append(row)
             self.receipt()
             raise
+        row['stream_mode'] = 'stderr-merged-into-stdout' if merge else 'separate'
         row['stdout'] = self.save(stage+'.stdout', out)
         row['stderr'] = self.save(stage+'.stderr', err)
         self.commands.append(row)
@@ -108,7 +131,7 @@ def main():
     original_lcov = ROOT/'target/u9-coverage.lcov'
     command += ['--lib','--test','diff_u9','--test','command','--ignore-filename-regex',IGNORE,
                 '--fail-under-lines','80','--lcov','--output-path',str(original_lcov)]
-    out, err, measured = capture.run('dedicated-u9',command)
+    out, err, measured = capture.run('dedicated-u9',command,merge=True)
     tests, ignored = diff_counts((out+err).decode('utf-8','replace'))
     measured.update(tests=tests,ignored=ignored)
     covdir = ROOT/'target/llvm-cov-target'
