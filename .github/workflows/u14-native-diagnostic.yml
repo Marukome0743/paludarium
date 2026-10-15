@@ -80,7 +80,7 @@ jobs:
           u10_rustc="$(rustup which --toolchain nightly-2026-10-11 rustc)"
           u10_bin="$(dirname "$u10_cargo")"
           u10_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-          sudo unshare --net env PATH="$u10_bin:$PATH" RUSTC="$u10_rustc" CARGO_HOME="$u10_cargo_home" "$u10_cargo" test --locked --offline -p paludarium-harness --test diff_u10 -- --include-ignored --nocapture
+          sudo unshare --net env GITHUB_SHA="$GITHUB_SHA" PATH="$u10_bin:$PATH" RUSTC="$u10_rustc" CARGO_HOME="$u10_cargo_home" "$u10_cargo" test --locked --offline -p paludarium-harness --test diff_u10 -- --include-ignored --nocapture
       - name: Make differential evidence readable after isolated execution
         if: always()
         run: |
