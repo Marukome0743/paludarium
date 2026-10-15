@@ -23,6 +23,8 @@ static REGIONS: Table<Box<[u128]>> = OnceLock::new();
 static FILESYSTEMS: Table<Arc<PrivateFs>> = OnceLock::new();
 #[cfg(feature = "u14-cost-profile")]
 static MICRO: Table<paludarium_jit::microbench::DiagnosticBench> = OnceLock::new();
+#[cfg(feature = "u14-cost-profile")]
+static LENGTH: Table<paludarium_jit::microbench::LengthBench> = OnceLock::new();
 struct Run {
     session: Option<Arc<Session>>,
     host: Arc<WasmHost>,
@@ -308,6 +310,47 @@ pub extern "C" fn u14_micro_operations(id: u32) -> u64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn u14_micro_drop(id: u32) {
     table(&MICRO)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&id);
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_length_new(kind: u32, length: u32, observe: u32) -> u32 {
+    if observe > 1 {
+        return 0;
+    }
+    paludarium_jit::microbench::LengthBench::new(kind, length, observe == 1, Arc::new(WorkerJit))
+        .map_or(0, |bench| insert(&LENGTH, bench))
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_length_chunk(id: u32, count: u32) -> u64 {
+    table(&LENGTH)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get_mut(&id)
+        .and_then(|bench| bench.chunk(count))
+        .unwrap_or(u64::MAX)
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_length_stat(id: u32, field: u32) -> u64 {
+    table(&LENGTH)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&id)
+        .and_then(|bench| match field {
+            0 => Some(bench.operations()),
+            1 => Some(bench.warmups()),
+            _ => None,
+        })
+        .unwrap_or(u64::MAX)
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_length_drop(id: u32) {
+    table(&LENGTH)
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .remove(&id);

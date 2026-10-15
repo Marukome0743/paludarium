@@ -18,7 +18,7 @@ test("same-source control packs, imports and runs real hello with natural cleanu
   const receipt=JSON.parse(await readFile(resolve(root,input)+".receipt.json","utf8"));
   assert.equal(receipt.purpose,"u14-acceptance-control"); assert.equal(receipt.schema,3);
   assert.deepEqual(receipt.features,[]); assert.equal(receipt.module_sha256,hash(module));
-  assert.equal(WebAssembly.Module.exports(new WebAssembly.Module(module)).filter(x=>x.name.startsWith("u14_cost_")).length,0);
+  assert.equal(WebAssembly.Module.exports(new WebAssembly.Module(module)).filter(x=>["u14_cost_","u14_micro_","u14_length_"].some(prefix=>x.name.startsWith(prefix))).length,0);
   for(const[name,digest]of Object.entries(receipt.source_files)) assert.equal(hash(await readFile(resolve(root,name))),digest,"fresh control source changed: "+name);
   const manifest=JSON.parse(await readFile(resolve(pkg,"package.json"),"utf8"));
   await mkdir(resolve(root,"target/u14-v2-packed"),{recursive:true});
