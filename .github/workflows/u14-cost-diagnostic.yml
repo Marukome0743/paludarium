@@ -719,13 +719,22 @@ jobs:
       - name: V2 boundary and actual packed control hello
         env:
           PALUDARIUM_U14_CONTROL_WASM: target/u14-cost-profile/acceptance-control.wasm
-        run: node --test packages/paludarium-wasm/tests/u14-cost-profile.test.mjs packages/paludarium-wasm/tests/u14-control-distribution.test.mjs packages/paludarium-wasm/tests/u14-jit.test.mjs packages/paludarium-wasm/tests/u14-cost-microbench.test.mjs packages/paludarium-wasm/tests/u14-length-microbench.test.mjs
+        run: node --test packages/paludarium-wasm/tests/u14-cost-profile.test.mjs packages/paludarium-wasm/tests/u14-control-distribution.test.mjs packages/paludarium-wasm/tests/u14-jit.test.mjs packages/paludarium-wasm/tests/u14-cost-microbench.test.mjs packages/paludarium-wasm/tests/u14-length-microbench.test.mjs packages/paludarium-wasm/tests/u14-cost-null-microbench.test.mjs
       - name: Finite one-factory observation per mode, no acceptance performance
         run: node packages/paludarium-wasm/tests/u14-cost-profile-check.mjs target/u14-cost-profile/diagnostic.wasm target/u14-diagnostic-inputs/target/u11/native/observations.json target/u14-diagnostic-inputs/target/guests/u10 target/u14-prepared-chain-v2
       - name: Actual Worker microbench fixed chunks, aggregate and site on/off
         run: node packages/paludarium-wasm/tests/u14-cost-microbench.mjs target/u14-cost-profile/diagnostic.wasm target/u14-cost-profile/diagnostic.wasm.receipt.json target/u14-worker-microbench
       - name: Separate actual Worker length matrix, no acceptance performance
         run: node packages/paludarium-wasm/tests/u14-length-microbench.mjs target/u14-cost-profile/diagnostic.wasm target/u14-cost-profile/diagnostic.wasm.receipt.json target/u14-length-microbench
+      - name: Separate callback-off/null boundary control, no acceptance performance
+        run: node packages/paludarium-wasm/tests/u14-cost-null-microbench.mjs target/u14-cost-profile/diagnostic.wasm target/u14-cost-profile/diagnostic.wasm.receipt.json target/u14-cost-null-microbench
+      - name: Keep separate callback boundary control raw observations
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u14-cost-null-microbench
+          path: target/u14-cost-null-microbench/
+          retention-days: 7
       - name: Keep separate Worker length matrix raw observations
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
