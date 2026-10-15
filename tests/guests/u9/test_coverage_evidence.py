@@ -131,5 +131,64 @@ class Evidence(unittest.TestCase):
         with self.assertRaises(FileExistsError):c.save('x',b'new')
         self.assertEqual((c.output/'x').read_bytes(),b'old')
 
+    def test_lcov_report_uses_file_mode(self):
+        c=self.capture();args=P.export_command(Path('/actual/cargo'),'lcov',c.output)
+        self.assertIn('--lcov',args)
+        self.assertEqual(args[args.index('--output-path')+1],str(c.output/'reexport.lcov'))
+
+    def test_other_exports_keep_stdout_mode(self):
+        c=self.capture()
+        for kind in ('json','report'):
+            self.assertNotIn('--output-path',P.export_command(Path('/actual/cargo'),kind,c.output))
+
+    def test_lcov_report_output_cannot_overwrite(self):
+        c=self.capture();(c.output/'reexport.lcov').write_bytes(b'old')
+        with self.assertRaises(ValueError):P.export_command(Path('/actual/cargo'),'lcov',c.output)
+        self.assertEqual((c.output/'reexport.lcov').read_bytes(),b'old')
+
+    def test_file_export_compares_exact_bytes(self):
+        c=self.capture();path=c.output/'reexport.lcov';raw=b'SF:x\nLF:1\nLH:1\nend_of_record'
+        path.write_bytes(raw)
+        self.assertEqual(P.verify_lcov_file(path,raw)['sha256'],P.sha(raw))
+
+    def test_terminal_lf_is_not_silently_normalized(self):
+        c=self.capture();path=c.output/'reexport.lcov';path.write_bytes(b'end_of_record\n')
+        with self.assertRaises(ValueError):P.verify_lcov_file(path,b'end_of_record')
+
+    def test_lcov_count_change_rejected(self):
+        c=self.capture();path=c.output/'reexport.lcov';path.write_bytes(b'DA:1,2')
+        with self.assertRaises(ValueError):P.verify_lcov_file(path,b'DA:1,1')
+
+    def test_missing_lcov_output_rejected(self):
+        c=self.capture()
+        with self.assertRaises(ValueError):P.verify_lcov_file(c.output/'missing',b'')
+
+    def identity_fixture(self):
+        c=self.capture();cov=c.output/'cov';binary=cov/'debug/program';binary.parent.mkdir(parents=True)
+        binary.write_bytes(b'\x7fELFinstrumented');binary.chmod(0o755)
+        profile=cov/'coverage.profdata';profile.write_bytes(b'indexed fixture')
+        rows=[dict(original_path='debug/program',sha256=P.sha(binary.read_bytes()))]
+        return cov,profile,rows,binary
+
+    def test_export_profile_and_binary_identity_exact(self):
+        cov,profile,rows,_=self.identity_fixture()
+        self.assertEqual(P.verify_export_identity(cov,profile,P.sha(profile.read_bytes()),rows)['profdata_sha256'],P.sha(profile.read_bytes()))
+
+    def test_remerged_profile_change_rejected(self):
+        cov,profile,rows,_=self.identity_fixture();expected=P.sha(profile.read_bytes());profile.write_bytes(b'changed merge')
+        with self.assertRaises(ValueError):P.verify_export_identity(cov,profile,expected,rows)
+
+    def test_original_binary_byte_change_rejected(self):
+        cov,profile,rows,binary=self.identity_fixture();binary.write_bytes(b'\x7fELFchanged')
+        with self.assertRaises(ValueError):P.verify_export_identity(cov,profile,P.sha(profile.read_bytes()),rows)
+
+    def test_extra_report_binary_rejected(self):
+        cov,profile,rows,_=self.identity_fixture();extra=cov/'debug/extra';extra.write_bytes(b'\x7fELFextra');extra.chmod(0o755)
+        with self.assertRaises(ValueError):P.verify_export_identity(cov,profile,P.sha(profile.read_bytes()),rows)
+
+    def test_missing_report_binary_rejected(self):
+        cov,profile,rows,binary=self.identity_fixture();binary.unlink()
+        with self.assertRaises(ValueError):P.verify_export_identity(cov,profile,P.sha(profile.read_bytes()),rows)
+
 
 if __name__=='__main__':unittest.main()

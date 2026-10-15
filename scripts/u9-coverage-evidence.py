@@ -111,6 +111,41 @@ def source_snapshot(scope):
     return {name: sha((ROOT/name).read_bytes()) for name in names}
 
 
+def export_command(cargo, kind, output):
+    argv = [str(cargo),'llvm-cov','report','--ignore-filename-regex',IGNORE]
+    if kind != 'report':
+        argv += ['--'+kind]
+    if kind == 'lcov':
+        # cargo-llvm-cov file and stdout modes differ in terminal framing.
+        # Use the same file mode as the initial LCOV, retaining exact bytes.
+        need(not (output/'reexport.lcov').exists(), 'LCOV reexport output exists')
+        argv += ['--output-path',str(output/'reexport.lcov')]
+    return argv
+
+
+def verify_lcov_file(path, expected):
+    need(path.is_file() and not path.is_symlink(), 'LCOV reexport file missing/linked')
+    raw = path.read_bytes()
+    need(raw == expected, 'same-profile LCOV reexport differs')
+    return dict(path=path.name,sha256=sha(raw),bytes=len(raw))
+
+
+def verify_export_identity(covdir, profile_path, expected_profile, binaries):
+    need(not profile_path.is_symlink() and sha(profile_path.read_bytes())==expected_profile,
+         'merged profdata changed during reexport')
+    actual = {}
+    for path in sorted((covdir/'debug').rglob('*')):
+        if not path.is_file() or path.is_symlink() or not os.access(path,os.X_OK):
+            continue
+        with path.open('rb') as stream:
+            magic=stream.read(4)
+        if magic in (b'\x7fELF',b'\xcf\xfa\xed\xfe',b'\xfe\xed\xfa\xcf'):
+            actual[path.relative_to(covdir).as_posix()]=sha(path.read_bytes())
+    expected={row['original_path']:row['sha256'] for row in binaries}
+    need(len(expected)==len(binaries) and actual==expected, 'instrumented binary set/bytes changed during reexport')
+    return dict(profdata_sha256=expected_profile,binaries=actual)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--cargo', required=True, type=Path)
@@ -159,16 +194,18 @@ def main():
     files['lcov'] = capture.save('coverage.lcov',original_lcov.read_bytes())
     export_rows = []
     for kind in ('lcov','json','report'):
-        argv = [str(args.cargo),'llvm-cov','report','--ignore-filename-regex',IGNORE]
-        if kind != 'report':
-            argv += ['--'+kind]
+        identity_before=verify_export_identity(covdir,profiles[0],profile['sha256'],binaries)
+        argv = export_command(args.cargo,kind,args.output)
         stdout, _, row = capture.run('export-'+kind,argv)
+        identity_after=verify_export_identity(covdir,profiles[0],profile['sha256'],binaries)
         row.update(export=kind,profdata_sha256=profile['sha256'],binary_hashes=[x['sha256'] for x in binaries])
+        row.update(identity_before=identity_before,identity_after=identity_after)
         export_rows.append(row)
         if kind == 'lcov':
-            need(stdout == (args.output/'coverage.lcov').read_bytes(), 'same-profile LCOV reexport differs')
+            row['lcov_output']=verify_lcov_file(args.output/'reexport.lcov',(args.output/'coverage.lcov').read_bytes())
         else:
             files[kind] = capture.save('coverage.'+('json' if kind=='json' else 'report.txt'),stdout)
+        capture.receipt()
     after = source_snapshot(scope)
     need(before == after and locks == {n:sha((ROOT/n).read_bytes()) for n in locks}, 'source/locks changed')
     head = os.environ.get('GITHUB_SHA','')
