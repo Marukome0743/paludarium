@@ -32,6 +32,12 @@ export function costSnapshot(exports) {
 }
 export function jitImports(memory, cost = null, now = () => performance.now()) {
   const compiled = new Map();
+  const rollback = new Uint8Array(144);
+  const equalBytes = (stored, view) => {
+    if (stored.length !== view.length) return false;
+    for (let i = 0; i < view.length; i++) if (stored[i] !== view[i]) return false;
+    return true;
+  };
   let running = false;
   const range = (pointer, length) => Number.isInteger(pointer) && pointer > 0
     && Number.isInteger(length) && length > 0 && pointer + length <= memory.buffer.byteLength;
@@ -44,7 +50,7 @@ export function jitImports(memory, cost = null, now = () => performance.now()) {
         const entry = compiled.get(key);
         if (entry) {
           if (cost) cost(17, view.length);
-          if (entry.bytes.length !== view.length || entry.bytes.some((value, i) => value !== view[i])) return -1;
+          if (!equalBytes(entry.bytes, view)) return -1;
           compiled.delete(key); compiled.set(key, entry);
           return 0;
         }
@@ -75,7 +81,7 @@ export function jitImports(memory, cost = null, now = () => performance.now()) {
         if (!entry) return -2;
         const bytes = new Uint8Array(memory.buffer, codePointer, codeLength);
         cost(89, bytes.length);
-        return entry.bytes.length === bytes.length && entry.bytes.every((value, i) => value === bytes[i]) ? 0 : -1;
+        return equalBytes(entry.bytes, bytes) ? 0 : -1;
       }
       if (running || !Number.isInteger(key) || key <= 0 || codeLength > 65536
           || stateLength !== 144 || !range(codePointer, codeLength) || !range(statePointer, stateLength)) return -1;
@@ -85,18 +91,20 @@ export function jitImports(memory, cost = null, now = () => performance.now()) {
       if (!entry) return -2;
       const bytes = new Uint8Array(memory.buffer, codePointer, codeLength);
       if (cost) cost(17, bytes.length);
-      if (entry.bytes.length !== bytes.length || entry.bytes.some((value, i) => value !== bytes[i])) return -1;
-      const before = new Uint8Array(memory.buffer, statePointer, stateLength).slice();
-      if (cost) cost(19, stateLength);
-      compiled.delete(key); compiled.set(key, entry);
+      if (!equalBytes(entry.bytes, bytes)) return -1;
       running = true;
       try {
-        if (entry.run(statePointer) !== 0) throw new Error("JIT result rejected");
-        return 0;
-      } catch {
-        new Uint8Array(memory.buffer, statePointer, stateLength).set(before);
-        compiled.delete(key);
-        return -1;
+        rollback.set(new Uint8Array(memory.buffer, statePointer, stateLength));
+        if (cost) cost(19, stateLength);
+        compiled.delete(key); compiled.set(key, entry);
+        try {
+          if (entry.run(statePointer) !== 0) throw new Error("JIT result rejected");
+          return 0;
+        } catch {
+          new Uint8Array(memory.buffer, statePointer, stateLength).set(rollback);
+          compiled.delete(key);
+          return -1;
+        }
       } finally { running = false; }
     },
   };

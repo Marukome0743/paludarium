@@ -83,3 +83,60 @@ test('u14 final fallback-only and original failure remain failures', () => {
  const failed={pass:false,timed_out:true,error:'original timeout'};
  requireJitProof(failed);assert.equal(failed.error,'original timeout');assert.equal(failed.pass,false);
 });
+
+const fillAndTrap=()=>moduleBytes([0x20,0,0x41,0x7f,0x41,0x90,1,0xfc,11,0,0,0x41,0]);
+const scratch=(s,pointer=64)=>new Uint8Array(s.memory.buffer,pointer,144);
+const pattern=(s,pointer=64,seed=0)=>{
+  const bytes=scratch(s,pointer);for(let i=0;i<144;i++)bytes[i]=(i+seed)&255;return bytes.slice();
+};
+test('u14 reused rollback restores every144byte after actual wasm fill and trap',()=>{
+  const s=setup(fillAndTrap()),before=pattern(s);
+  assert.equal(s.run(),-1);assert.deepEqual(scratch(s),before);
+});
+test('u14 sequential trap snapshots remain independent across scratch pointers',()=>{
+  const s=setup(fillAndTrap()),first=pattern(s,64,1),second=pattern(s,256,7);
+  assert.equal(s.bridge.prepare(1,512,s.bytes.length),0);
+  assert.equal(s.bridge.execute(1,512,s.bytes.length,64,144),-1);
+  assert.equal(s.bridge.prepare(2,512,s.bytes.length),0);
+  assert.equal(s.bridge.execute(2,512,s.bytes.length,256,144),-1);
+  assert.deepEqual(scratch(s,64),first);assert.deepEqual(scratch(s,256),second);
+});
+test('u14 cost callback reentry cannot overwrite shared rollback buffer',()=>{
+  const s=setup();let entered=false,inner;
+  s.bridge=jitImports(s.memory,field=>{
+    if(field===19&&!entered){entered=true;inner=s.bridge.execute(1,512,s.bytes.length,64,144);}
+  });
+  assert.equal(s.run(),0);assert.equal(inner,-1);
+  assert.equal(new BigUint64Array(s.memory.buffer,64,18)[0],42n);
+});
+test('u14 successful state becomes next full rollback baseline',()=>{
+  const s=setup();assert.equal(s.run(),0);const before=scratch(s).slice();
+  s.bytes=fillAndTrap();new Uint8Array(s.memory.buffer,512,s.bytes.length).set(s.bytes);
+  assert.equal(s.run(2),-1);assert.deepEqual(scratch(s),before);
+});
+test('u14 reused rollback refreshes state view after shared memory growth',()=>{
+  const s=setup(fillAndTrap()),before=pattern(s,64,3);
+  assert.equal(s.bridge.prepare(1,512,s.bytes.length),0);s.memory.grow(1);
+  assert.equal(s.bridge.execute(1,512,s.bytes.length,64,144),-1);
+  assert.deepEqual(scratch(s),before);
+});
+test('u14 byte loop rejects last-byte mutation before execution',()=>{
+  const s=setup(),before=pattern(s);
+  assert.equal(s.bridge.prepare(1,512,s.bytes.length),0);
+  new Uint8Array(s.memory.buffer)[512+s.bytes.length-1]^=1;
+  assert.equal(s.bridge.execute(1,512,s.bytes.length,64,144),-1);
+  assert.deepEqual(scratch(s),before);
+});
+test('u14 byte loop rejects different length without touching scratch',()=>{
+  const s=setup(),before=pattern(s);
+  assert.equal(s.bridge.prepare(1,512,s.bytes.length),0);
+  assert.equal(s.bridge.execute(1,512,s.bytes.length-1,64,144),-1);
+  assert.deepEqual(scratch(s),before);
+});
+test('u14 cost callback exception restores guard and remains an exception',()=>{
+  const s=setup();let fail=true;
+  s.bridge=jitImports(s.memory,field=>{if(field===19&&fail){fail=false;throw Error('cost callback failure');}});
+  assert.equal(s.bridge.prepare(1,512,s.bytes.length),0);
+  assert.throws(()=>s.bridge.execute(1,512,s.bytes.length,64,144),/cost callback failure/);
+  assert.equal(s.bridge.execute(1,512,s.bytes.length,64,144),0);
+});
