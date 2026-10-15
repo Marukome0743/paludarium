@@ -1,6 +1,72 @@
 use super::*;
 use paludarium_mmu::{MappingKind, Prot};
 
+fn cached_boundary() -> (DecodeCache, paludarium_decoder::Instruction) {
+    let instruction = paludarium_decoder::decode(&[0x90], GuestAddr(4096)).unwrap();
+    let mut cache = DecodeCache::new();
+    cache.put(4096, 1, instruction);
+    (cache, instruction)
+}
+
+#[test]
+fn u14_decode_hint_empty_boundary_requires_fetch() {
+    assert!(DecodeCache::new().get_with_hint(4096, 1).is_none());
+}
+
+#[test]
+fn u14_decode_hint_hit_preserves_exact_decoded_instruction() {
+    let (cache, expected) = cached_boundary();
+    let (instruction, rejected) = cache.get_with_hint(4096, 1).unwrap();
+    assert_eq!(instruction, expected);
+    assert!(!rejected);
+}
+
+#[test]
+fn u14_decode_hint_deterministic_rejection_is_returned_with_same_entry() {
+    let (mut cache, expected) = cached_boundary();
+    cache.reject_acceleration(4096, 1);
+    assert_eq!(cache.get_with_hint(4096, 1), Some((expected, true)));
+}
+
+#[test]
+fn u14_decode_hint_wrong_generation_cannot_reuse_instruction_or_rejection() {
+    let (mut cache, _) = cached_boundary();
+    cache.reject_acceleration(4096, 1);
+    assert!(cache.get_with_hint(4096, 2).is_none());
+}
+
+#[test]
+fn u14_decode_hint_slot_collision_cannot_transfer_rejection() {
+    let (mut cache, _) = cached_boundary();
+    cache.reject_acceleration(4096, 1);
+    let collision = (0..4096)
+        .find(|&rip| DecodeCache::slot(rip) == DecodeCache::slot(4096))
+        .unwrap();
+    let instruction = paludarium_decoder::decode(&[0x90], GuestAddr(collision)).unwrap();
+    cache.put(collision, 1, instruction);
+    assert!(cache.get_with_hint(4096, 1).is_none());
+    assert_eq!(
+        cache.get_with_hint(collision, 1),
+        Some((instruction, false))
+    );
+}
+
+#[test]
+fn u14_decode_hint_new_decode_clears_stale_rejection() {
+    let (mut cache, instruction) = cached_boundary();
+    cache.reject_acceleration(4096, 1);
+    cache.put(4096, 2, instruction);
+    assert_eq!(cache.get_with_hint(4096, 2), Some((instruction, false)));
+}
+
+#[test]
+fn u14_decode_hint_does_not_change_ordinary_interpreter_cache_contract() {
+    let (mut cache, instruction) = cached_boundary();
+    cache.reject_acceleration(4096, 1);
+    assert_eq!(cache.get(4096, 1), Some(instruction));
+    assert!(cache.get(4096, 2).is_none());
+}
+
 fn hint_attempt(
     state: &mut CpuState,
     memory: &AddressSpace,

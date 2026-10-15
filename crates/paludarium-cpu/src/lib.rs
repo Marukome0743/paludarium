@@ -79,8 +79,13 @@ impl DecodeCache {
         }
     }
 
-    fn acceleration_rejected(&self, rip: u64, generation: u64) -> bool {
-        matches!(self.entries.get(Self::slot(rip)), Some(Some((r, g, _, true))) if *r == rip && *g == generation)
+    fn get_with_hint(&self, rip: u64, generation: u64) -> Option<(Instruction, bool)> {
+        match self.entries.get(Self::slot(rip)) {
+            Some(Some((r, g, instruction, rejected))) if *r == rip && *g == generation => {
+                Some((*instruction, *rejected))
+            }
+            _ => None,
+        }
     }
 
     fn reject_acceleration(&mut self, rip: u64, generation: u64) {
@@ -338,12 +343,12 @@ pub fn run_cached_with_counted_hook(
     let mut consumed = 0;
     while consumed < budget {
         let generation = mem.code_generation();
-        let instruction = match cache.get(state.rip.0, generation) {
-            Some(instruction) => instruction,
+        let (instruction, rejected) = match cache.get_with_hint(state.rip.0, generation) {
+            Some(entry) => entry,
             None => match fetch_for_state(state, mem) {
                 Ok(instruction) => {
                     cache.put(state.rip.0, generation, instruction);
-                    instruction
+                    (instruction, false)
                 }
                 Err(reason) => return reason,
             },
@@ -351,7 +356,7 @@ pub fn run_cached_with_counted_hook(
         let mut deterministic_rejection = false;
         if maximum_block > 0
             && budget - consumed >= maximum_block
-            && !(policy.cache_rejections && cache.acceleration_rejected(state.rip.0, generation))
+            && !(policy.cache_rejections && rejected)
             && let Some((reason, count)) =
                 accelerate(state, &instruction, &mut deterministic_rejection)
         {
