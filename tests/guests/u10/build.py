@@ -76,6 +76,8 @@ def build(directory, advisory_policy=None):
             metadata_file = directory / 'aube-metadata.json'
             metadata_file.write_text(metadata_text)
             receipt['metadata_sha256'] = digest(metadata_file)
+            receipt['metadata_json'] = metadata_text
+            receipt['ci_head'] = os.environ.get('GITHUB_SHA')
         packages = [p for p in metadata['packages'] if p['name'] == 'webpki-root-certs' and p['version'] == '1.0.9']
         if len(packages) != 1 or packages[0]['license'] != 'CDLA-Permissive-2.0':
             raise ValueError('fixed certificate crate identity/license mismatch')
@@ -142,6 +144,9 @@ def build(directory, advisory_policy=None):
         if 'license_policy' in receipt and digest(ROOT / 'deny.toml') != receipt['license_policy']['root_config_sha256']:
             receipt['exit'] = 1
             receipt['error'] = 'root license policy changed during build'
+        if 'lock_overlay' in receipt:
+            from evidence import overlay_payload_digest
+            receipt['artifact_payload_sha256'] = overlay_payload_digest(receipt)
         receipt_file.write_text(json.dumps(receipt, indent=2) + '\n')
     if receipt['exit'] != 0:
         raise ValueError(receipt.get('source_error', 'guest build failed'))

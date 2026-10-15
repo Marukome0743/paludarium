@@ -3,6 +3,9 @@ import hashlib
 import pathlib
 import struct
 import importlib.util
+import json
+import os
+import re
 
 LICENSE_EXCEPTION = {'crate': 'webpki-root-certs@1.0.9', 'allow': ['CDLA-Permissive-2.0']}
 LICENSE_SUFFIX = b'\n[[licenses.exceptions]]\ncrate = "webpki-root-certs@1.0.9"\nallow = ["CDLA-Permissive-2.0"]\n'
@@ -28,6 +31,11 @@ def u14_overlay_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def overlay_payload_digest(receipt):
+    payload = {k: v for k, v in receipt.items() if k != 'artifact_payload_sha256'}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
 def policy_receipt_valid(directory, receipt, root_bytes):
@@ -58,7 +66,14 @@ def policy_receipt_valid(directory, receipt, root_bytes):
             if (receipt['metadata_lock_sha256'] != expected_lock
                     or receipt['binaries']['aube']['lock_sha256'] != expected_lock):
                 raise ValueError('metadata or binary uses original lock')
-            if digest(directory / 'aube-metadata.json') != receipt['metadata_sha256']:
+            if hashlib.sha256(receipt['metadata_json'].encode()).hexdigest() != receipt['metadata_sha256']:
+                raise ValueError('overlay metadata hash mismatch')
+            packages = json.loads(receipt['metadata_json'])['packages']
+            rustls = [p for p in packages if p['name'] == 'rustls']
+            if len(rustls) != 1 or rustls[0]['version'] != '0.23.46' or rustls[0]['source'] != helper.REGISTRY:
+                raise ValueError('overlay metadata rustls identity mismatch')
+            metadata_file = directory / 'aube-metadata.json'
+            if metadata_file.exists() and digest(metadata_file) != receipt['metadata_sha256']:
                 raise ValueError('overlay metadata hash mismatch')
         if receipt['aube'] != source_lock['aube'] or hashlib.sha256(lock_bytes).hexdigest() != expected_lock:
             raise ValueError('fixed aube Cargo.lock mismatch')
@@ -133,11 +148,21 @@ def validate(directory, receipt):
         overlay = receipt['lock_overlay']
         helper = u14_overlay_module()
         helper.verify(overlay)
-        helper.verify_links(directory / 'source/aube')
-        helper.verify_links(directory / 'build-source/aube')
-        if (snapshot(directory / 'source/aube') != overlay['source_after']
-                or snapshot(directory / 'build-source/aube') != overlay['build_source_after']):
-            raise ValueError('overlay source changed after receipt')
+        if receipt.get('artifact_payload_sha256') != overlay_payload_digest(receipt):
+            raise ValueError('overlay artifact payload digest mismatch')
+        original, built = directory / 'source/aube', directory / 'build-source/aube'
+        if original.exists() or built.exists():
+            helper.verify_links(original)
+            helper.verify_links(built)
+            if (snapshot(original) != overlay['source_after']
+                    or snapshot(built) != overlay['build_source_after']):
+                raise ValueError('overlay source changed after receipt')
+        else:
+            # Download-artifact verifies the CI archive digest externally. Bind
+            # its receipt payload to this exact workflow head, never just a bool.
+            head = receipt.get('ci_head')
+            if not isinstance(head, str) or not re.fullmatch('[0-9a-f]{40}', head) or head != os.environ.get('GITHUB_SHA'):
+                raise ValueError('overlay artifact CI head binding mismatch')
     for name in ('probe', 'aube'):
         binary = directory / name
         if digest(binary) != receipt['binaries'][name]['sha256']:

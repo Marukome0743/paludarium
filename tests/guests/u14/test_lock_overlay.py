@@ -2,7 +2,9 @@
 import copy
 import importlib.util
 import json
+import os
 import pathlib
+import shutil
 import struct
 import subprocess
 import sys
@@ -214,7 +216,8 @@ class BuildIntegration(OverlayFixture, unittest.TestCase):
         license_path.write_text('Community Data License Agreement full fixture 2.1.')
         metadata = {'packages': [{'name': 'webpki-root-certs', 'version': '1.0.9',
             'license': 'CDLA-Permissive-2.0', 'source': overlay.REGISTRY,
-            'manifest_path': str(license_path.with_name('Cargo.toml'))}]}
+            'manifest_path': str(license_path.with_name('Cargo.toml'))},
+            {'name': 'rustls', 'version': '0.23.46', 'source': overlay.REGISTRY}]}
         commands = []
 
         def command(args, cwd, log, env=None):
@@ -232,6 +235,7 @@ class BuildIntegration(OverlayFixture, unittest.TestCase):
 
         # Avoid recursively patching json.loads used by source_lock().
         with patch.object(builder, 'command', side_effect=command), \
+             patch.dict(os.environ, {'GITHUB_SHA': '1' * 40}), \
              patch.object(builder.json, 'loads', side_effect=lambda data: metadata if 'packages' in data else lock), \
              patch.object(builder.subprocess, 'check_output', side_effect=lambda args, **kw:
                           json.dumps(metadata) if 'metadata' in args else 'fixture tool'), \
@@ -285,6 +289,7 @@ class BuildIntegration(OverlayFixture, unittest.TestCase):
     def test_original_lock_binary_receipt_rejected(self):
         receipt, _ = self.run_build()
         receipt['binaries']['aube']['lock_sha256'] = overlay.ORIGINAL
+        receipt['artifact_payload_sha256'] = evidence.overlay_payload_digest(receipt)
         with patch.object(evidence, 'json_source_lock', return_value=dict(evidence.json_source_lock(), aube=receipt['aube'])):
             with self.assertRaisesRegex(ValueError, 'binary uses original lock'):
                 evidence.validate(self.directory, receipt)
@@ -308,11 +313,67 @@ class BuildIntegration(OverlayFixture, unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'changed after receipt'):
             evidence.validate(self.directory, receipt)
 
+    def test_downloaded_artifact_without_build_trees(self):
+        receipt, _ = self.run_build()
+        shutil.rmtree(self.upstream)
+        shutil.rmtree(self.destination)
+        (self.directory / 'aube-metadata.json').unlink()
+        with patch.object(evidence, 'json_source_lock', return_value=dict(evidence.json_source_lock(), aube=receipt['aube'])):
+            with patch.dict(os.environ, {'GITHUB_SHA': '1' * 40}):
+                evidence.validate(self.directory, receipt)
+
     def test_overlay_advisory_failure_invalidates_receipt(self):
         receipt, _ = self.run_build()
         receipt['audits']['aube'] = 1
+        receipt['artifact_payload_sha256'] = evidence.overlay_payload_digest(receipt)
         with patch.object(evidence, 'json_source_lock', return_value=dict(evidence.json_source_lock(), aube=receipt['aube'])):
             with self.assertRaisesRegex(ValueError, 'dependency audits did not pass'):
+                evidence.validate(self.directory, receipt)
+
+    def test_artifact_head_missing_or_wrong_rejected(self):
+        receipt, _ = self.run_build()
+        shutil.rmtree(self.upstream)
+        shutil.rmtree(self.destination)
+        for head in ('', '2' * 40):
+            with patch.dict(os.environ, {'GITHUB_SHA': head}):
+                with self.assertRaisesRegex(ValueError, 'CI head binding'):
+                    evidence.validate(self.directory, receipt)
+
+    def test_artifact_payload_change_rejected(self):
+        receipt, _ = self.run_build()
+        receipt['ci_head'] = '2' * 40
+        with self.assertRaisesRegex(ValueError, 'artifact payload digest'):
+            evidence.validate(self.directory, receipt)
+
+    def test_embedded_metadata_tamper_rejected(self):
+        receipt, _ = self.run_build()
+        receipt['metadata_json'] = '{}'
+        receipt['artifact_payload_sha256'] = evidence.overlay_payload_digest(receipt)
+        with patch.object(evidence, 'json_source_lock', return_value=dict(evidence.json_source_lock(), aube=receipt['aube'])):
+            with self.assertRaisesRegex(ValueError, 'metadata hash mismatch'):
+                evidence.validate(self.directory, receipt)
+
+    def test_artifact_missing_or_swapped_snapshots_rejected(self):
+        receipt, _ = self.run_build()
+        for mutation in ('missing', 'swapped', 'changed'):
+            changed = copy.deepcopy(receipt)
+            if mutation == 'missing':
+                del changed['lock_overlay']['source_after']
+            elif mutation == 'swapped':
+                changed['lock_overlay']['source_before'] = changed['lock_overlay']['build_source_before']
+            else:
+                changed['lock_overlay']['source_before']['Cargo.toml'] = '0' * 64
+            changed['artifact_payload_sha256'] = evidence.overlay_payload_digest(changed)
+            with self.assertRaises((ValueError, KeyError)):
+                evidence.validate(self.directory, changed)
+
+    def test_embedded_original_metadata_rejected_even_with_updated_digest(self):
+        receipt, _ = self.run_build()
+        receipt['metadata_json'] = receipt['metadata_json'].replace('0.23.46', '0.23.45')
+        receipt['metadata_sha256'] = overlay.sha(receipt['metadata_json'].encode())
+        receipt['artifact_payload_sha256'] = evidence.overlay_payload_digest(receipt)
+        with patch.object(evidence, 'json_source_lock', return_value=dict(evidence.json_source_lock(), aube=receipt['aube'])):
+            with self.assertRaisesRegex(ValueError, 'rustls identity'):
                 evidence.validate(self.directory, receipt)
 
     def test_extra_ignore_and_other_advisory_audit_rejected(self):
