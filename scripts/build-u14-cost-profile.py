@@ -70,7 +70,8 @@ def main():
     head = os.environ.get('GITHUB_SHA')
     if head is not None and (len(head) != 40 or any(c not in '0123456789abcdef' for c in head)):
         raise ValueError('invalid CI head')
-    receipt = {'schema': 1, 'purpose': 'u14-cost-profile' if features else 'u14-acceptance-control',
+    receipt = {'schema': 2, 'diagnostic_version': 2 if features else None,
+               'purpose': 'u14-cost-profile' if features else 'u14-acceptance-control',
                'head': head or 'local:' + source_digest, 'local_snapshot': head is None,
                'baseline_signed_head': args.baseline_head, 'source_digest': source_digest,
                'source_files': source, 'module_sha256': digest(output.read_bytes()),

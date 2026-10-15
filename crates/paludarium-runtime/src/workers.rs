@@ -99,6 +99,8 @@ impl Execution {
             #[cfg(feature = "u14-cost-profile")]
             paludarium_cpu::jit_cost::add(paludarium_cpu::jit_cost::Counter::Checkpoints, 1);
             if self.kill.load(Ordering::SeqCst) {
+                #[cfg(feature = "u14-cost-profile")]
+                paludarium_cpu::jit_cost::add(paludarium_cpu::jit_cost::Counter::StopKill, 1);
                 self.processes
                     .stop_all(ExitStatus::Signaled(signal::SIGKILL));
             }

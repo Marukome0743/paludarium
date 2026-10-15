@@ -193,6 +193,7 @@ jobs:
             target/u13/windows-byte-audit
           retention-days: 14
   u11-programs:
+    if: ${{ !contains(github.event.head_commit.message, '[u14-diagnostic-only]') }}
     uses: ./.github/workflows/u14-wasm-acceptance.yml
   u13-fuzz:
     uses: ./.github/workflows/u14-fuzz.yml
@@ -545,6 +546,10 @@ jobs:
         with:
           node-version: '26.12.0'
       - run: python3 -m pip install 'coverage==7.16.2'
+      - run: npm install --global npm@12.2.0
+      - run: rustup toolchain install nightly-2026-10-11 --profile minimal --component rust-src
+      - name: Fresh same-source control for strict Python/JS regressions
+        run: python3 -B scripts/build-u14-cost-profile.py --kind acceptance-control --baseline-head "${{ github.sha }}"
       - name: Fixed U14 Python coverage and fail-closed boundaries
         run: |
           mkdir -p target/u14

@@ -30,10 +30,62 @@ pub enum Counter {
     ExecuteRejections,
     InterpreterSteps,
     BudgetCharged,
+    ObservationLookups = 88,
+    ObservationBytes,
+    NextPositive,
+    NextPrepared,
+    NextMissing,
+    NextNegative,
+    NextEpoch,
+    NextUnprepared,
+    NextUnavailable,
+    ChainLength1,
+    ChainLength2,
+    ChainLength3,
+    ChainLength4to7,
+    ChainLength8plus,
+    StopUnsupported,
+    StopNegative,
+    StopFallback,
+    StopEpoch,
+    StopBudget,
+    StopExit,
+    StopKill,
 }
 
 pub const BASE_FIELDS: usize = 24;
-pub const FIELD_COUNT: usize = BASE_FIELDS + 64;
+pub const FIELD_COUNT: usize = Counter::StopKill as usize + 1;
+
+/// Tracks only actually executed consecutive blocks within one CPU budget.
+/// The counter sink is injected so parallel tests never reset global state.
+#[derive(Default)]
+pub struct Chain {
+    length: u64,
+    epoch: Option<u64>,
+}
+impl Chain {
+    pub fn success(&mut self, epoch: u64, mut count: impl FnMut(Counter, u64)) {
+        if self.epoch.is_some_and(|old| old != epoch) {
+            self.stop(Counter::StopEpoch, &mut count);
+        }
+        self.epoch = Some(epoch);
+        self.length = self.length.saturating_add(1);
+    }
+    pub fn stop(&mut self, reason: Counter, mut count: impl FnMut(Counter, u64)) {
+        count(reason, 1);
+        let field = match self.length {
+            0 => return,
+            1 => Counter::ChainLength1,
+            2 => Counter::ChainLength2,
+            3 => Counter::ChainLength3,
+            4..=7 => Counter::ChainLength4to7,
+            _ => Counter::ChainLength8plus,
+        };
+        count(field, 1);
+        self.length = 0;
+        self.epoch = None;
+    }
+}
 
 struct Collector {
     values: [AtomicU64; FIELD_COUNT],
@@ -120,11 +172,109 @@ pub fn block_length(length: usize) {
 mod tests {
     use super::*;
 
+    fn observe(length: u64, reason: Counter) -> Collector {
+        let c = Collector::new();
+        let mut chain = Chain::default();
+        for _ in 0..length {
+            chain.success(1, |field, value| {
+                c.add(field as usize, value);
+            });
+        }
+        chain.stop(reason, |field, value| {
+            c.add(field as usize, value);
+        });
+        c
+    }
+    #[test]
+    fn u14_chain_empty_stop_has_no_invented_block() {
+        let c = observe(0, Counter::StopFallback);
+        assert_eq!(c.get(Counter::StopFallback as usize), Some(1));
+        assert_eq!(c.get(Counter::ChainLength1 as usize), Some(0));
+    }
+    #[test]
+    fn u14_chain_one_block_unsupported_stop() {
+        let c = observe(1, Counter::StopUnsupported);
+        assert_eq!(c.get(Counter::ChainLength1 as usize), Some(1));
+        assert_eq!(c.get(Counter::StopUnsupported as usize), Some(1));
+    }
+    #[test]
+    fn u14_chain_exact_two_and_three() {
+        for (length, field) in [(2, Counter::ChainLength2), (3, Counter::ChainLength3)] {
+            assert_eq!(
+                observe(length, Counter::StopNegative).get(field as usize),
+                Some(1)
+            );
+        }
+    }
+    #[test]
+    fn u14_chain_bounded_histogram_four_to_seven() {
+        for length in 4..=7 {
+            assert_eq!(
+                observe(length, Counter::StopBudget).get(Counter::ChainLength4to7 as usize),
+                Some(1)
+            );
+        }
+    }
+    #[test]
+    fn u14_chain_long_run_aggregates_without_executing_extra_blocks() {
+        assert_eq!(
+            observe(1000, Counter::StopBudget).get(Counter::ChainLength8plus as usize),
+            Some(1)
+        );
+    }
+    #[test]
+    fn u14_chain_epoch_change_flushes_previous_chain() {
+        let c = Collector::new();
+        let mut chain = Chain::default();
+        chain.success(1, |f, v| {
+            c.add(f as usize, v);
+        });
+        chain.success(2, |f, v| {
+            c.add(f as usize, v);
+        });
+        chain.stop(Counter::StopExit, |f, v| {
+            c.add(f as usize, v);
+        });
+        assert_eq!(c.get(Counter::ChainLength1 as usize), Some(2));
+        assert_eq!(c.get(Counter::StopEpoch as usize), Some(1));
+    }
+    #[test]
+    fn u14_chain_interpreter_break_cannot_join_later_blocks() {
+        let c = Collector::new();
+        let mut chain = Chain::default();
+        for _ in 0..2 {
+            chain.success(1, |f, v| {
+                c.add(f as usize, v);
+            });
+            chain.stop(Counter::StopFallback, |f, v| {
+                c.add(f as usize, v);
+            });
+        }
+        assert_eq!(c.get(Counter::ChainLength1 as usize), Some(2));
+        assert_eq!(c.get(Counter::ChainLength2 as usize), Some(0));
+    }
+    #[test]
+    fn u14_chain_exit_flush_is_not_duplicated() {
+        let c = Collector::new();
+        let mut chain = Chain::default();
+        chain.success(1, |f, v| {
+            c.add(f as usize, v);
+        });
+        chain.stop(Counter::StopExit, |f, v| {
+            c.add(f as usize, v);
+        });
+        chain.stop(Counter::StopKill, |f, v| {
+            c.add(f as usize, v);
+        });
+        assert_eq!(c.get(Counter::ChainLength1 as usize), Some(1));
+        assert_eq!(c.get(Counter::StopKill as usize), Some(1));
+    }
+
     #[test]
     fn u14_cost_fresh_collector_has_complete_zero_population() {
         let c = Collector::new();
         assert_eq!(Counter::BudgetCharged as usize + 1, BASE_FIELDS);
-        assert_eq!(FIELD_COUNT, 88);
+        assert_eq!(FIELD_COUNT, 109);
         assert!((0..FIELD_COUNT).all(|field| c.get(field) == Some(0)));
         assert!(!c.overflow.load(Ordering::Relaxed));
     }
@@ -174,7 +324,7 @@ mod tests {
         }
         assert_eq!(c.get(BASE_FIELDS), Some(1));
         assert_eq!(c.get(BASE_FIELDS + 1), Some(2));
-        assert_eq!(c.get(FIELD_COUNT - 1), Some(1));
+        assert_eq!(c.get(BASE_FIELDS + 63), Some(1));
     }
 
     #[test]

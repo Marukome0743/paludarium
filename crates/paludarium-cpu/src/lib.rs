@@ -341,6 +341,8 @@ pub fn run_cached_with_counted_hook(
     let policy = policy.into();
     let maximum_block = policy.maximum_block;
     let mut consumed = 0;
+    #[cfg(feature = "u14-cost-profile")]
+    let mut observed_chain = jit_cost::Chain::default();
     while consumed < budget {
         let generation = mem.code_generation();
         let (instruction, rejected) = match cache.get_with_hint(state.rip.0, generation) {
@@ -350,7 +352,11 @@ pub fn run_cached_with_counted_hook(
                     cache.put(state.rip.0, generation, instruction);
                     (instruction, false)
                 }
-                Err(reason) => return reason,
+                Err(reason) => {
+                    #[cfg(feature = "u14-cost-profile")]
+                    observed_chain.stop(jit_cost::Counter::StopExit, jit_cost::add);
+                    return reason;
+                }
             },
         };
         let mut deterministic_rejection = false;
@@ -364,24 +370,45 @@ pub fn run_cached_with_counted_hook(
                 count > 0 && count <= maximum_block,
                 "invalid accelerator instruction count"
             );
+            #[cfg(feature = "u14-cost-profile")]
+            observed_chain.success(generation, jit_cost::add);
             if matches!(reason, ExitReason::BudgetExhausted { .. }) {
                 #[cfg(feature = "u14-cost-profile")]
                 jit_cost::add(jit_cost::Counter::BudgetCharged, count);
                 consumed += count;
                 continue;
             }
+            #[cfg(feature = "u14-cost-profile")]
+            observed_chain.stop(jit_cost::Counter::StopExit, jit_cost::add);
             return reason;
         }
+        #[cfg(feature = "u14-cost-profile")]
+        observed_chain.stop(
+            if policy.cache_rejections && rejected {
+                jit_cost::Counter::StopNegative
+            } else if deterministic_rejection {
+                jit_cost::Counter::StopUnsupported
+            } else if maximum_block > 0 && budget - consumed < maximum_block {
+                jit_cost::Counter::StopBudget
+            } else {
+                jit_cost::Counter::StopFallback
+            },
+            jit_cost::add,
+        );
         if policy.cache_rejections && deterministic_rejection {
             cache.reject_acceleration(state.rip.0, generation);
         }
         #[cfg(feature = "u14-cost-profile")]
         jit_cost::add(jit_cost::Counter::InterpreterSteps, 1);
         if let Err(reason) = execute_decoded(state, mem, &instruction) {
+            #[cfg(feature = "u14-cost-profile")]
+            observed_chain.stop(jit_cost::Counter::StopExit, jit_cost::add);
             return reason;
         }
         consumed += 1;
     }
+    #[cfg(feature = "u14-cost-profile")]
+    observed_chain.stop(jit_cost::Counter::StopBudget, jit_cost::add);
     ExitReason::BudgetExhausted { rip: state.rip }
 }
 

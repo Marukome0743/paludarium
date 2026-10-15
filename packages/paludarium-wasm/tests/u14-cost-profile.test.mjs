@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { cp, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { COST_FIELDS, costSnapshot, jitImports } from "../jit-support.mjs";
 import { validateBuildReceipt, validateProfileReport } from "./u14-cost-profile-check.mjs";
 
@@ -9,7 +14,7 @@ const locks = ["Cargo.lock", "fuzz/Cargo.lock", "tests/guests/u10/source-lock.js
 function build() {
   const source_files = Object.fromEntries(locks.sort().map(name => [name, "1".repeat(64)]));
   const source_digest = hash(JSON.stringify(source_files));
-  return { schema: 1, purpose: "u14-cost-profile", features: ["u14-cost-profile"],
+  return { schema: 2, diagnostic_version: 2, purpose: "u14-cost-profile", features: ["u14-cost-profile"],
     source_files, source_digest, module_sha256: "2".repeat(64), locks: { ...source_files },
     local_snapshot: true, head: "local:" + source_digest };
 }
@@ -20,11 +25,11 @@ function report() {
   const rows = [false, true].map(jit => {
     const counters = Object.fromEntries(COST_FIELDS.map(name => [name, "0"]));
     counters.checkpoints = "1";
-    if (jit) Object.assign(counters, { executedBlocks: "1", executedInstructions: "2", compileAttempts: "1", jsTransitions: "2", blockLength2: "1" });
+    if (jit) Object.assign(counters, { executedBlocks: "1", executedInstructions: "2", compileAttempts: "1", jsTransitions: "2", blockLength2: "1", nextMissing: "1" });
     return { jit, pass: true, exit: 0, timed_out: false, errors: [], seconds: 1, cleaned: true,
-      costProfile: { schema: 1, purpose: "u14-cost-profile", overflow: false, counters } };
+      costProfile: { schema: 2, purpose: "u14-cost-profile", overflow: false, counters } };
   });
-  return { schema: 1, purpose: "u14-cost-profile", performanceAcceptance: false, ...identity, complete: true, rows };
+  return { schema: 2, purpose: "u14-cost-profile", performanceAcceptance: false, ...identity, complete: true, rows };
 }
 const rejectReport = change => { const r = report(); change(r); assert.throws(() => validateProfileReport(r, identity)); };
 test("cost runner accepts exact two diagnostic observations without claiming performance", () => {
@@ -88,7 +93,7 @@ test("cost collector disabled path never reads clock or calls diagnostic exports
   assert.equal(s.jit.execute(1, 512, bytes.length, 64, 144), 0);
 });
 test("cost collector times only cold actual compilation and counts bytes separately", () => {
-  const counters = Array(88).fill(0), times = [10, 11];
+  const counters = Array(COST_FIELDS.length).fill(0), times = [10, 11];
   const s = bridge((field, value) => { counters[field] += value; }, () => times.shift());
   assert.equal(s.jit.prepare(1, 512, bytes.length), 0);
   assert.equal(s.jit.execute(1, 512, bytes.length, 64, 144), 0);
@@ -99,7 +104,7 @@ test("cost collector times only cold actual compilation and counts bytes separat
   assert.equal(times.length, 0);
 });
 test("cost collector records failed cold compilation while preserving state", () => {
-  const counters = Array(88).fill(0);
+  const counters = Array(COST_FIELDS.length).fill(0);
   const s = bridge((field, value) => counters[field] += value, () => 1);
   new Uint8Array(s.memory.buffer)[512] = 1;
   assert.equal(s.jit.prepare(1, 512, bytes.length), -1);
@@ -108,12 +113,113 @@ test("cost collector records failed cold compilation while preserving state", ()
 });
 test("cost snapshot refuses wrong ABI and has no ordinary-module fallback claim", () => {
   assert.equal(costSnapshot({}), null);
-  assert.throws(() => costSnapshot({ u14_cost_version: () => 2 }));
+  assert.throws(() => costSnapshot({ u14_cost_version: () => 1 }));
   assert.throws(() => costSnapshot({ u14_cost_version: () => 1, u14_cost_fields: () => 0 }));
 });
 test("cost snapshot retains overflow for fail-closed report validation", () => {
-  const s = costSnapshot({ u14_cost_version: () => 1, u14_cost_fields: () => 88,
+  const s = costSnapshot({ u14_cost_version: () => 2, u14_cost_fields: () => COST_FIELDS.length,
     u14_cost_overflow: () => 1, u14_cost_stat: () => 0n });
   assert.equal(s.overflow, true);
-  assert.equal(Object.keys(s.counters).length, 88);
+  assert.equal(Object.keys(s.counters).length, 109);
+});
+
+test("v2 refuses historical v1 build/report/collector even with matching digests", () => {
+  const r = build(); r.schema = 1; assert.throws(() => validateBuildReceipt(r, receipt.module_sha256));
+  const b = build(); b.diagnostic_version = 1; assert.throws(() => validateBuildReceipt(b, receipt.module_sha256));
+  rejectReport(r => r.schema = 1);
+  rejectReport(r => r.rows[1].costProfile.schema = 1);
+});
+test("v2 next and prepared populations cannot invent adjacent blocks", () => {
+  rejectReport(r => r.rows[1].costProfile.counters.nextMissing = "0");
+  rejectReport(r => r.rows[1].costProfile.counters.nextPrepared = "1");
+  rejectReport(r => r.rows[1].costProfile.counters.extra = "0");
+});
+test("no-touch query missing never prepares or reads clock/scratch", () => {
+  const counters = Array(COST_FIELDS.length).fill(0);
+  const s = bridge((f,v) => counters[f] += v, () => { throw Error("query clock"); });
+  assert.equal(s.jit.execute(1,512,bytes.length,0,0),-2);
+  assert.equal(counters[88],1); assert.equal(counters[14],0); assert.equal(counters[19],0);
+});
+test("no-touch query prepared entry preserves scratch and compile counts", () => {
+  const counters = Array(COST_FIELDS.length).fill(0);
+  const s = bridge((f,v) => counters[f] += v, () => 1);
+  assert.equal(s.jit.prepare(1,512,bytes.length),0);
+  new Uint8Array(s.memory.buffer,64,144).fill(77);
+  const before = new Uint8Array(s.memory.buffer).slice();
+  for(let i=0;i<8;i++) assert.equal(s.jit.execute(1,512,bytes.length,0,0),0);
+  assert.deepEqual(new Uint8Array(s.memory.buffer),before);
+  assert.equal(counters[14],1); assert.equal(counters[19],0);
+  assert.equal(counters[89],8*bytes.length);
+});
+test("no-touch query changed code rejects without deleting or repairing entry", () => {
+  const s = bridge(() => {}, () => 1); s.jit.prepare(1,512,bytes.length);
+  new Uint8Array(s.memory.buffer)[512]=1;
+  assert.equal(s.jit.execute(1,512,bytes.length,0,0),-1);
+  new Uint8Array(s.memory.buffer)[512]=bytes[0];
+  assert.equal(s.jit.execute(1,512,bytes.length,0,0),0);
+});
+test("no-touch query does not update positive LRU eviction order", () => {
+  const s = bridge(() => {}, () => 1);
+  for(let key=1;key<=1024;key++) assert.equal(s.jit.prepare(key,512,bytes.length),0);
+  assert.equal(s.jit.execute(1,512,bytes.length,0,0),0);
+  assert.equal(s.jit.prepare(1025,512,bytes.length),0);
+  assert.equal(s.jit.execute(1,512,bytes.length,0,0),-2);
+  assert.equal(s.jit.execute(2,512,bytes.length,0,0),0);
+});
+test("no-touch query is Worker local and does not create entries", () => {
+  const left=bridge(()=>{},()=>1), right=bridge(()=>{},()=>1);
+  left.jit.prepare(1,512,bytes.length);
+  assert.equal(left.jit.execute(1,512,bytes.length,0,0),0);
+  assert.equal(right.jit.execute(1,512,bytes.length,0,0),-2);
+});
+test("no-touch query invalid ranges and ordinary-module sentinel are rejected", () => {
+  const s=bridge(()=>{},()=>1), ordinary=bridge(null,()=>1);
+  for(const args of [[0,512,bytes.length,0,0],[1,0,bytes.length,0,0],[1,65530,bytes.length,0,0], [1,512,bytes.length,64,0]]) assert.equal(s.jit.execute(...args),-1);
+  ordinary.jit.prepare(1,512,bytes.length);
+  assert.equal(ordinary.jit.execute(1,512,bytes.length,0,0),-1);
+  assert.equal(ordinary.jit.execute(1,512,bytes.length,64,144),0);
+});
+
+test("same-source control packs, imports and runs real hello with natural cleanup", async () => {
+  const input=process.env.PALUDARIUM_U14_CONTROL_WASM;
+  assert.ok(input,"PALUDARIUM_U14_CONTROL_WASM must explicitly select the fresh control module");
+  const root=resolve(dirname(fileURLToPath(import.meta.url)),"../../..");
+  const pkg=resolve(root,"packages/paludarium-wasm"), module=await readFile(resolve(root,input));
+  const receipt=JSON.parse(await readFile(resolve(root,input)+".receipt.json","utf8"));
+  assert.equal(receipt.purpose,"u14-acceptance-control"); assert.equal(receipt.schema,2);
+  assert.deepEqual(receipt.features,[]); assert.equal(receipt.module_sha256,hash(module));
+  assert.equal(WebAssembly.Module.exports(new WebAssembly.Module(module)).filter(x=>x.name.startsWith("u14_cost_")).length,0);
+  for(const[name,digest]of Object.entries(receipt.source_files)) assert.equal(hash(await readFile(resolve(root,name))),digest,"fresh control source changed: "+name);
+  const manifest=JSON.parse(await readFile(resolve(pkg,"package.json"),"utf8"));
+  await mkdir(resolve(root,"target/u14-v2-packed"),{recursive:true});
+  const work=await mkdtemp(resolve(root,"target/u14-v2-packed/run-")), staged=resolve(work,"staged");
+  await mkdir(staged); await cp(resolve(pkg,"package.json"),resolve(staged,"package.json"));
+  for(const name of manifest.files) if(name!=="paludarium.wasm") await cp(resolve(pkg,name),resolve(staged,name));
+  await writeFile(resolve(staged,"paludarium.wasm"),module);
+  const npmRoot=resolve(homedir(),".local/share/mise/installs/npm-npm"), candidates=[];
+  try {
+    for(const version of await readdir(npmRoot,{withFileTypes:true})) {
+      if(!version.isDirectory()) continue;
+      const mise=resolve(npmRoot,version.name,"node_modules/.mise");
+      for(const name of await readdir(mise)) if(name.startsWith("npm@")) candidates.push(resolve(mise,name,"node_modules/npm/bin/npm-cli.js"));
+    }
+  } catch(error) {
+    if(error.code!=="ENOENT") throw error;
+    // actions/setup-node's actual Node distribution, never a shell shim.
+    candidates.push(resolve(dirname(process.execPath),"../lib/node_modules/npm/bin/npm-cli.js"));
+  }
+  assert.equal(candidates.length,1,"select exactly one real project npm CLI");
+  const run=(command,args,cwd=root)=>execFileSync(command,args,{cwd,encoding:"utf8",timeout:60000,killSignal:"SIGKILL",env:{...process.env,PATH:dirname(process.execPath)+":"+process.env.PATH}});
+  assert.equal(run(process.execPath,[candidates[0],"--version"]).trim(),"12.2.0");
+  const packed=JSON.parse(run(process.execPath,[candidates[0],"pack","--json","--ignore-scripts","--pack-destination",work,"--cache",resolve(root,"target/u14-v2-npm-cache")],staged));
+  const reports=Array.isArray(packed)?packed:Object.values(packed); assert.equal(reports.length,1);
+  assert.ok(reports[0].files.some(x=>x.path==="jit-support.mjs"));
+  run("/usr/bin/tar",["-xzf",resolve(work,reports[0].filename),"-C",work]);
+  const directory=resolve(work,"package"),child=resolve(pkg,"tests/packed-distribution-child.mjs"),guest=resolve(pkg,"tests/guests/hello");
+  assert.equal(hash(await readFile(resolve(directory,"paludarium.wasm"))),receipt.module_sha256);
+  assert.equal(hash(await readFile(guest)),JSON.parse(await readFile(resolve(pkg,"tests/guest-hashes.json"))).hello);
+  assert.match(run(process.execPath,[child,directory,guest,"import"]),/packed import PASS/);
+  const output=run(process.execPath,[child,directory,guest,"hello"]);
+  assert.match(output,/packed dispose PASS/);
+  console.log(JSON.stringify({scope:"new same-source control distribution",module_sha256:receipt.module_sha256,tarball_sha256:hash(await readFile(resolve(work,reports[0].filename))),output}));
 });

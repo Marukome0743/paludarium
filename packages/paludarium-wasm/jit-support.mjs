@@ -6,11 +6,15 @@ export const COST_FIELDS = [
   "prepareCalls", "executeCalls", "compileAttempts", "compileNanoseconds", "jsTransitions",
   "comparisonBytesUpperBound", "codeBytesCopied", "stateBytesCopied", "prepareRejections", "executeRejections",
   "interpreterSteps", "budgetCharged", ...Array.from({ length: 64 }, (_, i) => `blockLength${i + 1}`),
+  "observationLookups", "observationBytes", "nextPositive", "nextPrepared", "nextMissing",
+  "nextNegative", "nextEpoch", "nextUnprepared", "nextUnavailable", "chainLength1", "chainLength2",
+  "chainLength3", "chainLength4to7", "chainLength8plus", "stopUnsupported", "stopNegative",
+  "stopFallback", "stopEpoch", "stopBudget", "stopExit", "stopKill",
 ];
 export function costSnapshot(exports) {
   if (typeof exports.u14_cost_version !== "function") return null;
-  if (exports.u14_cost_version() !== 1 || exports.u14_cost_fields() !== COST_FIELDS.length) throw Error("Diagnostic ABI mismatch");
-  return { schema: 1, purpose: "u14-cost-profile", overflow: exports.u14_cost_overflow() !== 0,
+  if (exports.u14_cost_version() !== 2 || exports.u14_cost_fields() !== COST_FIELDS.length) throw Error("Diagnostic ABI mismatch");
+  return { schema: 2, purpose: "u14-cost-profile", overflow: exports.u14_cost_overflow() !== 0,
     counters: Object.fromEntries(COST_FIELDS.map((name, index) => [name, String(exports.u14_cost_stat(index))])) };
 }
 export function jitImports(memory, cost = null, now = () => performance.now()) {
@@ -48,6 +52,18 @@ export function jitImports(memory, cost = null, now = () => performance.now()) {
       } catch { return -1; }
     },
     execute(key, codePointer, codeLength, statePointer, stateLength) {
+      // Diagnostic-only query: never prepare, run, evict, touch recency, or
+      // access scratch. Ordinary imports reject this sentinel below.
+      if (cost && statePointer === 0 && stateLength === 0) {
+        if (running || !Number.isInteger(key) || key <= 0 || codeLength > 65536
+            || !range(codePointer, codeLength)) return -1;
+        cost(88, 1);
+        const entry = compiled.get(key);
+        if (!entry) return -2;
+        const bytes = new Uint8Array(memory.buffer, codePointer, codeLength);
+        cost(89, bytes.length);
+        return entry.bytes.length === bytes.length && entry.bytes.every((value, i) => value === bytes[i]) ? 0 : -1;
+      }
       if (running || !Number.isInteger(key) || key <= 0 || codeLength > 65536
           || stateLength !== 144 || !range(codePointer, codeLength) || !range(statePointer, stateLength)) return -1;
       // A module ID is allocated in shared Rust and never reused. Each Worker

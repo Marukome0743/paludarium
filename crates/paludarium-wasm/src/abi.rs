@@ -42,6 +42,17 @@ unsafe extern "C" {
 }
 struct WorkerJit;
 impl paludarium_jit::ExecutionBridge for WorkerJit {
+    #[cfg(feature = "u14-cost-profile")]
+    fn diagnostic_prepared(&self, module: u32, wasm: &[u8]) -> Option<bool> {
+        paludarium_jit::jit_cost::add(paludarium_jit::jit_cost::Counter::JsTransitions, 1);
+        // SAFETY: immutable live Rust code; length0/null state is a diagnostic
+        // no-touch query accepted only by the cost-enabled launcher import.
+        match unsafe { jit_execute(module, wasm.as_ptr(), wasm.len(), std::ptr::null_mut(), 0) } {
+            0 => Some(true),
+            -2 => Some(false),
+            _ => None,
+        }
+    }
     fn execute_ready(&self, module: u32, wasm: &[u8], state: &mut [u64; 18]) -> Option<bool> {
         #[cfg(feature = "u14-cost-profile")]
         {
@@ -207,7 +218,7 @@ pub extern "C" fn session_jit_stat(id: u32, field: u32) -> u64 {
 #[cfg(feature = "u14-cost-profile")]
 #[unsafe(no_mangle)]
 pub extern "C" fn u14_cost_version() -> u32 {
-    1
+    2
 }
 #[cfg(feature = "u14-cost-profile")]
 #[unsafe(no_mangle)]

@@ -36,7 +36,25 @@ pub(crate) struct EpochCache<T> {
     state: Mutex<State<T>>,
 }
 
+#[cfg(feature = "u14-cost-profile")]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Peek<T> {
+    Missing,
+    Stale,
+    Present(T),
+}
+
 impl<T: Clone> EpochCache<T> {
+    /// Diagnostic observation only: even stale entries retain their recency.
+    #[cfg(feature = "u14-cost-profile")]
+    pub(crate) fn peek(&self, space: u64, rip: u64, generation: u64) -> Peek<T> {
+        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        match state.entries.get(&(space, rip)) {
+            None => Peek::Missing,
+            Some(entry) if entry.generation != generation => Peek::Stale,
+            Some(entry) => Peek::Present(entry.translation.clone()),
+        }
+    }
     pub(crate) fn new() -> Self {
         Self {
             state: Mutex::new(State {
@@ -147,6 +165,88 @@ impl<T: Clone> EpochCache<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "u14-cost-profile")]
+    fn snapshot(cache: &EpochCache<Option<u64>>) -> String {
+        let state = cache.state.lock().unwrap();
+        format!(
+            "{:?}/{:?}/{}",
+            state
+                .entries
+                .iter()
+                .map(|(k, e)| (*k, e.generation, e.end, e.translation, e.access))
+                .collect::<Vec<_>>(),
+            state.accesses,
+            state.clock
+        )
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    fn unchanged(space: u64, rip: u64, generation: u64, expected: Peek<Option<u64>>) {
+        let cache = EpochCache::new();
+        cache.insert(1, 4096, 2, 1, Some(42));
+        cache.insert(1, 8192, 2, 1, None);
+        let before = snapshot(&cache);
+        for _ in 0..100 {
+            assert_eq!(cache.peek(space, rip, generation), expected);
+        }
+        assert_eq!(snapshot(&cache), before);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_peek_positive_does_not_touch_recency() {
+        unchanged(1, 4096, 2, Peek::Present(Some(42)));
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_peek_negative_does_not_touch_hint() {
+        unchanged(1, 8192, 2, Peek::Present(None));
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_peek_stale_does_not_delete_entry() {
+        unchanged(1, 4096, 3, Peek::Stale);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_peek_missing_does_not_insert_entry() {
+        unchanged(1, 12288, 2, Peek::Missing);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_peek_other_space_is_not_positive() {
+        unchanged(2, 4096, 2, Peek::Missing);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_peek_does_not_trigger_clock_exhaustion() {
+        let cache = EpochCache::new();
+        cache.insert(1, 4096, 1, 1, Some(42));
+        cache.state.lock().unwrap().clock = u64::MAX;
+        let before = snapshot(&cache);
+        assert_eq!(cache.peek(1, 4096, 1), Peek::Present(Some(42)));
+        assert_eq!(snapshot(&cache), before);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_peek_does_not_change_eviction_order() {
+        let cache = EpochCache::new();
+        for rip in 0..1024 {
+            cache.insert(1, rip, 1, 1, Some(rip));
+        }
+        assert_eq!(cache.peek(1, 0, 1), Peek::Present(Some(0)));
+        cache.insert(1, 1024, 1, 1, Some(1024));
+        assert_eq!(cache.peek(1, 0, 1), Peek::Missing);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_peek_invalidated_mapping_stays_missing() {
+        let cache = EpochCache::new();
+        cache.insert(1, 4096, 1, 1, Some(42));
+        cache.invalidate(4096);
+        let before = snapshot(&cache);
+        assert_eq!(cache.peek(1, 4096, 1), Peek::Missing);
+        assert_eq!(snapshot(&cache), before);
+    }
 
     #[test]
     fn u14_negative_cache_hit_does_not_mutate_recency() {

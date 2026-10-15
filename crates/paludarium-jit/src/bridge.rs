@@ -14,6 +14,12 @@ use std::sync::{
 /// One Worker-local synchronous wasm compiler/executor. State is trusted Rust
 /// scratch storage: GPR0..15, rflags, RIP. Failure must never commit guest state.
 pub trait ExecutionBridge: Send + Sync {
+    /// Feature-only no-touch observation. None means unsupported observation,
+    /// not a missing prepared entry, and never requests preparation.
+    #[cfg(feature = "u14-cost-profile")]
+    fn diagnostic_prepared(&self, _module_id: u32, _wasm: &[u8]) -> Option<bool> {
+        None
+    }
     /// Executes an already prepared Worker-local entry. `None` requests cold
     /// preparation outside the MMU guard; failures must roll back scratch.
     fn execute_ready(&self, _module_id: u32, _wasm: &[u8], _state: &mut [u64; 18]) -> Option<bool> {
@@ -80,6 +86,30 @@ impl WasmCodeCache {
             executed_blocks: self.executed.load(Ordering::Relaxed),
             executed_instructions: self.instructions.load(Ordering::Relaxed),
             fallbacks: self.fallbacks.load(Ordering::Relaxed),
+        }
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    fn observe_next(&self, memory: &AddressSpace, space: u64, generation: u64, rip: u64) {
+        use crate::cache::Peek;
+        jit_cost::add(Counter::ObservationLookups, 1);
+        let observed = memory.with_code_epoch(space, generation, || {
+            match self.cache.peek(space, rip, generation) {
+                Peek::Missing => jit_cost::add(Counter::NextMissing, 1),
+                Peek::Stale => jit_cost::add(Counter::NextEpoch, 1),
+                Peek::Present(None) => jit_cost::add(Counter::NextNegative, 1),
+                Peek::Present(Some(next)) => {
+                    jit_cost::add(Counter::NextPositive, 1);
+                    let field = match self.bridge.diagnostic_prepared(next.id, &next.code) {
+                        Some(true) => Counter::NextPrepared,
+                        Some(false) => Counter::NextUnprepared,
+                        None => Counter::NextUnavailable,
+                    };
+                    jit_cost::add(field, 1);
+                }
+            }
+        });
+        if observed.is_none() {
+            jit_cost::add(Counter::NextEpoch, 1);
         }
     }
     fn run(
@@ -215,6 +245,7 @@ impl WasmCodeCache {
                 translation.instruction_count as u64,
             );
             jit_cost::block_length(translation.instruction_count);
+            self.observe_next(memory, space, generation, state.rip.0);
         }
         Some((
             ExitReason::BudgetExhausted { rip: state.rip },
@@ -269,6 +300,116 @@ mod tests {
     };
 
     struct NodeBridge;
+    #[cfg(feature = "u14-cost-profile")]
+    #[derive(Default)]
+    struct ObservingBridge {
+        queries: AtomicU32,
+        prepares: AtomicU32,
+        executes: AtomicU32,
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    impl ExecutionBridge for ObservingBridge {
+        fn diagnostic_prepared(&self, id: u32, _: &[u8]) -> Option<bool> {
+            self.queries.fetch_add(1, Ordering::Relaxed);
+            Some(id == 17)
+        }
+        fn prepare(&self, _: u32, _: &[u8]) -> bool {
+            self.prepares.fetch_add(1, Ordering::Relaxed);
+            false
+        }
+        fn execute(&self, _: u32, _: &[u8], _: &mut [u64; 18]) -> bool {
+            self.executes.fetch_add(1, Ordering::Relaxed);
+            false
+        }
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    fn observation_case(kind: u32, expected_queries: u32) {
+        let (state, memory) = machine(&[0xb8, 42, 0, 0, 0], 0);
+        let before = state.clone();
+        let epoch = memory.code_epoch();
+        let bridge = Arc::new(ObservingBridge::default());
+        let cache = WasmCodeCache::new(bridge.clone());
+        let entry = Some(Arc::new(Translation {
+            id: if kind == 2 { 18 } else { 17 },
+            code: vec![0],
+            instruction_count: 1,
+        }));
+        match kind {
+            0 => {}
+            3 => {
+                cache.cache.insert(epoch.0, 4096, epoch.1, 1, None);
+            }
+            4 => {
+                cache
+                    .cache
+                    .insert(epoch.0, 4096, epoch.1.wrapping_add(1), 1, entry);
+            }
+            5 => {
+                cache
+                    .cache
+                    .insert(epoch.0.wrapping_add(1), 4096, epoch.1, 1, entry);
+            }
+            _ => {
+                cache.cache.insert(epoch.0, 4096, epoch.1, 1, entry);
+            }
+        }
+        if kind == 6 {
+            cache.cache.invalidate(4096);
+        }
+        let statistics = cache.statistics();
+        for _ in 0..3 {
+            cache.observe_next(&memory, epoch.0, epoch.1, 4096);
+        }
+        assert_eq!(bridge.queries.load(Ordering::Relaxed), expected_queries);
+        assert_eq!(bridge.prepares.load(Ordering::Relaxed), 0);
+        assert_eq!(bridge.executes.load(Ordering::Relaxed), 0);
+        assert_eq!(cache.statistics(), statistics);
+        assert_eq!(state, before);
+        assert_eq!(memory.code_epoch(), epoch);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_observe_missing_never_prepares() {
+        observation_case(0, 0);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_observe_positive_only_queries_worker() {
+        observation_case(1, 3);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_observe_unprepared_never_compiles() {
+        observation_case(2, 3);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_observe_negative_never_queries_worker() {
+        observation_case(3, 0);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_observe_stale_never_queries_worker() {
+        observation_case(4, 0);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_observe_other_space_never_queries_worker() {
+        observation_case(5, 0);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_observe_invalidated_never_recreates_entry() {
+        observation_case(6, 0);
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    #[test]
+    fn u14_observe_default_bridge_reports_unavailable_without_prepare() {
+        let bridge = WarmBridge::default();
+        assert_eq!(bridge.diagnostic_prepared(17, &[]), None);
+        assert_eq!(bridge.prepares.load(Ordering::Relaxed), 0);
+        assert_eq!(bridge.executes.load(Ordering::Relaxed), 0);
+    }
     #[derive(Default)]
     struct WarmBridge {
         prepared: AtomicU32,
