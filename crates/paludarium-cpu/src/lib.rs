@@ -345,6 +345,7 @@ impl From<u64> for AccelerationPolicy {
     }
 }
 
+#[inline(never)]
 pub fn run_cached_with_counted_hook(
     state: &mut CpuState,
     mem: &AddressSpace,
