@@ -2,8 +2,9 @@
 import json
 import math
 
-CASES = ('move64', 'add64-carry', 'sub64-overflow', 'branch-taken',
-         'branch-not-taken', 'memory-read-write', 'unsupported-sse-fallback',
+CASES = ('move64', 'add64-carry', 'sub64-overflow', 'jne-zf1-not-taken',
+         'jne-zf0-taken', 'je-zf1-taken', 'je-zf0-not-taken',
+         'memory-read-write', 'unsupported-sse-fallback',
          'unmapped-data-fault', 'division-fault', 'self-modifying-code',
          'cross-page-instruction')
 HEX_FIELDS = ('rax', 'first_rax', 'flags', 'flag_mask', 'memory')

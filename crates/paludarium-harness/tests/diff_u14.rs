@@ -178,10 +178,13 @@ fn u14_fresh_linux_instruction_differential() {
         let move64 = [
             0x48, 0xb8, 0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 1, 0xc3,
         ];
-        let branch = [
+        let jne = [
             0x48, 0x83, 0xf8, 7, 0x75, 6, 0xb8, 42, 0, 0, 0, 0xc3, 0xb8, 9, 0, 0, 0, 0xc3,
         ];
-        let cases: [(&str, &[u8], u64, bool); 11] = [
+        let je = [
+            0x48, 0x83, 0xf8, 7, 0x74, 6, 0xb8, 42, 0, 0, 0, 0xc3, 0xb8, 9, 0, 0, 0, 0xc3,
+        ];
+        let cases: [(&str, &[u8], u64, bool); 13] = [
             ("move64", &move64, 0, true),
             ("add64-carry", &[0x48, 0x83, 0xc0, 1, 0xc3], u64::MAX, true),
             (
@@ -190,8 +193,10 @@ fn u14_fresh_linux_instruction_differential() {
                 1 << 63,
                 true,
             ),
-            ("branch-taken", &branch, 7, true),
-            ("branch-not-taken", &branch, 8, true),
+            ("jne-zf1-not-taken", &jne, 7, true),
+            ("jne-zf0-taken", &jne, 8, true),
+            ("je-zf1-taken", &je, 7, true),
+            ("je-zf0-not-taken", &je, 8, true),
             (
                 "memory-read-write",
                 &[0x48, 0x89, 7, 0x48, 0x83, 7, 5, 0x48, 0x8b, 7, 0xc3],
