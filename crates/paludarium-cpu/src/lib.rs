@@ -16,6 +16,8 @@ mod exec;
 /// Opt-in diagnostic counters; absent from ordinary release builds.
 #[cfg(feature = "u14-cost-profile")]
 pub mod jit_cost;
+#[cfg(feature = "u14-cost-profile")]
+mod jit_cost_sites;
 mod softfloat;
 mod sse;
 mod state;
@@ -95,6 +97,19 @@ impl DecodeCache {
         {
             *rejected = true;
         }
+    }
+
+    #[cfg(feature = "u14-cost-profile")]
+    fn observe_slot(&self, rip: u64, generation: u64) {
+        use jit_cost::{Counter, add};
+        let counter = match &self.entries[Self::slot(rip)] {
+            None => Counter::DecodeSlotEmpty,
+            Some((r, _, _, _)) if *r != rip => Counter::DecodeSlotRipCollision,
+            Some((_, g, _, _)) if *g != generation => Counter::DecodeSlotEpochStale,
+            Some((_, _, _, true)) => Counter::DecodeHintHit,
+            Some(_) => Counter::DecodedHit,
+        };
+        add(counter, 1);
     }
 }
 
@@ -343,8 +358,16 @@ pub fn run_cached_with_counted_hook(
     let mut consumed = 0;
     #[cfg(feature = "u14-cost-profile")]
     let mut observed_chain = jit_cost::Chain::default();
+    #[cfg(feature = "u14-cost-profile")]
+    let observed_space = mem.code_epoch().0;
     while consumed < budget {
         let generation = mem.code_generation();
+        #[cfg(feature = "u14-cost-profile")]
+        let observed_rip = state.rip.0;
+        #[cfg(feature = "u14-cost-profile")]
+        if policy.cache_rejections {
+            cache.observe_slot(state.rip.0, generation);
+        }
         let (instruction, rejected) = match cache.get_with_hint(state.rip.0, generation) {
             Some(entry) => entry,
             None => match fetch_for_state(state, mem) {
@@ -372,6 +395,10 @@ pub fn run_cached_with_counted_hook(
             );
             #[cfg(feature = "u14-cost-profile")]
             observed_chain.success(generation, jit_cost::add);
+            #[cfg(feature = "u14-cost-profile")]
+            if policy.cache_rejections {
+                jit_cost::observe_site(observed_space, generation, observed_rip, 1, &instruction);
+            }
             if matches!(reason, ExitReason::BudgetExhausted { .. }) {
                 #[cfg(feature = "u14-cost-profile")]
                 jit_cost::add(jit_cost::Counter::BudgetCharged, count);
@@ -397,6 +424,25 @@ pub fn run_cached_with_counted_hook(
         );
         if policy.cache_rejections && deterministic_rejection {
             cache.reject_acceleration(state.rip.0, generation);
+        }
+        #[cfg(feature = "u14-cost-profile")]
+        if policy.cache_rejections {
+            let class = if rejected {
+                2
+            } else if deterministic_rejection {
+                3
+            } else if maximum_block > 0 && budget - consumed < maximum_block {
+                4
+            } else {
+                5
+            };
+            jit_cost::observe_site(
+                observed_space,
+                generation,
+                observed_rip,
+                class,
+                &instruction,
+            );
         }
         #[cfg(feature = "u14-cost-profile")]
         jit_cost::add(jit_cost::Counter::InterpreterSteps, 1);

@@ -21,6 +21,8 @@ static CONFIGS: Table<Config> = OnceLock::new();
 static RUNS: Table<Arc<Run>> = OnceLock::new();
 static REGIONS: Table<Box<[u128]>> = OnceLock::new();
 static FILESYSTEMS: Table<Arc<PrivateFs>> = OnceLock::new();
+#[cfg(feature = "u14-cost-profile")]
+static MICRO: Table<paludarium_jit::microbench::DiagnosticBench> = OnceLock::new();
 struct Run {
     session: Option<Arc<Session>>,
     host: Arc<WasmHost>,
@@ -218,7 +220,27 @@ pub extern "C" fn session_jit_stat(id: u32, field: u32) -> u64 {
 #[cfg(feature = "u14-cost-profile")]
 #[unsafe(no_mangle)]
 pub extern "C" fn u14_cost_version() -> u32 {
-    2
+    3
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_measurement(enabled: u32) -> i32 {
+    if enabled > 1 {
+        return -1;
+    }
+    i32::from(paludarium_jit::jit_cost::set_measurement_enabled(
+        enabled == 1,
+    ))
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_site_count() -> u32 {
+    paludarium_jit::jit_cost::site_count() as u32
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_cost_site_stat(index: u32, field: u32) -> u64 {
+    paludarium_jit::jit_cost::site_field(index as usize, field as usize).unwrap_or(0)
 }
 #[cfg(feature = "u14-cost-profile")]
 #[unsafe(no_mangle)]
@@ -248,6 +270,47 @@ pub extern "C" fn u14_cost_add(field: u32, value: u64) -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn u14_cost_reset() {
     paludarium_jit::jit_cost::reset();
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_micro_new(kind: u32, maximum: u32, observe: u32) -> u32 {
+    if maximum > 1 || observe > 1 {
+        return 0;
+    }
+    paludarium_jit::microbench::DiagnosticBench::new(
+        kind,
+        maximum == 1,
+        observe == 1,
+        Arc::new(WorkerJit),
+    )
+    .map_or(0, |bench| insert(&MICRO, bench))
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_micro_chunk(id: u32, count: u32) -> u64 {
+    table(&MICRO)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get_mut(&id)
+        .and_then(|bench| bench.chunk(count))
+        .unwrap_or(u64::MAX)
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_micro_operations(id: u32) -> u64 {
+    table(&MICRO)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&id)
+        .map_or(u64::MAX, |bench| bench.operations())
+}
+#[cfg(feature = "u14-cost-profile")]
+#[unsafe(no_mangle)]
+pub extern "C" fn u14_micro_drop(id: u32) {
+    table(&MICRO)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&id);
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn config_arg(id: u32, arg: u32) -> i32 {
@@ -477,8 +540,14 @@ pub extern "C" fn session_from_config_fs(id: u32, stdin: u32, filesystem: u32) -
         return 0;
     };
     let host = Arc::new(WasmHost::streaming(bytes(stdin).unwrap_or_default()));
+    // The measured two-instruction warm bridge cannot amortize its cost.
+    // This excludes that case; it does not assert profitability of all >=3.
+    const MINIMUM_WASM_JIT_BLOCK: usize = 3;
     let jit = config.jit.then(|| {
-        Arc::new(paludarium_jit::WasmCodeCache::new(Arc::new(WorkerJit)).with_minimum_block(2))
+        Arc::new(
+            paludarium_jit::WasmCodeCache::new(Arc::new(WorkerJit))
+                .with_minimum_block(MINIMUM_WASM_JIT_BLOCK),
+        )
     });
     let (session, error) = match Session::new(config, host.clone()) {
         Ok(s) => (

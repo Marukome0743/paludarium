@@ -10,11 +10,24 @@ export const COST_FIELDS = [
   "nextNegative", "nextEpoch", "nextUnprepared", "nextUnavailable", "chainLength1", "chainLength2",
   "chainLength3", "chainLength4to7", "chainLength8plus", "stopUnsupported", "stopNegative",
   "stopFallback", "stopEpoch", "stopBudget", "stopExit", "stopKill",
+  "siteObserved", "siteDropped", "decodeHintHit", "decodeSlotEmpty", "decodeSlotRipCollision",
+  "decodeSlotEpochStale", "decodedHit", "coldSnapshots", "coldExtracts", "coldEmits", "warmExecutions",
 ];
 export function costSnapshot(exports) {
   if (typeof exports.u14_cost_version !== "function") return null;
-  if (exports.u14_cost_version() !== 2 || exports.u14_cost_fields() !== COST_FIELDS.length) throw Error("Diagnostic ABI mismatch");
-  return { schema: 2, purpose: "u14-cost-profile", overflow: exports.u14_cost_overflow() !== 0,
+  if (exports.u14_cost_version() !== 3 || exports.u14_cost_fields() !== COST_FIELDS.length
+    || typeof exports.u14_cost_site_count !== "function" || typeof exports.u14_cost_site_stat !== "function") throw Error("Diagnostic ABI mismatch");
+  const count = exports.u14_cost_site_count();
+  if (!Number.isInteger(count) || count < 0 || count > 16384) throw Error("Diagnostic site capacity mismatch");
+  const rows = Array.from({length:count}, (_,i) => {
+    const get = field => exports.u14_cost_site_stat(i,field);
+    const length = Number(get(5)), truncated = get(6);
+    if (!Number.isInteger(length) || length < 0 || length > 256 || ![0n,1n].includes(truncated)) throw Error("Diagnostic site descriptor mismatch");
+    return {space:String(get(0)),epoch:String(get(1)),rip:String(get(2)),classification:String(get(3)),count:String(get(4)),
+      descriptor:String.fromCharCode(...Array.from({length},(_,j)=>Number(get(7+j)))),truncated:truncated===1n};
+  });
+  return { schema: 3, purpose: "u14-cost-profile", overflow: exports.u14_cost_overflow() !== 0,
+    sites:{capacity:16384,retainedOnly:true,rows},
     counters: Object.fromEntries(COST_FIELDS.map((name, index) => [name, String(exports.u14_cost_stat(index))])) };
 }
 export function jitImports(memory, cost = null, now = () => performance.now()) {

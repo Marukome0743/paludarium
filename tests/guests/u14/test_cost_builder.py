@@ -54,3 +54,37 @@ class CostBuilderTests(unittest.TestCase):
         before = BUILD.source_snapshot()
         (self.root / 'Cargo.lock').write_bytes(b'changed')
         self.assertNotEqual(before['Cargo.lock'], BUILD.source_snapshot()['Cargo.lock'])
+
+    def archive(self):
+        source=BUILD.source_snapshot()
+        receipt={'source_files':source,'source_digest':'1'*64}
+        return BUILD.preserve_build(self.root/'output','diagnostic',receipt,b'wasm'),receipt
+
+    def test_write_once_snapshot_keeps_exact_module(self):
+        path,_=self.archive();self.assertEqual((path/'module.wasm').read_bytes(),b'wasm')
+
+    def test_identical_duplicate_snapshot_is_verified(self):
+        path,receipt=self.archive();before={p.name:p.read_bytes() for p in path.iterdir()}
+        self.assertEqual(BUILD.preserve_build(self.root/'output','diagnostic',receipt,b'wasm'),path)
+        self.assertEqual(before,{p.name:p.read_bytes() for p in path.iterdir()})
+
+    def test_duplicate_module_change_rejected(self):
+        _,receipt=self.archive()
+        with self.assertRaisesRegex(ValueError,'snapshot differs'):BUILD.preserve_build(self.root/'output','diagnostic',receipt,b'other')
+
+    def test_duplicate_receipt_change_rejected(self):
+        _,receipt=self.archive();receipt['changed']=True
+        with self.assertRaisesRegex(ValueError,'snapshot differs'):BUILD.preserve_build(self.root/'output','diagnostic',receipt,b'wasm')
+
+    def test_existing_snapshot_tamper_rejected(self):
+        path,receipt=self.archive();(path/'module.wasm').write_bytes(b'tampered')
+        with self.assertRaisesRegex(ValueError,'snapshot differs'):BUILD.preserve_build(self.root/'output','diagnostic',receipt,b'wasm')
+
+    def test_source_archive_digest_rechecked(self):
+        _,receipt=self.archive();(self.root/'Cargo.lock').write_bytes(b'changed')
+        with self.assertRaisesRegex(ValueError,'source changed'):BUILD.preserve_build(self.root/'output','diagnostic',receipt,b'wasm')
+
+    def test_exclusive_failure_log_never_overwrites(self):
+        p=self.root/'failure.log';BUILD.exclusive(p,b'original')
+        with self.assertRaises(FileExistsError):BUILD.exclusive(p,b'replacement')
+        self.assertEqual(p.read_bytes(),b'original')

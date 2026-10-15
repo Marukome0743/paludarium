@@ -14,7 +14,7 @@ const need = (value, message) => { if (!value) throw Error(message); };
 const digestMap = rows => hash(JSON.stringify(Object.fromEntries(Object.keys(rows).sort().map(name => [name, rows[name]]))));
 
 export function validateBuildReceipt(receipt, moduleHash, expectedHead) {
-  need(receipt.schema === 2 && receipt.diagnostic_version === 2 && receipt.purpose === "u14-cost-profile"
+  need(receipt.schema === 3 && receipt.diagnostic_version === 3 && receipt.purpose === "u14-cost-profile"
     && JSON.stringify(receipt.features) === '["u14-cost-profile"]', "Diagnostic build receipt required");
   need(receipt.module_sha256 === moduleHash && hex(moduleHash) && hex(receipt.source_digest), "Diagnostic module identity mismatch");
   need(receipt.source_files && typeof receipt.source_files === "object"
@@ -31,7 +31,7 @@ export function validateBuildReceipt(receipt, moduleHash, expectedHead) {
 }
 
 export function validateProfileReport(report, identity) {
-  need(report.schema === 2 && report.purpose === "u14-cost-profile"
+  need(report.schema === 3 && report.purpose === "u14-cost-profile"
     && report.performanceAcceptance === false && report.complete === true, "Not a completed diagnostic report");
   for (const key of ["head", "module_sha256", "source_digest", "oracle_sha256", "probe_sha256"]) {
     need(report[key] === identity[key], "Diagnostic receipt identity mismatch: " + key);
@@ -42,9 +42,21 @@ export function validateProfileReport(report, identity) {
       && row.errors.length === 0 && Number.isFinite(row.seconds) && row.seconds > 0 && row.seconds <= 30
       && row.cleaned === true, "Diagnostic guest failed/deadline/cleanup");
     const cost = row.costProfile;
-    need(cost?.schema === 2 && cost.purpose === "u14-cost-profile" && cost.overflow === false, "Diagnostic collector missing/overflow");
+    need(cost?.schema === 3 && cost.purpose === "u14-cost-profile" && cost.overflow === false, "Diagnostic collector missing/overflow");
     need(JSON.stringify(Object.keys(cost.counters ?? {})) === JSON.stringify(COST_FIELDS), "Diagnostic field population mismatch");
     for (const value of Object.values(cost.counters)) need(typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value) && BigInt(value) <= 0xffffffffffffffffn, "Invalid diagnostic counter");
+    need(cost.sites?.capacity === 16384 && cost.sites.retainedOnly === true && Array.isArray(cost.sites.rows)
+      && cost.sites.rows.length <= 16384, "Site population invalid");
+    const keys = new Set(); let retained = 0n;
+    for (const site of cost.sites.rows) {
+      for(const field of ["space","epoch","rip","classification","count"])
+        need(typeof site[field] === "string" && /^(0|[1-9][0-9]*)$/.test(site[field]) && BigInt(site[field]) <= 0xffffffffffffffffn,"Invalid site integer");
+      const key=[site.space,site.epoch,site.rip,site.classification].join(":");
+      need(!keys.has(key) && BigInt(site.count)>0n && BigInt(site.classification)>=1n && BigInt(site.classification)<=5n,"Duplicate/invalid site");keys.add(key);
+      need(typeof site.descriptor==="string" && site.descriptor.length<=256 && typeof site.truncated==="boolean","Invalid site descriptor");
+      retained += BigInt(site.count);
+    }
+    need(retained + BigInt(cost.counters.siteDropped) === BigInt(cost.counters.siteObserved),"Site retained/dropped denominator mismatch");
     need(BigInt(cost.counters.checkpoints) > 0n, "No actual Runtime checkpoint");
     if (row.jit) {
       need(BigInt(cost.counters.executedBlocks) > 0n && BigInt(cost.counters.executedInstructions) > 0n
@@ -73,7 +85,7 @@ export async function collectProfile({ modulePath, oraclePath, guests, output })
   need(oracle.native_complete === true && hash(probe) === oracle.binary_hashes.probe && oracle.rows["probe-all"]?.exit === 0, "Fresh matching probe/native oracle required");
   const identity = { head: receipt.head, module_sha256: hash(moduleBytes), source_digest: receipt.source_digest,
     oracle_sha256: hash(oracleBytes), probe_sha256: hash(probe) };
-  const report = { schema: 2, purpose: "u14-cost-profile", performanceAcceptance: false, ...identity,
+  const report = { schema: 3, purpose: "u14-cost-profile", performanceAcceptance: false, ...identity,
     baseline_signed_head: receipt.baseline_signed_head, local_snapshot: receipt.local_snapshot, tools: { node: process.version },
     scope: "one fresh launcher/shared heap per mode; all guest Workers aggregate; times are diagnostic only",
     rows: [], complete: false, passed: false };

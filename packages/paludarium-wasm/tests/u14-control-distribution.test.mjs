@@ -16,7 +16,7 @@ test("same-source control packs, imports and runs real hello with natural cleanu
   const root=resolve(dirname(fileURLToPath(import.meta.url)),"../../..");
   const pkg=resolve(root,"packages/paludarium-wasm"), module=await readFile(resolve(root,input));
   const receipt=JSON.parse(await readFile(resolve(root,input)+".receipt.json","utf8"));
-  assert.equal(receipt.purpose,"u14-acceptance-control"); assert.equal(receipt.schema,2);
+  assert.equal(receipt.purpose,"u14-acceptance-control"); assert.equal(receipt.schema,3);
   assert.deepEqual(receipt.features,[]); assert.equal(receipt.module_sha256,hash(module));
   assert.equal(WebAssembly.Module.exports(new WebAssembly.Module(module)).filter(x=>x.name.startsWith("u14_cost_")).length,0);
   for(const[name,digest]of Object.entries(receipt.source_files)) assert.equal(hash(await readFile(resolve(root,name))),digest,"fresh control source changed: "+name);

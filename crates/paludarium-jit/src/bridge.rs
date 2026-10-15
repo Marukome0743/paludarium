@@ -46,6 +46,11 @@ struct Translation {
     instruction_count: usize,
 }
 static NEXT_MODULE: AtomicU32 = AtomicU32::new(1);
+pub(crate) fn next_module_id() -> Option<u32> {
+    NEXT_MODULE
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+        .ok()
+}
 
 /// A minimal register-only wasm cache. Unsupported instructions, memory,
 /// syscall and fault handling remain entirely in the existing interpreter.
@@ -138,9 +143,13 @@ impl WasmCodeCache {
                 None => {
                     #[cfg(feature = "u14-cost-profile")]
                     jit_cost::add(Counter::CacheMisses, 1);
+                    #[cfg(feature = "u14-cost-profile")]
+                    jit_cost::add(Counter::ColdSnapshots, 1);
                     let snapshot = memory.code_snapshot(state.rip, 960).ok()?;
                     #[cfg(feature = "u14-cost-profile")]
                     jit_cost::add(Counter::SnapshotBytes, snapshot.bytes.len() as u64);
+                    #[cfg(feature = "u14-cost-profile")]
+                    jit_cost::add(Counter::ColdExtracts, 1);
                     let Some(block) = block::extract(&snapshot.bytes, state.rip.0) else {
                         *deterministic_rejection = true;
                         // Cache a deterministic unsupported first instruction too.
@@ -165,12 +174,12 @@ impl WasmCodeCache {
                         );
                         return None;
                     }
+                    #[cfg(feature = "u14-cost-profile")]
+                    jit_cost::add(Counter::ColdEmits, 1);
                     let code = emit::emit(&block)?;
                     // Never reuse an ID, even on exhaustion: Worker-local JS caches
                     // must not mistake a different module for a previous one.
-                    let id = NEXT_MODULE
-                        .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-                        .ok()?;
+                    let id = next_module_id()?;
                     let translation = Arc::new(Translation {
                         id,
                         code,
@@ -205,6 +214,8 @@ impl WasmCodeCache {
         }
         let ready = ready?;
         let success = if let Some(success) = ready {
+            #[cfg(feature = "u14-cost-profile")]
+            jit_cost::add(Counter::WarmExecutions, 1);
             Some(success)
         } else {
             #[cfg(feature = "u14-cost-profile")]
@@ -610,6 +621,58 @@ mod tests {
                 .minimum_block,
             64
         );
+    }
+    fn admission_fixture(bytes: &[u8]) -> AddressSpace {
+        let mut memory = AddressSpace::new();
+        memory
+            .map(
+                Some(GuestAddr(4096)),
+                4096,
+                Prot::READ_EXEC,
+                MappingKind::ElfSegment,
+            )
+            .unwrap();
+        memory.write_initial(GuestAddr(4096), bytes).unwrap();
+        memory
+    }
+    #[test]
+    fn u14_admission_three_rejects_two_without_preparing_or_mutating() {
+        let memory = admission_fixture(&[0xb8, 42, 0, 0, 0, 0x48, 0x83, 0xc0, 1, 0xc3]);
+        let cache = WasmCodeCache::new(Arc::new(NodeBridge)).with_minimum_block(3);
+        let mut state = CpuState::new(GuestAddr(4096), GuestAddr(8192));
+        let before = state.clone();
+        assert_eq!(cache.try_run_with_hint(&mut state, &memory), (None, true));
+        assert_eq!(cache.try_run_with_hint(&mut state, &memory), (None, true));
+        assert_eq!(state, before);
+        assert_eq!(cache.statistics().translated_blocks, 0);
+    }
+    #[test]
+    fn u14_admission_three_accepts_three_actual_wasm_instructions() {
+        let memory = admission_fixture(&[
+            0xb8, 42, 0, 0, 0, 0x48, 0x83, 0xc0, 1, 0x48, 0x83, 0xc0, 1, 0xc3,
+        ]);
+        let cache = WasmCodeCache::new(Arc::new(NodeBridge)).with_minimum_block(3);
+        let mut state = CpuState::new(GuestAddr(4096), GuestAddr(8192));
+        assert_eq!(cache.try_run_counted(&mut state, &memory).unwrap().1, 3);
+        assert_eq!(state.gpr[0], 44);
+        assert_eq!(state.rip.0, 4109);
+    }
+    #[test]
+    fn u14_admission_three_rejected_bytes_change_can_become_eligible() {
+        let memory = admission_fixture(&[0xb8, 42, 0, 0, 0, 0x48, 0x83, 0xc0, 1, 0xc3]);
+        let cache = WasmCodeCache::new(Arc::new(NodeBridge)).with_minimum_block(3);
+        let mut state = CpuState::new(GuestAddr(4096), GuestAddr(8192));
+        assert_eq!(cache.try_run_with_hint(&mut state, &memory), (None, true));
+        memory
+            .write_initial(
+                GuestAddr(4096),
+                &[
+                    0xb8, 42, 0, 0, 0, 0x48, 0x83, 0xc0, 1, 0x48, 0x83, 0xc0, 1, 0xc3,
+                ],
+            )
+            .unwrap();
+        assert_eq!(cache.try_run_counted(&mut state, &memory).unwrap().1, 3);
+        assert_eq!(state.gpr[0], 44);
     }
     impl ExecutionBridge for NodeBridge {
         fn execute(&self, _id: u32, wasm: &[u8], state: &mut [u64; 18]) -> bool {

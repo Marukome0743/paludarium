@@ -9,6 +9,8 @@ mod block;
 mod bridge;
 mod cache;
 mod emit;
+#[cfg(feature = "u14-cost-profile")]
+pub mod microbench;
 pub use bridge::{ExecutionBridge, JitStatistics, WasmCodeCache};
 #[cfg(feature = "u14-cost-profile")]
 pub use paludarium_cpu::jit_cost;

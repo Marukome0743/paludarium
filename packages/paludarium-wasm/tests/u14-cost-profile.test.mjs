@@ -9,7 +9,7 @@ const locks = ["Cargo.lock", "fuzz/Cargo.lock", "tests/guests/u10/source-lock.js
 function build() {
   const source_files = Object.fromEntries(locks.sort().map(name => [name, "1".repeat(64)]));
   const source_digest = hash(JSON.stringify(source_files));
-  return { schema: 2, diagnostic_version: 2, purpose: "u14-cost-profile", features: ["u14-cost-profile"],
+  return { schema: 3, diagnostic_version: 3, purpose: "u14-cost-profile", features: ["u14-cost-profile"],
     source_files, source_digest, module_sha256: "2".repeat(64), locks: { ...source_files },
     local_snapshot: true, head: "local:" + source_digest };
 }
@@ -22,11 +22,25 @@ function report() {
     counters.checkpoints = "1";
     if (jit) Object.assign(counters, { executedBlocks: "1", executedInstructions: "2", compileAttempts: "1", jsTransitions: "2", blockLength2: "1", nextMissing: "1" });
     return { jit, pass: true, exit: 0, timed_out: false, errors: [], seconds: 1, cleaned: true,
-      costProfile: { schema: 2, purpose: "u14-cost-profile", overflow: false, counters } };
+      costProfile: { schema: 3, purpose: "u14-cost-profile", overflow: false, counters, sites:{capacity:16384,retainedOnly:true,rows:[]} } };
   });
-  return { schema: 2, purpose: "u14-cost-profile", performanceAcceptance: false, ...identity, complete: true, rows };
+  return { schema: 3, purpose: "u14-cost-profile", performanceAcceptance: false, ...identity, complete: true, rows };
 }
 const rejectReport = change => { const r = report(); change(r); assert.throws(() => validateProfileReport(r, identity)); };
+test("v3 rejects v2 receipt and collector",()=>{
+  const r=build();r.schema=2;r.diagnostic_version=2;assert.throws(()=>validateBuildReceipt(r,receipt.module_sha256));
+  rejectReport(r=>r.rows[1].costProfile.schema=2);
+});
+test("v3 site rows require fixed capacity",()=>rejectReport(r=>r.rows[1].costProfile.sites.capacity=16385));
+test("v3 site denominator includes dropped events",()=>{
+  const r=report();r.rows[1].costProfile.counters.siteObserved="1";r.rows[1].costProfile.counters.siteDropped="1";
+  assert.equal(validateProfileReport(r,identity),true);
+});
+test("v3 site dropped cannot invent observed events",()=>rejectReport(r=>r.rows[1].costProfile.counters.siteDropped="1"));
+test("v3 site negative count rejected",()=>rejectReport(r=>r.rows[1].costProfile.sites.rows.push({space:"1",epoch:"1",rip:"1",classification:"1",count:"-1",descriptor:"x",truncated:false})));
+test("v3 site classification is closed",()=>rejectReport(r=>r.rows[1].costProfile.sites.rows.push({space:"1",epoch:"1",rip:"1",classification:"6",count:"1",descriptor:"x",truncated:false})));
+test("v3 site descriptor bounded",()=>rejectReport(r=>r.rows[1].costProfile.sites.rows.push({space:"1",epoch:"1",rip:"1",classification:"1",count:"1",descriptor:"x".repeat(257),truncated:false})));
+test("v3 snapshot rejects site capacity overflow",()=>assert.throws(()=>costSnapshot({u14_cost_version:()=>3,u14_cost_fields:()=>120,u14_cost_site_count:()=>16385,u14_cost_site_stat:()=>0n})));
 test("cost runner accepts exact two diagnostic observations without claiming performance", () => {
   validateBuildReceipt(build(), receipt.module_sha256);
   assert.equal(validateProfileReport(report(), identity), true);
@@ -112,10 +126,10 @@ test("cost snapshot refuses wrong ABI and has no ordinary-module fallback claim"
   assert.throws(() => costSnapshot({ u14_cost_version: () => 1, u14_cost_fields: () => 0 }));
 });
 test("cost snapshot retains overflow for fail-closed report validation", () => {
-  const s = costSnapshot({ u14_cost_version: () => 2, u14_cost_fields: () => COST_FIELDS.length,
-    u14_cost_overflow: () => 1, u14_cost_stat: () => 0n });
+  const s = costSnapshot({ u14_cost_version: () => 3, u14_cost_fields: () => COST_FIELDS.length,
+    u14_cost_overflow: () => 1, u14_cost_stat: () => 0n, u14_cost_site_count:()=>0, u14_cost_site_stat:()=>0n });
   assert.equal(s.overflow, true);
-  assert.equal(Object.keys(s.counters).length, 109);
+  assert.equal(Object.keys(s.counters).length, 120);
 });
 
 test("v2 refuses historical v1 build/report/collector even with matching digests", () => {

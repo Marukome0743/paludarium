@@ -17,7 +17,7 @@ class CostProfileRegression(unittest.TestCase):
                                  'packages/paludarium-wasm/tests/u14-cost-profile.test.mjs'],
                                 cwd=ROOT, capture_output=True, text=True, timeout=180)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('tests 24', result.stdout)
+        self.assertIn('tests 32', result.stdout)
 
 
 if __name__ == '__main__':

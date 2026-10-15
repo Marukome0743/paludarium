@@ -360,6 +360,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.15'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "26.12.0"
@@ -437,8 +440,11 @@ jobs:
 
       - name: U9 target crates line coverage >= 80%
         run: |
-          cargo llvm-cov --locked -p paludarium-host -p paludarium-kernel -p paludarium-runtime -p paludarium -p paludarium-harness --lib --test diff_u9 --test command --ignore-filename-regex 'paludarium-(cpu|decoder|mmu|loader|types|vfs|jit|harness)/' --fail-under-lines 80 --lcov --output-path target/u9-coverage.lcov
-          cargo llvm-cov report --ignore-filename-regex 'paludarium-(cpu|decoder|mmu|loader|types|vfs|jit|harness)/'
+          python3 -m pip install 'coverage==7.16.2'
+          python3 -B -m coverage run --data-file=target/u9-python.coverage --include='*/scripts/u9-coverage-check.py,*/scripts/u9-coverage-evidence.py' -m unittest discover -s tests/guests/u9 -p 'test_coverage_*.py' -v
+          python3 -B -m coverage run --append --data-file=target/u9-python.coverage --include='*/scripts/u9-coverage-check.py,*/scripts/u9-coverage-evidence.py' scripts/u9-coverage-evidence.py --cargo "$(rustup which cargo)" --rustc "$(rustup which rustc)" --output target/u9-dedicated-raw
+          python3 -B -m coverage report --data-file=target/u9-python.coverage --fail-under=80
+          python3 -B -m coverage json --data-file=target/u9-python.coverage -o target/u9-dedicated-raw/python-coverage.json
         env:
           RUST_TEST_THREADS: "1"
       - name: U3 CPU and Decoder line coverage >= 80%
@@ -467,6 +473,13 @@ jobs:
         with:
           name: u9-coverage-lcov
           path: target/u9-coverage.lcov
+          retention-days: 7
+      - name: Retain immutable U9 profile and export provenance
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u9-dedicated-raw
+          path: target/u9-dedicated-raw/
           retention-days: 7
 
   jit-coverage:
@@ -555,8 +568,11 @@ jobs:
         run: node --test packages/paludarium-wasm/tests/u14-control-distribution.test.mjs
       - name: Fixed U14 Python coverage and fail-closed boundaries
         run: |
+          node_path="$(command -v node)"
+          case "$node_path" in /*/shims/*) exit 1 ;; /*) ;; *) exit 1 ;; esac
+          test "$("$node_path" --version)" = v26.12.0
           mkdir -p target/u14
-          python3 -B -m coverage run --data-file=target/u14/python.coverage --include='*/scripts/u14-run.py,*/scripts/build-u14-cost-profile.py,*/tests/guests/u14/guest_policy.py,*/tests/guests/u14/lock_overlay.py,*/tests/guests/u10/build.py,*/tests/guests/u10/evidence.py' -m unittest discover -s tests/guests/u14/runner-tests -p 'test_*.py'
+          PALUDARIUM_TEST_NODE="$(command -v node)" python3 -B -m coverage run --data-file=target/u14/python.coverage --include='*/scripts/u14-run.py,*/scripts/build-u14-cost-profile.py,*/tests/guests/u14/guest_policy.py,*/tests/guests/u14/lock_overlay.py,*/tests/guests/u10/build.py,*/tests/guests/u10/evidence.py' -m unittest discover -s tests/guests/u14/runner-tests -p 'test_*.py'
           python3 -B -m coverage report --data-file=target/u14/python.coverage --fail-under=80
           python3 -B -m coverage json --data-file=target/u14/python.coverage -o target/u14/python-coverage.json
       - if: always()
@@ -703,9 +719,18 @@ jobs:
       - name: V2 boundary and actual packed control hello
         env:
           PALUDARIUM_U14_CONTROL_WASM: target/u14-cost-profile/acceptance-control.wasm
-        run: node --test packages/paludarium-wasm/tests/u14-cost-profile.test.mjs packages/paludarium-wasm/tests/u14-control-distribution.test.mjs packages/paludarium-wasm/tests/u14-jit.test.mjs
+        run: node --test packages/paludarium-wasm/tests/u14-cost-profile.test.mjs packages/paludarium-wasm/tests/u14-control-distribution.test.mjs packages/paludarium-wasm/tests/u14-jit.test.mjs packages/paludarium-wasm/tests/u14-cost-microbench.test.mjs
       - name: Finite one-factory observation per mode, no acceptance performance
         run: node packages/paludarium-wasm/tests/u14-cost-profile-check.mjs target/u14-cost-profile/diagnostic.wasm target/u14-diagnostic-inputs/target/u11/native/observations.json target/u14-diagnostic-inputs/target/guests/u10 target/u14-prepared-chain-v2
+      - name: Actual Worker microbench fixed chunks, aggregate and site on/off
+        run: node packages/paludarium-wasm/tests/u14-cost-microbench.mjs target/u14-cost-profile/diagnostic.wasm target/u14-cost-profile/diagnostic.wasm.receipt.json target/u14-worker-microbench
+      - name: Keep Worker microbench raw observations
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u14-worker-microbench
+          path: target/u14-worker-microbench/
+          retention-days: 7
       - name: Keep diagnostic/control modules and identity receipts
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

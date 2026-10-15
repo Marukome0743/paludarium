@@ -1,7 +1,20 @@
 //! Diagnostic-only aggregate for one fresh shared heap and its guest Workers.
 //! No clocks or timers occur in these high-frequency paths. Overflow is sticky
 //! and makes the diagnostic report invalid rather than wrapping a counter.
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+thread_local! {
+    static MEASUREMENT_ENABLED: Cell<bool> = const { Cell::new(true) };
+}
+
+/// Diagnostic measurement scope only; each actual Worker owns its setting.
+pub fn measurement_enabled() -> bool {
+    MEASUREMENT_ENABLED.with(Cell::get)
+}
+pub fn set_measurement_enabled(enabled: bool) -> bool {
+    MEASUREMENT_ENABLED.with(|setting| setting.replace(enabled))
+}
 
 #[derive(Clone, Copy)]
 #[repr(usize)]
@@ -51,10 +64,24 @@ pub enum Counter {
     StopBudget,
     StopExit,
     StopKill,
+    SiteObserved,
+    SiteDropped,
+    DecodeHintHit,
+    DecodeSlotEmpty,
+    DecodeSlotRipCollision,
+    DecodeSlotEpochStale,
+    DecodedHit,
+    ColdSnapshots,
+    ColdExtracts,
+    ColdEmits,
+    WarmExecutions,
 }
 
 pub const BASE_FIELDS: usize = 24;
-pub const FIELD_COUNT: usize = Counter::StopKill as usize + 1;
+pub const FIELD_COUNT: usize = Counter::WarmExecutions as usize + 1;
+pub use crate::jit_cost_sites::{
+    count as site_count, field as site_field, observe as observe_site,
+};
 
 /// Tracks only actually executed consecutive blocks within one CPU budget.
 /// The counter sink is injected so parallel tests never reset global state.
@@ -140,11 +167,17 @@ impl Collector {
 static COST: Collector = Collector::new();
 
 pub fn add(counter: Counter, value: u64) {
+    if !measurement_enabled() {
+        return;
+    }
     let _ = COST.add(counter as usize, value);
 }
 
 /// Called only by the trusted diagnostic JS import, never by guest code.
 pub fn add_field(field: usize, value: u64) -> bool {
+    if !measurement_enabled() {
+        return field < FIELD_COUNT;
+    }
     COST.add(field, value)
 }
 
@@ -161,9 +194,13 @@ pub fn overflowed() -> bool {
 /// Only the coordinator calls this, before spawning any guest Worker.
 pub fn reset() {
     COST.reset();
+    crate::jit_cost_sites::reset();
 }
 
 pub fn block_length(length: usize) {
+    if !measurement_enabled() {
+        return;
+    }
     let _ = COST.block_length(length);
 }
 
@@ -171,6 +208,23 @@ pub fn block_length(length: usize) {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn measurement_scope_is_thread_local_and_restores() {
+        assert!(measurement_enabled());
+        assert!(set_measurement_enabled(false));
+        assert!(!measurement_enabled());
+        assert!(std::thread::spawn(measurement_enabled).join().unwrap());
+        assert!(!set_measurement_enabled(true));
+        assert!(measurement_enabled());
+    }
+    #[test]
+    fn disabled_measurement_preserves_field_validation() {
+        let previous = set_measurement_enabled(false);
+        assert!(!add_field(FIELD_COUNT, 1));
+        assert!(add_field(0, u64::MAX));
+        assert!(!set_measurement_enabled(previous));
+    }
 
     fn observe(length: u64, reason: Counter) -> Collector {
         let c = Collector::new();
@@ -274,7 +328,7 @@ mod tests {
     fn u14_cost_fresh_collector_has_complete_zero_population() {
         let c = Collector::new();
         assert_eq!(Counter::BudgetCharged as usize + 1, BASE_FIELDS);
-        assert_eq!(FIELD_COUNT, 109);
+        assert_eq!(FIELD_COUNT, 120);
         assert!((0..FIELD_COUNT).all(|field| c.get(field) == Some(0)));
         assert!(!c.overflow.load(Ordering::Relaxed));
     }

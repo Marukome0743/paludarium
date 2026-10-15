@@ -109,16 +109,22 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.15.0'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "26.12.0"
       - name: Bounded native instruction observations
         shell: bash
         run: |
           set -euo pipefail
+          node_path="$(command -v node)"
+          case "$node_path" in /*/shims/*) exit 1 ;; /*) ;; *) exit 1 ;; esac
+          test "$("$node_path" --version)" = v26.12.0
           mkdir -p target/u14-native-first
           uname -a > target/u14-native-first/platform.txt
           gcc --version > target/u14-native-first/compiler.txt
           python --version > target/u14-native-first/python.txt
           sha256sum tests/guests/u14/native.c tests/guests/u14/validation.py scripts/u14-native-first.py Cargo.lock fuzz/Cargo.lock rust-toolchain.toml > target/u14-native-first/before.sha256
-          python -m unittest discover -s tests/guests/u14 -p 'test_*.py' -v
+          PALUDARIUM_TEST_NODE="$(command -v node)" python -m unittest discover -s tests/guests/u14 -p 'test_*.py' -v
           gcc -std=gnu11 -O2 -Wall -Wextra -Werror -fno-pie -no-pie tests/guests/u14/native.c -o target/u14-native-first/oracle
           python scripts/u14-native-first.py --binary target/u14-native-first/oracle --output target/u14-native-first/observations.json
           sha256sum tests/guests/u14/native.c tests/guests/u14/validation.py scripts/u14-native-first.py Cargo.lock fuzz/Cargo.lock rust-toolchain.toml > target/u14-native-first/after.sha256

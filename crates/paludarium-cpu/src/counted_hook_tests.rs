@@ -1,6 +1,68 @@
 use super::*;
 use paludarium_mmu::{MappingKind, Prot};
 
+fn hinted_dispatch_matches_interpreter(bytes: &[u8], budget: u64, maximum: u64) {
+    let mut memory = AddressSpace::new();
+    memory
+        .map(
+            Some(GuestAddr(4096)),
+            4096,
+            Prot::READ_EXEC,
+            MappingKind::ElfSegment,
+        )
+        .unwrap();
+    memory.write_initial(GuestAddr(4096), bytes).unwrap();
+    let mut hinted = CpuState::new(GuestAddr(4096), GuestAddr(8192));
+    let mut ordinary = hinted.clone();
+    let mut cache = DecodeCache::new();
+    let generation = memory.code_generation();
+    let instruction = paludarium_decoder::decode(bytes, GuestAddr(4096)).unwrap();
+    cache.put(4096, generation, instruction);
+    cache.reject_acceleration(4096, generation);
+    let actual = run_cached_with_counted_hook(
+        &mut hinted,
+        &memory,
+        budget,
+        &mut cache,
+        AccelerationPolicy {
+            maximum_block: maximum,
+            cache_rejections: true,
+        },
+        |_, _, _| panic!("pre-rejected boundary must bypass accelerator"),
+    );
+    let expected = run_cached(&mut ordinary, &memory, budget, &mut DecodeCache::new());
+    assert_eq!(actual, expected);
+    assert_eq!(hinted, ordinary);
+}
+#[test]
+fn u14_negative_dispatch_zero_budget() {
+    hinted_dispatch_matches_interpreter(&[0x90], 0, 64);
+}
+#[test]
+fn u14_negative_dispatch_one_budget() {
+    hinted_dispatch_matches_interpreter(&[0x90], 1, 64);
+}
+#[test]
+fn u14_negative_dispatch_disabled_maximum() {
+    hinted_dispatch_matches_interpreter(&[0x90], 1, 0);
+}
+#[test]
+fn u14_negative_dispatch_maximum_u64() {
+    hinted_dispatch_matches_interpreter(&[0x90], 1, u64::MAX);
+}
+#[test]
+fn u14_negative_dispatch_register_effect() {
+    hinted_dispatch_matches_interpreter(&[0xb8, 42, 0, 0, 0], 1, 64);
+}
+#[test]
+fn u14_negative_dispatch_syscall_exit() {
+    hinted_dispatch_matches_interpreter(&[0x0f, 0x05], 64, 64);
+}
+#[test]
+fn u14_negative_dispatch_memory_fault() {
+    hinted_dispatch_matches_interpreter(&[0x48, 0x8b, 0x00], 64, 64);
+}
+
 fn cached_boundary() -> (DecodeCache, paludarium_decoder::Instruction) {
     let instruction = paludarium_decoder::decode(&[0x90], GuestAddr(4096)).unwrap();
     let mut cache = DecodeCache::new();
