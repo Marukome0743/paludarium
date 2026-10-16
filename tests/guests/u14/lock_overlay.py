@@ -70,6 +70,8 @@ def updated_lock(original, policy):
 
 
 def prepare(upstream, destination, policy_name, policy, snapshot):
+    if policy_name == ZIP_POLICY['policy']:
+        return prepare_zip(upstream, destination, policy, snapshot)
     if policy_name != POLICY['policy']:
         raise ValueError('overlay is U14 only')
     original = (upstream / 'Cargo.lock').read_bytes()
@@ -107,8 +109,95 @@ def finish(upstream, destination, overlay, snapshot):
 
 
 def verify(overlay):
+    if overlay['policy'].get('policy') == ZIP_POLICY['policy']:
+        return verify_zip(overlay)
     validate_pair(overlay['original_lock'].encode(), overlay['build_lock'].encode(), overlay['policy'])
     verify_snapshots(overlay['source_before'], overlay['build_source_before'])
     if (overlay['source_before'] != overlay['source_after']
             or overlay['build_source_before'] != overlay['build_source_after']):
         raise ValueError('overlay original or build source changed during audit/build')
+
+
+# A separately approved source-copy policy; the original U14 policy is immutable.
+ZIP_OLD_CHECKSUM = '2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b'
+ZIP_NEW_CHECKSUM = 'a954114b47a54df49f83d2722814e86b23d4bb1b54a1b90fb7d92b41619ddc22'
+ZIP_LOCK = 'b08d900a0b72764922da18bb0aec4b6598a8de58050babd9a6d59b6baefe7b89'
+ZIP_MANIFEST_ORIGINAL = 'c3c9d286af517fa85ef8b2aa2286ef503e5bb09b11242bf1eac00f40ab1d3850'
+ZIP_MANIFEST = 'f776a219b6844f32527045492511290cd611e351709212eb8c867717b349817c'
+ZIP_SOURCE = 'd4375aa7b8b4049b0d14ca49eaa718ed4402f3d82247b9c80d8cbc93ca76f57a'
+ZIP_POLICY = dict(POLICY, schema=2, policy='u15-fixed-aube-zip9',
+                  build_lock_sha256=ZIP_LOCK, build_source_sha256=ZIP_SOURCE,
+                  original_manifest_sha256=ZIP_MANIFEST_ORIGINAL,
+                  build_manifest_sha256=ZIP_MANIFEST,
+                  zip_from_version='8.6.0', zip_to_version='9.0.4',
+                  zip_from_checksum=ZIP_OLD_CHECKSUM, zip_to_checksum=ZIP_NEW_CHECKSUM)
+
+
+def zip_bytes(original_lock, original_manifest, policy):
+    if policy != ZIP_POLICY:
+        raise ValueError('unapproved zip overlay policy')
+    repaired = updated_lock(original_lock, POLICY)
+    before = tomllib.loads(repaired.decode())
+    selected = [p for p in before['package'] if p['name'] == 'zip']
+    if (len(selected) != 1 or selected[0]['version'] != '8.6.0'
+            or selected[0]['checksum'] != ZIP_OLD_CHECKSUM
+            or selected[0]['source'] != REGISTRY
+            or selected[0]['dependencies'] != ['crc32fast', 'flate2', 'indexmap 2.14.0', 'memchr', 'typed-path', 'zopfli']
+            or not any(p['name'] == 'nix' and p['version'] == '0.31.3' for p in before['package'])):
+        raise ValueError('zip original package/dependency identity mismatch')
+    marker = b'name = "zip"\nversion = "8.6.0"'
+    if repaired.count(marker) != 1 or repaired.count(ZIP_OLD_CHECKSUM.encode()) != 1:
+        raise ValueError('zip text identity mismatch')
+    repaired = repaired.replace(marker, b'name = "zip"\nversion = "9.0.4"', 1)
+    repaired = repaired.replace(ZIP_OLD_CHECKSUM.encode(), ZIP_NEW_CHECKSUM.encode(), 1)
+    position = repaired.index(b'name = "zip"\n')
+    entry = repaired[position:]
+    if entry.count(b' "memchr",\n') != 1:
+        raise ValueError('zip dependency text boundary mismatch')
+    repaired = repaired[:position] + entry.replace(b' "memchr",\n', b' "memchr",\n "nix 0.31.3",\n', 1)
+    line = b'zip = { version = "8", default-features = false, features = ["deflate"] }'
+    if sha(original_manifest) != ZIP_MANIFEST_ORIGINAL or original_manifest.count(line) != 1:
+        raise ValueError('zip original manifest mismatch')
+    manifest = original_manifest.replace(line, line.replace(b'"8"', b'"=9.0.4"'), 1)
+    if sha(repaired) != ZIP_LOCK or sha(manifest) != ZIP_MANIFEST:
+        raise ValueError('zip build lock/manifest digest mismatch')
+    return repaired, manifest
+
+
+def verify_zip_snapshots(original, build):
+    if (original.get('Cargo.lock') != ORIGINAL or original.get('Cargo.toml') != ZIP_MANIFEST_ORIGINAL
+            or build.get('Cargo.lock') != ZIP_LOCK or build.get('Cargo.toml') != ZIP_MANIFEST
+            or dict(build, **{'Cargo.lock': ORIGINAL, 'Cargo.toml': ZIP_MANIFEST_ORIGINAL}) != original
+            or snapshot_sha(original) != SOURCE or snapshot_sha(build) != ZIP_SOURCE):
+        raise ValueError('zip original/build source snapshot mismatch')
+
+
+def prepare_zip(upstream, destination, policy, snapshot):
+    if destination.exists():
+        raise ValueError('overlay copy exists')
+    verify_links(upstream)
+    original_lock = (upstream / 'Cargo.lock').read_bytes()
+    original_manifest = (upstream / 'Cargo.toml').read_bytes()
+    lock, manifest = zip_bytes(original_lock, original_manifest, policy)
+    before = snapshot(upstream)
+    if snapshot_sha(before) != SOURCE:
+        raise ValueError('zip original source digest mismatch')
+    shutil.copytree(upstream, destination, symlinks=True)
+    (destination / 'Cargo.lock').write_bytes(lock)
+    (destination / 'Cargo.toml').write_bytes(manifest)
+    build = snapshot(destination)
+    verify_links(destination)
+    verify_zip_snapshots(before, build)
+    return dict(policy=dict(ZIP_POLICY), original_lock=original_lock.decode(), build_lock=lock.decode(),
+                original_manifest=original_manifest.decode(), build_manifest=manifest.decode(),
+                source_before=before, build_source_before=build)
+
+
+def verify_zip(overlay):
+    lock, manifest = zip_bytes(overlay['original_lock'].encode(), overlay['original_manifest'].encode(), overlay['policy'])
+    if overlay['build_lock'].encode() != lock or overlay['build_manifest'].encode() != manifest:
+        raise ValueError('zip receipt lock/manifest bytes mismatch')
+    verify_zip_snapshots(overlay['source_before'], overlay['build_source_before'])
+    if (overlay['source_before'] != overlay['source_after']
+            or overlay['build_source_before'] != overlay['build_source_after']):
+        raise ValueError('zip source changed during audit/build')

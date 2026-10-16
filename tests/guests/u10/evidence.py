@@ -55,14 +55,15 @@ def policy_receipt_valid(directory, receipt, root_bytes):
             overlay = receipt['lock_overlay']
             helper = u14_overlay_module()
             helper.verify(overlay)
-            if overlay['policy'] != source_lock['u14_aube_lock_overlay']:
+            is_zip = overlay['policy'].get('policy') == 'u15-fixed-aube-zip9'
+            if overlay['policy'] != source_lock['u15_aube_zip_overlay' if is_zip else 'u14_aube_lock_overlay']:
                 raise ValueError('unapproved overlay receipt policy')
             if (overlay['source_before'] != receipt['source_before']
                     or overlay['source_after'] != receipt['source_after']
                     or overlay['original_lock'] == receipt['advisory_lock']
                     or overlay['build_lock'] != receipt['advisory_lock']):
                 raise ValueError('overlay original/build receipt mismatch')
-            expected_lock = helper.UPDATED
+            expected_lock = helper.ZIP_LOCK if is_zip else helper.UPDATED
             if (receipt['metadata_lock_sha256'] != expected_lock
                     or receipt['binaries']['aube']['lock_sha256'] != expected_lock):
                 raise ValueError('metadata or binary uses original lock')
@@ -72,6 +73,8 @@ def policy_receipt_valid(directory, receipt, root_bytes):
             rustls = [p for p in packages if p['name'] == 'rustls']
             if len(rustls) != 1 or rustls[0]['version'] != '0.23.46' or rustls[0]['source'] != helper.REGISTRY:
                 raise ValueError('overlay metadata rustls identity mismatch')
+            if is_zip:
+                verify_zip_metadata(receipt, packages, helper)
             metadata_file = directory / 'aube-metadata.json'
             if metadata_file.exists() and digest(metadata_file) != receipt['metadata_sha256']:
                 raise ValueError('overlay metadata hash mismatch')
@@ -185,3 +188,23 @@ def record_source_after(upstream, receipt):
 def snapshot(directory):
     return {str(p.relative_to(directory)): digest(p)
             for p in sorted(directory.rglob('*')) if p.is_file()}
+
+
+def verify_zip_metadata(receipt, packages, helper):
+    """Bind metadata, manifest, and the built binary to the new policy."""
+    selected = [p for p in packages if p['name'] == 'zip']
+    if len(selected) != 1 or selected[0]['version'] != '9.0.4' or selected[0]['source'] != helper.REGISTRY:
+        raise ValueError('overlay metadata zip identity mismatch')
+    if (receipt.get('metadata_manifest_sha256') != helper.ZIP_MANIFEST
+            or receipt['binaries']['aube'].get('manifest_sha256') != helper.ZIP_MANIFEST):
+        raise ValueError('overlay metadata/binary manifest mismatch')
+    for name in ('aube-registry', 'aube-runtime'):
+        matches = [p for p in packages if p['name'] == name]
+        if len(matches) != 1:
+            raise ValueError('overlay metadata workspace package mismatch')
+        dependencies = [d for d in matches[0]['dependencies'] if d['name'] == 'zip']
+        if (len(dependencies) != 1 or dependencies[0]['req'] != '=9.0.4'
+                or dependencies[0]['source'] != helper.REGISTRY
+                or dependencies[0]['uses_default_features'] is not False
+                or dependencies[0]['features'] != ['deflate']):
+            raise ValueError('overlay metadata zip constraint mismatch')

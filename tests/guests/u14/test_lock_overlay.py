@@ -46,6 +46,83 @@ def elf():
     return data
 
 
+class ZipOverlay(unittest.TestCase):
+    def setUp(self):
+        original = fixture_lock().replace(b'name = "fixture-0"\nversion = "1.0.0"',
+            b'name = "nix"\nversion = "0.31.3"').replace(
+            b'name = "fixture-2"\nversion = "1.0.0"',
+            b'name = "zip"\nversion = "8.6.0"\nsource = "' + overlay.REGISTRY.encode() +
+            b'"\nchecksum = "' + overlay.ZIP_OLD_CHECKSUM.encode() +
+            b'"\ndependencies = [\n "crc32fast",\n "flate2",\n "indexmap 2.14.0",\n "memchr",\n "typed-path",\n "zopfli",\n]')
+        # Put zip last, as in the pinned source, to keep its text boundary exact.
+        start = original.index(b'[[package]]\nname = "zip"')
+        end = original.index(b'\n[[package]]', start + 1)
+        entry = original[start:end]
+        original = original[:start] + original[end:] + b'\n' + entry + b'\n'
+        self.original = original
+        self.manifest = b'zip = { version = "8", default-features = false, features = ["deflate"] }\n'
+        rustls = original.replace(b'"0.23.45"', b'"0.23.46"').replace(overlay.OLD_CHECKSUM.encode(), overlay.NEW_CHECKSUM.encode())
+        updated = rustls.replace(b'name = "zip"\nversion = "8.6.0"', b'name = "zip"\nversion = "9.0.4"').replace(overlay.ZIP_OLD_CHECKSUM.encode(), overlay.ZIP_NEW_CHECKSUM.encode()).replace(b' "memchr",\n', b' "memchr",\n "nix 0.31.3",\n')
+        new_manifest = self.manifest.replace(b'"8"', b'"=9.0.4"')
+        for name, value in [('ORIGINAL', overlay.sha(original)), ('UPDATED', overlay.sha(rustls)),
+                            ('ZIP_LOCK', overlay.sha(updated)), ('ZIP_MANIFEST_ORIGINAL', overlay.sha(self.manifest)),
+                            ('ZIP_MANIFEST', overlay.sha(new_manifest))]:
+            self.enterContext(patch.object(overlay, name, value))
+        root = pathlib.Path(self.enterContext(tempfile.TemporaryDirectory(dir=ROOT / 'target')))
+        self.upstream = root / 'original';self.upstream.mkdir()
+        (self.upstream / 'Cargo.lock').write_bytes(original)
+        (self.upstream / 'Cargo.toml').write_bytes(self.manifest)
+        (self.upstream / '.rules').write_text('fixed')
+        for name, target in overlay.SOURCE_LINKS.items():(self.upstream / name).symlink_to(target)
+        before = evidence.snapshot(self.upstream)
+        self.enterContext(patch.object(overlay, 'SOURCE', overlay.snapshot_sha(before)))
+        self.enterContext(patch.object(overlay, 'ZIP_SOURCE', overlay.snapshot_sha(dict(before, **{'Cargo.lock':overlay.sha(updated),'Cargo.toml':overlay.sha(new_manifest)}))))
+        self.destination = root / 'copy'
+
+    def prepare(self):
+        receipt = overlay.prepare(self.upstream, self.destination, 'u15-fixed-aube-zip9', overlay.ZIP_POLICY, evidence.snapshot)
+        overlay.finish(self.upstream, self.destination, receipt, evidence.snapshot)
+        return receipt
+
+    def test_exact_two_entries_and_manifest(self):
+        receipt = self.prepare();overlay.verify(receipt)
+        self.assertEqual((self.upstream / 'Cargo.lock').read_bytes(), self.original)
+        self.assertEqual((self.destination / 'Cargo.toml').read_bytes(), self.manifest.replace(b'"8"',b'"=9.0.4"'))
+
+    def test_other_manifest_line_rejected(self):
+        with self.assertRaises(ValueError):overlay.zip_bytes(self.original, self.manifest+b'\n', overlay.ZIP_POLICY)
+
+    def test_other_zip_checksum_rejected(self):
+        with self.assertRaises(ValueError):overlay.zip_bytes(self.original.replace(overlay.ZIP_OLD_CHECKSUM.encode(), b'0'*64), self.manifest, overlay.ZIP_POLICY)
+
+    def test_other_policy_rejected(self):
+        with self.assertRaises(ValueError):overlay.zip_bytes(self.original, self.manifest, dict(overlay.ZIP_POLICY,zip_to_version='9.0.5'))
+
+    def test_unrelated_lock_edge_rejected(self):
+        receipt=self.prepare();receipt['build_lock']=receipt['build_lock'].replace('fixture-1','other')
+        with self.assertRaises(ValueError):overlay.verify(receipt)
+
+    def test_missing_nix_edge_rejected(self):
+        receipt=self.prepare();receipt['build_lock']=receipt['build_lock'].replace(' "nix 0.31.3",\n','')
+        with self.assertRaises(ValueError):overlay.verify(receipt)
+
+    def test_build_manifest_receipt_tamper_rejected(self):
+        receipt=self.prepare();receipt['build_manifest']+='\n'
+        with self.assertRaises(ValueError):overlay.verify(receipt)
+
+    def test_build_source_after_tamper_rejected(self):
+        receipt=self.prepare();receipt['build_source_after']['Cargo.toml']='0'*64
+        with self.assertRaises(ValueError):overlay.verify(receipt)
+
+    def test_link_target_rejected(self):
+        link=self.upstream/'AGENTS.md';link.unlink();link.symlink_to('../escape')
+        with self.assertRaises(ValueError):self.prepare()
+
+    def test_new_policy_never_matches_legacy(self):
+        receipt=self.prepare();receipt['policy']=overlay.POLICY
+        with self.assertRaises(ValueError):overlay.verify(receipt)
+
+
 class OverlayFixture:
     def setUp(self):
         self.original = fixture_lock()

@@ -16,6 +16,24 @@ spec.loader.exec_module(evidence)
 
 
 class GuestPolicy(unittest.TestCase):
+    def test_zip_policy_does_not_add_exception(self):
+        from guest_policy import generate_zip
+        from unittest.mock import patch
+        import hashlib
+        from types import SimpleNamespace
+        actual = hashlib.sha256
+        def selected(raw):
+            return SimpleNamespace(hexdigest=lambda:'b08d900a0b72764922da18bb0aec4b6598a8de58050babd9a6d59b6baefe7b89') if raw == self.lock else actual(raw)
+        with patch('guest_policy.hashlib.sha256', side_effect=selected):
+            config, receipt = generate_zip(self.root, self.inherited, self.lock)
+        self.assertEqual(config, generate(self.root,self.inherited,self.lock)[0])
+        self.assertEqual(receipt['exception'], EXCEPTION)
+
+    def test_zip_policy_wrong_lock_rejected(self):
+        from guest_policy import generate_zip
+        with self.assertRaisesRegex(ValueError, 'zip advisory lock'):
+            generate_zip(self.root, self.inherited, self.lock)
+
     def setUp(self):
         self.root = (ROOT / 'deny.toml').read_bytes()
         self.inherited = evidence.guest_policy(self.root, evidence.LICENSE_EXCEPTION)

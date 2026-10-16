@@ -36,3 +36,10 @@ def verify(root_bytes, license_policy, lock_bytes, config, receipt):
     expected, expected_receipt = generate(root_bytes, license_policy, lock_bytes, receipt['exception'])
     if config != expected or receipt != expected_receipt:
         raise ValueError('guest advisory receipt/config mismatch')
+
+
+def generate_zip(root_bytes, license_policy, lock_bytes):
+    # New source-copy policy changes no audit exception or category.
+    if hashlib.sha256(lock_bytes).hexdigest() != 'b08d900a0b72764922da18bb0aec4b6598a8de58050babd9a6d59b6baefe7b89':
+        raise ValueError('zip advisory lock mismatch')
+    return generate(root_bytes, license_policy, lock_bytes)
