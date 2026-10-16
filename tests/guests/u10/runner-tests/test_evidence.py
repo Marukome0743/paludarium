@@ -28,6 +28,18 @@ def elf(*, pie=False, interpreter=False, needed=False):
 
 
 class BuildEvidence(unittest.TestCase):
+    def test_name_metadata_source_exact(self):
+        helper=evidence.u14_overlay_module()
+        evidence.verify_name_metadata(dict(metadata_build_source_sha256=helper.NAME_SOURCE,binaries={'aube':{'source_sha256':helper.NAME_SOURCE}}),helper)
+
+    def test_name_metadata_or_binary_source_tamper(self):
+        for field in ('metadata','binary'):
+            helper=evidence.u14_overlay_module()
+            receipt=dict(metadata_build_source_sha256=helper.NAME_SOURCE,binaries={'aube':{'source_sha256':helper.NAME_SOURCE}})
+            if field=='metadata':receipt['metadata_build_source_sha256']=helper.ZIP_SOURCE
+            else:receipt['binaries']['aube']['source_sha256']=helper.ZIP_SOURCE
+            with self.assertRaises(ValueError):evidence.verify_name_metadata(receipt,helper)
+
     def zip_metadata(self):
         helper=evidence.u14_overlay_module()
         dependency=dict(name='zip',req='=9.0.4',source=helper.REGISTRY,uses_default_features=False,features=['deflate'])

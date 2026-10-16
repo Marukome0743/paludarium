@@ -55,8 +55,9 @@ def policy_receipt_valid(directory, receipt, root_bytes):
             overlay = receipt['lock_overlay']
             helper = u14_overlay_module()
             helper.verify(overlay)
-            is_zip = overlay['policy'].get('policy') == 'u15-fixed-aube-zip9'
-            if overlay['policy'] != source_lock['u15_aube_zip_overlay' if is_zip else 'u14_aube_lock_overlay']:
+            is_name = overlay['policy'].get('policy') == 'u15-fixed-aube-zip9-name'
+            is_zip = is_name or overlay['policy'].get('policy') == 'u15-fixed-aube-zip9'
+            if overlay['policy'] != source_lock['u15_aube_zip_name_overlay' if is_name else 'u15_aube_zip_overlay' if is_zip else 'u14_aube_lock_overlay']:
                 raise ValueError('unapproved overlay receipt policy')
             if (overlay['source_before'] != receipt['source_before']
                     or overlay['source_after'] != receipt['source_after']
@@ -75,6 +76,8 @@ def policy_receipt_valid(directory, receipt, root_bytes):
                 raise ValueError('overlay metadata rustls identity mismatch')
             if is_zip:
                 verify_zip_metadata(receipt, packages, helper)
+            if is_name:
+                verify_name_metadata(receipt, helper)
             metadata_file = directory / 'aube-metadata.json'
             if metadata_file.exists() and digest(metadata_file) != receipt['metadata_sha256']:
                 raise ValueError('overlay metadata hash mismatch')
@@ -208,3 +211,9 @@ def verify_zip_metadata(receipt, packages, helper):
                 or dependencies[0]['uses_default_features'] is not False
                 or dependencies[0]['features'] != ['deflate']):
             raise ValueError('overlay metadata zip constraint mismatch')
+
+
+def verify_name_metadata(receipt, helper):
+    if (receipt.get('metadata_build_source_sha256') != helper.NAME_SOURCE
+            or receipt['binaries']['aube'].get('source_sha256') != helper.NAME_SOURCE):
+        raise ValueError('overlay metadata/binary compatibility source mismatch')

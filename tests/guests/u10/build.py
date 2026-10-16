@@ -22,7 +22,7 @@ def command(args, cwd, log, env=None):
 
 
 def build(directory, advisory_policy=None):
-    if advisory_policy not in (None, 'u14-fixed-aube', 'u15-fixed-aube-zip9'):
+    if advisory_policy not in (None, 'u14-fixed-aube', 'u15-fixed-aube-zip9', 'u15-fixed-aube-zip9-name'):
         raise ValueError('unapproved guest advisory policy')
     directory.mkdir(parents=True, exist_ok=True)
     lock = json.loads((HERE / 'source-lock.json').read_text())
@@ -55,13 +55,13 @@ def build(directory, advisory_policy=None):
             build_source = directory / 'build-source/aube'
             receipt['lock_overlay'] = u14_overlay_module().prepare(
                 upstream, build_source, advisory_policy,
-                lock['u15_aube_zip_overlay'] if advisory_policy == 'u15-fixed-aube-zip9' else lock['u14_aube_lock_overlay'], snapshot)
+                lock[{'u15-fixed-aube-zip9':'u15_aube_zip_overlay', 'u15-fixed-aube-zip9-name':'u15_aube_zip_name_overlay'}.get(advisory_policy, 'u14_aube_lock_overlay')], snapshot)
         root_policy = (ROOT / 'deny.toml').read_bytes()
         guest_config = directory / 'aube-deny.toml'
         config_bytes = guest_policy(root_policy, lock['guest_license_exception'])
         if advisory_policy:
             from evidence import u14_policy_module
-            generator = u14_policy_module().generate_zip if advisory_policy == 'u15-fixed-aube-zip9' else u14_policy_module().generate
+            generator = u14_policy_module().generate_zip if advisory_policy in ('u15-fixed-aube-zip9', 'u15-fixed-aube-zip9-name') else u14_policy_module().generate
             config_bytes, advisory_receipt = generator(
                 root_policy, config_bytes, (build_source / 'Cargo.lock').read_bytes())
             receipt['advisory_policy'] = advisory_receipt
@@ -80,8 +80,10 @@ def build(directory, advisory_policy=None):
             receipt['metadata_sha256'] = digest(metadata_file)
             receipt['metadata_json'] = metadata_text
             receipt['ci_head'] = os.environ.get('GITHUB_SHA')
-            if advisory_policy == 'u15-fixed-aube-zip9':
+            if advisory_policy in ('u15-fixed-aube-zip9', 'u15-fixed-aube-zip9-name'):
                 receipt['metadata_manifest_sha256'] = digest(build_source / 'Cargo.toml')
+            if advisory_policy == 'u15-fixed-aube-zip9-name':
+                receipt['metadata_build_source_sha256'] = u14_overlay_module().snapshot_sha(snapshot(build_source))
         packages = [p for p in metadata['packages'] if p['name'] == 'webpki-root-certs' and p['version'] == '1.0.9']
         if len(packages) != 1 or packages[0]['license'] != 'CDLA-Permissive-2.0':
             raise ValueError('fixed certificate crate identity/license mismatch')
@@ -131,8 +133,10 @@ def build(directory, advisory_policy=None):
             static_elf((directory / name).read_bytes())
             receipt['binaries'][name] = {'sha256': digest(directory / name), 'static_elf': True,
                                          'lock_sha256': digest(manifest.parent / 'Cargo.lock'), 'command': args}
-            if name == 'aube' and advisory_policy == 'u15-fixed-aube-zip9':
+            if name == 'aube' and advisory_policy in ('u15-fixed-aube-zip9', 'u15-fixed-aube-zip9-name'):
                 receipt['binaries'][name]['manifest_sha256'] = digest(manifest)
+            if name == 'aube' and advisory_policy == 'u15-fixed-aube-zip9-name':
+                receipt['binaries'][name]['source_sha256'] = u14_overlay_module().snapshot_sha(snapshot(build_source))
         receipt['exit'] = 0
     except Exception as error:
         receipt['exit'] = 1
@@ -162,6 +166,6 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('directory')
-    parser.add_argument('--advisory-policy', choices=['u14-fixed-aube', 'u15-fixed-aube-zip9'])
+    parser.add_argument('--advisory-policy', choices=['u14-fixed-aube', 'u15-fixed-aube-zip9', 'u15-fixed-aube-zip9-name'])
     arguments = parser.parse_args()
     build(pathlib.Path(arguments.directory).resolve(), arguments.advisory_policy)

@@ -123,6 +123,52 @@ class ZipOverlay(unittest.TestCase):
         with self.assertRaises(ValueError):overlay.verify(receipt)
 
 
+class NameOverlay(ZipOverlay):
+    def setUp(self):
+        super().setUp()
+        self.name_original = b'fn example() {\n        let name = entry.name().to_owned();\n}\n'
+        self.name_updated = self.name_original.replace(b'entry.name().to_owned()', b'entry.name()?.into_owned()')
+        file = self.upstream / overlay.NAME_PATH;file.parent.mkdir(parents=True);file.write_bytes(self.name_original)
+        for name,value in [('NAME_ORIGINAL',overlay.sha(self.name_original)),('NAME_UPDATED',overlay.sha(self.name_updated))]:
+            self.enterContext(patch.object(overlay,name,value))
+        before=evidence.snapshot(self.upstream)
+        zip_source=dict(before,**{'Cargo.lock':overlay.ZIP_LOCK,'Cargo.toml':overlay.ZIP_MANIFEST})
+        self.enterContext(patch.object(overlay,'SOURCE',overlay.snapshot_sha(before)))
+        self.enterContext(patch.object(overlay,'ZIP_SOURCE',overlay.snapshot_sha(zip_source)))
+        self.enterContext(patch.object(overlay,'NAME_SOURCE',overlay.snapshot_sha(dict(zip_source,**{overlay.NAME_PATH:overlay.NAME_UPDATED}))))
+
+    def prepare(self):
+        receipt=overlay.prepare(self.upstream,self.destination,'u15-fixed-aube-zip9-name',overlay.NAME_POLICY,evidence.snapshot)
+        overlay.finish(self.upstream,self.destination,receipt,evidence.snapshot)
+        return receipt
+
+    def test_name_error_is_propagated_not_skipped(self):
+        receipt=self.prepare()
+        self.assertIn('entry.name()?.into_owned()',receipt['build_compatibility'])
+        self.assertNotIn('unwrap_or',receipt['build_compatibility'])
+        self.assertEqual((self.upstream/overlay.NAME_PATH).read_bytes(),self.name_original)
+
+    def test_original_rust_tamper(self):
+        (self.upstream/overlay.NAME_PATH).write_bytes(self.name_original+b'\n')
+        with self.assertRaises(ValueError):self.prepare()
+
+    def test_extra_rust_change(self):
+        receipt=self.prepare();receipt['build_compatibility']+='\n'
+        with self.assertRaises(ValueError):overlay.verify(receipt)
+
+    def test_rust_snapshot_before_tamper(self):
+        receipt=self.prepare();receipt['source_before'][overlay.NAME_PATH]='0'*64
+        with self.assertRaises(ValueError):overlay.verify(receipt)
+
+    def test_rust_snapshot_after_tamper(self):
+        receipt=self.prepare();receipt['build_source_after'][overlay.NAME_PATH]='0'*64
+        with self.assertRaises(ValueError):overlay.verify(receipt)
+
+    def test_old_zip_policy_cannot_accept_third_file(self):
+        receipt=self.prepare();receipt['policy']=overlay.ZIP_POLICY
+        with self.assertRaises(ValueError):overlay.verify(receipt)
+
+
 class OverlayFixture:
     def setUp(self):
         self.original = fixture_lock()

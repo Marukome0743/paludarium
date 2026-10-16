@@ -70,6 +70,8 @@ def updated_lock(original, policy):
 
 
 def prepare(upstream, destination, policy_name, policy, snapshot):
+    if policy_name == NAME_POLICY['policy']:
+        return prepare_name(upstream, destination, policy, snapshot)
     if policy_name == ZIP_POLICY['policy']:
         return prepare_zip(upstream, destination, policy, snapshot)
     if policy_name != POLICY['policy']:
@@ -109,6 +111,8 @@ def finish(upstream, destination, overlay, snapshot):
 
 
 def verify(overlay):
+    if overlay['policy'].get('policy') == NAME_POLICY['policy']:
+        return verify_name(overlay)
     if overlay['policy'].get('policy') == ZIP_POLICY['policy']:
         return verify_zip(overlay)
     validate_pair(overlay['original_lock'].encode(), overlay['build_lock'].encode(), overlay['policy'])
@@ -201,3 +205,57 @@ def verify_zip(overlay):
     if (overlay['source_before'] != overlay['source_after']
             or overlay['build_source_before'] != overlay['build_source_after']):
         raise ValueError('zip source changed during audit/build')
+
+
+NAME_PATH = 'crates/aube-registry/src/osv_mirror.rs'
+NAME_ORIGINAL = '8ca9d5d776f31c3fd2cc40de708ec91a2e32767764dfa92860981897b780b082'
+NAME_UPDATED = '888cede183fef7d7a6a194e422a2b7da703b08213a4e0721ee5a8549c7470b0e'
+NAME_SOURCE = 'a504160164a8e0f5d2be7c539cf047d057675b0b0b047ec66f04f707809aec2a'
+NAME_POLICY = dict(ZIP_POLICY, schema=3, policy='u15-fixed-aube-zip9-name',
+                   build_source_sha256=NAME_SOURCE, compatibility_path=NAME_PATH,
+                   original_compatibility_sha256=NAME_ORIGINAL,
+                   build_compatibility_sha256=NAME_UPDATED)
+
+
+def name_bytes(original):
+    old = b'        let name = entry.name().to_owned();'
+    new = b'        let name = entry.name()?.into_owned();'
+    if sha(original) != NAME_ORIGINAL or original.count(old) != 1:
+        raise ValueError('name API original source mismatch')
+    updated = original.replace(old, new, 1)
+    if sha(updated) != NAME_UPDATED:
+        raise ValueError('name API build source mismatch')
+    return updated
+
+
+def prepare_name(upstream, destination, policy, snapshot):
+    if policy != NAME_POLICY:
+        raise ValueError('unapproved name API overlay policy')
+    original = (upstream / NAME_PATH).read_bytes()
+    updated = name_bytes(original)
+    receipt = prepare_zip(upstream, destination, ZIP_POLICY, snapshot)
+    (destination / NAME_PATH).write_bytes(updated)
+    receipt.update(policy=dict(NAME_POLICY), original_compatibility=original.decode(),
+                   build_compatibility=updated.decode(), build_source_before=snapshot(destination))
+    if snapshot_sha(receipt['build_source_before']) != NAME_SOURCE:
+        raise ValueError('name API build snapshot mismatch')
+    return receipt
+
+
+def verify_name(overlay):
+    if overlay['policy'] != NAME_POLICY:
+        raise ValueError('unapproved name API overlay policy')
+    updated = name_bytes(overlay['original_compatibility'].encode())
+    if overlay['build_compatibility'].encode() != updated:
+        raise ValueError('name API receipt source mismatch')
+    # Run the unchanged two-file zip validator on its exact logical subview,
+    # then bind the third permitted source difference independently.
+    zip_view = dict(overlay, policy=dict(ZIP_POLICY))
+    for key in ('build_source_before', 'build_source_after'):
+        actual = overlay[key]
+        if actual.get(NAME_PATH) != NAME_UPDATED or snapshot_sha(actual) != NAME_SOURCE:
+            raise ValueError('name API build snapshot changed')
+        zip_view[key] = dict(actual, **{NAME_PATH: NAME_ORIGINAL})
+    if overlay['source_before'].get(NAME_PATH) != NAME_ORIGINAL:
+        raise ValueError('name API original snapshot changed')
+    verify_zip(zip_view)
