@@ -414,9 +414,9 @@ fn run_counted_policy<const CACHE_REJECTIONS: bool>(
             },
         };
         let mut deterministic_rejection = false;
-        if maximum_block > 0
+        if !(CACHE_REJECTIONS && rejected)
+            && maximum_block > 0
             && budget - consumed >= maximum_block
-            && !(CACHE_REJECTIONS && rejected)
             && let Some((reason, count)) =
                 accelerate(state, &instruction, &mut deterministic_rejection)
         {
