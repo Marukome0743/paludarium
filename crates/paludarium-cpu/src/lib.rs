@@ -355,7 +355,37 @@ pub fn run_cached_with_counted_hook(
     mut accelerate: impl FnMut(&mut CpuState, &Instruction, &mut bool) -> Option<(ExitReason, u64)>,
 ) -> ExitReason {
     let policy = policy.into();
-    let maximum_block = policy.maximum_block;
+    if policy.cache_rejections {
+        run_counted_policy::<true>(
+            state,
+            mem,
+            budget,
+            cache,
+            policy.maximum_block,
+            &mut accelerate,
+        )
+    } else {
+        run_counted_policy::<false>(
+            state,
+            mem,
+            budget,
+            cache,
+            policy.maximum_block,
+            &mut accelerate,
+        )
+    }
+}
+
+// Keep the invariant rejection policy outside each instruction's dispatch loop.
+#[inline(never)]
+fn run_counted_policy<const CACHE_REJECTIONS: bool>(
+    state: &mut CpuState,
+    mem: &AddressSpace,
+    budget: u64,
+    cache: &mut DecodeCache,
+    maximum_block: u64,
+    mut accelerate: impl FnMut(&mut CpuState, &Instruction, &mut bool) -> Option<(ExitReason, u64)>,
+) -> ExitReason {
     let mut consumed = 0;
     #[cfg(feature = "u14-cost-profile")]
     let mut observed_chain = jit_cost::Chain::default();
@@ -366,7 +396,7 @@ pub fn run_cached_with_counted_hook(
         #[cfg(feature = "u14-cost-profile")]
         let observed_rip = state.rip.0;
         #[cfg(feature = "u14-cost-profile")]
-        if policy.cache_rejections {
+        if CACHE_REJECTIONS {
             cache.observe_slot(state.rip.0, generation);
         }
         let (instruction, rejected) = match cache.get_with_hint(state.rip.0, generation) {
@@ -386,7 +416,7 @@ pub fn run_cached_with_counted_hook(
         let mut deterministic_rejection = false;
         if maximum_block > 0
             && budget - consumed >= maximum_block
-            && !(policy.cache_rejections && rejected)
+            && !(CACHE_REJECTIONS && rejected)
             && let Some((reason, count)) =
                 accelerate(state, &instruction, &mut deterministic_rejection)
         {
@@ -397,7 +427,7 @@ pub fn run_cached_with_counted_hook(
             #[cfg(feature = "u14-cost-profile")]
             observed_chain.success(generation, jit_cost::add);
             #[cfg(feature = "u14-cost-profile")]
-            if policy.cache_rejections {
+            if CACHE_REJECTIONS {
                 jit_cost::observe_site(observed_space, generation, observed_rip, 1, &instruction);
             }
             if matches!(reason, ExitReason::BudgetExhausted { .. }) {
@@ -412,7 +442,7 @@ pub fn run_cached_with_counted_hook(
         }
         #[cfg(feature = "u14-cost-profile")]
         observed_chain.stop(
-            if policy.cache_rejections && rejected {
+            if CACHE_REJECTIONS && rejected {
                 jit_cost::Counter::StopNegative
             } else if deterministic_rejection {
                 jit_cost::Counter::StopUnsupported
@@ -423,11 +453,11 @@ pub fn run_cached_with_counted_hook(
             },
             jit_cost::add,
         );
-        if policy.cache_rejections && deterministic_rejection {
+        if CACHE_REJECTIONS && deterministic_rejection {
             cache.reject_acceleration(state.rip.0, generation);
         }
         #[cfg(feature = "u14-cost-profile")]
-        if policy.cache_rejections {
+        if CACHE_REJECTIONS {
             let class = if rejected {
                 2
             } else if deterministic_rejection {

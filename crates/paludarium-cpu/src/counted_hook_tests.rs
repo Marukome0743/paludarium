@@ -1,6 +1,94 @@
 use super::*;
 use paludarium_mmu::{MappingKind, Prot};
 
+fn specialized_fallback_equivalence(
+    budget: u64,
+    maximum: u64,
+    syscall: bool,
+    offered_rips: &[u64],
+) {
+    let (initial, memory) = machine();
+    if syscall {
+        memory.write_initial(GuestAddr(4100), &[0x0f, 5]).unwrap();
+    }
+    let mut expected = initial.clone();
+    let expected_exit = run_cached(&mut expected, &memory, budget, &mut DecodeCache::new());
+    for enabled in [false, true] {
+        let mut actual = initial.clone();
+        let mut offered = Vec::new();
+        let exit = run_cached_with_counted_hook(
+            &mut actual,
+            &memory,
+            budget,
+            &mut DecodeCache::new(),
+            AccelerationPolicy {
+                maximum_block: maximum,
+                cache_rejections: enabled,
+            },
+            |state, _, rejected| {
+                offered.push(state.rip);
+                *rejected = true;
+                None
+            },
+        );
+        assert_eq!(exit, expected_exit);
+        assert_eq!(actual, expected);
+        assert_eq!(
+            offered,
+            offered_rips
+                .iter()
+                .copied()
+                .map(GuestAddr)
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn u14_specialized_zero_budget_matches_both_policies() {
+    specialized_fallback_equivalence(0, 64, false, &[]);
+}
+#[test]
+fn u14_specialized_short_budget_matches_both_policies() {
+    specialized_fallback_equivalence(63, 64, false, &[]);
+}
+#[test]
+fn u14_specialized_exact_budget_matches_both_policies() {
+    specialized_fallback_equivalence(64, 64, false, &[4096]);
+}
+#[test]
+fn u14_specialized_disabled_acceleration_matches_both_policies() {
+    specialized_fallback_equivalence(65, 0, false, &[]);
+}
+#[test]
+fn u14_specialized_syscall_matches_both_policies() {
+    specialized_fallback_equivalence(65, 64, true, &[4096, 4097]);
+}
+#[test]
+fn u14_specialized_opt_out_ignores_existing_rejection() {
+    let (mut state, memory) = machine();
+    let mut cache = DecodeCache::new();
+    assert_eq!(hint_attempt(&mut state, &memory, &mut cache, true, true), 1);
+    assert_eq!(hint_attempt(&mut state, &memory, &mut cache, true, true), 0);
+    assert_eq!(
+        hint_attempt(&mut state, &memory, &mut cache, true, false),
+        1
+    );
+}
+#[test]
+fn u14_specialized_policy_switch_preserves_epoch_invalidation() {
+    let (mut state, memory) = machine();
+    let mut cache = DecodeCache::new();
+    assert_eq!(hint_attempt(&mut state, &memory, &mut cache, true, true), 1);
+    memory.write_initial(GuestAddr(4096), &[0x90]).unwrap();
+    assert_eq!(
+        hint_attempt(&mut state, &memory, &mut cache, true, false),
+        1
+    );
+    assert_eq!(hint_attempt(&mut state, &memory, &mut cache, true, true), 1);
+    assert_eq!(hint_attempt(&mut state, &memory, &mut cache, true, true), 0);
+}
+
 fn hinted_dispatch_matches_interpreter(bytes: &[u8], budget: u64, maximum: u64) {
     let mut memory = AddressSpace::new();
     memory

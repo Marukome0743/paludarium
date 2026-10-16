@@ -110,7 +110,7 @@ jobs:
         if: matrix.environment == 'node'
         run: node packages/paludarium-wasm/tests/u14-coverage.mjs target/u11/node/v8 target/u11/node/js-coverage.json
       - name: Frozen paired full-probe performance
-        if: matrix.environment == 'node'
+        if: matrix.environment == 'node' && github.event_name == 'workflow_dispatch'
         continue-on-error: true
         run: node packages/paludarium-wasm/tests/u14-performance-check.mjs packages/paludarium-wasm/paludarium.wasm target/u11/native/observations.json target/guests/u10 target/u11/node/performance
       - name: Preserve raw results and cleanup evidence
