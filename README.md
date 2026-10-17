@@ -148,7 +148,8 @@ Apache License 2.0
 ## 配布と公開（U15）
 
 公開用検査と手順は [docs/release.md](docs/release.md) にあります。
-現在の版0.0.0は公開版として未決定で、registryへの公開は未実施です。
+最初の公開版は0.1.0に決めました（11 crateとnpm配布物の版を0.1.0にそろえています）。
+registryへの公開はまだ行っていません。
 11 crateとnpm配布物を隔離環境で検査し、公開には別の明示承認と実際の
 registry設定・保護environment・同headの受理証拠が必要です。
 Rust利用者は固定nightlyを使用してください。stable対応は主張していません。

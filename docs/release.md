@@ -2,9 +2,15 @@
 
 ## Current status
 
-The workspace and npm package are still `0.0.0`; this is an undecided release
-version, and publication preflight rejects it. Nothing has been published by
-U15. The eleven public crates are types, host, mmu, vfs, loader, decoder, cpu,
+The first release version is decided as `0.1.0` (Build and Test Q7,
+2026-10-18). The Cargo workspace version, the eleven internal dependency
+versions and the npm package `@paludarium/wasm` are all `0.1.0`;
+`Cargo.lock` and `fuzz/Cargo.lock` changed only in the workspace crates'
+version lines. The fuzz crate (`paludarium-fuzz`, `publish = false`) keeps its
+own `0.0.0`. Nothing has been published yet: FR10.1 stays unverified until the
+real publication and the registry checks below.
+
+The eleven public crates are types, host, mmu, vfs, loader, decoder, cpu,
 jit, kernel, runtime and paludarium, in the dependency order calculated from
 the manifests. Harness and the Rust Wasm adapter have `publish = false`.
 
@@ -41,32 +47,171 @@ It measures the fixed policy/package/check file population, each at least
 80%, including the actual package path. Existing Rust/JS/workspace/U9 floors
 remain unchanged. A branch-only workflow may need a PR and owner Actions
 approval before GitHub allows it to run; dispatch registration is not assumed.
+`scripts/release/acceptance.py` is measured locally with the same command
+(the fixed set plus `acceptance.py`, each at least 80%); `release-check.yml`
+does not yet include it in its CI coverage set.
 
-## Owner prerequisites before any release
+## Same-head evidence map
 
-1. Decide the actual semantic version and update Cargo workspace/internal
-   dependency versions and npm together. Do not silently select `0.0.0`.
-2. Confirm ownership of all eleven crate names and `@paludarium/wasm`.
-   crates.io's current Trusted Publishing documentation requires each crate
-   to have been published already: initial publication needs an owner API
-   token and a separate explicit approval. This workflow does not create a
-   long-lived token or silently perform that first publication.
-3. Register the exact upstream repository, `release.yml` and `release`
-   environment as Trusted Publisher for each crate and the npm package.
-   npm requires its package settings, supported runner/CLI and matching
-   `repository.url`; npm 12.2.0 with Node 26.12.0 is used here.
-4. An upstream administrator must create environment `release`, require
-   reviewers, prevent self-review and disable administrator bypass. The
-   inspected upstream and fork currently have no environments. The current
-   account has no upstream admin/push permission; no protection settings
-   were changed or inferred from the YAML environment name.
-5. Obtain same-head/source-bound acceptance evidence for FR6.3, FR7.2,
-   FR7.3, FR8.2 and FR8.3. The reviewed verification job must emit one
-   official `u15-acceptance` artifact with `release-evidence.json`; the
-   fetcher rejects absent/ambiguous artifacts, incomplete listings, changed
-   ZIP digests and different heads. This acceptance artifact producer is a
-   deliberate external gate until the final source's canonical verification
-   is reviewed and adopted; it is not fabricated by package unit tests.
+`policy.release_gate` requires, for the exact head being released, one
+official quality run for each of the eight `REQUIRED` purposes and the five
+`ACCEPTANCE` conditions. `scripts/release/acceptance.py` derives both from
+upstream `aletheia-works/paludarium` only. A run counts only when its
+workflow file matches the table, its head and head repository are the
+upstream head, its branch is `main` and its event is `push` or
+`workflow_dispatch` (pull-request runs are ignored). For each workflow there
+must be exactly one such run, and it must be completed and successful: none,
+two or more, unfinished or failed runs stop the producer. Every listed job
+must exist once and have succeeded at that head. Job names below were read
+from the current workflow files and checked against saved job listings and
+artifacts (U14 runs 38840433942 and 38897611874, macOS run 38996219364);
+the producer re-checks them on the live run and fails loudly if GitHub
+names them differently.
+
+### Quality purposes (`REQUIRED`)
+
+| Purpose | Workflow on main | Job(s) that must succeed |
+|---|---|---|
+| `three-os` | `ci.yml` (push to main) | `unit tests (ubuntu-latest)`, `unit tests (macos-latest)`, `unit tests (windows-latest)` |
+| `lint` | `ci.yml` | `lint` |
+| `dependencies` | `ci.yml` | `dependencies` |
+| `linux-differential` | `ci.yml` | `differential tests (x86-64 Linux)`, `U10 fixed guests and fresh native differential / differential` |
+| `rust-coverage` | `ci.yml` | `line coverage >= 80%` |
+| `u9-coverage` | `ci.yml` | `line coverage >= 80%` (its step `U9 target crates line coverage >= 80%` fails under 80%) |
+| `js-coverage` | `u14-quality.yml` (dispatch on main) | `u11-programs / differential (ubuntu-latest, node)` (its step `Fixed production JavaScript coverage` fails under 80%) |
+| `package-check` | `release-check.yml` (dispatch on main) | `packages` |
+
+### Acceptance conditions (`ACCEPTANCE`)
+
+Each environment is compared with the fresh native x86-64 Linux oracle of its
+own run, and the guest bytes (probe, aube) must equal that oracle's. Guests
+are never compared across runs: aube embeds its build date, so separately
+built guests differ by design.
+
+| Source | Workflow / job | Artifact: members read |
+|---|---|---|
+| Linux native | `ci.yml` / `U10 fixed guests and fresh native differential / differential` | `u10-differential`: `observations.json`, `native/observations.json` |
+| macOS native | `u12-quality.yml` / `macos-host` | `u12-macos-host`: `comparison/observations.json`, `comparison-original/observations.json`; `u12-native-first`: `u12/native/observations.json`, `u12/native-original/observations.json` |
+| Windows native | `u14-quality.yml` / `windows-host` | `u13-windows-host`: `windows/comparison/observations.json`, `windows/comparison-original/observations.json`; `u13-native-first`: `u13/native/observations.json`, `u13/native-original/observations.json` |
+| Wasm Node, Chromium, Firefox, Safari | `u14-quality.yml` / `u11-programs / differential (ubuntu-latest, node)`, `(ubuntu-latest, chromium)`, `(ubuntu-latest, firefox)`, `(macos-latest, safari)` | `u11-<environment>`: `observations.json`; `u11-acceptance-inputs`: `target/u11/native/observations.json` |
+| Performance | `u14-quality.yml` / `u11-programs / differential (ubuntu-latest, node)` | `u11-node`: `performance/observations.json` |
+
+| Condition | Sources | What is checked in the artifact content |
+|---|---|---|
+| FR6.3 | all native and Wasm sources (Wasm interpreter mode) | every probe row exits 0 and prints exactly its `PASS <item>` line; `probe-all` prints all eight; `probe-environment` starts with `PASS` |
+| FR7.2 | same | the four aube commands have the oracle's exit codes and the same `--version` stdout; the job's own runner compares full stdout/exit and fails the job on a difference |
+| FR7.3 | same | frozen install stderr shows `+ filedep@0.0.0` and `+ linked@0.0.0`; `aube list` shows both at `0.0.0` |
+| FR8.2 | the four Wasm sources | `complete` and `passed`, 28 cases, both `interpreter` and `jit` modes complete and passed, every row `pass: true`, probe and aube checks above in both modes |
+| FR8.3 | performance | `head` equals the released head, `complete`, `passed`, `warmupsPassed`, `result.pass`, `p < 0.05`, mean JIT time below mean interpreter time, 20 rows all exit 0 and passed |
+
+Shared checks: all native documents are complete (`differential_complete`,
+`native_complete`), each artifact is unexpired, belongs to the selected run
+and head, and its ZIP matches the official `digest` and size. The four Wasm
+environments must report one module and one oracle digest (the exact bytes of
+`u11-acceptance-inputs`), and the measurement must name the same module,
+oracle and probe. `artifact_sha256` of each condition is the SHA-256 of the
+sorted `[source, artifact, artifact id, official digest]` list it was checked
+against; the document also keeps every member's SHA-256.
+
+The FR8.3 step in `u14-quality.yml` runs only on `workflow_dispatch` and has
+`continue-on-error: true`, so a successful run does not mean FR8.3 passed:
+only `performance/observations.json` decides. It is measured once per head;
+dispatching again to wait for a pass is not allowed (a second run is also
+rejected as ambiguous). Most source artifacts are kept for 7 days
+(`u12-macos-host` and the native-first oracles for 14), so the acceptance
+artifact must be produced within 7 days of the quality runs.
+
+### Producer
+
+`.github/workflows/u15-acceptance.yml` runs only by manual dispatch, with
+`contents: read` and `actions: read`, SHA-pinned actions and
+`persist-credentials: false`. It runs
+`python -B scripts/release/acceptance.py --output target/u15/release-evidence.json`
+and uploads one artifact `u15-acceptance` whose only member is
+`release-evidence.json` (fields `head`, `quality`, `acceptance`,
+`trusted_publishers_registered`, plus the checked `evidence`). The producer
+refuses to run outside upstream or for a ref other than `refs/heads/main`.
+Its input `trusted_publishers_registered` (default `false`) is the person's
+declaration that step 4 below is done; it is not checked against the
+registries, and `release_gate` refuses `false`. Unit and integration tests
+replace the GitHub adapter with in-memory data: they do not prove that any
+real run, artifact or registration exists.
+
+## Owner hand-off (Step 16)
+
+U15 does not publish. The person (and, where noted, an upstream
+administrator) does these steps in order. FR10.1 stays a GAP until step 6
+and its registry checks are complete.
+
+1. **Bring the change to upstream main.** When: after the fork CI for
+   the release head has passed and the person approved it. An upstream
+   administrator opens and merges a pull request from fork
+   `codex/build-and-test` into `aletheia-works/paludarium` `main`.
+   Confirm: note the new main head SHA;
+   `gh api repos/aletheia-works/paludarium/commits/<sha> --jq .commit.verification.verified`
+   prints `true`, and the `CI` (`ci.yml`) push run for that SHA starts.
+2. **Create the protected `release` environment.** When: before any tag
+   is pushed (release preflight rejects a missing or unprotected
+   environment). An upstream administrator creates environment `release`
+   with required reviewers, "Prevent self-review" on and administrator
+   bypass off; limiting deployments to `v*.*.*` tags is recommended.
+   Confirm: `gh api repos/aletheia-works/paludarium/environments/release`
+   shows a `required_reviewers` rule with reviewers and
+   `prevent_self_review: true`, and `can_admins_bypass: false`. With
+   self-review prevented, the person who pushes the tag cannot approve
+   the deployment, so a second reviewer is needed.
+3. **Decide name ownership and the first publication.** When: before
+   step 4. Confirm that all eleven crate names and `@paludarium/wasm` are
+   free or owned by the project. crates.io lets a Trusted Publisher be
+   registered only for a crate that already exists, so the first
+   publication of each crate needs a separate decision and explicit
+   approval (for example an owner-run first upload with a short-lived,
+   crate-scoped token, in dependency order). `release.yml` never creates
+   a token and does not perform that first upload. If a crate's `0.1.0` is
+   uploaded outside `release.yml`, `release.yml` later only verifies it,
+   and stops unless the registry checksum equals the `.crate` digest
+   built by `release-check.yml` for the release head; upload those exact
+   bytes or decide another approach first. Check npm's current
+   requirement for the package's first publication the same way.
+   Confirm: `https://crates.io/api/v1/crates/<name>/owners` lists the
+   project owners for each crate, and `npm owner ls @paludarium/wasm`
+   lists the project's npm owners.
+4. **Register the Trusted Publishers.** When: after step 3 and before
+   step 5. For each of the eleven crates on crates.io and for
+   `@paludarium/wasm` on npm, register repository
+   `aletheia-works/paludarium`, workflow `release.yml` and environment
+   `release`. npm also requires `repository.url` in `package.json` to
+   match (it does) and its supported runner and CLI (npm 12.2.0 on Node
+   26.12.0 here). Confirm: each crate's and the npm package's Trusted
+   Publishing settings show exactly that repository, workflow and
+   environment.
+5. **Produce same-head quality and acceptance evidence.** When: on the
+   main head from step 1, after steps 2 to 4. The `ci.yml` push run
+   starts by itself; dispatch each of the others once:
+   `gh workflow run u12-quality.yml --repo aletheia-works/paludarium --ref main`,
+   the same for `u14-quality.yml` and `release-check.yml`. When all four
+   have succeeded (do not dispatch `u14-quality.yml` again to wait for a
+   passing FR8.3; if FR8.3 fails, record it and stop), dispatch, within 7
+   days:
+   `gh workflow run u15-acceptance.yml --repo aletheia-works/paludarium --ref main -f trusted_publishers_registered=true`
+   (`true` only when step 4 is complete). Confirm: the run succeeded and
+   its artifact `u15-acceptance` holds only `release-evidence.json`, with
+   that head, eight `quality` rows, the five `acceptance` IDs all
+   `passed: true` and `trusted_publishers_registered: true`.
+6. **Push the tag and approve the environment.** When: after step 5,
+   with the person's explicit approval of the exact version, tag, head,
+   registries, artifact digests, authentication and environment settings.
+   Create `v0.1.0` on exactly that main head and push it. `release.yml`
+   then runs preflight and the package check and waits at the `release`
+   environment; a reviewer other than the tag pusher checks the head,
+   version and digests and approves the deployment. Confirm: the run
+   succeeded and `target/u15/publication-progress.json` lists all eleven
+   crates and `@paludarium/wasm`; then, independently, each crate's
+   `https://crates.io/api/v1/crates/<name>/0.1.0` `checksum` equals the
+   `.crate` SHA-256 in the `u15-package` artifact, `npm view
+   @paludarium/wasm@0.1.0 dist.integrity` equals the tarball's SHA-512
+   integrity, and the npm provenance attestation names the upstream
+   repository, `release.yml` and that head. Only then FR10.1 becomes OK.
 
 The evidence document follows `policy.release_gate`: exact head/tag/repository,
 official completed successful quality run identities for every required
@@ -81,10 +226,11 @@ performance rerun is used to wait for a passing result.
 
 Only after the user explicitly approves the precise version, tag/head,
 registries, artifact digests, authentication and protection configuration may
-the owner create/push a version tag. This plan did not authorize tag creation
-or publication. `release.yml` accepts only an exact `vMAJOR.MINOR.PATCH` after
-Python validation, verifies signed main reachability and actual environment
-protection before builds, then requires the protected human approval.
+the owner create/push a version tag. No plan approval authorizes tag creation
+or publication by itself. `release.yml` accepts only an exact
+`vMAJOR.MINOR.PATCH` after Python validation, verifies signed main
+reachability and actual environment protection before builds, then requires
+the protected human approval.
 
 Only the publish job receives `id-token: write`. crates-io-auth-action obtains
 a short-lived token and revokes it in its post step; npm uses Trusted

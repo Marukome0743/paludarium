@@ -53,5 +53,25 @@ class PolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'non-crates.io'):policy.inventory(root)
     def test_inherited_git_rejected(self):self.inherited_dependency('git = "https://example.invalid/repo"')
     def test_inherited_registry_rejected(self):self.inherited_dependency('registry = "untrusted"')
+    def test_real_manifests_share_release_version(self):
+        # Step13 (Q7): the real manifests, not the valid() fixture, carry 0.1.0.
+        inv=policy.inventory(ROOT);workspace=tomllib.loads((ROOT/'Cargo.toml').read_text())['workspace']
+        internal={k:v for k,v in workspace['dependencies'].items() if 'path' in v}
+        self.assertEqual(inv['version'],'0.1.0');self.assertEqual(workspace['package']['version'],'0.1.0')
+        self.assertEqual(sorted(internal),sorted(policy.PUBLIC));self.assertEqual({v['version'] for v in internal.values()},{'0.1.0'})
+        self.assertEqual(len(inv['packages']),11);self.assertEqual({r['version'] for r in inv['packages'].values()},{'0.1.0'})
+        self.assertEqual({v for r in inv['packages'].values() for v in r['dependencies'].values()},{'0.1.0'})
+        self.assertEqual(inv['npm']['version'],'0.1.0');self.assertEqual(inv['npm']['name'],'@paludarium/wasm')
+    def test_single_version_drift_rejected(self):
+        drifts={'workspace dependency':('Cargo.toml','paludarium-mmu = { path = "crates/paludarium-mmu", version = "0.1.0" }','paludarium-mmu = { path = "crates/paludarium-mmu", version = "0.1.1" }'),
+                'npm package':('packages/paludarium-wasm/package.json','"version":"0.1.0"','"version":"0.1.1"'),
+                'crate package':('crates/paludarium-vfs/Cargo.toml','\nversion.workspace = true','\nversion = "0.1.1"')}
+        for label,(path,old,new) in drifts.items():
+            with self.subTest(label),tempfile.TemporaryDirectory(dir=ROOT/'target/u15') as directory:
+                root=Path(directory);members=tomllib.loads((ROOT/'Cargo.toml').read_text())['workspace']['members']
+                for name in ['Cargo.toml','packages/paludarium-wasm/package.json']+[m+'/Cargo.toml' for m in members]:
+                    p=root/name;p.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(ROOT/name,p)
+                text=(root/path).read_text();self.assertEqual(text.count(old),1,label);(root/path).write_text(text.replace(old,new))
+                with self.assertRaisesRegex(ValueError,'version'):policy.inventory(root)
 
 if __name__=='__main__':unittest.main()

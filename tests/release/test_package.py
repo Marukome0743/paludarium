@@ -55,24 +55,28 @@ class PackageTests(unittest.TestCase):
     def test_wrong_version(self):
         with self.assertRaises(ValueError):self.inspect(expected_change=dict(version='1.0.0'))
     def crates(self,change=None):
-        inventory=policy.inventory(ROOT);paths=[]
+        # Fixtures follow the real manifest version, so a version change cannot
+        # make the rejection cases pass for an unrelated file-name reason.
+        inventory=policy.inventory(ROOT);paths=[];version=inventory['version']
         for name in inventory['order']:
             row=inventory['packages'][name]
             deps='\n'.join('[dependencies.'+d+']\nversion = "'+v+'"' for d,v in row['dependencies'].items())
-            metadata='[package]\nname="'+name+'"\nversion="0.0.0"\nlicense="Apache-2.0"\n'+deps
+            metadata='[package]\nname="'+name+'"\nversion="'+version+'"\nlicense="Apache-2.0"\n'+deps
             files={'Cargo.toml':metadata.encode(),'LICENSE':b'Apache','README.md':b'usage'}
             if change:change(name,files)
-            p=self.root/(name+'-0.0.0.crate');tar(p,files,name+'-0.0.0');paths.append(p)
+            p=self.root/(name+'-'+version+'.crate');tar(p,files,name+'-'+version);paths.append(p)
         return paths,inventory
     def test_eleven_crates(self):
         paths,inv=self.crates();self.assertEqual(len(package.inspect_crates(paths,inv)),11)
     def test_dependency_version(self):
         def change(name,files):
-            if name=='paludarium-decoder':files['Cargo.toml']=files['Cargo.toml'].replace(b'version = "0.0.0"',b'version = "9.0.0"')
+            if name=='paludarium-decoder':
+                text=files['Cargo.toml'].decode();line='version = "'+policy.inventory(ROOT)['version']+'"'
+                self.assertIn(line,text);files['Cargo.toml']=text.replace(line,'version = "9.0.0"').encode()
         paths,inv=self.crates(change)
-        with self.assertRaises(ValueError):package.inspect_crates(paths,inv)
+        with self.assertRaisesRegex(ValueError,'dependency missing/version mismatch'):package.inspect_crates(paths,inv)
     def test_private_crate(self):
-        paths,inv=self.crates();paths[-1]=self.root/'paludarium-harness-0.0.0.crate'
+        paths,inv=self.crates();paths[-1]=self.root/('paludarium-harness-'+inv['version']+'.crate')
         with self.assertRaises(ValueError):package.inspect_crates(paths,inv)
     def test_missing_crate(self):
         paths,inv=self.crates()
