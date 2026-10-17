@@ -2,7 +2,16 @@ import copy
 import json
 import unittest
 
-from validation import CASES, HEX_FIELDS, validate
+from validation import CASES, HEX_FIELDS, SSE_CASES, validate
+
+
+def sse_row(name):
+    return {'name': name, 'signal': 0, 'child_exit': 0,
+            'code': '660f70c100c3', 'in_flags': '00000000000008d7',
+            'flags': '00000000000008d5', 'flag_mask': '00000000000008d5',
+            'rip': '0000000000000005',
+            'in_gpr': ['0' * 16] * 16, 'gpr': ['0' * 16] * 16,
+            'in_xmm': ['0' * 32] * 16, 'xmm': ['0' * 32] * 16}
 
 
 def observations():
@@ -12,10 +21,16 @@ def observations():
         if name in ('unmapped-data-fault', 'division-fault'):
             row['signal'] = 11 if name == 'unmapped-data-fault' else 8
             row['child_exit'] = None
+        elif name in SSE_CASES:
+            row = sse_row(name)
         else:
             row.update(dict.fromkeys(HEX_FIELDS, '0000000000000000'))
         rows.append(row)
     return rows
+
+
+def first_sse(rows):
+    return rows[CASES.index(SSE_CASES[0])]
 
 
 def check(rows, **kwargs):
@@ -25,8 +40,73 @@ def check(rows, **kwargs):
 
 class NativeValidation(unittest.TestCase):
     def test_complete_inventory_and_fault_rows(self):
-        self.assertEqual(len(CASES), 13)
+        self.assertEqual(len(CASES), 28)
+        self.assertEqual(len(SSE_CASES), 15)
+        self.assertEqual(CASES[13:], SSE_CASES)
         self.assertEqual(check(observations()), observations())
+
+    def test_each_integer_sse_case_is_required(self):
+        for name in SSE_CASES:
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                check([row for row in observations() if row['name'] != name])
+
+    def test_sse_row_schema_is_exact(self):
+        rows = observations()
+        first_sse(rows)['ignored'] = 1
+        with self.assertRaises(ValueError):
+            check(rows)
+        for field in ('code', 'in_xmm', 'xmm', 'gpr', 'rip', 'in_flags'):
+            rows = observations()
+            del first_sse(rows)[field]
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                check(rows)
+
+    def test_sse_rows_cannot_use_scalar_schema(self):
+        rows = observations()
+        index = CASES.index(SSE_CASES[0])
+        rows[index] = dict(rows[0], name=SSE_CASES[0])
+        with self.assertRaises(ValueError):
+            check(rows)
+
+    def test_sse_register_files_are_complete_fixed_width_hex(self):
+        for field, value in (('xmm', ['0' * 32] * 15), ('xmm', ['0' * 16] * 16),
+                             ('in_xmm', ['0' * 31 + 'G'] * 16), ('gpr', ['0' * 16] * 17),
+                             ('in_gpr', [0] * 16), ('gpr', '0' * 16)):
+            rows = observations()
+            first_sse(rows)[field] = value
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                check(rows)
+
+    def test_sse_rsp_is_not_observed(self):
+        for field in ('in_gpr', 'gpr'):
+            rows = observations()
+            values = ['0' * 16] * 16
+            values[4] = '0000000000000008'
+            first_sse(rows)[field] = values
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                check(rows)
+
+    def test_sse_code_has_one_final_ret_at_rip(self):
+        for code, rip in (('660f70c100', '0000000000000004'), ('c3660f70c1c3', '0000000000000005'),
+                          ('660f70c100c', '0000000000000005'), ('660F70C100C3', '0000000000000005'),
+                          ('', '0000000000000000'), ('660f70c100c3', '0000000000000004')):
+            rows = observations()
+            first_sse(rows).update(code=code, rip=rip)
+            with self.subTest(code=code, rip=rip), self.assertRaises(ValueError):
+                check(rows)
+
+    def test_sse_flags_outside_mask_rejected(self):
+        rows = observations()
+        first_sse(rows)['flags'] = '0000000000000202'
+        with self.assertRaises(ValueError):
+            check(rows)
+
+    def test_sse_signal_rejected(self):
+        rows = observations()
+        index = CASES.index(SSE_CASES[-1])
+        rows[index] = {'name': SSE_CASES[-1], 'signal': 11, 'child_exit': None}
+        with self.assertRaises(ValueError):
+            check(rows)
 
     def test_each_je_condition_is_required(self):
         for name in ('je-zf1-taken', 'je-zf0-not-taken'):
