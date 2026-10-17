@@ -2,9 +2,9 @@
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 
-export async function webdriverRequest(base, method, path, body) {
+export async function webdriverRequest(base, method, path, body, timeoutMs = 10000) {
   const response = await fetch(base + path, { method, headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+    body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
   const payload = await response.json();
   if (!response.ok || !Object.hasOwn(payload, 'value') || payload.value?.error) throw new Error(`WebDriver ${method} ${path}: ${JSON.stringify(payload.value)}`);
   return payload.value;
@@ -33,7 +33,7 @@ async function safari(url, timeout) {
       catch (error) { if (Date.now() >= startup) throw error; await sleep(100); }
     }
     phase = "session-creation";
-    const session = await webdriverRequest(base, "POST", "/session", { capabilities: { alwaysMatch: { browserName: "safari" } } });
+    const session = await webdriverRequest(base, "POST", "/session", { capabilities: { alwaysMatch: { browserName: "safari" } } }, 60000);
     sessionId = session.sessionId;
     if (!sessionId) throw new Error("Safari did not return a session ID");
     phase = "navigation";
