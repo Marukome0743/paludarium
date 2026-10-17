@@ -12,6 +12,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.15.0'
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools cmake perl make pkg-config
       - run: rustup toolchain install nightly-2026-10-11 --profile minimal --component rust-src
       - run: rustup target add x86_64-unknown-linux-musl wasm32-unknown-unknown --toolchain nightly-2026-10-11
@@ -21,7 +24,7 @@ jobs:
       - name: Runner tests
         run: python3 -m unittest discover -s tests/guests/u11/runner-tests -p 'test_*.py'
       - name: Build fixed guests and audit dependencies
-        run: bash scripts/u10-build-guests.sh target/guests/u10
+        run: python tests/guests/u10/build.py target/guests/u10 --advisory-policy u15-fixed-aube-zip9-name
       - name: Fresh Linux oracle with filesystem metadata
         run: sudo unshare --net python3 scripts/u11-run.py --native-only --guest-dir target/guests/u10 --output target/u11/native
       - name: Build one production wasm module for every environment

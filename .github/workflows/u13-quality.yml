@@ -19,6 +19,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  PALUDARIUM_TEST_NODE: node
   # The U1 crates (unit-test-instructions.md).
   U1_PACKAGES: >-
     -p paludarium-types -p paludarium-decoder -p paludarium-mmu
