@@ -13,7 +13,7 @@
 | nodejs | v24.21.0 | true（Node.js には該当なし） | 合格 | 手元（Windows 11） | 待ちの結果 0（起こされた）、値 42、待ち 206 ms、起こしたのは 1 |
 | chromium | 151.0.7922.34（Playwright 1.62.0 のヘッドレス版） | true | 合格 | 手元（Windows 11） | 待ちの結果 0、値 42、待ち 286 ms、起こしたのは 1 |
 | firefox | 153.0（Playwright 1.62.0） | true | 合格 | 手元（Windows 11） | 待ちの結果 0、値 42、待ち 243 ms、起こしたのは 1 |
-| safari | 未確認 | 未確認 | **未検証** | 夜間の CI（macOS、本物の Safari を safaridriver で操作） | 手元が Windows のため動かせない。`.github/workflows/nightly.yml` の `wasm-threads-safari` の結果でこの行を埋める |
+| safari | 27.0.1 | true | **合格（検証済み）** | 2026-10-08、手元macOS 27.0.1、本物のSafariをAppleのsafaridriverで操作 | 待ちの結果0、値42、待ち201 ms、起床1、全体216 ms。Remote Automationを有効化後に終了コード0 |
 
 再現の手順：
 
@@ -60,4 +60,4 @@ node spikes/wasm-threads/browser-check.mjs safari   # macOS で。先に sudo sa
 ## 判断
 
 - Node.js・Chromium 系・Firefox では、wasm の待つ・起こすが動くことを確かめました。BR8.1 により、U1 はこの報告をもって完了できます。
-- Safari は夜間の CI の結果を待ちます。不合格なら、U4・U5 に入る前に設計を見直します（BR8.1）。
+- Safariは2026-10-08に本物のSafari 27.0.1で合格しました（検証済み）。`node spikes/wasm-threads/browser-check.mjs safari`は終了コード0で、`crossOriginIsolated: true`、`waitNotifyPassed: true`、値42、全体216 msを出力しました。生結果はU1記録の`code-generation/verification/safari-local-20261008-pass.json`に保存しています。これは単独のwasmスレッド確認であり、エミュレータ全体のSafari実行・入れ子Worker・共有stdヒープは未検証です。夜間CIの自動実行結果とは区別します（BR8.1）。

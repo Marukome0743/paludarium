@@ -12,8 +12,17 @@
 mod inbox;
 mod signals;
 pub use inbox::SignalInbox;
+mod epoll;
+mod events;
 mod files;
+mod futex;
+mod null;
+mod processes;
+mod sockets;
 mod syscalls;
+mod threads;
+pub use processes::Processes;
+pub use threads::ThreadGroup;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -44,6 +53,20 @@ pub enum Next {
 pub struct Thread {
     pub tid: u32,
     pub cpu: CpuState,
+    pub state: ThreadState,
+}
+impl Thread {
+    #[must_use]
+    pub fn new(tid: u32, cpu: CpuState) -> Self {
+        Self {
+            tid,
+            cpu,
+            state: ThreadState {
+                pid: 1,
+                ..ThreadState::default()
+            },
+        }
+    }
 }
 
 /// A registered signal action (`struct k_sigaction` on x86-64). Recorded
@@ -77,12 +100,14 @@ impl Default for AltStack {
     }
 }
 
-/// The guest process (entities.md Process). U1 has exactly one.
+/// Thread-owned Linux signal context and lifecycle state.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Process {
+pub struct ThreadState {
     pub pid: u32,
     pub signal_actions: BTreeMap<i32, SignalAction>,
     pub signal_mask: u64,
+    /// One-time original mask for a signal interrupting epoll_pwait.
+    pub(crate) wait_restore_mask: Option<u64>,
     pub alt_stack: AltStack,
     pub clear_child_tid: u64,
     pub exit_status: Option<ExitStatus>,
@@ -90,6 +115,12 @@ pub struct Process {
     pub(crate) frames: Vec<signals::SavedFrame>,
     pub(crate) timer: signals::RealTimer,
     pub stopped: bool,
+}
+
+/// Process identity; shared resources are owned by ThreadGroup.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Process {
+    pub pid: u32,
 }
 
 /// The emulated Linux kernel for one process.
@@ -100,29 +131,54 @@ pub struct Kernel {
     files: files::Files,
     cancellation: Arc<AtomicBool>,
     inbox: Arc<SignalInbox>,
+    group: Arc<ThreadGroup>,
+    pending_child: Option<(Box<Kernel>, Thread)>,
+    processes: Arc<Processes>,
+    spawn_memory: Option<Arc<AddressSpace>>,
+    exec_memory: Option<Arc<AddressSpace>>,
+    vfork_release: Option<Arc<AtomicBool>>,
+    vfork_wait: Option<Arc<AtomicBool>>,
 }
 
 impl Kernel {
     /// Creates a kernel that performs host I/O through `host` (BR6.1).
     pub fn new(host: Arc<dyn Host>) -> Self {
         let files = files::Files::with_host(Arc::clone(&host));
+        let group = Arc::new(ThreadGroup::default());
+        let processes = Arc::new(Processes::new(group.clone()));
         Kernel {
             host,
-            process: Process {
-                pid: 1,
-                ..Process::default()
-            },
+            process: Process { pid: 1 },
             table: SyscallTable::u1(),
             files,
             cancellation: Arc::new(AtomicBool::new(false)),
             inbox: Arc::new(SignalInbox::default()),
+            group,
+            pending_child: None,
+            processes,
+            spawn_memory: None,
+            exec_memory: None,
+            vfork_release: None,
+            vfork_wait: None,
         }
+    }
+
+    /// Explicit virtual terminal dimensions override Host dimensions on stdio.
+    #[must_use]
+    pub fn with_terminal_size(mut self, columns: u16, rows: u16) -> Self {
+        self.files.terminal_size = Some((columns, rows));
+        self
     }
 
     /// Connects the filesystem shared with the loader.
     pub fn with_file_system(mut self, fs: Arc<dyn paludarium_vfs::FileSystem>) -> Self {
         self.files.fs = fs;
         self
+    }
+    /// Sets an existing virtual directory as the initial guest cwd.
+    pub fn with_current_directory(mut self, path: &[u8]) -> Result<Self, paludarium_types::Errno> {
+        self.files.set_current_directory(path)?;
+        Ok(self)
     }
 
     /// Connects the session's bounded-wait cancellation token.
@@ -133,6 +189,7 @@ impl Kernel {
 
     /// Connects the runtime's single-process signal queue and wait wake token.
     pub fn with_signal_inbox(mut self, inbox: Arc<SignalInbox>) -> Self {
+        self.group.set_process_inbox(Arc::clone(&inbox));
         self.cancellation = inbox.wake_token();
         self.inbox = inbox;
         self
@@ -148,46 +205,72 @@ impl Kernel {
     /// point, rsp at the initial stack, everything else zero.
     #[must_use]
     pub fn spawn_initial(&self, image: &LoadedImage) -> Thread {
+        self.group
+            .register(self.process.pid, Arc::clone(&self.inbox));
         Thread {
             tid: self.process.pid,
             cpu: CpuState::new(image.entry_point, image.initial_stack_pointer),
+            state: ThreadState {
+                pid: self.process.pid,
+                ..ThreadState::default()
+            },
         }
     }
 
-    fn terminate(&mut self, signal: i32) -> Next {
+    fn terminate(&mut self, thread: &mut Thread, signal: i32) -> Next {
         let status = ExitStatus::Signaled(signal);
-        self.process.exit_status = Some(status);
+        thread.state.exit_status = Some(status);
+        self.group.stop(status);
         Next::Exit(status)
     }
 
-    /// Queues a standard signal for the process's current thread.
-    pub fn queue_signal(&mut self, number: i32) -> Result<(), paludarium_types::Errno> {
+    /// Queues a signal in a thread's process-pending view (manual Kernel clients).
+    pub fn queue_signal(
+        &mut self,
+        thread: &mut Thread,
+        number: i32,
+    ) -> Result<(), paludarium_types::Errno> {
         if !(1..=64).contains(&number) {
             return Err(paludarium_types::Errno::EINVAL);
         }
-        signals::queue(&mut self.process, signals::PendingSignal::user(number, 0));
+        if number == 18 {
+            self.group.job_continue();
+        }
+        signals::queue(&mut thread.state, signals::PendingSignal::user(number, 0));
         Ok(())
     }
 
     /// Delivers an unblocked pending signal at a CPU/Kernel boundary.
     pub fn checkpoint(&mut self, thread: &mut Thread, mem: &AddressSpace) -> Next {
-        self.inbox.drain(&mut self.process);
-        if let Ok(now) = self.host.clock(paludarium_host::ClockId::Monotonic) {
-            signals::expire_timer(&mut self.process, now);
+        if self.group.retired(thread.tid) {
+            return Next::Exit(ExitStatus::Exited(0));
         }
-        while let Some(index) = signals::next_pending(&self.process, false) {
-            let signal = self.process.pending.remove(index);
-            let action = self
-                .process
+        self.group.register(thread.tid, Arc::clone(&self.inbox));
+        if let Some(status) = self.group.status() {
+            return Next::Exit(status);
+        }
+        self.sync_actions(thread);
+        self.group.drain_process(&mut thread.state);
+        self.inbox.drain(&mut thread.state);
+        if thread.state.pending.iter().any(|s| s.number == 18) {
+            self.group.job_continue();
+        }
+        if let Ok(now) = self.host.clock(paludarium_host::ClockId::Monotonic) {
+            self.group.expire_timer(&mut thread.state, now);
+        }
+        while let Some(index) = signals::next_pending(&thread.state, false) {
+            let signal = thread.state.pending.remove(index);
+            let action = thread
+                .state
                 .signal_actions
                 .get(&signal.number)
                 .copied()
                 .unwrap_or_default();
             if signal.synchronous
                 && (action.handler <= 1
-                    || self.process.signal_mask & (1u64 << (signal.number - 1)) != 0)
+                    || thread.state.signal_mask & (1u64 << (signal.number - 1)) != 0)
             {
-                return self.terminate(signal.number);
+                return self.terminate(thread, signal.number);
             }
             if action.handler == 1
                 || action.handler == 0 && matches!(signal.number, 17 | 18 | 23 | 28)
@@ -195,18 +278,42 @@ impl Kernel {
                 continue;
             }
             if signal.number == 19 || action.handler == 0 && matches!(signal.number, 20..=22) {
-                self.process.stopped = true;
+                thread.state.stopped = true;
+                self.group.job_stop();
                 return Next::Stopped;
             }
             if action.handler == 0 || signal.number == 9 {
-                return self.terminate(signal.number);
+                return self.terminate(thread, signal.number);
             }
-            if signals::install(&mut self.process, &mut thread.cpu, mem, signal, action).is_err() {
-                return self.terminate(signal::SIGSEGV);
+            let delivery_mask = thread.state.signal_mask;
+            let restore_mask = thread.state.wait_restore_mask.take();
+            if let Some(mask) = restore_mask {
+                // The signal is selected using pwait's temporary mask, but
+                // its ucontext must restore the original mask on sigreturn.
+                thread.state.signal_mask = mask;
+            }
+            if signals::install(&mut thread.state, &mut thread.cpu, mem, signal, action).is_err() {
+                return self.terminate(thread, signal::SIGSEGV);
+            }
+            if restore_mask.is_some() {
+                // Handler execution still uses the temporary mask, plus the
+                // same action/self-block rules as ordinary signal delivery.
+                thread.state.signal_mask = delivery_mask | action.mask;
+                if action.flags & signals::SA_NODEFER == 0 {
+                    thread.state.signal_mask |= 1u64 << (signal.number - 1);
+                }
+                thread.state.signal_mask &= !signals::unblockable();
+            }
+            if action.flags & signals::SA_RESETHAND != 0 {
+                self.group
+                    .set_action(signal.number, SignalAction::default());
             }
             return Next::Resume;
         }
-        if self.process.stopped {
+        if let Some(mask) = thread.state.wait_restore_mask.take() {
+            thread.state.signal_mask = mask;
+        }
+        if thread.state.stopped {
             Next::Stopped
         } else {
             Next::Resume
@@ -214,12 +321,8 @@ impl Kernel {
     }
 
     /// Handles a stop of `thread` (W3, W4).
-    pub fn handle(
-        &mut self,
-        thread: &mut Thread,
-        mem: &mut AddressSpace,
-        reason: ExitReason,
-    ) -> Next {
+    pub fn handle(&mut self, thread: &mut Thread, mem: &AddressSpace, reason: ExitReason) -> Next {
+        self.group.register(thread.tid, Arc::clone(&self.inbox));
         let fault = match reason {
             ExitReason::PageFault {
                 rip,
@@ -267,6 +370,18 @@ impl Kernel {
                     synchronous: true,
                 })
             }
+            ExitReason::FloatingPointFault { rip, code } => {
+                thread.cpu.rip = rip;
+                Some(signals::PendingSignal {
+                    target: signals::PendingTarget::Thread,
+                    number: signal::SIGFPE,
+                    code: i32::from(code),
+                    addr: rip.0,
+                    trap: 19,
+                    error: 0,
+                    synchronous: true,
+                })
+            }
             ExitReason::GeneralProtection { rip } | ExitReason::Halt { rip } => {
                 thread.cpu.rip = rip;
                 Some(signals::PendingSignal {
@@ -282,23 +397,27 @@ impl Kernel {
             _ => None,
         };
         if let Some(fault) = fault {
-            signals::queue(&mut self.process, fault);
+            signals::queue(&mut thread.state, fault);
             return self.checkpoint(thread, mem);
         }
         match reason {
             ExitReason::Syscall { .. } => self.syscall(thread, mem),
             ExitReason::PageFault { .. }
             | ExitReason::GeneralProtection { .. }
-            | ExitReason::Halt { .. } => self.terminate(signal::SIGSEGV),
-            ExitReason::InvalidOpcode { .. } => self.terminate(signal::SIGILL),
-            ExitReason::ArithmeticFault { .. } => self.terminate(signal::SIGFPE),
+            | ExitReason::Halt { .. } => self.terminate(thread, signal::SIGSEGV),
+            ExitReason::InvalidOpcode { .. } => self.terminate(thread, signal::SIGILL),
+            ExitReason::ArithmeticFault { .. } | ExitReason::FloatingPointFault { .. } => {
+                self.terminate(thread, signal::SIGFPE)
+            }
             ExitReason::BudgetExhausted { .. } => self.checkpoint(thread, mem),
             // Later units add stop reasons; until then they end the process.
-            _ => self.terminate(signal::SIGSEGV),
+            _ => self.terminate(thread, signal::SIGSEGV),
         }
     }
 
-    fn syscall(&mut self, thread: &mut Thread, mem: &mut AddressSpace) -> Next {
+    fn syscall(&mut self, thread: &mut Thread, mem: &AddressSpace) -> Next {
+        self.sync_actions(thread);
+        self.group.sync_timer(&mut thread.state);
         let number = thread.cpu.gpr[reg::RAX];
         let args = [
             thread.cpu.gpr[reg::RDI],
@@ -308,6 +427,12 @@ impl Kernel {
             thread.cpu.gpr[reg::R8],
             thread.cpu.gpr[reg::R9],
         ];
+        if let Some(next) = self.process_syscall(thread, mem, number, args) {
+            return next;
+        }
+        if let Some(next) = self.thread_syscall(thread, mem, number, args) {
+            return next;
+        }
         let Some(handler) = self.table.get(number) else {
             thread.cpu.gpr[reg::RAX] = paludarium_types::Errno::ENOSYS.to_syscall_return();
             return Next::Resume;
@@ -315,14 +440,24 @@ impl Kernel {
         let mut ctx = syscalls::Context {
             host: &*self.host,
             files: &mut self.files,
-            process: &mut self.process,
+            process: &mut thread.state,
             cpu: &mut thread.cpu,
             mem,
             cancellation: &self.cancellation,
             inbox: &self.inbox,
+            group: &self.group,
         };
         let outcome = handler(&mut ctx, args);
-        self.inbox.drain(&mut self.process);
+        if number == syscalls::nr::SETITIMER {
+            self.group.set_timer(thread.state.timer);
+        }
+        if number == syscalls::nr::RT_SIGACTION
+            && args[1] != 0
+            && let Some(action) = thread.state.signal_actions.get(&(args[0] as i32))
+        {
+            self.group.set_action(args[0] as i32, *action);
+        }
+        self.inbox.drain(&mut thread.state);
         match outcome {
             syscalls::Outcome::Return(value) => {
                 thread.cpu.gpr[reg::RAX] = value;
@@ -331,11 +466,12 @@ impl Kernel {
                 if number == syscalls::nr::WRITE
                     && value == paludarium_types::Errno(4).to_syscall_return()
                 {
-                    let action = signals::next_pending(&self.process, true)
+                    let action = signals::next_pending(&thread.state, true)
                         .and_then(|index| {
-                            self.process
+                            thread
+                                .state
                                 .signal_actions
-                                .get(&self.process.pending[index].number)
+                                .get(&thread.state.pending[index].number)
                         })
                         .filter(|action| action.handler > 1);
                     if action.is_some_and(|a| a.flags & 0x1000_0000 != 0)
@@ -348,10 +484,10 @@ impl Kernel {
                 self.checkpoint(thread, mem)
             }
             syscalls::Outcome::Restored => self.checkpoint(thread, mem),
-            syscalls::Outcome::BadFrame => self.terminate(signal::SIGSEGV),
+            syscalls::Outcome::BadFrame => self.terminate(thread, signal::SIGSEGV),
             syscalls::Outcome::Exit(code) => {
                 let status = ExitStatus::Exited(code & 0xff);
-                self.process.exit_status = Some(status);
+                thread.state.exit_status = Some(status);
                 Next::Exit(status)
             }
         }
@@ -360,3 +496,17 @@ impl Kernel {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod u9_tests;
+
+#[cfg(test)]
+mod u5_tests;
+
+#[cfg(test)]
+mod u6_tests;
+
+#[cfg(test)]
+mod u11_tests;
+#[cfg(test)]
+mod u8_tests;

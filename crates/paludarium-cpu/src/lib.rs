@@ -8,17 +8,32 @@
 #![forbid(unsafe_code)]
 
 mod alu;
+#[cfg(test)]
+mod counted_hook_tests;
+mod cpuid;
+mod crypto;
 mod exec;
+/// Opt-in diagnostic counters; absent from ordinary release builds.
+#[cfg(feature = "u14-cost-profile")]
+pub mod jit_cost;
+#[cfg(feature = "u14-cost-profile")]
+mod jit_cost_sites;
+mod softfloat;
+mod sse;
 mod state;
 #[cfg(test)]
 mod u2_tests;
+#[cfg(test)]
+mod u3_tests;
 
 use paludarium_decoder::{DecodeError, Instruction, decode};
 use paludarium_mmu::AddressSpace;
 use paludarium_types::{ExitReason, GuestAddr, InstructionBytes, MAX_INSTRUCTION_LEN};
 
 pub use alu::{condition, sign_extend, size_mask};
-pub use state::{CpuState, INITIAL_MXCSR, INITIAL_RFLAGS, RepeatContinuation, flag, reg};
+pub use state::{
+    CpuState, INITIAL_MXCSR, INITIAL_RFLAGS, RepFaultFlags, RepeatContinuation, flag, reg,
+};
 
 use exec::Stop;
 
@@ -30,7 +45,7 @@ const CACHE_ENTRIES: usize = 4096;
 /// writes to executable memory and mapping changes (self-modifying code,
 /// `mprotect`, `munmap`) are always seen.
 pub struct DecodeCache {
-    entries: Vec<Option<(u64, u64, Instruction)>>,
+    entries: Vec<Option<(u64, u64, Instruction, bool)>>,
 }
 
 impl Default for DecodeCache {
@@ -55,15 +70,46 @@ impl DecodeCache {
 
     fn get(&self, rip: u64, generation: u64) -> Option<Instruction> {
         match self.entries.get(Self::slot(rip)) {
-            Some(Some((r, g, insn))) if *r == rip && *g == generation => Some(*insn),
+            Some(Some((r, g, insn, _))) if *r == rip && *g == generation => Some(*insn),
             _ => None,
         }
     }
 
     fn put(&mut self, rip: u64, generation: u64, insn: Instruction) {
         if let Some(entry) = self.entries.get_mut(Self::slot(rip)) {
-            *entry = Some((rip, generation, insn));
+            *entry = Some((rip, generation, insn, false));
         }
+    }
+
+    fn get_with_hint(&self, rip: u64, generation: u64) -> Option<(Instruction, bool)> {
+        match self.entries.get(Self::slot(rip)) {
+            Some(Some((r, g, instruction, rejected))) if *r == rip && *g == generation => {
+                Some((*instruction, *rejected))
+            }
+            _ => None,
+        }
+    }
+
+    fn reject_acceleration(&mut self, rip: u64, generation: u64) {
+        if let Some(Some((r, g, _, rejected))) = self.entries.get_mut(Self::slot(rip))
+            && *r == rip
+            && *g == generation
+        {
+            *rejected = true;
+        }
+    }
+
+    #[cfg(feature = "u14-cost-profile")]
+    fn observe_slot(&self, rip: u64, generation: u64) {
+        use jit_cost::{Counter, add};
+        let counter = match &self.entries[Self::slot(rip)] {
+            None => Counter::DecodeSlotEmpty,
+            Some((r, _, _, _)) if *r != rip => Counter::DecodeSlotRipCollision,
+            Some((_, g, _, _)) if *g != generation => Counter::DecodeSlotEpochStale,
+            Some((_, _, _, true)) => Counter::DecodeHintHit,
+            Some(_) => Counter::DecodedHit,
+        };
+        add(counter, 1);
     }
 }
 
@@ -145,9 +191,17 @@ fn execute_decoded(
         }
     } else if let Err(stop) = result {
         if matches!(stop, Stop::Fault(_)) && repeating {
-            if let Some(c) = state.repeat_continuation {
-                state.rflags = c.initial_flags;
+            if state.rep_fault_flags == RepFaultFlags::RestoreInitial
+                && let Some(continuation) = state.repeat_continuation
+            {
+                state.rflags = continuation.initial_flags;
             }
+        } else if matches!(stop, Stop::FloatingPointFault(_)) {
+            // Unmasked SIMD exceptions preserve destinations but commit the
+            // exception status bits which Linux exposes in the signal frame.
+            let mxcsr = state.mxcsr;
+            *state = snapshot;
+            state.mxcsr = mxcsr;
         } else if stop != Stop::Syscall {
             *state = snapshot;
         }
@@ -169,6 +223,7 @@ fn execute_decoded(
         Stop::Halt => ExitReason::Halt { rip },
         Stop::GeneralProtection => ExitReason::GeneralProtection { rip },
         Stop::ArithmeticFault => ExitReason::ArithmeticFault { rip },
+        Stop::FloatingPointFault(code) => ExitReason::FloatingPointFault { rip, code },
         Stop::Syscall => ExitReason::Syscall { rip: state.rip },
     })
 }
@@ -185,6 +240,8 @@ pub fn step_cached(
     mem: &AddressSpace,
     cache: &mut DecodeCache,
 ) -> Result<(), ExitReason> {
+    #[cfg(feature = "u14-cost-profile")]
+    jit_cost::add(jit_cost::Counter::InterpreterSteps, 1);
     let generation = mem.code_generation();
     let insn = match cache.get(state.rip.0, generation) {
         Some(insn) => insn,
@@ -203,6 +260,7 @@ fn fetch_for_state(state: &mut CpuState, mem: &AddressSpace) -> Result<Instructi
         Err(error) => {
             if let Some(continuation) = state.repeat_continuation.take()
                 && continuation.instruction.rip == state.rip
+                && state.rep_fault_flags == RepFaultFlags::RestoreInitial
             {
                 state.rflags = continuation.initial_flags;
             }
@@ -230,6 +288,204 @@ pub fn run_cached(
             return reason;
         }
     }
+    ExitReason::BudgetExhausted { rip: state.rip }
+}
+
+/// Offers instruction boundaries to a synchronous accelerator. Its successful
+/// budget exit is conservatively charged `maximum_block` instructions. This
+/// never postpones the caller's checkpoint beyond its original guest budget.
+/// Other exit reasons return immediately. `remaining` includes current RIP.
+pub fn run_cached_with_hook(
+    state: &mut CpuState,
+    mem: &AddressSpace,
+    budget: u64,
+    cache: &mut DecodeCache,
+    maximum_block: u64,
+    mut accelerate: impl FnMut(&mut CpuState, u64) -> Option<ExitReason>,
+) -> ExitReason {
+    let mut consumed = 0;
+    while consumed < budget {
+        let remaining = budget - consumed;
+        if maximum_block > 0
+            && remaining >= maximum_block
+            && let Some(reason) = accelerate(state, remaining)
+        {
+            if matches!(reason, ExitReason::BudgetExhausted { .. }) {
+                #[cfg(feature = "u14-cost-profile")]
+                jit_cost::add(jit_cost::Counter::BudgetCharged, maximum_block);
+                consumed += maximum_block;
+                continue;
+            }
+            return reason;
+        }
+        if let Err(reason) = step_cached(state, mem, cache) {
+            return reason;
+        }
+        consumed += 1;
+    }
+    ExitReason::BudgetExhausted { rip: state.rip }
+}
+
+/// Accelerator hook with exact successful instruction accounting. The decoded
+/// boundary is shared with fallback execution; rejected boundaries add no fetch.
+/// A hook must report a positive count no larger than `maximum_block` and must
+/// leave state unchanged on rejection, as with `run_cached_with_hook`.
+pub struct AccelerationPolicy {
+    pub maximum_block: u64,
+    /// Opt-in only: rejected boundaries may run interpreted until code changes.
+    pub cache_rejections: bool,
+}
+
+impl From<u64> for AccelerationPolicy {
+    fn from(maximum_block: u64) -> Self {
+        Self {
+            maximum_block,
+            cache_rejections: false,
+        }
+    }
+}
+
+#[inline(never)]
+pub fn run_cached_with_counted_hook(
+    state: &mut CpuState,
+    mem: &AddressSpace,
+    budget: u64,
+    cache: &mut DecodeCache,
+    policy: impl Into<AccelerationPolicy>,
+    mut accelerate: impl FnMut(&mut CpuState, &Instruction, &mut bool) -> Option<(ExitReason, u64)>,
+) -> ExitReason {
+    let policy = policy.into();
+    if policy.cache_rejections {
+        run_counted_policy::<true>(
+            state,
+            mem,
+            budget,
+            cache,
+            policy.maximum_block,
+            &mut accelerate,
+        )
+    } else {
+        run_counted_policy::<false>(
+            state,
+            mem,
+            budget,
+            cache,
+            policy.maximum_block,
+            &mut accelerate,
+        )
+    }
+}
+
+// Keep the invariant rejection policy outside each instruction's dispatch loop.
+#[inline(never)]
+fn run_counted_policy<const CACHE_REJECTIONS: bool>(
+    state: &mut CpuState,
+    mem: &AddressSpace,
+    budget: u64,
+    cache: &mut DecodeCache,
+    maximum_block: u64,
+    mut accelerate: impl FnMut(&mut CpuState, &Instruction, &mut bool) -> Option<(ExitReason, u64)>,
+) -> ExitReason {
+    let mut consumed = 0;
+    #[cfg(feature = "u14-cost-profile")]
+    let mut observed_chain = jit_cost::Chain::default();
+    #[cfg(feature = "u14-cost-profile")]
+    let observed_space = mem.code_epoch().0;
+    while consumed < budget {
+        let generation = mem.code_generation();
+        #[cfg(feature = "u14-cost-profile")]
+        let observed_rip = state.rip.0;
+        #[cfg(feature = "u14-cost-profile")]
+        if CACHE_REJECTIONS {
+            cache.observe_slot(state.rip.0, generation);
+        }
+        let (instruction, rejected) = match cache.get_with_hint(state.rip.0, generation) {
+            Some(entry) => entry,
+            None => match fetch_for_state(state, mem) {
+                Ok(instruction) => {
+                    cache.put(state.rip.0, generation, instruction);
+                    (instruction, false)
+                }
+                Err(reason) => {
+                    #[cfg(feature = "u14-cost-profile")]
+                    observed_chain.stop(jit_cost::Counter::StopExit, jit_cost::add);
+                    return reason;
+                }
+            },
+        };
+        let mut deterministic_rejection = false;
+        if !(CACHE_REJECTIONS && rejected)
+            && maximum_block > 0
+            && budget - consumed >= maximum_block
+            && let Some((reason, count)) =
+                accelerate(state, &instruction, &mut deterministic_rejection)
+        {
+            assert!(
+                count > 0 && count <= maximum_block,
+                "invalid accelerator instruction count"
+            );
+            #[cfg(feature = "u14-cost-profile")]
+            observed_chain.success(generation, jit_cost::add);
+            #[cfg(feature = "u14-cost-profile")]
+            if CACHE_REJECTIONS {
+                jit_cost::observe_site(observed_space, generation, observed_rip, 1, &instruction);
+            }
+            if matches!(reason, ExitReason::BudgetExhausted { .. }) {
+                #[cfg(feature = "u14-cost-profile")]
+                jit_cost::add(jit_cost::Counter::BudgetCharged, count);
+                consumed += count;
+                continue;
+            }
+            #[cfg(feature = "u14-cost-profile")]
+            observed_chain.stop(jit_cost::Counter::StopExit, jit_cost::add);
+            return reason;
+        }
+        #[cfg(feature = "u14-cost-profile")]
+        observed_chain.stop(
+            if CACHE_REJECTIONS && rejected {
+                jit_cost::Counter::StopNegative
+            } else if deterministic_rejection {
+                jit_cost::Counter::StopUnsupported
+            } else if maximum_block > 0 && budget - consumed < maximum_block {
+                jit_cost::Counter::StopBudget
+            } else {
+                jit_cost::Counter::StopFallback
+            },
+            jit_cost::add,
+        );
+        if CACHE_REJECTIONS && deterministic_rejection {
+            cache.reject_acceleration(state.rip.0, generation);
+        }
+        #[cfg(feature = "u14-cost-profile")]
+        if CACHE_REJECTIONS {
+            let class = if rejected {
+                2
+            } else if deterministic_rejection {
+                3
+            } else if maximum_block > 0 && budget - consumed < maximum_block {
+                4
+            } else {
+                5
+            };
+            jit_cost::observe_site(
+                observed_space,
+                generation,
+                observed_rip,
+                class,
+                &instruction,
+            );
+        }
+        #[cfg(feature = "u14-cost-profile")]
+        jit_cost::add(jit_cost::Counter::InterpreterSteps, 1);
+        if let Err(reason) = execute_decoded(state, mem, &instruction) {
+            #[cfg(feature = "u14-cost-profile")]
+            observed_chain.stop(jit_cost::Counter::StopExit, jit_cost::add);
+            return reason;
+        }
+        consumed += 1;
+    }
+    #[cfg(feature = "u14-cost-profile")]
+    observed_chain.stop(jit_cost::Counter::StopBudget, jit_cost::add);
     ExitReason::BudgetExhausted { rip: state.rip }
 }
 
@@ -268,6 +524,181 @@ mod tests {
     }
 
     #[test]
+    fn u14_hook_reaches_supported_boundary_after_interpreter_instruction() {
+        let (mut state, memory) = machine(&[0x90, 0xb8, 42, 0, 0, 0, 0xf4]);
+        let mut seen = Vec::new();
+        let result = run_cached_with_hook(
+            &mut state,
+            &memory,
+            65,
+            &mut DecodeCache::new(),
+            64,
+            |state, remaining| {
+                seen.push((state.rip.0, remaining));
+                if state.rip.0 == CODE + 1 {
+                    state.gpr[reg::RAX] = 42;
+                    state.rip = GuestAddr(CODE + 6);
+                    Some(ExitReason::BudgetExhausted { rip: state.rip })
+                } else {
+                    None
+                }
+            },
+        );
+        assert_eq!(seen, [(CODE, 65), (CODE + 1, 64)]);
+        assert_eq!(
+            result,
+            ExitReason::BudgetExhausted {
+                rip: GuestAddr(CODE + 6)
+            }
+        );
+        assert_eq!(state.gpr[reg::RAX], 42);
+    }
+
+    #[test]
+    fn u14_hook_none_preserves_interpreter_exit_and_state() {
+        for code in [
+            vec![0x90, 0xf4],
+            vec![0xb8, 60, 0, 0, 0, 0x0f, 0x05],
+            vec![0x0f, 0x0b],
+            vec![0x48, 0x8b, 0x07],
+        ] {
+            let (mut expected, memory) = machine(&code);
+            let mut actual = expected.clone();
+            let expected_exit = run_cached(&mut expected, &memory, 100, &mut DecodeCache::new());
+            let actual_exit = run_cached_with_hook(
+                &mut actual,
+                &memory,
+                100,
+                &mut DecodeCache::new(),
+                64,
+                |_, _| None,
+            );
+            assert_eq!(actual_exit, expected_exit);
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn u14_hook_respects_zero_and_exact_remaining_budget() {
+        let (mut state, memory) = machine(&[0x90, 0x90, 0xf4]);
+        let mut remaining = Vec::new();
+        let zero = run_cached_with_hook(
+            &mut state,
+            &memory,
+            0,
+            &mut DecodeCache::new(),
+            64,
+            |_, _| panic!("zero budget cannot execute accelerator"),
+        );
+        assert_eq!(
+            zero,
+            ExitReason::BudgetExhausted {
+                rip: GuestAddr(CODE)
+            }
+        );
+        run_cached_with_hook(
+            &mut state,
+            &memory,
+            2,
+            &mut DecodeCache::new(),
+            1,
+            |_, budget| {
+                remaining.push(budget);
+                None
+            },
+        );
+        assert_eq!(remaining, [2, 1]);
+        assert_eq!(state.rip, GuestAddr(CODE + 2));
+    }
+
+    #[test]
+    fn u14_hook_short_budget_never_accelerates() {
+        let (mut state, memory) = machine(&[0x90, 0xf4]);
+        let result = run_cached_with_hook(
+            &mut state,
+            &memory,
+            1,
+            &mut DecodeCache::new(),
+            64,
+            |_, _| panic!("block would exceed remaining budget"),
+        );
+        assert_eq!(
+            result,
+            ExitReason::BudgetExhausted {
+                rip: GuestAddr(CODE + 1)
+            }
+        );
+    }
+
+    #[test]
+    fn u14_hook_backward_blocks_remain_finitely_charged() {
+        let (mut state, memory) = machine(&[0x90]);
+        let mut calls = 0;
+        let result = run_cached_with_hook(
+            &mut state,
+            &memory,
+            128,
+            &mut DecodeCache::new(),
+            64,
+            |state, _| {
+                calls += 1;
+                Some(ExitReason::BudgetExhausted { rip: state.rip })
+            },
+        );
+        assert_eq!(calls, 2);
+        assert_eq!(
+            result,
+            ExitReason::BudgetExhausted {
+                rip: GuestAddr(CODE)
+            }
+        );
+    }
+
+    #[test]
+    fn u14_hook_continues_to_syscall_after_charged_block() {
+        let (mut state, memory) = machine(&[0x90, 0x0f, 0x05]);
+        state.gpr[reg::RAX] = 60;
+        let result = run_cached_with_hook(
+            &mut state,
+            &memory,
+            65,
+            &mut DecodeCache::new(),
+            64,
+            |state, _| {
+                state.rip = GuestAddr(CODE + 1);
+                Some(ExitReason::BudgetExhausted { rip: state.rip })
+            },
+        );
+        assert_eq!(
+            result,
+            ExitReason::Syscall {
+                rip: GuestAddr(CODE + 3)
+            }
+        );
+    }
+
+    #[test]
+    fn u14_hook_continues_to_fault_after_charged_block() {
+        let (mut state, memory) = machine(&[0x90, 0x48, 0x8b, 0x07]);
+        let mut expected = state.clone();
+        expected.rip = GuestAddr(CODE + 1);
+        let expected_exit = run_cached(&mut expected, &memory, 1, &mut DecodeCache::new());
+        let actual = run_cached_with_hook(
+            &mut state,
+            &memory,
+            65,
+            &mut DecodeCache::new(),
+            64,
+            |state, _| {
+                state.rip = GuestAddr(CODE + 1);
+                Some(ExitReason::BudgetExhausted { rip: state.rip })
+            },
+        );
+        assert_eq!(actual, expected_exit);
+        assert_eq!(state, expected);
+    }
+
+    #[test]
     fn runs_until_syscall_with_linux_register_convention() {
         // mov eax, 60; mov edi, 7; syscall
         let code = [0xb8, 60, 0, 0, 0, 0xbf, 7, 0, 0, 0, 0x0f, 0x05];
@@ -283,6 +714,34 @@ mod tests {
         assert_eq!(s.gpr[reg::RDI], 7);
         assert_eq!(s.gpr[reg::RCX], CODE + 12);
         assert_eq!(s.gpr[reg::R11], s.rflags);
+    }
+
+    #[test]
+    fn movq_clears_xmm_high_half_and_keeps_flags() {
+        let (mut state, memory) = machine(&[0x66, 0x48, 0x0f, 0x6e, 0xc0]);
+        state.gpr[reg::RAX] = 0x0123_4567_89ab_cdef;
+        state.xmm[0] = u128::MAX;
+        state.rflags = 0x8d7;
+        step(&mut state, &memory).unwrap();
+        assert_eq!(state.xmm[0], 0x0123_4567_89ab_cdef);
+        assert_eq!(state.rflags, 0x8d7);
+    }
+
+    #[test]
+    fn unpack_low_qwords_uses_original_values_for_aliasing() {
+        for source in [0, 1] {
+            let (mut state, memory) = machine(&[0x66, 0x0f, 0x6c, 0xc0 + source]);
+            state.xmm[0] = (u128::from(0xaaaa_bbbb_cccc_ddddu64) << 64) | 0x0123_4567_89ab_cdef;
+            state.xmm[1] = (u128::from(0x1111_2222_3333_4444u64) << 64) | 0xfedc_ba98_7654_3210;
+            let high = state.xmm[usize::from(source)] as u64;
+            state.rflags = 0x8d7;
+            step(&mut state, &memory).unwrap();
+            assert_eq!(
+                state.xmm[0],
+                (u128::from(high) << 64) | 0x0123_4567_89ab_cdef
+            );
+            assert_eq!(state.rflags, 0x8d7);
+        }
     }
 
     #[test]
@@ -308,8 +767,8 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         }
-        // cpuid is valid x86 but not implemented.
-        let (mut s, mem) = machine(&[0x0f, 0xa2]);
+        // XGETBV remains unsupported by the virtual CPU contract.
+        let (mut s, mem) = machine(&[0x0f, 0x01, 0xd0]);
         assert!(matches!(
             run(&mut s, &mem, 10),
             ExitReason::InvalidOpcode { .. }

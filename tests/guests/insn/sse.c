@@ -1,5 +1,6 @@
 /* The SSE instructions executed by the hello-world guests: movaps, movups
- * (load and store, aligned and unaligned memory), pxor, xorps. */
+ * (load and store, aligned and unaligned memory), pxor, xorps, movq,
+ * punpcklqdq. */
 #include "insn.h"
 
 static u8 buffer[80] __attribute__((aligned(16)));
@@ -40,6 +41,20 @@ int test_main(void) {
                      "movups %%xmm6, 40(%[b])"
                      : : [b] "r"(buffer) : "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "memory");
     dump("pxor-xorps");
+    /* MOVQ clears the high qword; PUNPCKLQDQ interleaves only low qwords.
+     * Distinct inputs and prefilled XMM registers expose stale high halves. */
+    u64 low = 0x0123456789abcdefUL, other = 0xfedcba9876543210UL;
+    __asm__ volatile("movups 0(%[b]), %%xmm0\n\t"
+                     "movq %[low], %%xmm0\n\t"
+                     "movups %%xmm0, 0(%[b])\n\t"
+                     "movq %[other], %%xmm1\n\t"
+                     "punpcklqdq %%xmm1, %%xmm0\n\t"
+                     "movups %%xmm0, 16(%[b])\n\t"
+                     "punpcklqdq %%xmm0, %%xmm0\n\t"
+                     "movups %%xmm0, 32(%[b])"
+                     : : [b] "r"(buffer), [low] "r"(low), [other] "r"(other)
+                     : "xmm0", "xmm1", "memory");
+    dump("movq-punpcklqdq");
     flush_out();
     return 0;
 }

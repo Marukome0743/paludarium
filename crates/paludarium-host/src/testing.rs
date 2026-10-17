@@ -6,9 +6,10 @@ use std::sync::{Mutex, PoisonError};
 
 use paludarium_types::{Errno, Error};
 
-use crate::{ClockId, Host, WaitOutcome};
+use crate::{ClockId, Host, StreamId, TerminalInfo, WaitOutcome};
 
 struct Streams {
+    terminals: [Option<TerminalInfo>; 3],
     monotonic: u64,
     realtime: u64,
     interrupt_wait: bool,
@@ -21,6 +22,7 @@ struct Streams {
 impl Default for Streams {
     fn default() -> Self {
         Self {
+            terminals: [None; 3],
             monotonic: 0,
             realtime: 1_700_000_000_000_000_000,
             interrupt_wait: false,
@@ -38,6 +40,11 @@ pub struct RecordingHost {
 }
 
 impl RecordingHost {
+    /// Sets terminal state for a single stream without affecting the others.
+    pub fn set_terminal_info(&self, stream: StreamId, info: Option<TerminalInfo>) {
+        self.lock().terminals[stream.index()] = info;
+    }
+
     /// Sets a deterministic clock in nanoseconds.
     pub fn set_clock(&self, clock: ClockId, value: u64) {
         let mut s = self.lock();
@@ -85,6 +92,10 @@ impl RecordingHost {
 }
 
 impl Host for RecordingHost {
+    fn terminal_info(&self, stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+        Ok(self.lock().terminals[stream.index()])
+    }
+
     fn clock(&self, clock: ClockId) -> Result<u64, Errno> {
         let s = self.lock();
         Ok(match clock {

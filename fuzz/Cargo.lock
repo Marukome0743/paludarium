@@ -240,6 +240,7 @@ dependencies = [
  "paludarium-cpu",
  "paludarium-decoder",
  "paludarium-host",
+ "paludarium-jit",
  "paludarium-kernel",
  "paludarium-loader",
  "paludarium-mmu",
@@ -255,8 +256,19 @@ dependencies = [
  "cap-std",
  "fs2",
  "getrandom",
+ "libc",
  "paludarium-types",
  "rustix",
+]
+
+[[package]]
+name = "paludarium-jit"
+version = "0.0.0"
+dependencies = [
+ "paludarium-cpu",
+ "paludarium-decoder",
+ "paludarium-mmu",
+ "paludarium-types",
 ]
 
 [[package]]

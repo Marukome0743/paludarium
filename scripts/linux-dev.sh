@@ -25,10 +25,13 @@ if command -v cygpath >/dev/null 2>&1; then
 fi
 
 if ! "$docker_bin" image inspect "$image" >/dev/null 2>&1; then
-  "$docker_bin" build --platform linux/amd64 -t "$image" "$host_root/ci/linux-dev"
+  "$docker_bin" build --platform linux/amd64 --ulimit stack=-1 -t "$image" "$host_root/ci/linux-dev"
 fi
 
 common=(--rm --platform linux/amd64
+  # QEMU on Docker VMM can crash rustc with the default finite stack limit.
+  # Apply the same stack setting during both image builds and test runs.
+  --ulimit stack=-1
   --cap-add SYS_PTRACE --security-opt seccomp=unconfined
   -v paludarium-cargo-registry:/usr/local/cargo/registry
   -e CARGO_TERM_COLOR=never -w /work)

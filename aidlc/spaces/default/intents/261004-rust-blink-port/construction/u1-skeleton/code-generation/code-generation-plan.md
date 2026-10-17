@@ -187,6 +187,8 @@ U1 は、ネイティブの Linux で C と Rust の static-musl の hello world
 
 ## 現在の共有sourceに対するU1確認
 
+新attemptのPlan Approval・内容確認後、Step29〜31（3手順）の確認と成果物保存を完了し独立レビュー待ち。Step1〜28（24a〜24cを含む）は履歴。製品変更なし。過去の承認やレビューを新しい確認の代用にしない。
+
 Step1〜17の[x]は先行実装の履歴であり、今回の承認や最新sourceの検証完了を示さない。今回の対象は既存U1実装とU1が所有するshared sourceの再確認・文書整合である。後続U2の独立source/test/docは作り直さず、そのsourceをU1 manifestへ追加しない。記録済み機能回答・Testing Contract・80%下限・30秒watchdog・nightly pinを維持する。
 
 ### Step 18：既存実装・回答・証拠の現在値を照合する
@@ -202,3 +204,63 @@ Step1〜17の[x]は先行実装の履歴であり、今回の承認や最新sour
 
 - [x] U1 code-summary/traceability/source-manifestと必要なU1説明文だけを整合させる。build/cacheを除き、shell/scaffolding/generatorが書いたU1 application-sourceを全て列挙する。独立reviewへ渡し、記録済み回答から今回の承認を捏造しない（全BR/詳細NFR）。
 
+### Step 21：修復用runnerと現在の失敗を固定する
+
+- [x] Docker VMMと固定nightlyを維持し、scripts/linux-dev.shのstack無制限設定によるcompiler起動・image構築の修復を確認する。forkのUbuntu/Bookworm実機CIと手元Dockerのログを区別し、CPU・musl・ゲスト命令列を記録する。古い197件/94.00%を現在の合格証拠として引用しない（NFR1.1、NFR3.3）。
+
+### Step 22：hello-cに必要なSSE命令を修復する
+
+- [x] MOVQ/PUNPCKLQDQの非対称64bit値、上位64bitの扱い、自己参照をnative差分ゲストに追加し、実機期待結果と現実装の失敗を先に確認する。デコーダとCPUに必要なlegacy XMM形式を実装し、その後内部単体テストを追加する。hello-cでさらに不足が判明した場合も、命令censusとnative期待結果を先に確定して必要最小限の命令だけ扱う（BR4.4、NFR1.2）。
+
+### Step 23：REPとゲストビルドの失敗を修復する
+
+- [x] 実機でも失敗したREP4ケースについて、初期flags、ページ準備、fault/restart、CPU差を観測し、公式仕様と照合する。期待結果を先に確定し、原因が観測コードならゲスト、CPU意味論なら共有CPUだけを修正する。定義済みflagsのmaskを外して合格させない（NFR1.1〜1.2）。
+- [x] tests/guests/u4/build.shとu7/build.shの混在CRLFをLFへ修正し、native Linuxで構文検査・ゲスト生成と関係する差分テストを確認する。他unitの機能追加や再実装は行わない。
+
+### Step 24：修復後の検証
+
+- [x] unit-test-instructionsの関係する限定コマンドをDocker VMMと実機Linuxで実行する。ENTER/ALUのDocker固有差は実機結果と区別し、30秒watchdogは維持する。更新したfork CIで既存suiteを確認し、fmt/clippy・依存検査・native行coverage80%以上を確認する。未通過項目は未検証または失敗として残し、nightlyを変更しない。
+
+### Step 24a：3 OS検証で判明したHostの限定修復（追加承認対象）
+
+- [x] macOS/Windowsのnative_fs::u7_testsを実装前に実行し、lock競合のOS errno35/33とLinux guest EAGAIN11の不一致、Windows hardlink links1対2、fixture終了時OS error32を保存する。OS番号をguestへ直接流す経路を修正し、同じguestエラーを返す回帰を確認する。無関係なHost APIの改善は加えない。
+- [x] WindowsのFileStatリンク数を実際のmetadataから取得する。test fixtureは保持したNativeFs/関連handleを解放してから一時ディレクトリを削除し、cleanupのpanicで実際のテスト結果を隠さない。cleanup失敗を無視して合格させず、root外アクセス防止と既存lock/link/I/Oテストを保持する。
+- [x] native_fs.rsと必要最小限のHostテスト・metadata/error変換だけを追加修復範囲とする。内部layerの順序はTesting Contractのtest-afterとし、既存失敗の再現ログを先に記録する。3OS Host回帰、3OS既存suite、Intel/AMD native差分、lint/依存、全体とU1限定coverage80%以上を確認し、manifest/traceabilityを追加した実ファイルへ更新する。
+
+### Step 24b：Windows Runtimeマウントテストのcleanup（追加承認対象）
+
+- [x] crates/paludarium-runtime/src/tests.rsのu7_runtime_mountだけで、remove_dir_allの直前にdrop(fs)とdrop(s)を追加する。両方が保持するmount root handleを解放してから削除し、cleanup失敗は引き続きunwrapで失敗させる。production Runtimeやmount機能は変更しない。Windows CIのOS error32ログを修正前の根拠として保持する。
+- [x] Runtimeの当該テストとlibテスト、fmt/clippy、3OS既存suite、実機Linux差分、全体/U1 coverage80%以上を確認する。関連テストファイルは既存manifest claim内。30秒watchdog、nightly固定版、比較mask、2フックを保持する。
+
+### Step 24c：Windows VFS共通fixtureの同種cleanup修復
+
+- [x] crates/paludarium-vfs/src/mount.rsのtest専用Fixtureだけで、保持するMountedFsを空のMountedFsへreplaceしてdropし、root handleを解放してから既存remove_dir_allを実行する。production、mount意味論、assertion、cleanup errorのunwrapを保持する。WindowsのRuntime25件通過後に共通Drop:366で16件がOS error32になったログを修正前の証拠として残す。
+- [x] mount回帰16件、VFS lib全件、fmt/clippy、3OS既存suite、実機Linux差分、全体/U1 coverage80%以上を確認する。source-manifestへ関連testのowning fileを追加する。これは同じ復旧で見つかった同種cleanupの限定修復で、以前の承認対象を変更済み内容へ読み替えない。
+
+### Step 25：成果物と復旧の確定
+
+- [x] code-summary、traceability、source-manifestと現在sourceのsnapshotを更新し、関連修復ファイルとunit所有を明記する。独立レビューへ渡す。plan-approval-guard/continue-workflowの2フックの登録と回復テストを確認し、rejected reportが必要な場合はその前に両フックを復元・検証する。過去のレビューや承認を今回へ転用しない。
+
+### Step 26：現在ソースと既存の検証結果を照合する
+
+- [x] U1の既存source-manifest、型・契約・テスト構成を読み、署名済み4d52be0aの実機CI（7+4ジョブ）と現在bytesを照合する。U1差分16件、hello world、3OS、全体/U1 coverage80% gateの証拠を現在値へ対応させる。旧失敗・旧fuzz・wasm/Safari未検証を区別する。新規ソース変更や証拠不足がなければ重いテストを重ねない（BR1.1、NFR1.1、NFR3.3）。
+
+### Step 27：レビュー用記録を整合させる
+
+- [x] code-summary/traceability/source-manifestと必要なsnapshotを現在値へ更新する。今回の作業は記録修復に限定し、製品不具合が見つかった場合のみrootへ返す。native-firstと内部test-after、30秒watchdog、各600秒fuzz、固定nightly、両coverage80%を保持する（全BR/詳細NFR）。
+
+### Step 28：現在状態を固定して独立レビューを受ける
+
+- [x] 日記・必要記録をレビュー依頼前に確定する。レビュー依頼から結果の正式記録までは成果物・sourceを固定し、jjのsnapshot/commit操作も挟まずに独立レビューを記録する。正式検証後に完了確認を受ける。U4の既存成果を保持し、後続の再レビューへ引き継ぐ。2フックを有効なまま維持する。
+
+### Step 29：新attemptのsourceと証拠を再確認する
+
+- [x] U1 manifest103claims/展開108filesと現在snapshot、署名済み4d52be0aの保存CI7+native4jobsを再照合する。別作業.gitignore差異を製品CI証拠と分け、hello world/U1差分16、3OS、全体/U1coverageを一致範囲で再利用する。新実行とは数えず、不足だけ既存exact commandsで回収する（BR1.1、NFR1.1/3.3）。
+
+### Step 30：新しい内容確認後に4成果物を保存する
+
+- [x] 今回のSummary Confirmation後にcode-summary.md、unit-test-instructions.md、source-manifest.json、traceability.jsonの全4producesを保存し、新attemptの確認との対応を明記する。意味論が正しいmanifest/traceabilityのclaimsとschemaは維持して保存する。必要snapshot/evidenceも整合し、旧fuzz/wasm/Safari未検証と80%/30秒/nightly/各600秒/masksを保持する。新製品不具合はrootへ返し、自動修正しない（全BR/NFR）。
+
+### Step 31：日記と全書込を終えてレビューへ渡す
+
+- [x] 親construction/code-generation/memory.mdへ読取なしheading anchored追記を依頼前に完了する。全source/成果物書込を終え、reviewrequestからterminal記録まで全workerとjj snapshot/commit操作を停止する。前回不整合原因を断定せず、rootの正式独立レビューへ渡す。2フックを有効のまま保持する（NFR3/9）。

@@ -38,6 +38,12 @@ fuzz_target!(|data: &[u8]| {
         *slot = u64::from_le_bytes(bytes.try_into().unwrap_or([0; 8]));
     }
     state.rflags = u64::from_le_bytes(data[..8].try_into().unwrap_or([0; 8])) & 0xcd5 | 2;
+    for (slot, bytes) in state.xmm.iter_mut().zip(data.chunks_exact(16)) {
+        *slot = u128::from_le_bytes(bytes.try_into().unwrap_or([0; 16]));
+    }
+    // All architecturally valid rounding/mask/DAZ/FTZ combinations participate;
+    // instruction bytes and XMM inputs remain arbitrary libFuzzer inputs.
+    state.mxcsr = u32::from_le_bytes(data[..4].try_into().unwrap_or([0; 4])) & 0xffff;
     // Eight instructions, each REP chunk capped at 4096 iterations.
     let _ = run(&mut state, &memory, 8);
 });

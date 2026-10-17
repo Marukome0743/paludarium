@@ -6,18 +6,22 @@
 //! slices the loop checks whether [`Session::kill`] was requested (BR4.3).
 #![forbid(unsafe_code)]
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use paludarium_cpu::{DecodeCache, run_cached};
+mod workers;
 use paludarium_host::Host;
 use paludarium_jit::{CodeCache, NoopCodeCache};
-use paludarium_kernel::{Kernel, Next, SignalInbox};
+use paludarium_kernel::{Kernel, SignalInbox};
 use paludarium_loader::{StartInfo, load};
 use paludarium_mmu::AddressSpace;
-use paludarium_types::{Error, ErrorKind, ExitReason, ExitStatus, signal};
+#[cfg(test)]
+use paludarium_types::signal;
+use paludarium_types::{Error, ErrorKind, ExitReason, ExitStatus};
 use paludarium_vfs::{GuestFile, HostFs, MemFs, MountedFs};
+use workers::Execution;
 
 /// Instructions run between two checks of the kill request (BR4.3,
 /// entities.md SessionConfig: internal, default 100000).
@@ -32,10 +36,22 @@ pub struct Mount {
 }
 
 /// Terminal size given to the guest. Used from U9.
+/// ```compile_fail
+/// use paludarium_runtime::TerminalInfo;
+/// let _ = TerminalInfo { columns: 80, rows: 24 };
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TerminalInfo {
     pub columns: u16,
     pub rows: u16,
+}
+impl TerminalInfo {
+    /// Creates the explicit guest terminal size, including zero dimensions.
+    #[must_use]
+    pub const fn new(columns: u16, rows: u16) -> Self {
+        Self { columns, rows }
+    }
 }
 
 /// Configuration of one run (C10 `Config`, entities.md SessionConfig).
@@ -44,11 +60,16 @@ pub struct TerminalInfo {
 pub struct Config {
     /// Absolute guest path of the program.
     pub program: Vec<u8>,
+    /// Optional absolute initial working directory; omitted means `/`.
+    pub cwd: Option<Vec<u8>>,
     /// argv, including argv[0].
     pub args: Vec<Vec<u8>>,
     pub env: Vec<(Vec<u8>, Vec<u8>)>,
     /// Files placed in the virtual file system before start: (path, content).
     pub files: Vec<(Vec<u8>, Vec<u8>)>,
+    /// Optional initial permission overrides. Entries must name configured
+    /// files once each and contain only Linux permission bits (0o7777).
+    pub file_modes: Vec<(Vec<u8>, u32)>,
     pub mounts: Vec<Mount>,
     pub tty: Option<TerminalInfo>,
     /// Only meaningful in wasm; the native build has no JIT.
@@ -79,26 +100,85 @@ impl Config {
         self.files.push((path.into(), content.into()));
         self
     }
+
+    /// Adds a file with explicit initial permissions. Existing `with_file`
+    /// callers retain the default 0o755 mode. Invalid overrides are rejected
+    /// by [`Session::new`], before any guest executes.
+    #[must_use]
+    pub fn with_file_mode(
+        mut self,
+        path: impl Into<Vec<u8>>,
+        content: impl Into<Vec<u8>>,
+        mode: u32,
+    ) -> Self {
+        let path = path.into();
+        self.files.push((path.clone(), content.into()));
+        self.file_modes.push((path, mode));
+        self
+    }
 }
 
 /// One guest run.
 pub struct Session {
     config: Config,
+    file_modes: BTreeMap<Vec<u8>, u32>,
     mounts: Vec<(Vec<u8>, Arc<dyn HostFs>)>,
     host: Arc<dyn Host>,
-    code_cache: Box<dyn CodeCache>,
+    code_cache: Arc<dyn CodeCache>,
+    accelerated: bool,
     budget: u64,
     kill_requested: Arc<AtomicBool>,
     signal_inbox: Arc<SignalInbox>,
-    stopped: AtomicBool,
-    last_stop: Mutex<Option<ExitReason>>,
+    stopped: Arc<AtomicBool>,
+    last_stop: Arc<Mutex<Option<ExitReason>>>,
 }
 
 impl Session {
+    /// Selects a synchronous execution cache supplied by the wasm launcher.
+    /// Native/default sessions retain the interpreter-only cache.
+    #[must_use]
+    pub fn with_code_cache(mut self, cache: Arc<dyn CodeCache>) -> Self {
+        self.code_cache = cache;
+        self.accelerated = true;
+        self
+    }
     /// Validates the configuration. Mounts are not implemented in U1.
     pub fn new(config: Config, host: Arc<dyn Host>) -> Result<Self, Error> {
+        if let Some(cwd) = &config.cwd
+            && (!cwd.starts_with(b"/") || paludarium_vfs::normalize_path(cwd).is_err())
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidProgram,
+                "invalid current directory",
+            ));
+        }
         if config.program.is_empty() {
             return Err(Error::new(ErrorKind::InvalidProgram, "no program given"));
+        }
+        let mut file_modes = BTreeMap::new();
+        for (path, mode) in &config.file_modes {
+            let path = paludarium_vfs::normalize_path(path)
+                .map_err(|_| Error::new(ErrorKind::InvalidProgram, "invalid file mode path"))?;
+            if path == b"/" || mode & !0o7777 != 0 {
+                return Err(Error::new(
+                    ErrorKind::InvalidProgram,
+                    "invalid file mode override",
+                ));
+            }
+            if !config.files.iter().any(|(configured, _)| {
+                paludarium_vfs::normalize_path(configured).as_ref() == Ok(&path)
+            }) {
+                return Err(Error::new(
+                    ErrorKind::InvalidProgram,
+                    "file mode path has no configured file",
+                ));
+            }
+            if file_modes.insert(path, *mode).is_some() {
+                return Err(Error::new(
+                    ErrorKind::InvalidProgram,
+                    "duplicate file mode override",
+                ));
+            }
         }
         let mut mounts = Vec::new();
         let mut validate = MountedFs::new(MemFs::new());
@@ -114,13 +194,15 @@ impl Session {
         Ok(Session {
             mounts,
             config,
+            file_modes,
             host,
-            code_cache: Box::new(NoopCodeCache),
+            code_cache: Arc::new(NoopCodeCache),
+            accelerated: false,
             budget: DEFAULT_BUDGET,
             kill_requested: Arc::new(AtomicBool::new(false)),
             signal_inbox: Arc::new(SignalInbox::default()),
-            stopped: AtomicBool::new(false),
-            last_stop: Mutex::new(None),
+            stopped: Arc::new(AtomicBool::new(false)),
+            last_stop: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -160,11 +242,20 @@ impl Session {
     }
 
     fn file_system(&self) -> Result<MountedFs, Error> {
-        let mut fs = MemFs::new();
+        let host = self.host.clone();
+        let mut fs = MemFs::with_clock(Arc::new(move || {
+            host.clock(paludarium_host::ClockId::Realtime)
+        }));
         fs.mkdir(b"/tmp", 0o1777)
             .map_err(|_| Error::new(ErrorKind::Internal, "temporary directory"))?;
         for (path, content) in &self.config.files {
-            fs.add_file(GuestFile::new(path.clone(), content.clone()))
+            let mut file = GuestFile::new(path.clone(), content.clone());
+            let normalized = paludarium_vfs::normalize_path(path)
+                .map_err(|_| Error::new(ErrorKind::InvalidProgram, "invalid file placement"))?;
+            if let Some(mode) = self.file_modes.get(&normalized) {
+                file.mode = *mode;
+            }
+            fs.add_file(file)
                 .map_err(|_| Error::new(ErrorKind::InvalidProgram, "invalid file placement"))?;
         }
         let mut mounted = MountedFs::new(fs);
@@ -178,7 +269,23 @@ impl Session {
 
     /// Runs the guest to completion (W2–W4).
     pub fn run(&self) -> Result<ExitStatus, Error> {
-        let fs: Arc<dyn paludarium_vfs::FileSystem> = Arc::new(self.file_system()?);
+        self.run_with_file_system(self.initial_file_system()?)
+    }
+
+    /// Creates the validated initial filesystem without executing the guest.
+    /// Callers may retain it for explicitly shared, sequential guest runs.
+    pub fn initial_file_system(&self) -> Result<Arc<dyn paludarium_vfs::FileSystem>, Error> {
+        Ok(Arc::new(self.file_system()?))
+    }
+
+    /// Runs using an explicitly supplied filesystem. Initial `files`, mode
+    /// overrides and mounts are applied by `initial_file_system`, not again
+    /// here. The caller owns synchronization and its filesystem's lifetime.
+    /// Ordinary `run()` continues to create an independent filesystem.
+    pub fn run_with_file_system(
+        &self,
+        fs: Arc<dyn paludarium_vfs::FileSystem>,
+    ) -> Result<ExitStatus, Error> {
         let mut random = [0u8; 16];
         self.host.random_bytes(&mut random)?;
         let envp: Vec<Vec<u8>> = self
@@ -203,65 +310,44 @@ impl Session {
         let mut kernel = Kernel::new(Arc::clone(&self.host))
             .with_file_system(fs)
             .with_signal_inbox(Arc::clone(&self.signal_inbox));
-        let mut thread = kernel.spawn_initial(&image);
-        let mut decode_cache = DecodeCache::new();
-
-        loop {
-            if self.kill_requested.load(Ordering::SeqCst) {
-                self.stopped.store(false, Ordering::SeqCst);
-                return Ok(ExitStatus::Signaled(signal::SIGKILL));
-            }
-            match kernel.checkpoint(&mut thread, &mem) {
-                Next::Stopped => {
-                    self.stopped.store(true, Ordering::SeqCst);
-                    let clock = paludarium_host::ClockId::Monotonic;
-                    let now = self
-                        .host
-                        .clock(clock)
-                        .map_err(|_| Error::new(ErrorKind::Host, "stopped process clock"))?;
-                    self.host
-                        .wait_until(
-                            clock,
-                            now.saturating_add(10_000_000),
-                            &self.signal_inbox.wake_token(),
-                        )
-                        .map_err(|_| Error::new(ErrorKind::Host, "stopped process wait"))?;
-                    continue;
-                }
-                Next::Exit(status) => {
-                    self.stopped.store(false, Ordering::SeqCst);
-                    return Ok(status);
-                }
-                _ => self.stopped.store(false, Ordering::SeqCst),
-            }
-            let reason = self
-                .code_cache
-                .try_run(&mut thread.cpu, &mem)
-                .unwrap_or_else(|| {
-                    run_cached(&mut thread.cpu, &mem, self.budget, &mut decode_cache)
-                });
-            match kernel.handle(&mut thread, &mut mem, reason) {
-                Next::Resume => {}
-                Next::Stopped => {}
-                Next::Exit(status) => {
-                    if !matches!(reason, ExitReason::Syscall { .. }) {
-                        *self
-                            .last_stop
-                            .lock()
-                            .unwrap_or_else(PoisonError::into_inner) = Some(reason);
-                    }
-                    return Ok(status);
-                }
-                _ => {
-                    return Err(
-                        Error::new(ErrorKind::Internal, "unexpected kernel decision")
-                            .with_rip(thread.cpu.rip),
-                    );
-                }
-            }
+        if let Some(tty) = self.config.tty {
+            kernel = kernel.with_terminal_size(tty.columns, tty.rows);
         }
+        if let Some(cwd) = &self.config.cwd {
+            kernel = kernel.with_current_directory(cwd).map_err(|_| {
+                Error::new(ErrorKind::InvalidProgram, "current directory unavailable")
+            })?;
+        }
+        let thread = kernel.spawn_initial(&image);
+        let execution = Arc::new(Execution::new(
+            Arc::clone(&self.host),
+            Arc::new(mem),
+            kernel.thread_group(),
+            kernel.processes(),
+            Arc::clone(&self.kill_requested),
+            Arc::clone(&self.signal_inbox),
+            Arc::clone(&self.stopped),
+            Arc::clone(&self.last_stop),
+            Arc::clone(&self.code_cache),
+            self.accelerated,
+            self.budget,
+        ));
+        execution.execute(kernel, thread);
+        execution.finish()
     }
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod u9_tests;
+
+#[cfg(test)]
+mod u10_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod u5_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod u8_tests;

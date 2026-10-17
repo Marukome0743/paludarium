@@ -22,6 +22,8 @@ FD番号とopen-file descriptionを分離し、offsetとflock所有者を共有�
 
 ## 順序付き実装手順
 
+Steps 1–14 は保存済みの実装計画と過去の実行記録である。現在の再開では Steps 15–17 を実行し、過去の成功を現在のソースの成功と混同しない。製品ソースの変更は現時点では計画しない。証拠の不整合が見つかった場合は本Unitの記録を修復し、製品の不具合が見つかった場合は内容を明示して扱う。
+
 - [x] Step 1 — U7変更面とC6/C2境界を確定し、既存互換を記録する。FR3.1–3.4、FR2.10、NFR3/4/9。
 - [x] Step 2 — 既存Rust runnerと単位限定コマンドを確認する。まず既存VFS 5テストを実行し、`u7_`名前空間/専用diffターゲットと30秒境界を用意する。NFR1/7/9。
 - [x] Step 3 — 実装前にLinuxでsyscall/ゲストのケースを作る。open/openat/create/read/write/close/lseek、mkdir/unlink/rmdir、link/linkat、symlink/readlink、rename/renameat、getdents64、stat/fstat/lstat/newfstatat、flockを対象とし、必要なdup/fcntl FD操作も最小限含める。NULL・不正buffer・flags・dirfd・エラー・リンク/rename/lockを含め、ネイティブ期待結果と現実装の失敗を生ログで残す。FR3.3/2.10、NFR1。
@@ -36,6 +38,9 @@ FD番号とopen-file descriptionを分離し、offsetとflock所有者を共有�
 - [x] Step 12 — U7単位限定coverageでLinux行80%以上、fmt/clippy警告ゼロ、cargo-deny、CI action SHA、依存lockを検証する。既存workspaceの正式検証は承認済みcheckpointコマンドで確認する。NFR3/8/9。
 - [x] Step 13 — U7 raw evidence・native比較除外一覧・変更API/使用法・source manifest・FR/NFR traceability・code-summaryを完成させる。測定した件数だけ記録し、未検証を合格にしない。NFR1–9。
 - [ ] Step 14 — independent review用にソースと成果物を固定し、指摘の必要修正だけを行って再検証する。checkpointの承認と次Unit選択は親担当へ返す。
+- [ ] Step 15 — 保存済みsource manifestとソースsnapshotを現在のソースおよび署名付きCIコミットに照合する。ネイティブdiff_u7 63件、U7内部/並行テスト、CLI接続と3OSのログを件数・名前・実行条件まで再確認する。FR2.10、FR3.1–3.4、FR9.1、NFR1/4/7/8/9。
+- [ ] Step 16 — 現在のソースへの証拠の適用範囲を明記して4成果物とstrict v1 manifestを保存する。U7担当17IDに限定したtraceabilityと既存targetを整合させ、600秒ASan fuzzやU7限定coverageが古い依存に対する測定ならGAPを保持する。全体CIの80%成功をU7限定80%へ読み替えない。FR9.3、NFR2/3/5/6。
+- [ ] Step 17 — 観測記録を更新した後に成果物・manifest・claimed sourceを固定し、独立レビューへ渡す。正式なレビュー記録の登録、承認済みcheckpointコマンドによる検証、完了承認は親担当が実施する。レビュー依頼から正式な結果登録まで製品・成果物・SCMを変更しない。
 
 ## 検証の合否
 
@@ -43,7 +48,7 @@ custom orderingをそのまま適用し、ゲストsyscallはネイティブケ�
 
 ## 承認と未確定点
 
-実装開始前の初回Plan Approvalを待つ。HostFs依存の具体名と細部のerrno/ABI選択は、上記ネイティブ/供給網検証で確定する。FR/NFRの対象・数値・隔離条件は変更しない。追加の人への質問は現時点ではない。
+現在の再開に対するPlan Approvalを待つ。既存HostFs実装と依存は維持し、保存済み結果の来歴と現在の適用範囲を確認する。FR/NFRの対象・数値・隔離条件は変更しない。追加の人への質問は現時点ではない。
 ## Testing Contract
 
 ```json

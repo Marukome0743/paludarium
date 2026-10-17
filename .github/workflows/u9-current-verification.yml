@@ -1,0 +1,408 @@
+name: U9 current R04 source verification
+on:
+  push:
+    branches: [codex/u9-current-verification]
+permissions:
+  contents: read
+env:
+  RUSTUP_TOOLCHAIN: nightly-2026-10-10
+  CARGO_TERM_COLOR: never
+jobs:
+  quality:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+        with:
+          persist-credentials: false
+      - name: Current U9 internal public compile-fail and CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u9-quality-evidence
+          e=target/u9-quality-evidence
+          exec > >(tee "$e/tests.log") 2>&1
+          rustup toolchain install nightly-2026-10-10 --profile minimal --component rustfmt --component clippy
+          rustc -Vv
+          printf 'CI_HEAD=%s\n' "$GITHUB_SHA"
+          python .github/scripts/u9-source-audit.py "$e/source-before.sha256"
+          cargo test --locked -p paludarium-host -p paludarium-kernel -p paludarium-runtime --lib u9_ -- --nocapture
+          cargo test --locked -p paludarium-host --test u9_public_api
+          cargo test --locked -p paludarium-host -p paludarium-runtime --doc Terminal
+          cargo test --locked -p paludarium --test command u9_ -- --nocapture
+          printf '0\n' > "$e/test-exit.txt"
+      - name: Current U9 lint and all four dependency checks
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u9-quality-evidence
+          exec > >(tee "$e/lint-dependencies.log") 2>&1
+          cargo fmt --all --check
+          cargo clippy --locked -p paludarium-host -p paludarium-kernel -p paludarium-runtime -p paludarium -p paludarium-harness --all-targets -- -D warnings
+          cargo install --locked --version 0.20.2 cargo-deny
+          cargo deny --version
+          cargo deny --locked check advisories bans licenses sources
+          printf '0\n' > "$e/lint-deny-exit.txt"
+      - name: Source unchanged after tests
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u9-quality-evidence
+          python .github/scripts/u9-source-audit.py "$e/source-after.sha256" --compare "$e/source-before.sha256"
+          printf '0\n' > "$e/source-compare-exit.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u9-current-quality-${{ matrix.os }}
+          path: target/u9-quality-evidence/
+          retention-days: 7
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUST_TEST_THREADS: '1'
+      PALUDARIUM_U5_EMULATOR: ${{ github.workspace }}/target/llvm-cov-target/debug/paludarium
+      PALUDARIUM_U6_EMULATOR: ${{ github.workspace }}/target/llvm-cov-target/debug/paludarium
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Prepare latest fixed tools and source audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u9-current-evidence
+          exec > >(tee target/u9-current-evidence/environment.log) 2>&1
+          test "$(uname -m)" = x86_64
+          uname -a
+          lscpu
+          printf 'CI_HEAD=%s\n' "$GITHUB_SHA"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          rustup toolchain install nightly-2026-10-10 --profile minimal --component llvm-tools-preview --target x86_64-unknown-linux-musl
+          cargo install --locked --version 0.9.1 cargo-llvm-cov
+          rustc -Vv
+          cargo llvm-cov --version
+          python3 .github/scripts/u9-source-audit.py target/u9-current-evidence/source-before.sha256
+      - name: Fresh native Linux U9 differential
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=target/u9-current-evidence
+          bash tests/guests/u7/build.sh target/guests/u7
+          bash tests/guests/u9/build.sh target/guests/u9
+          set +e
+          cargo test --locked -p paludarium-harness --test diff_u7 -- --nocapture 2>&1 | tee "$evidence/diff-u7.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$evidence/diff-u7-exit.txt"
+          test "$status" = 0
+          grep -q '64 passed; 0 failed; 0 ignored' "$evidence/diff-u7.log"
+          cargo test --locked -p paludarium-harness --test diff_u9 -- --list 2>&1 | tee "$evidence/list.log"
+          grep -q '14 tests, 0 benchmarks' "$evidence/list.log"
+          set +e
+          cargo test --locked -p paludarium-harness --test diff_u9 -- --nocapture 2>&1 | tee "$evidence/diff-u9.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$evidence/diff-u9-exit.txt"
+          test "$status" = 0
+          grep -q '14 passed; 0 failed; 0 ignored' "$evidence/diff-u9.log"
+      - name: Exact U9 production file set coverage at least 80 percent
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=target/u9-current-evidence
+          bash tests/guests/build.sh
+          cargo llvm-cov clean --workspace
+          (
+            source <(cargo llvm-cov show-env --sh)
+            cargo build --locked -p paludarium --target-dir target/llvm-cov-target
+          )
+          set +e
+          cargo llvm-cov --no-clean --locked -p paludarium-host -p paludarium-kernel -p paludarium-runtime -p paludarium -p paludarium-harness --lib --test diff_u9 --test command --ignore-filename-regex 'paludarium-(cpu|decoder|mmu|loader|types|vfs|jit|harness)/' --fail-under-lines 80 --lcov --output-path target/u9-coverage.lcov -- --test-threads=1 --nocapture 2>&1 | tee "$evidence/coverage.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$evidence/coverage-exit.txt"
+          cp target/u9-coverage.lcov "$evidence/"
+          set +e
+          cargo llvm-cov report --ignore-filename-regex 'paludarium-(cpu|decoder|mmu|loader|types|vfs|jit|harness)/' --json --output-path "$evidence/coverage.json" 2>&1 | tee "$evidence/coverage-report.log"
+          reported=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$reported" > "$evidence/report-exit.txt"
+          test "$status" = 0
+          test "$reported" = 0
+      - name: Preserve every input and actual result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u9-current-evidence
+          python3 .github/scripts/u9-source-audit.py "$e/source-after.sha256"
+          set +e
+          cmp "$e/source-before.sha256" "$e/source-after.sha256" > "$e/source-compare.log" 2>&1
+          status=$?
+          set -e
+          printf '%s\n' "$status" > "$e/source-compare-exit.txt"
+          test "$status" = 0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u9-current-coverage
+          path: target/u9-current-evidence/
+          retention-days: 7
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Current production wasm and all Node cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/u9-production-evidence
+          e=target/u9-production-evidence
+          exec > >(tee "$e/raw.log") 2>&1
+          rustup toolchain install nightly-2026-10-10 --profile minimal --component rust-src --target wasm32-unknown-unknown
+          rustc -Vv
+          curl -fsSLO https://nodejs.org/dist/v26.11.1/node-v26.11.1-linux-x64.tar.xz
+          curl -fsSLO https://nodejs.org/dist/v26.11.1/SHASUMS256.txt
+          sha256sum --check --ignore-missing SHASUMS256.txt
+          tar -xf node-v26.11.1-linux-x64.tar.xz
+          export PATH="$PWD/node-v26.11.1-linux-x64/bin:$PATH"
+          node --version
+          python3 .github/scripts/u9-source-audit.py "$e/source-before.sha256"
+          python3 packages/paludarium-wasm/tests/generate-guests.py --check
+          python3 scripts/wasm-native-guests.py > "$e/native-results.json"
+          export RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals -C link-arg=--import-memory -C link-arg=--shared-memory -C link-arg=--max-memory=1073741824 -C link-arg=--export=__stack_pointer -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base'
+          bash scripts/build-wasm.sh
+          cp target/wasm32-unknown-unknown/release/paludarium_wasm.wasm packages/paludarium-wasm/paludarium.wasm
+          sha256sum packages/paludarium-wasm/paludarium.wasm "$e/native-results.json" > "$e/module-native.sha256"
+          node --test packages/paludarium-wasm/tests/import-check.mjs
+          set +e
+          node packages/paludarium-wasm/tests/node-check.mjs packages/paludarium-wasm/paludarium.wasm "$e/native-results.json" > "$e/node-report.json" 2> "$e/node.stderr"
+          status=$?
+          set -e
+          printf '%s\n' "$status" > "$e/node-exit.txt"
+          cat "$e/node-report.json"
+          test "$status" = 0
+          python3 -c 'import json; x=json.load(open("target/u9-production-evidence/node-report.json")); assert x["pass"] and x["caseCount"]>=14 and all(r["pass"] for r in x["results"])'
+          cp packages/paludarium-wasm/paludarium.wasm "$e/"
+      - name: Production source unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u9-production-evidence
+          python3 .github/scripts/u9-source-audit.py "$e/source-after.sha256"
+          cmp "$e/source-before.sha256" "$e/source-after.sha256"
+          printf '0\n' > "$e/source-compare-exit.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u9-current-production
+          path: target/u9-production-evidence/
+          retention-days: 7
+  safari:
+    needs: production
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: u9-current-production
+          path: target/u9-production-evidence
+      - name: Real Safari same module and fresh native expectations
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u9-safari-evidence
+          mkdir -p "$e"
+          python3 .github/scripts/u9-source-audit.py "$e/source-before.sha256"
+          cp target/u9-production-evidence/paludarium.wasm packages/paludarium-wasm/paludarium.wasm
+          arch=$(uname -m)
+          if [ "$arch" = arm64 ]; then node_arch=arm64; else node_arch=x64; fi
+          export NODE_ARCHIVE="node-v26.11.1-darwin-${node_arch}.tar.xz"
+          curl -fsSLO "https://nodejs.org/dist/v26.11.1/$NODE_ARCHIVE"
+          curl -fsSLO https://nodejs.org/dist/v26.11.1/SHASUMS256.txt
+          python3 - <<'PY'
+          import os, hashlib, pathlib
+          p=pathlib.Path(os.environ["NODE_ARCHIVE"])
+          expected=next(line.split()[0] for line in pathlib.Path("SHASUMS256.txt").read_text().splitlines() if line.split()[-1]==p.name)
+          assert hashlib.sha256(p.read_bytes()).hexdigest()==expected
+          PY
+          tar -xf "$NODE_ARCHIVE"
+          export PATH="$PWD/node-v26.11.1-darwin-${node_arch}/bin:$PATH"
+          node --version > "$e/environment.log"
+          /usr/bin/safaridriver --version >> "$e/environment.log"
+          sw_vers >> "$e/environment.log"
+          shasum -a 256 -c target/u9-production-evidence/module-native.sha256
+          shasum -a 256 packages/paludarium-wasm/paludarium.wasm target/u9-production-evidence/native-results.json > "$e/module-native.sha256"
+          sudo /usr/bin/safaridriver --enable
+          export SAFARI_STATIC_ROOT="$PWD"
+          export SAFARI_ENTRY_PATH='/packages/paludarium-wasm/tests/index.html?wasm=/packages/paludarium-wasm/paludarium.wasm&native=/target/u9-production-evidence/native-results.json'
+          export SAFARI_REPORT_KEY=__paludariumProductionReport
+          python3 - <<'PY'
+          import os, signal, subprocess, pathlib
+          e=pathlib.Path("target/u9-safari-evidence")
+          p=subprocess.Popen(["node",".github/scripts/u9-safari-diagnostic.mjs"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+          try:
+              stdout,stderr=p.communicate(timeout=30)
+          except subprocess.TimeoutExpired:
+              os.killpg(p.pid,signal.SIGKILL)
+              stdout,stderr=p.communicate()
+              (e/"timeout.txt").write_text("30 second whole-process watchdog\n")
+          (e/"safari-report.json").write_bytes(stdout)
+          (e/"safari.stderr").write_bytes(stderr)
+          (e/"exit.txt").write_text(str(p.returncode)+"\n")
+          assert p.returncode==0
+          PY
+          cat "$e/safari-report.json"
+          python3 - <<'PY'
+          import json
+          x=json.load(open("target/u9-safari-evidence/safari-report.json"))
+          n=json.load(open("target/u9-production-evidence/node-report.json"))
+          assert x["pass"] and x["crossOriginIsolated"] and x["productionLauncher"] and x["sharedMemory"]
+          assert x["caseCount"]==n["caseCount"] and [r["case"] for r in x["results"]]==[r["case"] for r in n["results"]]
+          assert all(r["pass"] for r in x["results"]) and x["elapsed_ms"]<30000
+          assert x["cleanup"]["driver_reaped"] and x["cleanup"]["server_closed"]
+          PY
+      - name: Safari source unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u9-safari-evidence
+          python3 .github/scripts/u9-source-audit.py "$e/source-after.sha256" --compare "$e/source-before.sha256"
+          printf '0\n' > "$e/source-compare-exit.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u9-current-safari
+          path: target/u9-safari-evidence/
+          retention-days: 7
+  sanitizer-binding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: rust:1-bookworm
+      options: --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined --ulimit=stack=-1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Record actual compiler and sanitizer build flags without repeating finite fuzz
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u9-sanitizer-binding
+          mkdir -p "$e"
+          exec > >(tee "$e/environment.log") 2>&1
+          ln -s "$GITHUB_WORKSPACE" /work
+          apt-get update
+          apt-get install -y --no-install-recommends llvm binutils
+          rustup toolchain install nightly-2026-10-10 --profile minimal
+          cargo install --locked --version 0.13.2 cargo-fuzz
+          rustc -Vv
+          cargo -V
+          cargo fuzz --version
+          cc --version
+          dpkg-query -W libc6 gcc llvm
+          env | sort > "$e/environment-variables.log"
+          python3 .github/scripts/u9-source-audit.py "$e/source-before.sha256"
+          export ASAN_OPTIONS=detect_leaks=1
+          export LSAN_OPTIONS=suppressions=/work/fuzz/lsan.supp
+          for target in load_elf syscall_args vfs_paths mmu_ops; do
+            set +e
+            cargo fuzz build --fuzz-dir fuzz --sanitizer address "$target" --verbose 2>&1 | tee "$e/$target-build.log"
+            status=${PIPESTATUS[0]}
+            set -e
+            printf '%s\n' "$status" > "$e/$target-build-exit.txt"
+            test "$status" = 0
+            sha256sum "fuzz/target/x86_64-unknown-linux-gnu/release/$target" > "$e/$target-binary.sha256"
+          done
+      - name: Binding source unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u9-sanitizer-binding
+          python3 .github/scripts/u9-source-audit.py "$e/source-after.sha256" --compare "$e/source-before.sha256"
+          printf '0\n' > "$e/source-compare-exit.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u9-sanitizer-binding
+          path: target/u9-sanitizer-binding/
+          retention-days: 7
+  u10-compiler-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Fixed guest build selects the aligned compiler and preserves upstream lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u9-u10-binding
+          mkdir -p "$e"
+          exec > >(tee "$e/raw.log") 2>&1
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools cmake perl make pkg-config
+          rustup toolchain install nightly-2026-10-10 --profile minimal --target x86_64-unknown-linux-musl
+          cargo install --locked --version 0.20.2 cargo-deny
+          rustc -Vv
+          cargo deny --version
+          python3 .github/scripts/u9-source-audit.py "$e/source-before.sha256"
+          python3 - <<'PY'
+          import json,tomllib
+          lock=json.load(open("tests/guests/u10/source-lock.json"))
+          root=tomllib.load(open("rust-toolchain.toml","rb"))["toolchain"]["channel"]
+          assert lock["toolchain"]==root=="nightly-2026-10-10"
+          PY
+          set +e
+          bash scripts/u10-build-guests.sh target/guests/u10
+          status=$?
+          set -e
+          printf '%s\n' "$status" > "$e/build-exit.txt"
+          cp target/guests/u10/build-receipt.json "$e/"
+          cp target/guests/u10/*-dependencies.log "$e/"
+          cp target/guests/u10/*-build.log "$e/"
+          test "$status" = 0
+          python3 - <<'PY'
+          import json
+          r=json.load(open("target/u9-u10-binding/build-receipt.json"))
+          assert r["exit"]==0 and r["toolchain"]=="nightly-2026-10-10"
+          assert "1.101.0-nightly" in r["rustc"] and r["source_unchanged"]
+          assert all(v==0 for v in r["audits"].values()) and len(r["binaries"])==2
+          PY
+      - name: Guest build input unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          e=target/u9-u10-binding
+          python3 .github/scripts/u9-source-audit.py "$e/source-after.sha256" --compare "$e/source-before.sha256"
+          printf '0\n' > "$e/source-compare-exit.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: u9-u10-compiler-lock
+          path: target/u9-u10-binding/
+          retention-days: 7

@@ -5,6 +5,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+license-file.workspace = true
 
 [dependencies]
 paludarium-types.workspace = true
@@ -15,6 +18,9 @@ paludarium-vfs.workspace = true
 paludarium-kernel.workspace = true
 paludarium-host.workspace = true
 paludarium-jit.workspace = true
+
+[features]
+u14-cost-profile = ["paludarium-cpu/u14-cost-profile", "paludarium-jit/u14-cost-profile"]
 
 [lints]
 workspace = true

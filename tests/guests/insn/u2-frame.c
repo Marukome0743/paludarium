@@ -1,14 +1,20 @@
 #include "insn.h"
+/* 16-bit ENTER updates BP rather than all of RBP. Keep both its nesting
+ * chain and LEAVE's frame in one mapped 64 KiB window, independently of ASLR.
+ * The original caller stack remains the stack for every 64-bit form. */
+static u8 frame_stack[65536] __attribute__((aligned(65536), used));
 #define FRAME(NAME,INSN,N,W,L) \
 extern void NAME(u64 *); \
 __asm__(".text\n.global " #NAME "\n" #NAME ":\n" \
-"pushq %rbp\n subq $1024,%rsp\n movq %rsp,%r11\n leaq 512(%rsp),%rbp\n" \
+"pushq %rbp\n movq %rsp,%r10\n" \
+".if " #W " == 2\n leaq frame_stack+32768(%rip),%rsp\n .endif\n" \
+"subq $1024,%rsp\n movq %rsp,%r11\n leaq 512(%rsp),%rbp\n" \
 "movq $32,%rcx\n movq %rbp,%rsi\n1: subq $8,%rsi\n movq $42,(%rsi)\n loop 1b\n" \
 INSN " $24,$" #N "\n" L "\n" \
 "movq %rsp,%rax\n subq %r11,%rax\n movq %rax,0(%rdi)\n" \
 "movq %rbp,%rax\n subq %r11,%rax\n movq %rax,8(%rdi)\n" \
 "pushfq\n popq %rax\n movq %rax,16(%rdi)\n" \
-"movq %r11,%rsp\n addq $1024,%rsp\n popq %rbp\n ret\n");
+"movq %r10,%rsp\n popq %rbp\n ret\n");
 FRAME(e0,"enter",0,8,"") FRAME(e1,"enter",1,8,"") FRAME(e2,"enter",2,8,"") FRAME(e31,"enter",31,8,"")
 FRAME(w0,"enterw",0,2,"") FRAME(w1,"enterw",1,2,"") FRAME(w2,"enterw",2,2,"") FRAME(w31,"enterw",31,2,"")
 FRAME(lw,"enterw",2,2,"leavew")

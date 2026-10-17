@@ -1,5 +1,21 @@
 # U4 単体・差分テスト手順
 
+## redo新attempt Steps22〜24
+
+今回の内容確認後に本書を保存し、同じ製品bytesの既存証拠再利用と限定commandsを確定した。新test実行なし、現在ASan GAPを保持。plan/本書/summary/traceabilityとmanifestの全保存後、レビュー中freezeへ渡す。
+
+対象3手順。新承認と別の内容確認後に107claims/CIと内部76/差分44を再照合し、実4produces plan/instructions/summary/traceabilityとmanifestを全保存する。同一製品の重い再試験は追加せず、既存exact commandsは不足回収用として保持。FR9.3/NFR2/NFR3のASan GAP・wasm未検証・品質下限を維持する。親diaryをレビュー前に確定し、依頼からterminalまで全書込とjj snapshotを停止する。以下Steps19〜21は履歴。
+
+## 新attempt Steps19〜21の実行方針
+
+今回の3手順は現在107claims/snapshotと保存CIの再照合、記録最小整合、レビュー前固定。内部76件・差分44件の既存rawとsourceが一致する範囲で証拠を再利用し、重い再試験を追加しない。現在FR9.3/NFR2/NFR3のASan GAPを維持する。親diaryの読取なしheading anchored追記をレビュー依頼前に完了し、依頼からterminal記録までsource/成果物書込とjj snapshot操作を停止する。以下の正確なcommandsは不足回収用として保持する。新attemptの承認・別の内容確認前は実行しない。
+
+下記の準備・成功値は過去実装の履歴であり、今回の現在 source の証明として自動採用しない。現在 runner と専用 test files を先に確認し、署名済み CI 4d52be0a の該当ログと現在 bytes の一致で結果を再利用する。再利用できない範囲だけ下記 exact U4 commands を実行する。新規 product defect の syscall/guest ケースは native-first、内部層は test-after。
+
+手元は macOS arm64。mise の Rust/cargo 実体を glob で解決し、nightly-2026-10-01 と --locked を維持する。差分の合否は実機 x86-64 Linux の GitHub Actions で確認する。Docker Desktop は Docker VMM を維持し、scripts/linux-dev.sh の QEMU 結果と実機の結果を混同しない。手元の失敗があれば原因と該当ケースを記録する。
+
+今回は現在 source と各 CI case を対応させる記録復旧が中心。現在ソースでの ASan syscall_args/mmu_ops 各600秒は証拠が結び付かなければ未検証/GAP として Build and Test に渡す。履歴の完走値を現在成功と記さない。件数、比較mask、30秒watchdog、coverage80%、各600秒、依存・toolchainは維持する。
+
 ## 現在の観測と準備
 
 Rust cargo test が既存 runner。直前 U2 の workspace success は保存済みの引継ぎ証拠で、U4 target/filter はまだ存在しない。今回 Part 1 では tests を実行していない。以下は承認後に bootstrap し、件数を検査して初めて runnable とする。方法は native-first syscall/guest と内部 layer test-after の custom、Standard（各 component 5〜8 件以上）。

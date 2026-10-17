@@ -1,5 +1,5 @@
 //! Checked Linux x86-64 signal frame codec. Offsets are observed by signals-14.
-use crate::{AltStack, Process, SS_DISABLE, SignalAction};
+use crate::{AltStack, SS_DISABLE, SignalAction, ThreadState};
 use paludarium_cpu::{CpuState, flag, reg};
 use paludarium_mmu::AddressSpace;
 use paludarium_types::{GuestAddr, USER_ADDRESS_LIMIT};
@@ -89,7 +89,7 @@ pub(crate) fn on_altstack(cpu: &CpuState, stack: AltStack) -> bool {
             .checked_sub(stack.sp)
             .is_some_and(|offset| offset < stack.size)
 }
-pub(crate) fn queue(process: &mut Process, signal: PendingSignal) {
+pub(crate) fn queue(process: &mut ThreadState, signal: PendingSignal) {
     if signal.number == 18 {
         process.stopped = false;
         process.pending.retain(|s| !matches!(s.number, 19..=22));
@@ -112,7 +112,7 @@ pub(crate) fn queue(process: &mut Process, signal: PendingSignal) {
 /// then the thread-pending queue before the process-pending queue. Each queue
 /// selects eligible standard signals before the lowest real-time number. Queue
 /// position breaks ties, preserving FIFO within the same real-time number.
-pub(crate) fn next_pending(process: &Process, skip_ignored: bool) -> Option<usize> {
+pub(crate) fn next_pending(process: &ThreadState, skip_ignored: bool) -> Option<usize> {
     process
         .pending
         .iter()
@@ -159,7 +159,7 @@ pub(crate) fn next_pending(process: &Process, skip_ignored: bool) -> Option<usiz
         .map(|(index, _)| index)
 }
 pub(crate) fn install(
-    process: &mut Process,
+    process: &mut ThreadState,
     cpu: &mut CpuState,
     mem: &AddressSpace,
     signal: PendingSignal,
@@ -265,7 +265,7 @@ pub(crate) fn install(
     Ok(())
 }
 pub(crate) fn restore(
-    process: &mut Process,
+    process: &mut ThreadState,
     cpu: &mut CpuState,
     mem: &AddressSpace,
 ) -> Result<(), ()> {
@@ -343,7 +343,7 @@ pub(crate) struct RealTimer {
     pub deadline: Option<u64>,
     pub interval: u64,
 }
-pub(crate) fn expire_timer(process: &mut Process, now: u64) {
+pub(crate) fn expire_timer(process: &mut ThreadState, now: u64) {
     if let Some(deadline) = process.timer.deadline
         && now >= deadline
     {

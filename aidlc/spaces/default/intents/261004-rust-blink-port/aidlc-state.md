@@ -35,7 +35,7 @@
 - **In Progress**: code-generation
 
 ## Runtime State
-- **Revision Count**: 0
+- **Revision Count**: 2
 - **Construction Checkpoints**: enabled
 - **Construction Iteration**: unit-major
 - **Construction Execution**: serial
@@ -48,7 +48,27 @@
 
 
 
-- **Construction Verification Command**: "C:\Program Files\Git\bin\bash.exe" scripts/linux-dev.sh cargo test --locked --workspace
+- **Construction Verification Command**: python3 aidlc/spaces/default/intents/261004-rust-blink-port/verification/verify-native-ci.py
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -125,9 +145,9 @@ Per unit: [TBD]
 - **Current Stage**: code-generation
 - **Next Stage**: build-and-test
 - **Status**: Running
-- **Last Updated**: 2026-10-07T10:45:17Z
+- **Last Updated**: 2026-10-08T00:40:29Z
 
-- **Construction Autonomy Mode**: autonomous
+- **Construction Autonomy Mode**: gated
 
 ## Session Resume Point
 - **Last Completed Stage**: delivery-planning

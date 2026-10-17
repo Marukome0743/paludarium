@@ -9,6 +9,8 @@
 //! the supported scalar BMI instructions; SIMD VEX, EVEX and XOP are reported
 //! as [`DecodeError::Unsupported`]. Later units extend [`Mnemonic`].
 #![forbid(unsafe_code)]
+#[cfg(test)]
+mod u3_tests;
 
 use iced_x86 as iced;
 use paludarium_types::GuestAddr;
@@ -53,6 +55,10 @@ macro_rules! mnemonics {
         #[non_exhaustive]
         pub enum Mnemonic {
             $($name,)*
+            /// Legacy scalar-double move (distinct from string MOVSD).
+            MovsdSse,
+            /// Legacy scalar-double compare (distinct from string CMPSD).
+            CmpsdSse,
             Jcc(Condition),
             Setcc(Condition),
             Cmovcc(Condition),
@@ -68,14 +74,249 @@ macro_rules! mnemonics {
 }
 
 mnemonics!(
-    Add, Adc, Sub, Sbb, And, Or, Xor, Cmp, Test, Inc, Dec, Neg, Not, Shl, Shr, Sar, Imul, Mul, Div,
-    Idiv, Bt, Mov, Movsx, Movsxd, Movzx, Cdqe, Cdq, Cqo, Lea, Xchg, Cmpxchg, Push, Pop, Pushfq,
-    Popfq, Call, Ret, Jmp, Leave, Nop, Endbr64, Syscall, Hlt, Movsb, Movsd, Movsq, Stosb, Stosd,
-    Stosq, Movsw, Stosw, Lodsb, Lodsw, Lodsd, Lodsq, Cmpsb, Cmpsw, Cmpsd, Cmpsq, Scasb, Scasw,
-    Scasd, Scasq, Rol, Ror, Rcl, Rcr, Shld, Shrd, Bsf, Bsr, Tzcnt, Lzcnt, Popcnt, Bswap, Bts, Btr,
-    Btc, Xadd, Cmpxchg8b, Cmpxchg16b, Cbw, Cwde, Cwd, Clc, Stc, Cmc, Cld, Std, Lahf, Sahf, Jrcxz,
-    Jecxz, Loop, Loope, Loopne, Ud2, Adcx, Adox, Andn, Bzhi, Movbe, Mulx, Pext, Rorx, Shlx, Shrx,
-    Enter, Xlatb, Pushf, Popf, Movaps, Movups, Movdqa, Movdqu, Pxor, Xorps,
+    Add,
+    Adc,
+    Sub,
+    Sbb,
+    And,
+    Or,
+    Xor,
+    Cmp,
+    Test,
+    Inc,
+    Dec,
+    Neg,
+    Not,
+    Shl,
+    Shr,
+    Sar,
+    Imul,
+    Mul,
+    Div,
+    Idiv,
+    Bt,
+    Mov,
+    Movsx,
+    Movsxd,
+    Movzx,
+    Cdqe,
+    Cdq,
+    Cqo,
+    Lea,
+    Xchg,
+    Cmpxchg,
+    Push,
+    Pop,
+    Pushfq,
+    Popfq,
+    Call,
+    Ret,
+    Jmp,
+    Leave,
+    Nop,
+    Endbr64,
+    Syscall,
+    Hlt,
+    Movsb,
+    Movsd,
+    Movsq,
+    Stosb,
+    Stosd,
+    Stosq,
+    Movsw,
+    Stosw,
+    Lodsb,
+    Lodsw,
+    Lodsd,
+    Lodsq,
+    Cmpsb,
+    Cmpsw,
+    Cmpsd,
+    Cmpsq,
+    Scasb,
+    Scasw,
+    Scasd,
+    Scasq,
+    Rol,
+    Ror,
+    Rcl,
+    Rcr,
+    Shld,
+    Shrd,
+    Bsf,
+    Bsr,
+    Tzcnt,
+    Lzcnt,
+    Popcnt,
+    Bswap,
+    Bts,
+    Btr,
+    Btc,
+    Xadd,
+    Cmpxchg8b,
+    Cmpxchg16b,
+    Cbw,
+    Cwde,
+    Cwd,
+    Clc,
+    Stc,
+    Cmc,
+    Cld,
+    Std,
+    Lahf,
+    Sahf,
+    Jrcxz,
+    Jecxz,
+    Loop,
+    Loope,
+    Loopne,
+    Ud2,
+    Adcx,
+    Adox,
+    Andn,
+    Bzhi,
+    Movbe,
+    Mulx,
+    Pext,
+    Rorx,
+    Shlx,
+    Shrx,
+    Enter,
+    Xlatb,
+    Pushf,
+    Popf,
+    Movaps,
+    Movups,
+    Movdqa,
+    Movdqu,
+    Movq,
+    Punpcklqdq,
+    Pxor,
+    Xorps,
+    Addpd,
+    Addps,
+    Addsd,
+    Andnpd,
+    Andpd,
+    Andps,
+    Blendvps,
+    Comisd,
+    Cvtdq2ps,
+    Cvtsi2sd,
+    Cvtss2sd,
+    Cvttps2dq,
+    Cvttsd2si,
+    Cvttss2si,
+    Divpd,
+    Divsd,
+    Divss,
+    Lddqu,
+    Ldmxcsr,
+    Maxsd,
+    Minsd,
+    Movapd,
+    Movd,
+    Movddup,
+    Movhlps,
+    Movhpd,
+    Movhps,
+    Movlhps,
+    Movlpd,
+    Movlps,
+    Movmskpd,
+    Movmskps,
+    Movss,
+    Movupd,
+    Mulpd,
+    Mulsd,
+    Orpd,
+    Orps,
+    Packssdw,
+    Packsswb,
+    Packuswb,
+    Paddb,
+    Paddd,
+    Paddq,
+    Paddusw,
+    Paddw,
+    Palignr,
+    Pand,
+    Pandn,
+    Pblendw,
+    Pcmpeqb,
+    Pcmpeqd,
+    Pcmpeqw,
+    Pcmpgtb,
+    Pcmpgtd,
+    Pcmpgtw,
+    Pextrb,
+    Pextrd,
+    Pextrq,
+    Pextrw,
+    Pinsrb,
+    Pinsrd,
+    Pinsrq,
+    Pinsrw,
+    Pmaddubsw,
+    Pmaddwd,
+    Pmaxub,
+    Pminub,
+    Pmovmskb,
+    Pmovzxdq,
+    Pmulhuw,
+    Pmulhw,
+    Pmullw,
+    Pmuludq,
+    Por,
+    Psadbw,
+    Pshufb,
+    Pshufd,
+    Pshufhw,
+    Pshuflw,
+    Pslld,
+    Pslldq,
+    Psllq,
+    Psllw,
+    Psrad,
+    Psraw,
+    Psrld,
+    Psrldq,
+    Psrlq,
+    Psrlw,
+    Psubb,
+    Psubd,
+    Psubq,
+    Psubusb,
+    Psubusw,
+    Psubw,
+    Ptest,
+    Punpckhbw,
+    Punpckhdq,
+    Punpckhqdq,
+    Punpckhwd,
+    Punpcklbw,
+    Punpckldq,
+    Punpcklwd,
+    Shufpd,
+    Shufps,
+    Sqrtps,
+    Sqrtsd,
+    Subpd,
+    Subsd,
+    Ucomisd,
+    Ucomiss,
+    Unpckhpd,
+    Unpcklpd,
+    Unpcklps,
+    Xorpd,
+    Sha256rnds2,
+    Sha256msg1,
+    Sha256msg2,
+    Aesenc,
+    Aesenclast,
+    Pclmulqdq,
+    Cpuid,
+    Stmxcsr,
 );
 
 fn condition(code: iced::ConditionCode) -> Option<Condition> {
@@ -104,6 +345,15 @@ fn condition(code: iced::ConditionCode) -> Option<Condition> {
 fn map_mnemonic(insn: &iced::Instruction) -> Option<Mnemonic> {
     use iced::Mnemonic as M;
     let m = insn.mnemonic();
+    if matches!(
+        insn.code(),
+        iced::Code::Movsd_xmm_xmmm64 | iced::Code::Movsd_xmmm64_xmm
+    ) {
+        return Some(Mnemonic::MovsdSse);
+    }
+    if insn.code() == iced::Code::Cmpsd_xmm_xmmm64_imm8 {
+        return Some(Mnemonic::CmpsdSse);
+    }
     if m == M::Pause {
         return Some(Mnemonic::Nop);
     }
@@ -397,7 +647,16 @@ fn is_string(m: Mnemonic) -> bool {
 
 /// Decodes the instruction at the start of `bytes`, located at `rip`.
 pub fn decode(bytes: &[u8], rip: GuestAddr) -> Result<Instruction, DecodeError> {
-    let mut decoder = iced::Decoder::with_ip(64, bytes, rip.0, iced::DecoderOptions::NONE);
+    // iced-x86 1.21.0 subtracts truncated host pointers when calculating an
+    // instruction's length. Keep the maximum x86 instruction (15 bytes) in a
+    // 16-byte-aligned buffer so that read cannot cross a 4 GiB boundary.
+    #[repr(align(16))]
+    struct AlignedInstruction([u8; 15]);
+    let mut input = AlignedInstruction([0; 15]);
+    let len = bytes.len().min(input.0.len());
+    input.0[..len].copy_from_slice(&bytes[..len]);
+    let mut decoder =
+        iced::Decoder::with_ip(64, &input.0[..len], rip.0, iced::DecoderOptions::NONE);
     let insn = decoder.decode();
     if insn.is_invalid() {
         return Err(match decoder.last_error() {
@@ -406,6 +665,10 @@ pub fn decode(bytes: &[u8], rip: GuestAddr) -> Result<Instruction, DecodeError> 
         });
     }
     let mnemonic = map_mnemonic(&insn).ok_or(DecodeError::Unsupported)?;
+    // Same-half selectors are assigned; ignored immediate bits stay ignored.
+    if mnemonic == Mnemonic::Pclmulqdq && !matches!(insn.immediate8() & 0x11, 0 | 0x11) {
+        return Err(DecodeError::Unsupported);
+    }
     let integer_vex = insn.encoding() == iced::EncodingKind::VEX
         && matches!(
             mnemonic,
@@ -526,6 +789,24 @@ pub fn decode(bytes: &[u8], rip: GuestAddr) -> Result<Instruction, DecodeError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decode_fuzz_reproducer_and_instruction_length_boundaries() {
+        // jit_compile's crash input: the first eight bytes are its guest RIP.
+        let bytes = [
+            0x4a, 0x48, 0x05, 0xff, 0x4a, 0x4a, 0xe1, 0x4a, 0x48, 0x05, 0x6e, 0x3b, 0x27, 0x4a,
+            0x4a, 0x05, 0xff, 0x93, 0x3f, 0x93, 0x93, 0x93, 0x93, 0x93,
+        ];
+        let rip = GuestAddr(0xe14a_4ae1_e100_e100);
+        for len in [0, 1, 14, 15, 16, bytes.len()] {
+            let result = decode(&bytes[..len], rip);
+            if len > 15 {
+                assert_eq!(result, decode(&bytes[..15], rip));
+            }
+        }
+        let nop = [0x90; 16];
+        assert_eq!(decode(&nop, rip), decode(&nop[..15], rip));
+    }
 
     #[test]
     fn u2_cmps_repe_keeps_implicit_width() {
@@ -691,8 +972,11 @@ mod tests {
             decode(&[0xc5, 0xf9, 0xef, 0xc0], RIP),
             Err(DecodeError::Unsupported)
         );
-        // cpuid is valid but not supported in U1.
-        assert_eq!(decode(&[0x0f, 0xa2], RIP), Err(DecodeError::Unsupported));
+        // XGETBV remains outside the explicitly assigned virtual CPU profile.
+        assert_eq!(
+            decode(&[0x0f, 0x01, 0xd0], RIP),
+            Err(DecodeError::Unsupported)
+        );
     }
 
     #[test]
@@ -737,6 +1021,29 @@ mod tests {
         let i = decode(&[0x66, 0x0f, 0xef, 0xc0], RIP).unwrap();
         assert_eq!(i.mnemonic, Mnemonic::Pxor);
         assert_eq!(i.operand(1), Some(Operand::Register(Register::Xmm(0))));
+    }
+
+    #[test]
+    fn decodes_legacy_movq_and_low_qword_unpack() {
+        let i = decode(&[0x66, 0x48, 0x0f, 0x6e, 0xc0], RIP).unwrap();
+        assert_eq!(i.mnemonic, Mnemonic::Movq);
+        assert_eq!(i.operand(0), Some(Operand::Register(Register::Xmm(0))));
+        assert_eq!(
+            i.operand(1),
+            Some(Operand::Register(Register::Gpr { index: 0, size: 8 }))
+        );
+        let i = decode(&[0x66, 0x0f, 0x6c, 0xc1], RIP).unwrap();
+        assert_eq!(i.mnemonic, Mnemonic::Punpcklqdq);
+        assert_eq!(i.operand(1), Some(Operand::Register(Register::Xmm(1))));
+        // MMX and AVX remain outside the supported legacy XMM forms.
+        assert_eq!(
+            decode(&[0x0f, 0x6f, 0xc0], RIP),
+            Err(DecodeError::Unsupported)
+        );
+        assert_eq!(
+            decode(&[0xc5, 0xf9, 0x6c, 0xc1], RIP),
+            Err(DecodeError::Unsupported)
+        );
     }
 
     #[test]

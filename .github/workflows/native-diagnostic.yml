@@ -1,0 +1,124 @@
+name: Native x86-64 diagnostic
+
+on:
+  push:
+    branches: [codex/native-x86-diagnostic]
+
+permissions:
+  contents: read
+
+jobs:
+  expectations:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Capture native instruction expectations before repair
+        shell: bash
+        run: |
+          set -o pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools binutils python3
+          {
+            uname -a
+            lscpu
+            dpkg-query -W musl musl-tools
+            mkdir -p target/native-expectations
+            musl-gcc -static -O1 -nostdlib -fno-stack-protector -fno-builtin -fno-asynchronous-unwind-tables -fcf-protection=none -mno-red-zone -fno-tree-loop-distribute-patterns -fno-pie -no-pie -I tests/guests/insn -o target/native-expectations/insn-sse tests/guests/insn/sse.c
+            target/native-expectations/insn-sse
+            bash tests/guests/u2/build.sh target/native-expectations
+            for scenario in cmps-start cmps-partial cmps-budget scas-start scas-partial scas-budget; do
+              echo "$scenario"
+              target/native-expectations/observe "$scenario"
+            done
+            objdump -d target/native-expectations/observe
+          } 2>&1 | tee native-expectations.log
+      - name: Retain native expectations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-expectations-${{ matrix.os }}
+          path: native-expectations.log
+          retention-days: 7
+      - name: Capture U9 native expectations before implementation
+        shell: bash
+        run: |
+          set -o pipefail
+          test "$(uname -m)" = x86_64
+          bash tests/guests/u9/build.sh target/guests/u9
+          python3 tests/guests/u9/oracle.py target/guests/u9 2>&1 | tee native-u9-expectations.log
+      - name: Retain U9 native expectations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-u9-expectations-${{ matrix.os }}
+          path: native-u9-expectations.log
+          retention-days: 7
+  bookworm:
+    runs-on: ubuntu-latest
+    container: rust:1-bookworm
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Confirm native x86-64 with the local guest compiler environment
+        run: |
+          uname -a
+          test "$(uname -m)" = x86_64
+          lscpu
+          apt-get update
+          apt-get install -y --no-install-recommends musl-tools binutils python3
+          dpkg-query -W musl musl-tools
+          rustup show active-toolchain
+      - name: Compare all workspace tests on native Bookworm
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked --workspace --no-fail-fast 2>&1 | tee native-bookworm.log
+      - name: Retain Bookworm diagnostic log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-bookworm-log
+          path: native-bookworm.log
+          retention-days: 7
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Confirm native x86-64 runner
+        run: |
+          uname -a
+          test "$(uname -m)" = x86_64
+          lscpu
+          rustup show active-toolchain
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          dpkg-query -W musl musl-tools
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Run unchanged workspace checks
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked --workspace --no-fail-fast 2>&1 | tee native-workspace.log
+      - name: Retain diagnostic log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-workspace-log
+          path: native-workspace.log
+          retention-days: 7
