@@ -14,8 +14,8 @@ use std::{
 
 struct NodeBridge;
 impl ExecutionBridge for NodeBridge {
-    fn execute(&self, _: u32, code: &[u8], state: &mut [u64; 18]) -> bool {
-        let script = "import{readFileSync}from'node:fs';const [code,values]=readFileSync(0,'utf8').trim().split('\\n');const memory=new WebAssembly.Memory({initial:1,maximum:65536,shared:true});const state=new BigUint64Array(memory.buffer,64,18);state.set(values.split(',').map(BigInt));const instance=new WebAssembly.Instance(new WebAssembly.Module(Buffer.from(code,'hex')),{env:{memory}});if(instance.exports.run(64)!==0)process.exit(1);console.log(Array.from(state,String).join(','));";
+    fn execute(&self, _: u32, code: &[u8], state: &mut paludarium_jit::JitState) -> bool {
+        let script = "import{readFileSync}from'node:fs';const [code,values]=readFileSync(0,'utf8').trim().split('\\n');const memory=new WebAssembly.Memory({initial:1,maximum:65536,shared:true});const state=new BigUint64Array(memory.buffer,64,50);state.set(values.split(',').map(BigInt));const instance=new WebAssembly.Instance(new WebAssembly.Module(Buffer.from(code,'hex')),{env:{memory}});if(instance.exports.run(64)!==0)process.exit(1);console.log(Array.from(state,String).join(','));";
         let mut child =
             Command::new(std::env::var("PALUDARIUM_TEST_NODE").expect("actual Node executable"))
                 .args(["--input-type=module", "-e", script])
@@ -83,8 +83,8 @@ fn xmms(row: &str, key: &str) -> [u128; 16] {
 
 /// Integer-SSE register forms (Loop-back 1 Step32). Inputs come from the same
 /// fresh native run (`in_*`); the bytes are checked against the native row.
-/// Translation is not required yet: these forms are added to the JIT later,
-/// so today the JIT path must fall back and equal the interpreter.
+/// Since Step34 the JIT translates these forms, so a run where they only
+/// fell back to the interpreter is rejected (see `compare_sse`).
 const SSE_CASES: [(&str, &[u8]); 15] = [
     ("sse-pshufd-00", &[0x66, 0x0f, 0x70, 0xc1, 0x00, 0xc3]),
     (
@@ -163,6 +163,27 @@ fn compare_sse(name: &str, code: &[u8], row: &str) {
     let actual = execute(code, address, false, true, &prepare);
     assert_eq!(actual.0, interpreter.0, "{name}: interpreter/JIT state");
     assert_eq!((actual.2, interpreter.2), (0, 0), "{name}: no fault");
+    // Require real JIT execution of the SSE forms, not a fallback-only pass.
+    assert!(actual.3 > 0, "{name}: real translation execution required");
+    if name == "sse-jcc-loop" {
+        // Only the 32-bit SUB (not a translated form) may fall back; the
+        // five SSE forms of each of the four iterations must be translated.
+        assert!(
+            actual.4.translated_instructions >= 20,
+            "{name}: translated SSE instructions"
+        );
+        assert!(
+            actual.4.interpreted <= 4,
+            "{name}: interpreter fallbacks {}",
+            actual.4.interpreted
+        );
+    } else {
+        assert_eq!(actual.4.interpreted, 0, "{name}: no SSE fallback");
+        assert_eq!(
+            actual.4.translated_instructions, interpreter.4.interpreted,
+            "{name}: every instruction translated"
+        );
+    }
     let state = &actual.0;
     for (index, value) in gprs(row, "gpr").into_iter().enumerate() {
         // RSP is an address and is not observed natively.
@@ -201,7 +222,7 @@ fn execute(
     fault: bool,
     jit: bool,
     prepare: &dyn Fn(&mut CpuState),
-) -> (CpuState, AddressSpace, i32, u64) {
+) -> (CpuState, AddressSpace, i32, u64, Run) {
     let mut memory = AddressSpace::new();
     memory
         .map(
@@ -227,6 +248,7 @@ fn execute(
     prepare(&mut state);
     let cache = WasmCodeCache::new(Arc::new(NodeBridge));
     let mut signal = 0;
+    let mut interpreted = 0;
     // Stop before RET, matching native values immediately before its return.
     for _ in 0..64 {
         let mut byte = [0];
@@ -235,10 +257,12 @@ fn execute(
             break;
         }
         let reason = if jit {
-            cache
-                .try_run(&mut state, &memory)
-                .unwrap_or_else(|| paludarium_cpu::run(&mut state, &memory, 1))
+            cache.try_run(&mut state, &memory).unwrap_or_else(|| {
+                interpreted += 1;
+                paludarium_cpu::run(&mut state, &memory, 1)
+            })
         } else {
+            interpreted += 1;
             paludarium_cpu::run(&mut state, &memory, 1)
         };
         match reason {
@@ -254,7 +278,25 @@ fn execute(
             other => panic!("unexpected instruction exit: {other:?}"),
         }
     }
-    (state, memory, signal, cache.statistics().executed_blocks)
+    let statistics = cache.statistics();
+    (
+        state,
+        memory,
+        signal,
+        statistics.executed_blocks,
+        Run {
+            translated_instructions: statistics.executed_instructions,
+            interpreted,
+        },
+    )
+}
+
+/// How one JIT-enabled run split its instructions.
+struct Run {
+    /// Instructions executed inside real wasm translations.
+    translated_instructions: u64,
+    /// Instructions that fell back to the interpreter.
+    interpreted: u64,
 }
 
 #[test]
@@ -413,7 +455,7 @@ fn u14_fresh_linux_instruction_differential() {
         }
         for ((name, code), row) in SSE_CASES.into_iter().zip(native.lines().skip(cases.len())) {
             compare_sse(name, code, row);
-            println!("{name}: native/interpreter/JIT-fallback match (XMM0-15, GPR, RIP, flags)");
+            println!("{name}: native/interpreter/real-wasm match (XMM0-15, GPR, RIP, flags)");
         }
     }
 }

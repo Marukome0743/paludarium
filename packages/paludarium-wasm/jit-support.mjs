@@ -30,9 +30,12 @@ export function costSnapshot(exports) {
     sites:{capacity:16384,retainedOnly:true,rows},
     counters: Object.fromEntries(COST_FIELDS.map((name, index) => [name, String(exports.u14_cost_stat(index))])) };
 }
+// Rust scratch state (paludarium_jit::STATE_BYTES): GPR0..15, RFLAGS, RIP as
+// u64 words (144 bytes), then XMM0..15 as 16-byte little-endian lanes.
+export const JIT_STATE_BYTES = 400;
 export function jitImports(memory, cost = null, now = () => performance.now()) {
   const compiled = new Map();
-  const rollback = new Uint8Array(144);
+  const rollback = new Uint8Array(JIT_STATE_BYTES);
   const equalBytes = (stored, view) => {
     if (stored.length !== view.length) return false;
     for (let i = 0; i < view.length; i++) if (stored[i] !== view[i]) return false;
@@ -84,7 +87,7 @@ export function jitImports(memory, cost = null, now = () => performance.now()) {
         return equalBytes(entry.bytes, bytes) ? 0 : -1;
       }
       if (running || !Number.isInteger(key) || key <= 0 || codeLength > 65536
-          || stateLength !== 144 || !range(codePointer, codeLength) || !range(statePointer, stateLength)) return -1;
+          || stateLength !== JIT_STATE_BYTES || !range(codePointer, codeLength) || !range(statePointer, stateLength)) return -1;
       // A module ID is allocated in shared Rust and never reused. Each Worker
       // separately compiles it; JS objects/handles never cross Worker boundaries.
       const entry = compiled.get(key);

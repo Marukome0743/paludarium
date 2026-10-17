@@ -99,17 +99,17 @@ function bridge(cost, now) {
 test("cost collector disabled path never reads clock or calls diagnostic exports", () => {
   const s = bridge(null, () => { throw Error("disabled clock"); });
   assert.equal(s.jit.prepare(1, 512, bytes.length), 0);
-  assert.equal(s.jit.execute(1, 512, bytes.length, 64, 144), 0);
+  assert.equal(s.jit.execute(1, 512, bytes.length, 64, 400), 0);
 });
 test("cost collector times only cold actual compilation and counts bytes separately", () => {
   const counters = Array(COST_FIELDS.length).fill(0), times = [10, 11];
   const s = bridge((field, value) => { counters[field] += value; }, () => times.shift());
   assert.equal(s.jit.prepare(1, 512, bytes.length), 0);
-  assert.equal(s.jit.execute(1, 512, bytes.length, 64, 144), 0);
+  assert.equal(s.jit.execute(1, 512, bytes.length, 64, 400), 0);
   assert.equal(s.jit.prepare(1, 512, bytes.length), 0);
-  assert.equal(s.jit.execute(1, 512, bytes.length, 64, 144), 0);
+  assert.equal(s.jit.execute(1, 512, bytes.length, 64, 400), 0);
   assert.equal(counters[14], 1); assert.equal(counters[15], 1000000);
-  assert.equal(counters[18], bytes.length); assert.equal(counters[19], 288);
+  assert.equal(counters[18], bytes.length); assert.equal(counters[19], 800);
   assert.equal(times.length, 0);
 });
 test("cost collector records failed cold compilation while preserving state", () => {
@@ -153,7 +153,7 @@ test("no-touch query prepared entry preserves scratch and compile counts", () =>
   const counters = Array(COST_FIELDS.length).fill(0);
   const s = bridge((f,v) => counters[f] += v, () => 1);
   assert.equal(s.jit.prepare(1,512,bytes.length),0);
-  new Uint8Array(s.memory.buffer,64,144).fill(77);
+  new Uint8Array(s.memory.buffer,64,400).fill(77);
   const before = new Uint8Array(s.memory.buffer).slice();
   for(let i=0;i<8;i++) assert.equal(s.jit.execute(1,512,bytes.length,0,0),0);
   assert.deepEqual(new Uint8Array(s.memory.buffer),before);
@@ -186,5 +186,5 @@ test("no-touch query invalid ranges and ordinary-module sentinel are rejected", 
   for(const args of [[0,512,bytes.length,0,0],[1,0,bytes.length,0,0],[1,65530,bytes.length,0,0], [1,512,bytes.length,64,0]]) assert.equal(s.jit.execute(...args),-1);
   ordinary.jit.prepare(1,512,bytes.length);
   assert.equal(ordinary.jit.execute(1,512,bytes.length,0,0),-1);
-  assert.equal(ordinary.jit.execute(1,512,bytes.length,64,144),0);
+  assert.equal(ordinary.jit.execute(1,512,bytes.length,64,400),0);
 });

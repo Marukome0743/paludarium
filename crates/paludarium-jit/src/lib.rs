@@ -11,7 +11,9 @@ mod cache;
 mod emit;
 #[cfg(feature = "u14-cost-profile")]
 pub mod microbench;
-pub use bridge::{ExecutionBridge, JitStatistics, WasmCodeCache};
+pub use bridge::{
+    ExecutionBridge, JitState, JitStatistics, STATE_BYTES, STATE_WORDS, WasmCodeCache,
+};
 #[cfg(feature = "u14-cost-profile")]
 pub use paludarium_cpu::jit_cost;
 
@@ -134,8 +136,9 @@ mod eligibility_tests {
         check(&[0x0f, 5], false);
     }
     #[test]
-    fn u14_eligible_rejects_sse_and_return() {
-        check(&[0x66, 0x0f, 0xef, 0xc0], false);
+    fn u14_eligible_sse_register_only_and_rejects_return() {
+        check(&[0x66, 0x0f, 0xef, 0x07], false);
+        check(&[0x66, 0x0f, 0xef, 0xc0], true);
         check(&[0xc3], false);
     }
     #[test]

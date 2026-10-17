@@ -247,7 +247,7 @@ mod tests {
     use super::*;
     struct Never;
     impl ExecutionBridge for Never {
-        fn execute(&self, _: u32, _: &[u8], _: &mut [u64; 18]) -> bool {
+        fn execute(&self, _: u32, _: &[u8], _: &mut crate::JitState) -> bool {
             panic!("no execution in these fixtures")
         }
     }
@@ -478,7 +478,7 @@ mod length_tests {
     use super::*;
     struct NoBridge;
     impl ExecutionBridge for NoBridge {
-        fn execute(&self, _: u32, _: &[u8], _: &mut [u64; 18]) -> bool {
+        fn execute(&self, _: u32, _: &[u8], _: &mut crate::JitState) -> bool {
             panic!("interpreter fixture must not enter JIT")
         }
     }

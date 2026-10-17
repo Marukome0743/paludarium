@@ -57,16 +57,30 @@ impl paludarium_jit::ExecutionBridge for WorkerJit {
             _ => None,
         }
     }
-    fn execute_ready(&self, module: u32, wasm: &[u8], state: &mut [u64; 18]) -> Option<bool> {
+    fn execute_ready(
+        &self,
+        module: u32,
+        wasm: &[u8],
+        state: &mut paludarium_jit::JitState,
+    ) -> Option<bool> {
         #[cfg(feature = "u14-cost-profile")]
         {
             use paludarium_jit::jit_cost::{self, Counter};
             jit_cost::add(Counter::JsTransitions, 1);
             jit_cost::add(Counter::ExecuteCalls, 1);
         }
-        // SAFETY: live immutable code and exclusively borrowed Rust scratch;
-        // the import cannot compile and reports missing Worker-local entries.
-        match unsafe { jit_execute(module, wasm.as_ptr(), wasm.len(), state.as_mut_ptr(), 144) } {
+        // SAFETY: live immutable code and exclusively borrowed Rust scratch of
+        // exactly STATE_BYTES (GPR, RFLAGS, RIP and XMM0..15); the import
+        // cannot compile and reports missing Worker-local entries.
+        match unsafe {
+            jit_execute(
+                module,
+                wasm.as_ptr(),
+                wasm.len(),
+                state.as_mut_ptr(),
+                paludarium_jit::STATE_BYTES,
+            )
+        } {
             -2 => None,
             result => Some(result == 0),
         }
@@ -77,12 +91,21 @@ impl paludarium_jit::ExecutionBridge for WorkerJit {
         // SAFETY: immutable Rust code bytes stay live for the synchronous import.
         unsafe { jit_prepare(module, wasm.as_ptr(), wasm.len()) == 0 }
     }
-    fn execute(&self, module: u32, wasm: &[u8], state: &mut [u64; 18]) -> bool {
+    fn execute(&self, module: u32, wasm: &[u8], state: &mut paludarium_jit::JitState) -> bool {
         #[cfg(feature = "u14-cost-profile")]
         paludarium_jit::jit_cost::add(paludarium_jit::jit_cost::Counter::JsTransitions, 1);
         // SAFETY: both buffers belong to Rust, are live for this synchronous
-        // import, and state is exclusively borrowed scratch, never guest memory.
-        unsafe { jit_execute(module, wasm.as_ptr(), wasm.len(), state.as_mut_ptr(), 144) == 0 }
+        // import, and state is exclusively borrowed scratch of exactly
+        // STATE_BYTES, never guest memory.
+        unsafe {
+            jit_execute(
+                module,
+                wasm.as_ptr(),
+                wasm.len(),
+                state.as_mut_ptr(),
+                paludarium_jit::STATE_BYTES,
+            ) == 0
+        }
     }
 }
 fn table<T>(t: &Table<T>) -> &Mutex<BTreeMap<u32, T>> {
