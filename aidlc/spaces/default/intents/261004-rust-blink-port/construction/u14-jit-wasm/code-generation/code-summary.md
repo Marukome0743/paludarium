@@ -1,6 +1,14 @@
 # U14 JIT Wasm — 208fd965
 
-## 現行Steps30〜44（Build and TestのLoop-back 1）
+## 現在の状態（2026-10-18 JST、Step47）
+
+- Steps45〜46（traceability.jsonと手順書の現行・履歴の区別、新しい入口 `verification/loopback1-next/u14_candidate_v2.py` と binding-07）の記録は、同じ場所の `README.md` の「Step46」節を参照する。この節にはその内容を書き写さない。
+- 正式な確認コマンドは、2026-10-18から、U15の `entry-e3c29d1d/entry-c.py`（e3c29d1dを起点にした入口）である。U14の入口（`u14_candidate.py`・`u14_candidate_v2.py`）とそのbinding・回帰は履歴として、中身を変えずに残す。
+- U14のcheckpointは、今の正式な確認コマンド（`entry-c.py`）で確かめる。
+- Step47では、再レビュー（`reviews/review-11.md`）で残していたMinor R-14・R-15・R-16を記録で直した：traceability.jsonのFR8.2・FR6.3・FR7.2の行にU13 quality `39028305765` とU14 quality `39030957672` がattempt 2で成功したことを足し（attempt 1の失敗は下のStep38の項）、NFR2・NFR3・NFR8の行の参照先をFR8.1の行（7 run）に直し、この節を足した。statusとtargetは変えていない。製品・workflow・入口・bindingは変えず、CI・性能測定・pushはしていない。
+- 下の「履歴：」の節は、それぞれ書いた時点の記録で、本文は変えていない。その中の「今の正式確認コマンド」「採用はまだ」などは、書いた時点のことである。
+
+## 履歴：現行Steps30〜44（Build and TestのLoop-back 1）（作成時の見出しは「現行Steps30〜44（Build and TestのLoop-back 1）」）
 
 2026-10-18 JST。Build and Testで、FR8.3（JITありが有意に速い）が不合格になった（head `bd247f1e`、run `39009460781`、AMD EPYC 7763、Node v26.12.0、JITなし平均5.4972097502秒・JITあり平均5.4987317293秒、p=529/1024=0.5166015625。原本は `construction/build-and-test/verification/ci-bd247f1e/u14-quality-39009460781/u11-node/performance/observations.json`）。人はRetry with fixを選び、U14のCode Generationに戻した。この節は、そのあとのSteps30〜44の記録である。
 
@@ -38,7 +46,7 @@
 
 診断は別featureで120 fields・有限site表・microbenchmark・通常module samplingを持つ。通常moduleには診断exportsを入れず、公開C9/C10/C12、Noop/既定CodeCache、MMU generation/lock、Worker局所性、kill/syscall/fault境界、144byte rollbackを保持した。U14限定aube overlayは元source/lockを保存し、ビルドコピーのrustlsのみ0.23.46とする。監査例外は増やしていない。
 
-## 正式性能と4環境
+## 履歴：正式性能と4環境（208fd965）
 
 検証済み：品質成功後のmanual run `38840433942`、元Node job `116781223162` の固定20標本＋warmup各1を1回だけ取得した。interpreter平均5.856590694899998秒、JIT平均5.696370400100001秒、改善2.7357263491%、全1024符号反転の片側p=7/1024=0.0068359375。全probe成功、時間制限、実JIT実行、固定seed/順序と実commandの成功を原本から再検査した。同moduleの性能再試行は禁止した。
 
@@ -48,7 +56,7 @@ module `fb2fdb513866fd86979b6b5f9127f256a5bcfcb50ba1ccba49a220fb819258e2`、fres
 
 同じformal入力組に対し、Node/Chromium/Firefoxは元実行、Safariは単発retryの原本を用い、112 CPU/native/interpreter/JIT比較と32 filesystem比較を再計算した。主なコマンドは実体Node26.12.0による `verification/jit-u9-next/recheck-formal-environments-208fd965.mjs`（exit0、112/32）、実体Python3.15.0による `bind-formal-208fd965-isolated-node.py`（exit0、classification=PASS）。この別checkerは初回whole-run failureを明示保持する。旧binderは変更していない。完全な引数は `formal-analysis-208fd965-01/outer-execution.json`、Node再計算の引数は同dirの `recheck-exit.json` に保持した。
 
-## 正しさ・品質・U9
+## 履歴：正しさ・品質・U9（208fd965）
 
 検証済み：主品質 `38836468601` 35/35、source-bound `38836468596` 7/7、standalone fuzz `38836468590` 13/13が成功した。39品質ZIPと11 source-bound ZIPの計50ZIP/2492raw filesを公式digest・展開全bytesと照合した。signed875は署名tree、compiled223は通常/診断build closureとして区別する。source-manifestは所有91パスを申告する。90パスは現在root bytesと署名pinが一致し、残りの `packages/paludarium-wasm/tests/u14-single.mjs` は未送信のローカル診断helperとして別SHAで固定する。このhelperはCI未検証で、compiled223・正式測定・配布importの入力には含めない。rootの全875一致とは主張しない。
 
@@ -62,7 +70,7 @@ module `fb2fdb513866fd86979b6b5f9127f256a5bcfcb50ba1ccba49a220fb819258e2`、fres
 
 主な純粋再検査は `check-quality-208fd965.py`、`recheck-quality-208fd965.mjs`、`check-fuzz13-official.py`、`u9-official-208fd965-proof.json`、`finalize-step25-208fd965.py` に記録する。argv/stdout/stderr/exit・公式run/job/catalog・ZIP・展開原本は `verification/jit-u9-next/` 配下に保存した。checker exit0だけをunit完了と呼ばない。
 
-## 保存した失敗と残る確認
+## 履歴：保存した失敗と残る確認（208fd965）
 
 旧3成果物の完全bytesは `verification/jit-u9-next/step5-before-208fd965/` に保存した。旧canonical/binding・旧023/109 fields・全正式性能失敗・5aの早期実行逸脱・初回CI/解析helper失敗を保持した。元c9の失敗はstderr欠落により原因未特定・未再現のままであり、今回のSafari/CPU環境失敗をその原因と断定しない。
 

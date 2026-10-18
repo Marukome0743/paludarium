@@ -1,6 +1,54 @@
 # U15 限定検証手順
 
-## 今回：Step19〜21（e3c29d1dを起点にした新しい入口）
+## 今回：Step22〜28（公開の前の仕上げ）
+
+Runner は既存のものを使う（JS は node:test、Python は unittest、Rust は cargo）。部品と道具なので、実装の後に試験を書いて実行する（test-after）。Python は `/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B`、Node は `~/.local/share/mise/installs/node/26.12.0/bin/node`（`PALUDARIUM_TEST_NODE` にも同じ実体のパスを渡す）を使う。
+
+Step22（Safari の道具）：
+
+```sh
+~/.local/share/mise/installs/node/26.12.0/bin/node --test packages/paludarium-wasm/tests/u11-browser-driver.test.mjs
+```
+
+期待する結果：既存の試験とあわせてすべて成功する。足した試験は次の 3 つ。
+- safaridriver の時間切れで 1 回だけやり直して成功する。
+- ほかの失敗ではやり直さない。2 回目も失敗したら止まる。
+- 1 回目の失敗が結果に残る。
+
+本物の Safari での効き目は、push の後の `u11-safari-stability.yml`（10 回）で確かめる。
+
+Step23（CI の整理）：
+
+```sh
+actionlint .github/workflows/*.yml
+```
+
+期待する結果：新しい指摘を足さない。既存の指摘（`ci.yml` 4 件、`u12-quality.yml` 5 件）は件数を記録する。消す workflow は ci-config.md の一覧の 21 個ちょうど。必須の 7 workflow の名前は変えない。
+
+Step24（公開の部品）：
+
+```sh
+/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B -m unittest discover -s tests/release -p 'test_*.py' -v
+/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B scripts/release/check.py --mode validate
+/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B scripts/release/check.py --mode package-check
+```
+
+期待する結果：tests/release の全件が成功する（前の 146 件を減らさない）。validate と package-check は終了コード 0。coverage は Step14b の方法（validate と package-check を `--append`）で、4 ファイルとも 80% 以上。
+
+一つずつの module で動かすときも `discover` の形にそろえる。test_api と test_publish_adapter は、同じフォルダの試験を読むため。
+
+Step25（入口の版 d）：
+
+```sh
+/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B -m unittest discover -s aidlc/spaces/default/intents/261004-rust-blink-port/construction/u15-release/code-generation/verification/entry-e3c29d1d -p 'test_*.py' -v
+/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u15-release/code-generation/verification/entry-e3c29d1d/entry-d.py --entry-sha256 <entry-d.py の SHA-256> --binding-sha256 <binding-e04.json の SHA-256>
+```
+
+期待する結果：回帰はすべて成功し、skip は 0 件。本番の実行（e3c29d1d、差 0）は exit 0。
+
+Step27・28：push と CI の起動は、その前に人の承認を受ける。新しい head では binding-e05 を作り、本番の実行で exit 0 を確かめてから採用を伺う。
+
+## 実施済み：Step19〜21（e3c29d1dを起点にした新しい入口）
 
 Runnerは標準のunittestを使う（新しいPython依存は入れない）。入口は検証の道具なので、実装の後に回帰を書いて実行する（test-after）。commandはすべて `verification/entry-e3c29d1d/` の中のファイルに限る。製品のファイルは変えない。
 

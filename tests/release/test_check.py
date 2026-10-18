@@ -7,12 +7,20 @@ import check,policy
 CANARY={'U15_OIDC_CRATES_IO_TOKEN':'canary-oidc-0001','U15_FIRST_CRATES_IO_TOKEN':'canary-crates-0002','U15_FIRST_NPM_TOKEN':'canary-npm-0003'}
 # (canary values are test strings, never real tokens)
 
+# Declared owners as the release environment variables give them (fixture logins, not real accounts).
+OWNERS={'crates':['github:aletheia-works:owners','paludarium-owner'],'npm':['paludarium-owner']}
+OWNER_ENV={'U15_CRATES_IO_OWNERS':'paludarium-owner, github:aletheia-works:owners','U15_NPM_MAINTAINERS':'paludarium-owner'}
+
 class Registry:
-    """In-memory crates.io/npm presence and version digests; never reaches the network.
-    `versions` maps a present name to the digest of its 0.1.0 (None: an unreadable body)."""
-    def __init__(self,present=(),status=None,unreachable=False,versions=None):
+    """In-memory crates.io/npm presence, version digests and owners; never reaches the network.
+    `versions` maps a present name to the digest of its 0.1.0 (None: an unreadable body);
+    `yanked` names versions that crates.io marks yanked; `owners` maps a present name to its
+    owner logins (default: the declared OWNERS; None: an unreadable owners body)."""
+    def __init__(self,present=(),status=None,unreachable=False,versions=None,yanked=(),owners=None):
         self.present,self.status,self.unreachable,self.requests=set(present),status,unreachable,[]
-        self.versions=dict(versions or {})
+        self.versions=dict(versions or {});self.yanked=set(yanked);self.owners=dict(owners or {})
+    def owners_of(self,name):
+        return self.owners.get(name,OWNERS['npm' if name==check.NPM_NAME else 'crates'])
     def __call__(self,request,timeout):
         self.requests.append(request);url=request.full_url
         if self.unreachable:raise urllib.error.URLError('down')
@@ -20,11 +28,16 @@ class Registry:
         if url.startswith(check.NPM_PACKAGE_URL):name,rest=check.NPM_NAME,url[len(check.NPM_PACKAGE_URL)+1:]
         else:name,_,rest=url[len(check.CRATES_API):].partition('/')
         if name not in self.present:raise urllib.error.HTTPError(url,404,'absent',{},None)
-        if not rest:return io.BytesIO(b'{}')
+        owners=self.owners_of(name)
+        if not rest:
+            if name==check.NPM_NAME and owners is not None:return io.BytesIO(json.dumps(dict(maintainers=[dict(name=n,email=n+'@example.invalid') for n in owners])).encode())
+            return io.BytesIO(b'{}')
+        if rest=='owners':
+            return io.BytesIO(b'{}' if owners is None else json.dumps(dict(users=[dict(id=i,login=n,kind='team' if n.startswith('github:') else 'user') for i,n in enumerate(owners)])).encode())
         if name not in self.versions:raise urllib.error.HTTPError(url,404,'absent',{},None)
         digest=self.versions[name]
         if digest is None:return io.BytesIO(b'{}')
-        body=dict(version=rest,dist=dict(integrity=digest)) if name==check.NPM_NAME else dict(version=dict(num=rest,checksum=digest))
+        body=dict(version=rest,dist=dict(integrity=digest)) if name==check.NPM_NAME else dict(version=dict(num=rest,checksum=digest,yanked=name in self.yanked))
         return io.BytesIO(json.dumps(body).encode())
 
 def approved_set(order):
@@ -98,6 +111,9 @@ class CheckTests(unittest.TestCase):
             with self.subTest(name):
                 result=self.absence(Registry(present=[name]))
                 self.assertFalse(result['absent']);self.assertEqual(result['present'],[name])
+                # Step24 (review 04, finding 6b): without approved digests a present name is never an empty `mismatched`.
+                self.assertFalse(result['resume']);self.assertEqual([m['name'] for m in result['mismatched']],[name])
+                self.assertIn('approved digests not supplied',result['mismatched'][0]['reason'])
     def test_registry_presence_unknown(self):
         with self.assertRaisesRegex(ValueError,'503'):self.absence(Registry(status=503))
         with self.assertRaisesRegex(ValueError,'unreachable'):self.absence(Registry(unreachable=True))
@@ -133,17 +149,52 @@ class CheckTests(unittest.TestCase):
         for name in ('release.yml','u15-acceptance.yml','release-check.yml'):
             self.assertNotRegex((ROOT/'.github/workflows'/name).read_text(),r'(?i)echo[^\n]*(token|secret)')
     # Step17 (R-16): resuming a stopped first publication.
-    def presence(self,registry,approved):
+    def presence(self,registry,approved,owners=OWNERS):
         order=policy.inventory(ROOT)['order']
         with patch.object(check.urllib.request,'urlopen',side_effect=registry):
-            return check.registries_absent(order,'0.1.0',approved)
+            return check.registries_absent(order,'0.1.0',approved,owners)
     def test_resume_when_present_versions_match(self):
         order=policy.inventory(ROOT)['order'];approved=approved_set(order);done=order[:3]+[check.NPM_NAME]
         registry=Registry(present=done,versions={n:approved[n] for n in done});result=self.presence(registry,approved)
         self.assertEqual((result['absent'],result['resume'],result['mismatched']),(False,True,[]))
-        self.assertEqual(result['matching'],sorted(done));self.assertEqual(len(registry.requests),12+4)
+        # 12 presence queries, then for each of the 4 present names its version and its owners
+        self.assertEqual(result['matching'],sorted(done));self.assertEqual(len(registry.requests),12+4*2)
         versions=[r.full_url for r in registry.requests[12:]]
         self.assertIn(check.CRATES_API+order[0]+'/0.1.0',versions);self.assertIn(check.NPM_PACKAGE_URL+'/0.1.0',versions)
+        self.assertIn(check.CRATES_API+order[0]+'/owners',versions);self.assertIn(check.NPM_PACKAGE_URL,versions)
+    # Step24 (review 04, finding 3): owners and maintainers of present names must be the declared ones.
+    def test_resume_refused_when_owners_differ(self):
+        order=policy.inventory(ROOT)['order'];approved=approved_set(order);done=[order[0],order[1],check.NPM_NAME]
+        versions={n:approved[n] for n in done}
+        for owners,who in (({order[1]:['someone-else']},order[1]),({order[0]:OWNERS['crates']+['extra-owner']},order[0]),
+                           ({check.NPM_NAME:['someone-else']},check.NPM_NAME),({check.NPM_NAME:[]},check.NPM_NAME),({order[0]:None},order[0])):
+            with self.subTest(who=who,owners=owners):
+                result=self.presence(Registry(present=done,versions=versions,owners=owners),approved)
+                self.assertFalse(result['resume']);self.assertEqual([m['name'] for m in result['mismatched']],[who])
+                self.assertRegex(result['mismatched'][0]['reason'],'differ from the declared owners|owners unreadable')
+    def test_resume_refused_without_declared_owners(self):
+        order=policy.inventory(ROOT)['order'];approved=approved_set(order)
+        result=self.presence(Registry(present=[order[0]],versions={order[0]:approved[order[0]]}),approved,None)
+        self.assertFalse(result['resume']);self.assertIn('expected owners not declared',result['mismatched'][0]['reason'])
+    def test_expected_owners_from_release_environment(self):
+        self.assertEqual(check.expected_owners(OWNER_ENV),OWNERS)
+        for env in ({},dict(OWNER_ENV,U15_NPM_MAINTAINERS=''),dict(OWNER_ENV,U15_CRATES_IO_OWNERS=' , '),{'U15_CRATES_IO_OWNERS':'a'}):
+            self.assertIsNone(check.expected_owners(env))
+    # Step24 (review 04, finding 4): a yanked crates.io version never matches.
+    def test_resume_refused_when_version_yanked(self):
+        order=policy.inventory(ROOT)['order'];approved=approved_set(order);done=order[:2]
+        result=self.presence(Registry(present=done,versions={n:approved[n] for n in done},yanked=[order[1]]),approved)
+        self.assertFalse(result['resume']);self.assertEqual(result['matching'],[order[0]])
+        self.assertEqual(result['mismatched'],[dict(name=order[1],reason='published 0.1.0 is yanked')])
+    def test_published_digest_needs_an_explicit_unyanked_flag(self):
+        def body(row):return patch.object(check,'registry_version',return_value=dict(version=row))
+        with body(dict(num='0.1.0',checksum='a'*64,yanked=False)):self.assertEqual(check.published_digest('paludarium-types','0.1.0'),('present','a'*64))
+        with body(dict(num='0.1.0',checksum='a'*64,yanked=True)):self.assertEqual(check.published_digest('paludarium-types','0.1.0'),('yanked',None))
+        with body(dict(num='0.1.0',checksum='a'*64)):self.assertEqual(check.published_digest('paludarium-types','0.1.0'),('unreadable',None))
+        with body(dict(num='0.1.0',checksum='a'*64,yanked='false')):self.assertEqual(check.published_digest('paludarium-types','0.1.0'),('unreadable',None))
+    def test_registry_state_refuses_yanked(self):
+        with self.assertRaisesRegex(ValueError,'yanked'):check.registry_state(200,dict(version='1',digest='x',yanked=True),'1','x')
+        self.assertEqual(check.registry_state(200,dict(version='1',digest='x',yanked=False),'1','x')['state'],'PUBLISHED_MATCH')
     def test_resume_refused_when_one_version_differs(self):
         order=policy.inventory(ROOT)['order'];approved=approved_set(order);done=order[:3]
         versions={n:approved[n] for n in done};versions[order[1]]='f'*64

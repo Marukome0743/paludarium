@@ -7,8 +7,6 @@ name: U13 current full quality
 
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/u13-windows-host]
 
 permissions:
   contents: read

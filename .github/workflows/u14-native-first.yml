@@ -2,14 +2,6 @@ name: U14 fresh native oracle before wasm translation
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches: [codex/u14-jit-wasm]
-    paths:
-      - .github/workflows/u14-native-first.yml
-      - scripts/u14-native-first.py
-      - tests/guests/u14/**
-      - tests/guests/u10/build.py
-      - tests/guests/u10/evidence.py
 permissions:
   contents: read
 jobs:

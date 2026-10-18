@@ -2,8 +2,6 @@ name: U11 affected MMU filesystem and kernel fuzz
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches: [codex/u11-quality-verification]
 permissions:
   contents: read
 jobs:

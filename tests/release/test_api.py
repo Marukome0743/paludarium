@@ -58,12 +58,13 @@ class ApiTests(unittest.TestCase):
         with patch.dict(os.environ,self.env),patch.object(check,'github',return_value=dict(total_count=0,workflow_runs=[])):
             with self.assertRaises(ValueError):check.fetch_acceptance(ROOT)
     # Step14b (Q4): the first-publication declaration needs a live absence check.
-    def authorize_first(self,registry,approved=None,**fields):
+    def authorize_first(self,registry,approved=None,owner_env=None,**fields):
         self.s.update(dict(trusted_publishers_registered=False,first_publication=True),**fields);self.path.write_text(json.dumps(self.s))
-        from test_check import approved_set
+        from test_check import approved_set,OWNER_ENV
         self.approved=approved or approved_set(self.inv['order']);self.loaded=[]
         def digests(root,head):self.loaded.append(head);return self.approved
-        with patch.dict(os.environ,self.env),patch.object(check,'github',side_effect=self.github),patch.object(policy,'inventory',return_value=self.inv),\
+        env=dict(self.env,**(OWNER_ENV if owner_env is None else owner_env))
+        with patch.dict(os.environ,env),patch.object(check,'github',side_effect=self.github),patch.object(policy,'inventory',return_value=self.inv),\
              patch.object(check.urllib.request,'urlopen',side_effect=registry),patch.object(check,'approved_digests',side_effect=digests):
             return check.authorize(ROOT,self.path)
     def test_first_publication_authorized_when_absent(self):
@@ -83,7 +84,21 @@ class ApiTests(unittest.TestCase):
         approved=approved_set(self.inv['order']);done=self.inv['order'][:4]
         registry=Registry(present=done,versions={n:approved[n] for n in done})
         self.assertEqual(self.authorize_first(registry,approved)['authentication'],'first-publication-token')
-        self.assertEqual(self.loaded,['a'*40]);self.assertEqual(len(registry.requests),12+4)
+        self.assertEqual(self.loaded,['a'*40]);self.assertEqual(len(registry.requests),12+4*2)
+    # Step24 (review 04, finding 3): the expected owners come from the release environment variables.
+    def test_first_publication_resume_refused_on_other_owner_or_undeclared_owners(self):
+        from test_check import Registry,approved_set
+        approved=approved_set(self.inv['order']);done=self.inv['order'][:2]
+        versions={n:approved[n] for n in done}
+        with self.assertRaisesRegex(ValueError,'resume refused: '+done[1]+': owners someone-else differ'):
+            self.authorize_first(Registry(present=done,versions=versions,owners={done[1]:['someone-else']}),approved)
+        with self.assertRaisesRegex(ValueError,'expected owners not declared'):
+            self.authorize_first(Registry(present=done,versions=versions),approved,owner_env={'U15_CRATES_IO_OWNERS':'','U15_NPM_MAINTAINERS':''})
+    def test_first_publication_resume_refused_on_yanked_version(self):
+        from test_check import Registry,approved_set
+        approved=approved_set(self.inv['order']);done=self.inv['order'][:1]
+        with self.assertRaisesRegex(ValueError,'is yanked'):
+            self.authorize_first(Registry(present=done,versions={n:approved[n] for n in done},yanked=done),approved)
     def test_first_publication_resume_refused_on_one_difference(self):
         from test_check import Registry,approved_set
         approved=approved_set(self.inv['order']);done=self.inv['order'][:4]+['@paludarium/wasm']

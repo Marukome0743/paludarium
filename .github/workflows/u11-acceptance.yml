@@ -80,6 +80,22 @@ jobs:
       - name: Enable actual Safari on CI runner
         if: matrix.environment == 'safari'
         run: sudo safaridriver --enable
+      - name: Warm up actual Safari once (never fails the job)
+        if: matrix.environment == 'safari'
+        timeout-minutes: 3
+        continue-on-error: true
+        run: |
+          set +e
+          # A fresh runner launches Safari for the first time here, so safaridriver does not wait for that first launch (NFR7).
+          bounded() { perl -e 'alarm shift; exec @ARGV or exit 127' "$@"; }
+          bounded 30 open -a Safari; echo "warm-up: open -a Safari exit=$?"
+          sleep 10
+          echo "warm-up: Safari processes after launch: $(pgrep -x Safari | tr '\n' ' ')"
+          bounded 30 osascript -e 'with timeout of 20 seconds' -e 'tell application "Safari" to quit' -e 'end timeout'; echo "warm-up: osascript quit exit=$?"
+          sleep 3
+          pkill -x Safari; echo "warm-up: pkill -x Safari exit=$? (1 means no Safari process was left)"
+          echo "warm-up: Safari processes at the end: $(pgrep -x Safari | tr '\n' ' ')"
+          exit 0
       - name: Launcher component and C12 boundary tests
         if: matrix.environment == 'node'
         run: |

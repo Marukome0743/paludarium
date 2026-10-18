@@ -1,6 +1,17 @@
 # コード生成の結果（u1-skeleton）
 
-## 現行Step72：正式確認コマンドの修正（2026-10-17、再レビューiteration 4・5のMinor）
+## 現在の状態（2026-10-18 JST、Step73）
+
+本節はStep73の記録である。再レビュー（`reviews/review-45.md`）で残していたMinor R-27・R-28を、記録で閉じた。直したのは、この記録と `verification/loopback1-next/README.md` の「この方法の限界」だけである。`new_candidate.py`・binding・回帰・証拠・製品source・CI・ほかのUnitの記録・計画・unit-test-instructions.md・verification-command.txtは変更していない。traceability.jsonのstatusとtargetも変えていない。
+
+- R-27：Step72で足した `verify_module_receipt` と `verify_ci_jobs` の検査のうち、receiptのjob ID（artifactを上げたjobがci-jobsのjob IDと一致し、attempt 1で成功し、後のattemptで再実行されていないこと）、artifactの `created_at`（attempt 2の開始より前であること）、attempt 2で再実行されたjobの集合（attempt 1で失敗したjobとちょうど同じであること）には、拒否の回帰が無い。これらの検査を外しても回帰29件はすべて通る。
+- R-28：`result.json` の `claim_scope` の `performance_1ceae86c.scope` には、artifactの中にmoduleのsource digestが無く、GitHubのmetadataのhead（`workflow_run.head_sha`・build jobのhead・runのhead）で結び付けているという限界が書かれていない。この限界は `verification/loopback1-next/README.md` とこの記録にだけある。
+- `verification/loopback1-next/new_candidate.py` は、2026-10-18から正式な確認コマンドではない。今の正式な確認コマンドはU15の入口 `aidlc/spaces/default/intents/261004-rust-blink-port/construction/u15-release/code-generation/verification/entry-e3c29d1d/entry-c.py`（人が2026-10-18に採用）である。`new_candidate.py`・binding・回帰は中身を変えずに履歴として残すので、R-27の回帰とR-28の1文は足していない。
+- U1のcheckpointは、`entry-e3c29d1d/entry-c.py` で確かめる。U1の記録は `aidlc/` の中にあり、この入口が比べる製品のファイルではない。
+
+未検証：この作業では `entry-c.py` を実行していない（checkpointで実行する）。独立再レビューはこの記録の後に行う。
+
+## 履歴：Step72：正式確認コマンドの修正（2026-10-17、再レビューiteration 4・5のMinor。作成時の見出しは「現行Step72：…」）
 
 本節はStep72の記録である。人はStep71の新しい正式確認コマンド（command SHA-256 `f6c6d3216bbfbe4c483427a985e0ebd8d59732910e6cfb208dbffc84e2fc038b`）を採用し、再レビュー（iteration 4）のMinor 5件（R-20〜R-24）と、再レビュー（iteration 5）の指摘2件も直すよう求めた。コマンド行は変えず、checker・binding・回帰・記録を直した。製品source・CI・lock・mise.toml・.gitignore・ほかのUnitの記録・旧verification原本・source-manifest.json・binding-01.json・Step71の実行原本は変更していない。
 
@@ -18,7 +29,7 @@
 
 未検証（iteration 5の指摘1）：checkerの中身が変わったので、コマンド行が同じでも、修正後のchecker（SHA-256 `a7836f9b…`、binding-02 `6315b735…`）は人がもう一度採用（Construction Verification Commandの決定・回答・設定）してから、U1のcheckpointで検証する。この作業では採用していない。Step71のchecker（`09ec238a…`）での成功は、2026-10-17T13:01Zのcheckpoint検証（exit 0、`run-1792242039966644000-88257/`）を含めて履歴であり、修正後のcheckerの成功とは読み替えない。初回crashのcore欠落、U15別配布Wasmの受理（GAP）、歴史jit_compile panic、セッションID保証は解決していない。独立再レビューはこの記録の後に行う。
 
-## 前回Step71：新しい正式確認コマンドの候補（2026-10-17、Build and TestのLoop-back 1）
+## 履歴：Step71：新しい正式確認コマンドの候補（2026-10-17、Build and TestのLoop-back 1。作成時の見出しは「前回Step71：…」）
 
 本節はStep71の記録である。製品source・CI・lock・mise.toml・.gitignore・ほかのUnitの記録・旧verification原本・source-manifest.jsonは変更していない。下の「R05／R11…（Steps67〜69）」節は、その時点（署名be45）の記録として保持する。
 

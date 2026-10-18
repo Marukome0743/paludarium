@@ -7,7 +7,7 @@
 - **Scope**: rust-blink-port
 - **Start Date**: 2026-10-04T00:35:38Z
 - **State Version**: 8
-- **Active Agent**: aidlc-pipeline-deploy-agent
+- **Active Agent**: aidlc-developer-agent
 - **Worktree Path**:
 - **Bolt Refs**:
 - **Practices Affirmed Timestamp**: 2026-10-04T07:07:58Z
@@ -33,8 +33,8 @@
 
 ## Execution Plan Summary
 - **Total Stages**: 18
-- **Completed**: 16
-- **In Progress**: none
+- **Completed**: 13
+- **In Progress**: code-generation
 
 ## Runtime State
 - **Revision Count**: 8
@@ -471,6 +471,18 @@
 
 
 
+
+
+
+
+
+
+- **Active Unit**: u15-release
+
+- **Unit Stage**: code-generation
+
+- **Unit State**: in-progress
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 
@@ -514,9 +526,9 @@ Per unit: [TBD]
 - [S] nfr-requirements — EXECUTE
 - [ ] nfr-design — SKIP
 - [ ] infrastructure-design — SKIP
-- [x] code-generation — EXECUTE
-- [x] build-and-test — EXECUTE
-- [x] ci-pipeline — EXECUTE
+- [-] code-generation — EXECUTE
+- [ ] build-and-test — EXECUTE
+- [ ] ci-pipeline — EXECUTE
 
 ### OPERATION PHASE
 - [ ] deployment-pipeline — SKIP
@@ -529,14 +541,14 @@ Per unit: [TBD]
 
 ## Current Status
 - **Lifecycle Phase**: CONSTRUCTION
-- **Current Stage**: ci-pipeline
-- **Next Stage**: none
-- **Status**: Completed
-- **Last Updated**: 2026-10-18T13:24:14Z
+- **Current Stage**: code-generation
+- **Next Stage**: build-and-test
+- **Status**: Running
+- **Last Updated**: 2026-10-18T14:49:01Z
 
 - **Construction Autonomy Mode**: gated
 
 ## Session Resume Point
-- **Last Completed Stage**: ci-pipeline
-- **Next Action**: Workflow complete
+- **Last Completed Stage**: delivery-planning
+- **Next Action**: Execute Code Generation
 - **Pending Artifacts**: none

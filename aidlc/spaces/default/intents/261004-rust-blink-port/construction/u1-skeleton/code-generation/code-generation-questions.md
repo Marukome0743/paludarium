@@ -7,15 +7,15 @@ instead of in chat, write your answer after `[Answer]:` and tell me in chat when
 
 Approve the code plan for u1-skeleton?
 
-- Builds: 今回の実行対象はStep72。人が採用した新しい正式確認コマンド（Step71）について、再レビュー（iteration 4）のMinor 5件と、再レビュー（iteration 5）の指摘2件を直す。性能測定のmoduleを1ceae86cのbuildに結び付け、CIをjobの単位で確かめ、同じheadのattempt 1の失敗を記録し、拒否の回帰を9件足して29件にし、古...
-- Touches: U1の記録の `verification/loopback1-next/`（checker・新しいbinding・証拠JSON・回帰・README.md）、U1のcode-summary.md・unit-test-instructions.md・traceability.json。コマンド行は変えない。製品・CI・lock・mise.toml・.gitignore・ほかのU...
-- Tests: 新しいコマンドがexit 0、回帰29件がすべて期待どおり、正式sensor 2件、独立再レビュー。checkerの中身が変わるので、修正後のcheckerを人にもう一度採用してもらってから、U1のcheckpointを検証する。
+- Builds: 今回の実行対象はStep73。残しているMinor 2件（独立再レビュー review-45 の R-27・R-28）を記録で閉じる。2件とも `verification/loopback1-next/new_candidate.py` についての指摘だが、正式な確認コマンドは2026-10-18にU15の新しい入口 `entry-e3c29d1d/entry-c.py` に...
+- Touches: U1の記録の `verification/loopback1-next/README.md`（「この方法の限界」に1項目）とcode-summary.md（現在の状態の1節）。new_candidate.py・binding・回帰・製品・CI・ほかのUnitの記録は変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-c.py）でのcheckpointがexit 0になることで確かめる。
 
 Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u1-skeleton/code-generation/code-generation-plan.md
 Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u1-skeleton/code-generation/unit-test-instructions.md
 
-[Approval Fingerprint]: sha256:v3:3fe447647b63dea9ee5a7f2dec899c9bc815cb25d5b6030119e75d43af305282
-[Planned Source]: 1d007e145356f21dddcf25b720db0726f7c889de86622e95a640349d7b723024
+[Approval Fingerprint]: sha256:v3:cdaf2abf2470753577463ac6f78e542f9fe4003f7e705919d01246337af63c62
+[Planned Source]: 8f384bcf3afd1329dcc5a361d8b519ce044c22fb95e239ec4f85d158de15f7b3
 
 - A. Approve Plan
 - B. Request Changes

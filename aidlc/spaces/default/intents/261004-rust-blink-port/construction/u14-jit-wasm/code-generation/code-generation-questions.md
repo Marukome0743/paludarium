@@ -7,15 +7,15 @@ instead of in chat, write your answer after `[Answer]:` and tell me in chat when
 
 Approve the code plan for u14-jit-wasm?
 
-- Builds: Steps45〜46。Steps42〜44の再レビューの指摘を直す：traceability.jsonの親FR8の行（Major）とNFR1・2・3・8、FR6.3・7.2の行（Minor）に、現行と履歴（208fd965）の区別を付け、手順書の古い「今回…」の見出しを履歴に変える（Step45）。それを許す新しい入口 `u14_candidate_v2.py`（bindin...
-- Touches: U14のtraceability.json・手順書の見出し・計画、必要ならcode-summary.mdの冒頭の節に1項目、`verification/loopback1-next/` の新しいファイル（入口・binding-07・回帰）とREADMEの節。
-- Tests: 新しい入口の回帰（拒否と正の対照、Step43の履歴の固定）を書いて実行する。仮採用のコマンドが想定どおり止まることと、新しい入口がexit 0になることを確かめる。正式sensor、独立再レビュー、人の採用のあとの正式checkpoint。
+- Builds: Step47。残しているMinor 3件（再レビュー review-11 の R-14・R-15・R-16）を記録で直す。U14の記録は、もう正式な確認コマンドの入口（binding-07）に固定されていない（2026-10-18から正式な確認コマンドはU15の `entry-e3c29d1d/entry-c.py`）ので、traceability.json と code-s...
+- Touches: U14の traceability.json（FR8.2・FR6.3・FR7.2 と NFR2・NFR3・NFR8 の行の説明文だけ）、code-summary.md（先頭に「現在の状態」の1節）、計画と手順書。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-c.py）でのcheckpointがexit 0になることで確かめる。
 
 Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u14-jit-wasm/code-generation/code-generation-plan.md
 Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u14-jit-wasm/code-generation/unit-test-instructions.md
 
-[Approval Fingerprint]: sha256:v3:ce28f18b1ffb1bcad7e4bde6f43d144ea68d4153bda6dd1d131a36fd9a1679fd
-[Planned Source]: 7e7c7cf13e75c7be724cda2a5b547b04e691a3b41b80f522d9d2cde05bd622db
+[Approval Fingerprint]: sha256:v3:ee0507bea79c24e11c198fb0d97a7a45115d107c0dbbfe3b0e1b602834e36775
+[Planned Source]: 8f384bcf3afd1329dcc5a361d8b519ce044c22fb95e239ec4f85d158de15f7b3
 
 - A. Approve Plan
 - B. Request Changes

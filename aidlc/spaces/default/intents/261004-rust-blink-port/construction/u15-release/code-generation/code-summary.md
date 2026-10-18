@@ -1,6 +1,51 @@
 # U15 公開実装・ローカル検証
 
-## 現在の状態（2026-10-18 JST、Step19〜21）
+## 現在の状態（2026-10-18 JST、Step22〜26）
+
+人はSafariの揺れ（NFR7）を「PRの前に直す。できれば根本的に」とし、計画のStep22〜28をPlan Approvalで承認した（内容確認 `step22-28-summary-questions.md` はLooks correct）。このattemptではStep22〜26を手元で行った（実際の作業は2026-10-18〜19 JST）。push・commit・CIの起動・tag・registryへのアクセス・トークンの扱いはしていない。外へは読み取りだけを行った：GitHubのAPIへのGET 5回（forkのrepository id、download-artifact・upload-artifactのSHAの版の2回、actionlint・shellcheckの最新版の2回）と、PyPIのcoverageの最新版の読み取り1回。作業の順は計画の番号と違い、Step25を最初に行った（入口dの本番の実行を、製品を変える前のbytesで行うため）。
+
+- **Step25（入口の新しい版d）**：`verification/entry-e3c29d1d/entry-d.py`（`7c73492e…4fac2`）、`binding-e04.json`（`0fca5fc3…1981`、head＝起点＝e3c29d1d、差0）、回帰 `test_entry_d.py`（`5548a3b0…916b`）、README の「版 d」の節を足した。entry-c・binding-e01〜e03・v1〜v4は変えていない（入口dの履歴の固定に、この入口の前の版の9ファイルを足して21ファイル）。
+  - 変わったファイルの照合は `aidlc/` の外だけにした。binding・保存したcompare・手元のgitの `aidlc/` の外の一覧がちょうど同じで、保存したcompareのファイル数が300件未満（GitHubの上限に達していない＝切り詰められていない）ことを求める。`aidlc/` の中は手元のgitだけで数え、結果の `aidlc_changed_paths` に件数と、並べた一覧のSHA-256を書く。
+  - 独立レビュー02のMinor：`aidlc/` の行の注記（「中は比べない」。`.git/`・`.jj/` は「追跡ファイルを持たない」）、再実行の許可はbindingあたり2つまで、u11-nodeのartifactの `expired: false` と `workflow_run.repository_id`＝forkの1408718913、gitは利用者・システムの設定を読まない（`GIT_CONFIG_GLOBAL` をnull device、`GIT_CONFIG_NOSYSTEM=1`、`core.fsmonitor=false`）。5件目（checkpointの記録の写しを置いたことの記録）は、下の「履歴：現在の状態（Step19〜21）」の「計画外の手順」の1つ目に書いてある。
+  - 回帰：`discover -p 'test_entry_d.py'` で46件すべて成功、skip 0。新しい検査を外すと落ちることを、ソースをメモリの中で書き換えて11か所で確かめた。フォルダ全体の `discover -p 'test_*.py'` は152件のうち4件（v1・b・cの回帰）が失敗する。どれも生きている `unit.json` が起点の写しと同じことを前提にした回帰で、その記録が後のcheckpoint（id `8123d7af-98e1-40a1-8c30-577c39f6e10c`）で置き換わったために落ちる。履歴なので変えていない。
+  - 46件の成功は製品の変更（Step22〜24）の前の作業コピーでの結果である。変更の後にもう一度実行すると、本当の作業コピーをe3c29d1dと比べる14件（正の対照のtest_01ほか）が、作業コピーの違いで失敗する（8 failures・6 errors、残り32件は成功）。新しいheadのbindingで確かめ直すのはStep28。
+  - 本番の実行（製品の変更の前、1回）：exit 0、`run-1792335808099662000-95657/result.json`（`c4cb4e11…d656`）。`changed_paths` 空、`aidlc_changed_paths` 0件、675ファイルのうち673がheadと同じbytes、`excluded_by_name` 27・`excluded_by_git_ignore` 10。
+  - **Step28への注意**：手元のcommit a7aecb72は `aidlc/` だけで741ファイルを変える。e3c29d1dから新しいheadまでのcompareはこれを含むので300件に達し、入口dは計画どおり「切り詰められているかもしれない」として拒否する。計画の文（`aidlc/` の外に限れば300件の問題を避けられる）は、GitHubの上限がcompare全体のファイル数にかかることと合わない。binding-e05を作る前に、扱い（例：compareを区間に分ける、各commitのtreeの一致で代える）を人に伺う必要がある。
+- **版e（人の判断で版dに替えた）**：上の注意を受けて、人は2026-10-18に「A で進めてください。各 commit の tree のハッシュで照らし合わせる入口の版 e を作り、独立レビューの後に採用を伺ってください。記録と製品は一緒に 1 回で push します。」と判断した。計画のStep25・28の「版d」はこの判断で版eに替わる（計画と手順書は変えていない）。`verification/entry-e3c29d1d/entry-e.py`（`c362be77…78f9`）、`binding-e05.json`（`6fa27506…c1c9d`、e3c29d1d、差0）、`test_entry_e.py`（`6a160459…6a42`）、各commitの記録 `commits-e3c29d1d.json`（`0f5d4624…a888`、読み取りのGETで保存）を作った。版dの検査はすべて残し、GitHubのcompareは使わず、保存した各commitの記録のtreeのハッシュ・親・署名を手元のgitと照合し、変わったファイルは手元のgitだけで数える（`aidlc/` の外はbindingの一覧、`aidlc/` の中は件数と一覧のSHA-256）。回帰31件はすべて成功（e3c29d1dのbytesでの正の対照は、Step22〜24の製品の変更45 pathを隠す回帰専用のoverlayで示した）。検査を外すと落ちることを13か所で確かめた。本番の実行はpushの後の新しいhead（`binding-e06.json`）で行う。版dは使わず履歴として残す。詳しくはREADMEの「版 e」。
+- **版f（独立レビュー03のMinor 1・3）**：版eの独立レビュー `verification/entry-e3c29d1d/independent-review-03.md` はREADY（Minor 6）。人の判断（原文）：「版 f で Minor 1（--no-replace-objects）と Minor 3（push 前の commit id に頼る回帰）を直してください。残りの Minor は次の更新で構いません。」に従い、`entry-f.py`（`18567771…a46f`）、`binding-e05f.json`（`5c9d99de…7fc0`、e3c29d1d、差0）、`test_entry_f.py`（`3b5061b3…a476`）を作った。gitはどこでも `--no-replace-objects` と `GIT_NO_REPLACE_OBJECTS=1` で呼び、shallowのリポジトリとgraftsのファイルは系譜の前に拒否する。回帰は一時のgitリポジトリ（351ファイルを変えるcommitとreplaceのrefを含む）で確かめる形にし、pushの前の手元のcommit idに頼らない。回帰34件はすべて成功。版eは変えず履歴として残す。本番の実行はpushの後の新しいheadで行う。残りのMinor 4件は次の更新で直す。詳しくはREADMEの「版 f」。
+- **Step22（Safariの揺れ、NFR7）**：
+  - `packages/paludarium-wasm/tests/u11-browser-driver.mjs`：session作成が、run 39114110570のattempt 1と同じsafaridriverの答え（`"error":"session not created"` かつ「timed out while connecting to a Safari instance」）で失敗したときだけ、safaridriverを止め、`/usr/bin/pkill -x Safari`（10秒の上限）でSafariを止め、2秒待って1回だけやり直す。ほかの失敗（同じ文がsession作成以外で出た場合も）はやり直さない。1回目の失敗は標準エラー（`safari_session_retry` のJSON 1行）と結果の `session_retry`（`attempts`・`retried`・`first_failure`・`safari_stopped`）に残し、2回目も失敗したら両方の失敗をエラーの文に入れて止まる。結果には、やり直さなかったときも `session_retry: {attempts: 1, retried: false, first_failure: null}` が入る（`u11-browser-check.mjs` と `u14-check.mjs` の観測のJSONに入る）。
+  - `.github/workflows/u11-acceptance.yml`：Safariのjobの `sudo safaridriver --enable` の後に、暖機の手順（`open -a Safari`、10秒待つ、`osascript` で終了、`pkill -x Safari`。各コマンドは `perl` のalarmで30秒の上限、手順は `timeout-minutes: 3`・`continue-on-error: true`・最後は `exit 0`、何をしたかをログに書く）を足した。暖機を足したのはこのworkflowだけで、`u13-wasm-acceptance.yml`・`u14-wasm-acceptance.yml` のSafariのjobにはドライバのやり直しだけが効く。
+  - 新規 `.github/workflows/u11-safari-stability.yml`（`U11 Safari stability`）：手動起動だけ、`contents: read`、actionはほかのworkflowと同じSHA。Linuxで期待結果とproduction wasmを1回作り、まっさらなmacOSのrunnerでSafariの差分（14ケース）を暖機つきで10回（matrix、`fail-fast: false`）動かす。各回は `stability.json`（合否、`session_retry`、標準エラーにやり直しのログがあるか）を含むartifact `u11-safari-stability-run-<n>` を残し、最後のjobが失敗・やり直しの回数を `u11-safari-stability-summary` にまとめる。
+  - 試験：`node --test packages/paludarium-wasm/tests/u11-browser-driver.test.mjs` は14件成功（既存10件＋新しい4件：やり直す文だけを見分ける、時間切れ→2回目で成功し1回目が結果とログに残る、ほかの失敗はやり直さない、2回目も失敗したら止まる）。既存の「session作成だけ60秒待つ」試験の期待に `session_retry` を足した。`node --test packages/paludarium-wasm/tests/u11-*.test.mjs` は35件成功。本物のSafariでの効き目は、Step27の `u11-safari-stability.yml` の1回の起動で確かめる（まだ）。
+- **Step23（CIの整理、ci-config.md どおり）**：
+  - 消したworkflow（21）：`native-diagnostic.yml`、`u1-frame-diagnostic.yml`、`u1-source-bound-verification.yml`、`u2-production-sanitizers.yml`、`u3-current-verification.yml`、`u5-current-verification.yml`、`u5-native-diagnostic.yml`、`u5-quality.yml`、`u6-current-verification.yml`、`u6-native-diagnostic.yml`、`u6-quality.yml`、`u8-current-verification.yml`、`u8-native-diagnostic.yml`、`u9-current-verification.yml`、`u10-current-verification.yml`、`u11-browser-readiness.yml`、`u11-current-verification.yml`、`u11-firefox-diagnostic.yml`、`u11-native-first.yml`、`u11-native-metadata.yml`、`u14-cost-diagnostic.yml`。消す前に、残すworkflowの `uses: ./` がどれもこの21を呼ばないことを確かめた。残りは20＋新しい `u11-safari-stability.yml` の21。
+  - `push` の条件：`ci.yml` は `main` だけ。`u12-quality`・`u13-quality`・`u14-quality`・`u1-u14-source-bound`・`u11-fuzz`・`u12-fuzz`・`u14-fuzz`・`u12-native-first`・`u13-native-first`・`u14-native-first` から古い作業ブランチの `push` を外した（手動起動と `workflow_call` は残す）。
+  - `u14-quality.yml` に `workflow_call` を足し、`nightly.yml` を `u14-fuzz.yml` と `u14-quality.yml` を呼ぶ形に作り直した（失敗したらIssue、`issues: write` はその jobだけ）。
+  - 設計と合わせるための2つの変更：(1) `u14-wasm-acceptance.yml` の速さの測定の条件を `workflow_dispatch` だけから `workflow_dispatch` または `schedule` にした（呼ばれたworkflowの `github.event_name` は呼んだ側のもので、夜間（`schedule`）から呼ぶと測定が飛ばされ、ci-config.md の「夜間に速さの判定」にならないため。pushとpull_requestでは今までどおり測らない）。(2) `tests/guests/u10/runner-tests/test_evidence.py` の、消した `u14-cost-diagnostic.yml` を読む試験を「そのファイルが無いこと」と新しい条件の文の確認に直した。U10のrunner tests（`discover -s tests/guests/u10/runner-tests`）は51件成功。
+  - 必須の7 workflowの `name:`（`CI`・`Release package checks`・`U12/U13/U14 current full quality`・`U14 fresh thirteen target ASan and LSan`・`U1 U14 current-source evidence`）は変えていない。外部のactionはすべてcommitのSHAで固定（固定されていない `uses:` は0）、既定の権限は `contents: read` のまま。
+  - actionlint 1.7.12（shellcheck 0.11.0、どちらも最新版）：21ファイルで11件。`ci.yml` 4件・`u12-quality.yml` 5件・`u11-fuzz.yml` 1件・`u12-fuzz.yml` 1件で、どれもe3c29d1dからある指摘（fuzzの2件もe3c29d1dのbytesで同じ指摘が出ることを確かめた）。新しい指摘は0。miseのshimは版が設定されていないため、入れてある実体を直接使った。
+  - 使われなくなったもの：`.github/scripts/` の診断の道具（`u3/u5/u6/u8/u10-current-diagnostic.py`、`u9-source-audit.py`）は、消したworkflowからしか呼ばれていなかった。計画にないので残した。
+- **Step24（公開の部品のMinor、独立レビュー04の3〜6）**：
+  - (3) 最初の公開の再開で、すでにある名前のcrates.ioのowners（`/api/v1/crates/<name>/owners` の `users[].login`）とnpmのmaintainers（`maintainers[].name`）が、人が `release` environmentの変数 `U15_CRATES_IO_OWNERS`・`U15_NPM_MAINTAINERS`（コンマ区切り、秘密ではない）に書いた相手とちょうど同じことを確かめる。変数がない、ownersが読めない、多い・少ない・違う、のどれでも再開を拒否する。`release.yml` の authorize と publish の手順に2つの変数を渡した（子プロセスには渡らない）。値をコードに書いていない。
+  - (4) crates.ioの版が `yanked: true` なら一致としない（`yanked: false` と書かれていなければ読めないとして拒否）。公開の繰り返しの中の照合（`registry_state`）も、yankされた版を公開済みとしない。
+  - (5) `release.yml` で、公開のjobの後に `if: always()` でartifact `u15-publication-progress-attempt-<n>`（`publication-progress.json` と dry-run・publishの `receipt.json`。トークンの値は入らない）を90日残す。`docs/release.md` の再開の手順と公開後の確かめ方をこのartifactに合わせた。
+  - (6) 試験の名前を実態に合わせた（`test_publish_loop_registry_state_refuses_different_present_digest`：authorizeを差し替えているので、止めるのは公開の繰り返しの `registry_state`）。`registries_absent(approved=None)` で名前がある場合は `mismatched` に「approved digests not supplied」を入れ、空にしない。`approved_digests` の `passed`・`local_snapshot`・tarballの数（0と2）・結果のファイルなしの拒否の試験を足した。
+  - 手元の実行（Python 3.15.0、coverage 7.16.2＝最新版）：tests/release全件（`discover`）156件成功（前の146件に10件を足した。減らした試験・skipなし）。`check.py --mode validate` exit 0（`version: 0.1.0`、`crates: 11`、`publish_eligible: false`）。`--mode package-check` exit 0（`passed: true`、`local_snapshot: true`、11 crate、npm 0.1.0、`stable_supported: false`、`published: false`）。coverage（unittestにvalidate・package-checkを `--append`）：acceptance.py 99.64%、check.py 97.15%、package.py 98.33%、policy.py 100%、`--fail-under=80` exit 0、JSONで4ファイルとも80%以上。package-checkの1回目で標準エラーを誤って `target/` の下のファイル（0 bytes）に送ったので、そのファイルは消した。
+  - ownersのAPIの形はcrates.io・npmの公開の文書の形に合わせた偽物で試しただけで、本物のregistryの応答では確かめていない。
+- **Step26（U15の記録のMinor）**：review-07のR-19〜R-22とreview-08のR-23〜R-26に、次のとおり対応した。
+  - R-19：下の「履歴：現在の状態（Loop-back 1）」の最後の箇条に、参照先の正しい名前の注記を足した。
+  - R-20・R-23（Major）：手順書 `unit-test-instructions.md` は、計画の段階で冒頭が「今回：Step22〜28」に書き直されている。今の入口の手順はStep25の行（`entry-d.py`・`binding-e04.json`）で、単体のunittestも `discover` の形にそろえると書いてある。下の「実施済み：Step19〜21」「実施済み：Step17〜18」の節の古い文（v1の `entry.py`、「Step18は承認を受けてから行う」、1行目のmoduleの並び）は、その時点の記録として読む。このattemptでは手順書を変えていない（変えないよう指示されている）。正式な確認コマンドは `aidlc/spaces/default/intents/261004-rust-blink-port/verification-command.txt` の `entry-c.py`・`binding-e03.json` である。
+  - R-21・R-22・R-24・R-25：下の「履歴：現在の状態（Step18）」と「履歴：現在の状態（Step19〜21）」に、未検証の境界、`verification-command.txt` の正しい場所、署名を手元で確かめていないこと、`tree_equal` が `upstream` の欄になったこと、READMEの「確かめていないこと」への参照の注記を足した。
+  - R-26：`traceability.json` のFR10.1・NFR8の説明文の二重の「履歴（Step18）：」を1つにした。先頭の道しるべをこの節に向けた。status（GAP）・target・idは変えていない。
+  - `source-manifest.json` は変えていない（計画のStep26に含まれないため。新しいファイルと変えたファイルの一覧はこの節にある）。
+- **まだのこと（Step27〜28）**：署名push（人の承認の後）とCI一式、`u11-safari-stability.yml` の1回の起動、新しいheadの速さの判定、入口eの新しいheadのbinding（`binding-e06.json`。人の判断で版eに替えたため、計画の「binding-e05」はe3c29d1d用に使った）、独立レビューと採用の伺い、そのあとのU11の確かめ直し。今の作業コピーはStep22〜24で製品のファイルを変えたので、正式な確認コマンド（entry-c・binding-e03）は、新しいheadのbindingを作るまでは作業コピーの違いで拒否すると見込まれる（実行していない）。
+- 確かめていないもの：本物のSafariでの暖機とやり直しの効き目、nightly・`u14-quality.yml` の `workflow_call` の実際の起動、`release.yml` の新しいartifactの手順とowners・yankedの確認の本物のregistryでの動き、実公開。FR10.1とNFR8は実公開と公開後の照合までGAPのまま。
+- 下の節は、それぞれの時点の履歴として読む。
+
+## 履歴：現在の状態（2026-10-18 JST、Step19〜21）（作成時の見出しは「現在の状態（2026-10-18 JST、Step19〜21）」）
+
+（Step26で足した注記、review-08のR-24・R-25：次の箇条の「署名と系譜」は、保存した記録のVerifiedと系譜を確かめることで、署名そのものは手元では確かめていない。計画Step19 (6)の `tree_equal` は、実装ではbindingの `upstream` の欄（使うときだけ、tree全体を `aidlc/` も含めて比べる）になった。まだ使っていないので、使う前にupstreamの実際のtreeで一致するかを確かめる必要がある。確かめていないことは `verification/entry-e3c29d1d/README.md` の「確かめていないこと（版 c）」にある。）
 
 人は確認の方法として案1（層の積み重ねをやめ、e3c29d1dを起点にした新しい入口）を選び、案 `verification/entry-e3c29d1d-proposal.md` と計画のStep19〜21を承認した（Plan Approval、内容確認 `step19-21-summary-questions.md` はLooks correct）。製品・workflow・lockは変えず、push・CI・計測・公開もしていない。
 
@@ -25,6 +70,8 @@
 - 下の節は、それぞれの時点の履歴として読む。
 
 ## 履歴：現在の状態（2026-10-18 JST、Step18）（作成時の見出しは「現在の状態（2026-10-18 JST、Step18）」）
+
+（Step26で足した注記、review-07のR-21・R-22：この節の「`verification-command.txt`」は `aidlc/spaces/default/intents/261004-rust-blink-port/verification-command.txt` のことで、v4の採用は `verification/version-allowance/pending-minor-fixes.md` にも書いてある。この時点で確かめていなかったのは、npmの許可リストで実際のprovenanceが作れること、公開jobの再実行で前のattemptの `u15-package` artifactを使えること、crates.ioの新しいcrateの作成数の制限の値である。入口v4は11ファイルをa54315f9／e3c29d1dのbytesに固定するだけで、中身の正しさはU15の試験とレビュー、CIが支える。）
 
 Step17の直し（下の「履歴：現在の状態（2026-10-18 JST、Step17）」）のあと、人の承認を受けてStep18を行った。
 
@@ -103,7 +150,7 @@ Build and TestのLoop-back 1（Step11）。U14の整数SSEのJIT（署名12d6a2f
 - 今の正式確認コマンドは、人が採用した `/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u14-jit-wasm/code-generation/verification/loopback1-next/u14_candidate_v2.py --entry-sha256 934f21bc9ca7f58d68a72dc9759df90ae1f28c63791600bb552039c3cfe0d23a --binding-sha256 425ae3e7554a84de78062723954317f0bb2bba99c41567773bc1752c63ecdd7e` である。2026-10-18のU15 checkpoint（Step11）での検証はexit 0だった。
 - Step12（Step11の再レビューのMinorへの対応）で、この節のu12-qualityの箇条と最後の箇条、traceability.jsonのFR10.1・NFR8の行の先頭、手順書の参照先と期待結果、下の履歴の節の冒頭の注記を直した。
 - FR10.1（公開）とNFR8（供給網の安全）は、実公開と公開後のregistryの照合までGAPのまま。版の決定、tag、名前所有と初回publish、Trusted Publisherと保護されたrelease environmentの設定（持ち主が設定する）が残っている。
-- 下の節は、それぞれの時点の履歴として読む。下の節の本文にある「現行」「現在」「未実施」「未検証」は、その節を書いた時点のものを指す。`U15_acceptance: GAP` は、U15の公開の受入が未完了という表示である。（Step17で足した注記：この表示は正式確認コマンドの出力のJSONの欄 `U15_acceptance` の値。詳しくは先頭の「現在の状態（2026-10-18 JST、Step17）」節のR-15。）
+- 下の節は、それぞれの時点の履歴として読む。下の節の本文にある「現行」「現在」「未実施」「未検証」は、その節を書いた時点のものを指す。`U15_acceptance: GAP` は、U15の公開の受入が未完了という表示である。（Step17で足した注記：この表示は正式確認コマンドの出力のJSONの欄 `U15_acceptance` の値。詳しくは先頭の「現在の状態（2026-10-18 JST、Step17）」節のR-15。）（Step26で足した注記、review-07のR-19：その節は今「履歴：現在の状態（2026-10-18 JST、Step17）」で、R-15の説明はその節のR-15の箇条と、「履歴：現在の状態（2026-10-18 JST、Step18）」の最後から2つ目の箇条にある。）
 
 ## 履歴：現在の状態（2026-10-17）（作成時の見出しは「現在の状態（2026-10-17）」）
 

@@ -1,6 +1,20 @@
 # U14 単体テスト手順
 
-## 今回Steps45〜46：指摘への対応と新しい入口
+## 今回Step47：残しているMinor R-14・R-15・R-16を記録で直す
+
+記録だけを直すので、新しい試験・CI・性能測定はない。project rootで正式sensor 2件を実行する。
+
+```sh
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u14-jit-wasm/code-generation/code-summary.md
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u14-jit-wasm/code-generation/traceability.json
+```
+
+期待する結果：
+- required-sections は pass になる。
+- traceability は前と同じ結果になる（status と target は変えていない）。
+- checkpoint では、今の正式な確認コマンド（U15 の `entry-e3c29d1d/entry-c.py`）が exit 0 になる想定。U14 の記録は `aidlc/` の中にあり、この入口が bytes を比べる製品のファイルではないため。結果は checkpoint の記録で確かめる。
+
+## 履歴：Steps45〜46：指摘への対応と新しい入口（作成時の見出しは「今回Steps45〜46：…」）
 
 新しい製品のテスト・CI・性能測定は行わない。project rootで、次を実行する（`<entry>`・`<binding>` は `u14_candidate_v2.py` と `binding-07.json` のSHA-256）。
 

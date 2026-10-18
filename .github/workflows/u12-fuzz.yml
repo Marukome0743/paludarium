@@ -2,8 +2,6 @@ name: U12 fresh eleven target ASan and LSan
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches: [codex/u12-macos-host]
 permissions:
   contents: read
 jobs:

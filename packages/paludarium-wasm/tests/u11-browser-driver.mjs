@@ -18,7 +18,49 @@ async function stopDriver(driver) {
   try { await stopped; } finally { clearTimeout(force); }
 }
 
+// The one safaridriver failure that is retried (NFR7): on a fresh macOS runner, session creation can fail while
+// safaridriver waits for its first Safari launch, e.g. run 39114110570 attempt 1:
+// {"error":"session not created","message":"Could not create a session: The session timed out while connecting to a Safari instance. ..."}
+export function isSafariLaunchTimeout(error) {
+  const text = String(error?.cause ?? error);
+  return error?.phase === "session-creation" && text.includes('"error":"session not created"')
+    && text.includes("timed out while connecting to a Safari instance");
+}
+
+// Stop any Safari left by the failed attempt before the single retry: SIGTERM by exact process name, bounded to 10 s.
+async function stopSafari() {
+  const killer = spawn("/usr/bin/pkill", ["-x", "Safari"], { stdio: "ignore" });
+  const exited = new Promise(resolve => { killer.once("exit", (code, signal) => resolve({ code, signal })); killer.once("error", error => resolve({ error: String(error) })); });
+  const bound = setTimeout(() => killer.kill("SIGKILL"), 10000);
+  try { return await exited; } finally { clearTimeout(bound); }
+}
+
+const RETRY_PAUSE_MS = 2000;
+
 async function safari(url, timeout) {
+  let first;
+  try {
+    const result = await safariAttempt(url, timeout);
+    return { ...result, session_retry: { attempts: 1, retried: false, first_failure: null } };
+  } catch (error) {
+    if (!isSafariLaunchTimeout(error)) throw error;
+    first = error;
+  }
+  const stopped = await stopSafari();
+  // Logged, never hidden: the first failure goes to stderr (kept by the suite supervisor) and into the result.
+  console.error(JSON.stringify({ safari_session_retry: { attempt: 1, failure: first.message, safari_stopped: stopped } }));
+  await sleep(RETRY_PAUSE_MS);
+  try {
+    const result = await safariAttempt(url, timeout);
+    return { ...result, session_retry: { attempts: 2, retried: true, first_failure: first.message, safari_stopped: stopped } };
+  } catch (error) {
+    error.message += `; first attempt (retried once): ${first.message}`;
+    error.firstFailure = first;
+    throw error;
+  }
+}
+
+async function safariAttempt(url, timeout) {
   const port = 4455, base = `http://127.0.0.1:${port}`;
   const driver = spawn("/usr/bin/safaridriver", ["--port", String(port)], { stdio: ["ignore", "pipe", "pipe"] });
   let driverError, sessionId, log = "", phase = "driver-startup", failure;

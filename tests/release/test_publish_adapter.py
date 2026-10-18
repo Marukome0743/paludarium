@@ -38,12 +38,12 @@ class PublishAdapterTests(unittest.TestCase):
             crates=package.inspect_crates(self.crates,self.inv),npm=package.inspect_npm(self.npm,expected))
         (self.out/'package-result.json').write_text(json.dumps(self.result));self.uploaded=set()
         self.env=dict(PALUDARIUM_TEST_NODE=sys.executable,PALUDARIUM_RELEASE_NPM=__file__,U15_OIDC_CRATES_IO_TOKEN=CANARY['U15_OIDC_CRATES_IO_TOKEN'])
-        self.mode='oidc';self.envs=[]
+        self.mode='oidc';self.envs=[];self.yanked=set()
     def request(self,url,timeout):
         if 'crates.io/' in url:
             name=url.split('/')[-2]
             if name not in self.uploaded:raise check.urllib.error.HTTPError(url,404,'absent',{},None)
-            return io.BytesIO(json.dumps(dict(version=dict(num='0.1.0',checksum=self.result['crates'][name]['sha256']))).encode())
+            return io.BytesIO(json.dumps(dict(version=dict(num='0.1.0',checksum=self.result['crates'][name]['sha256'],yanked=name in self.yanked))).encode())
         if 'npm' not in self.uploaded:raise check.urllib.error.HTTPError(url,404,'absent',{},None)
         digest='sha512-'+base64.b64encode(hashlib.sha512(self.npm.read_bytes()).digest()).decode()
         return io.BytesIO(json.dumps(dict(version='0.1.0',dist=dict(integrity=digest))).encode())
@@ -104,15 +104,23 @@ class PublishAdapterTests(unittest.TestCase):
         self.assertEqual(len([n for n in names if n.startswith('publish-') and n!='publish-npm']),8);self.assertIn('publish-npm',names)
         progress=json.loads((self.out/'publication-progress.json').read_text())
         self.assertEqual(progress['attempted'],self.inv['order'][3:]+['@paludarium/wasm']);self.assertFalse(progress['automatic_retry'])
-    def test_resume_stops_on_different_present_digest(self):
+    # Step24 (review 04, finding 6a): `authorize` is replaced here, so what stops this run is the
+    # publish loop's own registry_state check of a present version, not the R-16 resume check
+    # (that one is tested through check.authorize in test_api.py).
+    def test_publish_loop_registry_state_refuses_different_present_digest(self):
         self.first_mode();first=self.inv['order'][0];self.uploaded={first}
         request=self.request
         def tampered(url,timeout):
             body=request(url,timeout)
-            if url.endswith('/'+first+'/0.1.0'):return io.BytesIO(json.dumps(dict(version=dict(num='0.1.0',checksum='0'*64))).encode())
+            if url.endswith('/'+first+'/0.1.0'):return io.BytesIO(json.dumps(dict(version=dict(num='0.1.0',checksum='0'*64,yanked=False))).encode())
             return body
         self.request=tampered
-        with self.assertRaises(ValueError):self.execute()
+        with self.assertRaisesRegex(ValueError,'existing version digest mismatch'):self.execute()
+        self.assertEqual(self.uploaded,{first});self.assertEqual(self.envs,[])
+    # Step24 (review 04, finding 4): the publish loop never takes a yanked present version as published.
+    def test_publish_loop_refuses_yanked_present_version(self):
+        self.first_mode();first=self.inv['order'][0];self.uploaded={first};self.yanked={first}
+        with self.assertRaisesRegex(ValueError,'existing version is yanked'):self.execute()
         self.assertEqual(self.uploaded,{first});self.assertEqual(self.envs,[])
     def test_approved_digests_from_package_artifact(self):
         digests=check.approved_digests(self.root,self.head)
@@ -122,6 +130,19 @@ class PublishAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'wrong head'):check.approved_digests(self.root,'b'*40)
         self.npm.write_bytes(self.npm.read_bytes()+b'changed')
         with self.assertRaisesRegex(ValueError,'tarball differs'):check.approved_digests(self.root,self.head)
+    # Step24 (review 04, finding 6c): the passed / local_snapshot / tarball-count branches refuse.
+    def test_approved_digests_refuses_failed_local_or_ambiguous_artifacts(self):
+        for field,value in (('passed',False),('passed',None),('local_snapshot',True),('local_snapshot',None)):
+            with self.subTest(field=field,value=value):
+                (self.out/'package-result.json').write_text(json.dumps(dict(self.result,**{field:value})))
+                with self.assertRaisesRegex(ValueError,'wrong head/result'):check.approved_digests(self.root,self.head)
+        (self.out/'package-result.json').write_text(json.dumps(self.result))
+        second=self.out/'package-other';second.mkdir();shutil.copyfile(self.npm,second/'wasm.tgz')
+        with self.assertRaisesRegex(ValueError,'absent/ambiguous'):check.approved_digests(self.root,self.head)
+        shutil.rmtree(second);self.npm.unlink()
+        with self.assertRaisesRegex(ValueError,'absent/ambiguous'):check.approved_digests(self.root,self.head)
+        (self.out/'package-result.json').unlink()
+        with self.assertRaisesRegex(ValueError,'approved package artifact absent'):check.approved_digests(self.root,self.head)
     # Step17 (R-17): the job's GitHub token and OIDC request variables never reach cargo.
     def test_cargo_uploads_never_see_github_or_oidc_request_variables(self):
         self.env.update(GH_TOKEN='canary-gh-0004',ACTIONS_ID_TOKEN_REQUEST_URL='https://oidc.example.invalid',ACTIONS_ID_TOKEN_REQUEST_TOKEN='canary-oidc-request-0006',GITHUB_ACTIONS='true')

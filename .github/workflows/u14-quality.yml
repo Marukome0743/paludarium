@@ -6,9 +6,9 @@
 name: U14 current full quality
 
 on:
+  # Called by nightly.yml (ci-config.md); dispatched by hand before a release.
+  workflow_call:
   workflow_dispatch:
-  push:
-    branches: [codex/u14-jit-wasm]
 
 permissions:
   contents: read

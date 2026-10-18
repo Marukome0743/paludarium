@@ -1,6 +1,20 @@
 # 単体テストの手順（u1-skeleton）
 
-## 今回のStep72：再レビューのMinor 5件の修正
+## 今回のStep73：残しているMinor R-27・R-28を記録で閉じる
+
+記録だけを直すので、新しい試験はない。project rootで正式sensor 2件を実行する。
+
+```sh
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u1-skeleton/code-generation/code-summary.md
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u1-skeleton/code-generation/traceability.json
+```
+
+期待する結果：
+- required-sections は pass になる。
+- traceability は、前と同じ結果（statusとtargetを変えていない）になる。
+- checkpoint では、今の正式な確認コマンド（U15の `entry-e3c29d1d/entry-c.py`）が exit 0 になる。U1 の記録は `aidlc/` の中にあり、この入口が比べる製品のファイルではないため。
+
+## 履歴：Step72：再レビューのMinor 5件の修正（作成時の見出しは「今回のStep72：…」）
 
 project rootで、採用済みのコマンド（コマンド行は同じ）と回帰テストを実行し、sensorを実行する。
 

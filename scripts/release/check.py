@@ -59,6 +59,8 @@ def registry_state(status,body,version,digest):
     policy.require(status==200,'registry query failed; publication status unknown')
     policy.require(isinstance(body,dict) and body.get('version')==version,'registry returned different version')
     policy.require(body.get('digest')==digest,'existing version digest mismatch')
+    # Step24 (review 04, finding 4): a yanked version never counts as the published release.
+    policy.require(body.get('yanked') is not True,'existing version is yanked')
     return dict(state='PUBLISHED_MATCH',upload_allowed=False)
 
 def publish_sequence(state,inventory,upload,verify):
@@ -132,8 +134,9 @@ def registry_version(url):
     return body if isinstance(body,dict) else {}
 
 def published_digest(name,version):
-    """('absent'|'unreadable'|'present', digest) of the approved version of a present name:
-    the crates.io `checksum` (.crate SHA-256) or the npm `dist.integrity`."""
+    """('absent'|'unreadable'|'yanked'|'present', digest) of the approved version of a present name:
+    the crates.io `checksum` (.crate SHA-256) or the npm `dist.integrity`. A crates.io version
+    must say `yanked: false`; a yanked one never matches (Step24, review 04 finding 4)."""
     body=registry_version((NPM_PACKAGE_URL if name==NPM_NAME else CRATES_API+name)+'/'+version)
     if body is None:return 'absent',None
     if name==NPM_NAME:
@@ -142,27 +145,68 @@ def published_digest(name,version):
     else:
         row=body.get('version');row=row if isinstance(row,dict) else {}
         number,digest=row.get('num'),row.get('checksum')
+        if number==version and row.get('yanked') is True:return 'yanked',None
+        if row.get('yanked') is not False:return 'unreadable',None
     if number!=version or not isinstance(digest,str) or not digest:return 'unreadable',None
     return 'present',digest
 
-def registries_absent(order,version=None,approved=None):
+# Step24 (review 04, finding 3): the expected owners of every present name come from the
+# person, as variables of the protected `release` environment (comma-separated; see docs/release.md).
+OWNER_VARIABLES={'crates':'U15_CRATES_IO_OWNERS','npm':'U15_NPM_MAINTAINERS'}
+
+def expected_owners(environ):
+    """{'crates': [...], 'npm': [...]} from the release environment variables, or None when either is unset or empty."""
+    out={}
+    for key,variable in OWNER_VARIABLES.items():
+        names=sorted({n.strip() for n in environ.get(variable,'').split(',') if n.strip()})
+        if not names:return None
+        out[key]=names
+    return out
+
+def registry_owners(name):
+    """Sorted owner logins (crates.io `users[].login`) or npm `maintainers[].name`; None when unreadable or absent."""
+    body=registry_version(NPM_PACKAGE_URL if name==NPM_NAME else CRATES_API+name+'/owners')
+    rows=(body or {}).get('maintainers' if name==NPM_NAME else 'users')
+    key='name' if name==NPM_NAME else 'login'
+    if not isinstance(rows,list) or not rows or not all(isinstance(r,dict) and isinstance(r.get(key),str) and r[key] for r in rows):return None
+    return sorted({r[key] for r in rows})
+
+def present_mismatch(name,version,expected,owners):
+    """The reason a present name cannot be resumed over, or None when it holds the approved, unyanked
+    version with the approved digest and exactly the declared owners."""
+    state,digest=published_digest(name,version)
+    if state=='absent':return 'name exists without the approved version '+version
+    if state=='yanked':return 'published '+version+' is yanked'
+    if state=='unreadable':return 'published digest of '+version+' unreadable'
+    if not expected.get(name) or digest!=expected[name]:return 'published '+version+' differs from the approved artifact'
+    if owners is None:return 'expected owners not declared ('+', '.join(OWNER_VARIABLES.values())+' in the release environment)'
+    actual=registry_owners(name)
+    if actual is None:return 'owners unreadable'
+    declared=owners['npm' if name==NPM_NAME else 'crates']
+    if actual!=declared:return 'owners '+','.join(actual)+' differ from the declared owners '+','.join(declared)
+    return None
+
+def registries_absent(order,version=None,approved=None,owners=None):
     """Live check of the eleven crate names and @paludarium/wasm.
     Step17 (R-16): when some names are present and `approved` (the approved digests, or a
     loader called only then) is given, each present name must hold exactly the approved
     version with the approved digest; `resume` is True only when every present one matches.
-    A mismatch, an absent approved version or an unreadable digest is listed in `mismatched`."""
+    Step24: the version must not be yanked and the name's owners (crates.io owners, npm
+    maintainers) must equal `owners` exactly. Every reason is listed in `mismatched`; without
+    `approved`, present names are listed as unverifiable (never an empty `mismatched`)."""
     urls={name:CRATES_API+name for name in order}
     urls[NPM_NAME]=NPM_PACKAGE_URL
     present=sorted(name for name,url in sorted(urls.items()) if registry_present(url))
     result=dict(absent=not present,present=present,checked=sorted(urls),matching=[],mismatched=[],resume=False)
-    if not present or approved is None:return result
+    if not present:return result
+    if approved is None:
+        result['mismatched']=[dict(name=name,reason='approved digests not supplied; present versions cannot be verified') for name in present]
+        return result
     policy.require(isinstance(version,str) and bool(version),'approved version required to verify present registry versions')
     expected=approved() if callable(approved) else approved
     for name in present:
-        state,digest=published_digest(name,version)
-        if state=='absent':result['mismatched'].append(dict(name=name,reason='name exists without the approved version '+version))
-        elif state=='unreadable':result['mismatched'].append(dict(name=name,reason='published digest of '+version+' unreadable'))
-        elif not expected.get(name) or digest!=expected[name]:result['mismatched'].append(dict(name=name,reason='published '+version+' differs from the approved artifact'))
+        reason=present_mismatch(name,version,expected,owners)
+        if reason:result['mismatched'].append(dict(name=name,reason=reason))
         else:result['matching'].append(name)
     result['resume']=not result['mismatched']
     return result
@@ -231,7 +275,7 @@ def authorize(root,evidence):
         inv=policy.inventory(root)
         # Step17 (R-16): a stopped first publication may continue only when every version
         # already present equals the approved artifact; the remaining ones are then uploaded.
-        presence=registries_absent(inv['order'],inv['version'],lambda:approved_digests(root,head))
+        presence=registries_absent(inv['order'],inv['version'],lambda:approved_digests(root,head),expected_owners(os.environ))
         policy.require(not presence['mismatched'],'trusted publishers unregistered; first-publication resume refused: '+
             '; '.join(m['name']+': '+m['reason'] for m in presence['mismatched']))
         state.update(registries_absent=presence['absent'],registry_resume_verified=presence['resume'] and not presence['absent'],registry_presence=presence)
@@ -302,7 +346,7 @@ def publish_artifacts(root,evidence):
             except urllib.error.HTTPError as error:
                 if error.code!=404:raise
             else:
-                registry_state(200,dict(version=existing['version']['num'],digest=existing['version']['checksum']),approved['version'],actual[name]['sha256'])
+                registry_state(200,dict(version=existing['version']['num'],digest=existing['version']['checksum'],yanked=existing['version'].get('yanked')),approved['version'],actual[name]['sha256'])
                 completed.append(name);continue
             # Dry-run reassembly must match the previously checked artifact.
             checked_command([str(cargo),'publish','--locked','--dry-run','--no-verify','--manifest-path',str(source/'Cargo.toml'),'-p',name],source,directory/('dry-'+name),[Path(n) for n in names],900,dry_env)
@@ -312,7 +356,7 @@ def publish_artifacts(root,evidence):
             checked_command([str(cargo),'publish','--locked','--no-verify','--manifest-path',str(source/'Cargo.toml'),'-p',name],source,directory/('publish-'+name),[Path(n) for n in names],900,cargo_env)
             uploaded.append(name)
             with urllib.request.urlopen('https://crates.io/api/v1/crates/'+name+'/'+approved['version'],timeout=30) as response:body=json.load(response)
-            registry_state(200,dict(version=body['version']['num'],digest=body['version']['checksum']),approved['version'],actual[name]['sha256'])
+            registry_state(200,dict(version=body['version']['num'],digest=body['version']['checksum'],yanked=body['version'].get('yanked')),approved['version'],actual[name]['sha256'])
             completed.append(name)
         node=Path(os.environ['PALUDARIUM_TEST_NODE']);npm=Path(os.environ['PALUDARIUM_RELEASE_NPM'])
         integrity=npm_integrity(tarballs[0].read_bytes())

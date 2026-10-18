@@ -2,13 +2,6 @@ name: U13 fresh Linux oracle before Windows Host changes
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches: [codex/u13-windows-host]
-    paths:
-      - .github/workflows/u13-native-first.yml
-      - scripts/u13-run.py
-      - tests/guests/u13/settings.py
-      - tests/guests/u10/source-lock.json
 permissions:
   contents: read
 jobs:

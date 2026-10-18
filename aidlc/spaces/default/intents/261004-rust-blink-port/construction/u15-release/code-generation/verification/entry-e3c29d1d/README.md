@@ -2,6 +2,12 @@
 
 承認済みの計画 Step 19〜20 と、承認済みの案 `../entry-e3c29d1d-proposal.md` のとおりに作りました。v1〜v4 の層は重ねていません。入口は v1〜v4・旧 chain を import も実行もせず、それらの bytes が変わっていないことだけを確かめます。
 
+**2026-10-19 追記（版 f）：独立レビュー 03（`independent-review-03.md`、READY、Minor 6）のあと、人の判断で版 f（`entry-f.py`＋`binding-e05f.json`）を作りました（下の「版 f」）。** 人の判断（原文）：「版 f で Minor 1（--no-replace-objects）と Minor 3（push 前の commit id に頼る回帰）を直してください。残りの Minor は次の更新で構いません。」版 f も採用の前で、版 e（`entry-e.py`・`binding-e05.json`・`test_entry_e.py`）は変えずに履歴として残します。
+
+**2026-10-19 追記（人の判断で版 e）：新しい版 e（`entry-e.py`＋`binding-e05.json`）を作りました（下の「版 e」）。** 計画の Step 25・28 は「版 d」と書いていますが、版 d は GitHub の compare の 300 件の上限のため、`aidlc/` だけの commit a7aecb72（741 ファイル）を含む新しい head では必ず止まります。人は 2026-10-18 に「A で進めてください。各 commit の tree のハッシュで照らし合わせる入口の版 e を作り、独立レビューの後に採用を伺ってください。記録と製品は一緒に 1 回で push します。」と判断し、版 d を版 e に替えました。版 e も独立レビューと人の採用の前で、まだ正式な確認コマンドではありません。版 d は使わずに履歴として残します。
+
+**2026-10-19 追記（Step 25）：新しい版 d（`entry-d.py`＋`binding-e04.json`）を作りました（下の「版 d」）。** 版 d は独立レビューと人の採用の前で、まだ正式な確認コマンドではありません。採用までは、人が 2026-10-18 に採用した版 c（`entry-c.py`＋`binding-e03.json`）が正式な確認コマンドのままです。次の段落は、版 c を作った時点の記述です。
+
 **現行は版 c（`entry-c.py`＋`binding-e03.json`）です。** 版 v1（`entry.py`）と版 b（`entry-b.py`）は、上書きせず履歴として残しています（下の「履歴」）。どの版もまだ**正式な確認コマンドではありません**。採用（Step 21：独立レビューと人の承認）までは、今の入口 v4（`../version-allowance/u15_candidate_v4.py`、binding-11）が正式な確認コマンドのままです。入口と binding は採用の前でも上書きせず、直すときは新しい版を作ります。
 
 ## 版の経緯
@@ -10,14 +16,111 @@
 |---|---|---|---|
 | v1 | `entry.py`・`binding-e01.json`・`test_entry.py`（30 件） | exit 1：`run-1792325657506892000-42086/refusal.json` | 手元の `.aidlc-version` の bytes の違いと、head に無い 11 の path が除外の一覧に当たらなかった。人が判断した（下の判断 1） |
 | b | `entry-b.py`・`binding-e02.json`・`test_entry_b.py`（36 件） | exit 0：`run-1792326450015585000-34598/result.json` | 独立レビュー `independent-review-01.md` が NOT-READY（Major 3、Minor 6） |
-| **c（現行）** | `entry-c.py`・`binding-e03.json`・`test_entry_c.py`（40 件） | exit 0：`run-1792327873535813000-33039/result.json` | — |
+| c（2026-10-18 に採用） | `entry-c.py`・`binding-e03.json`・`test_entry_c.py`（40 件） | exit 0：`run-1792327873535813000-33039/result.json` | 計画 Step 25：compare の 300 件の上限と、独立レビュー 02 の Minor |
+| d（使わない、履歴） | `entry-d.py`・`binding-e04.json`・`test_entry_d.py`（46 件） | exit 0：`run-1792335808099662000-95657/result.json` | compare の 300 件の上限で、a7aecb72 を含む head を通せない。人の判断で版 e に替えた |
+| e（使わない、履歴） | `entry-e.py`・`binding-e05.json`・`test_entry_e.py`（31 件）・`commits-e3c29d1d.json` | 本番の実行はしていない | 独立レビュー 03 は READY（Minor 6）。人の判断で Minor 1・3 を版 f で直す |
+| **f（採用の前）** | `entry-f.py`・`binding-e05f.json`・`test_entry_f.py`（34 件） | 本番の実行はまだ（push の後の新しい head で行う） | — |
+
+## 版 f（独立レビュー 03 の Minor 1・3、2026-10-19、採用の前）
+
+| ファイル | SHA-256 |
+|---|---|
+| `entry-f.py` | `185677712836e73d6a716657a24521c42581504550f9f398c5bb1ca7eaa4a46f` |
+| `binding-e05f.json` | `5c9d99de2ebfb9fe48db7c9662e790d5f24b0feaa06ed2e2570c4863b2157fc0` |
+| `test_entry_f.py` | `3b5061b3a865ab1334614a7b29b344bb74beeaa78253c9811773c5c70b95a476` |
+
+版 e の検査をすべて残し、次を足しました。binding の名前は `binding-e05f.json`（入口は今までどおり `binding-e*.json` から SHA-256 で選ぶので、`e` で始まる名前にしました）。中身は binding-e05 と同じで、schema を版 f にし、履歴の固定に版 e の 3 ファイルと `commits-e3c29d1d.json` を足して 28 ファイルにしました（`commits-e3c29d1d.json` は起点の commit の記録として引き続き使います）。新しい head 用の binding は push の後に作ります。
+
+- **Minor 1（replace ref）**：git を呼ぶすべての所で `--no-replace-objects` を付け、環境に `GIT_NO_REPLACE_OBJECTS=1` を入れました。さらに、系譜を確かめる前に、手元の git が本当の commit と違う親を答えうる状態を拒否します：shallow のリポジトリ（`rev-parse --is-shallow-repository` が `true`）と、grafts のファイル（`rev-parse --git-path info/grafts` の場所にファイルがある）。結果の `repository_state` に書きます。
+- **Minor 3（push 前の commit id）**：版 e の回帰 28・31 は手元の a7aecb72 に頼っていました。版 f の回帰は、回帰の中で一時の git リポジトリ（このフォルダの中に作って消す）を作り、そこで確かめます：根の commit A、`aidlc/` の中の 350 ファイルと `docs/x.md` の計 351 ファイルを変える commit B、replace にだけ使う commit C。本当の作業コピーの commit id には頼りません（e3c29d1d と a54315f9 は push 済みの起点とその親です）。
+
+### 回帰（版 f、34 件）
+
+`discover -p 'test_entry_f.py'` で 34 件すべて成功、skip 0。e3c29d1d の bytes での正の対照は、版 e と同じく回帰専用の overlay（45 path）で示しています。
+
+- 新しい回帰：一時のリポジトリで `git replace B C` を作ると、そのままの git は B の tree として C の tree を答えるが、入口は B の本当の tree と親を答え、本当の tree を書いた記録は通り、C の tree を書いた記録は拒否される（test_10）。grafts のファイルを置くと拒否（test_11）。`--depth 1` の shallow な clone では拒否され、その clone では B の親が見えないこと（test_12）。`verify()` で、リポジトリの状態の確認が系譜の前に行われること（test_13）。351 ファイルを変える commit で系譜と変わったファイルが通ること（test_28）。`aidlc/` の件数の多い・少ない・ハッシュの違い（test_31、一時のリポジトリで）。
+- 検査を外すと落ちることを、`entry-f.py` のソースをメモリの中で書き換えて 9 通りで確かめました。対象は、フラグだけ・環境だけ・両方、shallow、grafts、状態の確認の呼び出し、履歴の entry-e の固定、tree、`aidlc/` の件数です。フラグと環境の両方を外すと、一時のリポジトリで入口の `git_tree(B)` が C の tree を答えることも、別に確かめました。
+- フォルダ全体の `discover -p 'test_*.py'` は 217 件。失敗は 52 件（failures 32・errors 20）で、版 e・f の失敗は 0 件です。失敗はすべて v1・b・c・d の回帰で、作業コピーが変わったことと、生きている `unit.json` が置き換わったことによります。
+- 版 e の回帰 28・31 は、手元の a7aecb72 が残っている間だけ通ります。版 e は履歴なので変えていません。
+
+### 残している Minor（次の更新で直す、人の判断）
+
+独立レビュー 03 の Minor 2（test_34 の `co_varnames` の行は意味がない）、Minor 4（13 か所の書き換えの確かめは、手順と出力をフォルダに残していない。版 f の 9 通りも同じ）、Minor 5（起点と違う head での `verify()` 全体の回帰がない）、Minor 6（正の対照は overlay の 45 path と本当の作業コピーについては何も言わない。本当の作業コピーでの確認は、新しい head で初めて行う）。
+
+## 版 e（人の判断、2026-10-19、使わない。作成時の見出しは「版 e（人の判断、2026-10-19、採用の前）」）
+
+| ファイル | SHA-256 |
+|---|---|
+| `entry-e.py` | `c362be77807fef060e006c06d3754b12deb026f974d028fd739b0b2dab0a78f9` |
+| `binding-e05.json` | `6fa2750643a3cadeca5836864ec3a3b6349075c57f22725924a453d49eec1c9d` |
+| `test_entry_e.py` | `6a1604590a7ec29cc77ed27a4ea6049d636f9de49a45c262cb44ff3e4dea6a42` |
+| `commits-e3c29d1d.json` | `0f5d46245fc1ac3658bb228b5679377bf479f99afffe34706dba9453cce5a888` |
+
+版 d の検査をすべて残し、系譜と変わったファイルの照合だけを替えました。
+
+- **系譜（各 commit の tree のハッシュ）**：binding の `commit_records` が指す保存した記録（`GET repos/Marukome0743/paludarium/commits/<sha>` の `sha`・`parents[].sha`・`commit.tree.sha`・`commit.verification.verified`／`reason` の写し。SHA-256 で固定）が、起点から head までの並びの commit をちょうど含むこと（足りない・多い・重なりは拒否）。どの commit も Verified（`reason: valid`）、tree のハッシュが手元の `git rev-parse <sha>^{tree}` と同じ、親が手元の git の親と同じで、並びの前の commit と同じ。手元の `rev-list base..head` の並びも同じ。tree のハッシュが同じなので、GitHub と手元の git でその commit の全ファイルの中身が同じ、という主張にしています（git のハッシュ SHA-1 に衝突がないことが前提）。`commits-e3c29d1d.json` は 2026-10-19 に読み取りの `gh api` GET で e3c29d1d の記録を保存したものです。
+- **変わったファイル（手元の git だけ）**：`git diff-tree -r --no-renames e3c29d1d head` で数えます。`aidlc/` の外は binding の `changed_files` とちょうど同じ（人が読める一覧）、`aidlc/` の中は binding の `aidlc_changed`（`count` と、並べた一覧の SHA-256。UTF-8、1 行に 1 つ、`\n` でつなぎ最後に改行なし）と同じことを求めます。
+- **GitHub の compare は使いません**（ファイルの一覧も、`status`・`ahead_by`・`behind_by`・`merge_base` も見ない）。系譜は上の記録と手元の git で確かめます。保存した CI の記録に compare があっても読みません（回帰 test_34）。
+- ほか（全追跡ファイルの bytes、除外、CI、速さ、git の設定の遮断、再実行の上限 2）は版 d のまま。履歴の固定は 24 ファイル（v1〜v4 の 12 と、`entry.py`〜`entry-d.py`・`binding-e01〜e04`・`test_entry.py`〜`test_entry_d.py` の 12）。
+- binding は、e3c29d1d（差 0）用の `binding-e05.json` だけを作りました。新しい head 用は、push の後に CI と各 commit の記録を保存してから `binding-e06.json` として作ります。
+
+### 回帰（版 e、31 件）
+
+`discover -p 'test_entry_e.py'` で 31 件すべて成功、skip 0。
+
+- **e3c29d1d の bytes での正の対照は overlay で示しています。** 今の作業コピーは Step 22〜24 の製品の変更を持つので、そのままでは e3c29d1d と違います（test_00 で、overlay なしでは拒否されることを確かめる）。setUpClass が手元の git から、e3c29d1d の blob と違う・無い追跡ファイルをその blob として見せ、除外に当たらない未追跡のファイルを無いとして見せる回帰専用の overlay を作ります（45 path。一覧は回帰の標準エラーに出す。`aidlc/` の path は入らない）。本番の実行は、push の後の新しい head で行います（今は行っていません）。
+- 新しい回帰：tree の不一致（head・親・欄なし）、記録の親と手元の親の違い、並びの親の違い・並びの順・手元の順の違い、未署名（`verified: false`・`reason` 違い・文字列の `"true"`・欄なし）、記録に無い commit・多い commit・重なり、記録のファイルの固定・形・repository、保存した e3c29d1d の記録が手元の git から作った記録と同じこと、301 件以上（a7aecb72 の 741 ファイル）を変えた commit でも系譜と変わったファイルが通ること、`aidlc/` の外の一覧の多い・少ない・並び、`aidlc/` の件数の多い・少ない・ハッシュの違い、`aidlc_changed` の形、compare を空・違う値・無しにしても結果が変わらないこと。版 d から引き継いだ作業コピー・CI・速さ・履歴・コマンド行の回帰。
+- 新しい検査を外すと落ちることを、`entry-e.py` のソースをメモリの中で 1 か所ずつ書き換えて 13 か所で確かめました（署名、tree、手元の親、並びの親、記録の網羅、重なり、記録の固定、手元の順、`aidlc/` の外の一覧、`aidlc/` の件数、ハッシュ、`aidlc_changed` の形、履歴の entry-d の固定）。
+- フォルダ全体の `discover -p 'test_*.py'` は 183 件で、失敗は 52 件（failures 32・errors 20）。どれも v1・b・c・d の回帰で、本当の作業コピーを e3c29d1d と比べるもの（製品の変更のため）と、生きている `unit.json` が置き換わったことによるもの。版 e の 31 件は 0 件失敗。古い版の回帰は履歴なので変えていません。
+
+### 確かめていないこと（版 e）
+
+版 c・d の「確かめていないこと」に加えて：tree のハッシュの一致が中身の一致を意味するのは SHA-1 の衝突がないことが前提であること。保存した commit の記録が GitHub の今の状態と同じであること（確認のときに問い合わせない）。本番の実行（新しい head で行う）。
+
+## 版 d（Step 25、2026-10-19、使わない。作成時の見出しは「版 d（Step 25、2026-10-19、採用の前）」）
+
+| ファイル | SHA-256 |
+|---|---|
+| `entry-d.py` | `7c73492e0b269770bfdea0a63b8f1bd3d87a44b47bc9d091268b375b69e4fac2` |
+| `binding-e04.json` | `0fca5fc33f62f9a36262c3ee562b7f61ef31c49cb29ebddeb4d76aaecc8e1981` |
+| `test_entry_d.py` | `5548a3b0df1b662d19148f8e5ac24b450ef3955cac0a645b2044cdd6861d916b` |
+
+```sh
+/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u15-release/code-generation/verification/entry-e3c29d1d/entry-d.py --entry-sha256 7c73492e0b269770bfdea0a63b8f1bd3d87a44b47bc9d091268b375b69e4fac2 --binding-sha256 0fca5fc33f62f9a36262c3ee562b7f61ef31c49cb29ebddeb4d76aaecc8e1981
+```
+
+版 c の検査はすべて残し、次を変えました。
+
+- **変わったファイルは `aidlc/` の外だけで照合**：binding の `changed_files` には `aidlc/` の外のパスだけを書きます（`aidlc/` のパスを書くと拒否）。手元の git（`diff-tree`）の `aidlc/` の外の一覧と、保存した compare の `aidlc/` の外の一覧が、binding とちょうど同じことを求めます。GitHub の compare は 300 件までしか返さないので、保存した compare のファイル数が **300 件未満**（切り詰められていない）でなければ拒否します。compare の `aidlc/` の行は比べません（blob も見ない）。`aidlc/` の中は手元の git だけで数え、結果の `aidlc_changed_paths` に件数と、並べた一覧の SHA-256（UTF-8、1 行に 1 つ、`\n` でつなぎ最後に改行なし）を書きます。
+- **独立レビュー 02 の Minor**：名前で除外したフォルダの行の注記を、`aidlc/` は「中は比べない」、`.git/`・`.jj/` は「追跡ファイルを持たない」に直しました。再実行の許可は binding あたり 2 つまで（`MAX_RERUNS`。結果の `differences_from_base.rerun_limit`）。保存した artifact の一覧の u11-node は `expired` が `false` で、`workflow_run.repository_id` が fork の id（`1408718913`、2026-10-18 に読み取りの `gh api repos/Marukome0743/paludarium` で確かめた）でなければ拒否します。git は利用者・システムの設定を読みません（`GIT_CONFIG_GLOBAL` を null device、`GIT_CONFIG_NOSYSTEM=1`、`-c core.fsmonitor=false`）。checkpoint の記録の写しを置いたこと（Minor 5）は、code-summary に書きました。
+- **履歴の固定**：v1〜v4 の 12 ファイルに、この入口の前の版（`entry.py`・`entry-b.py`・`entry-c.py`・`binding-e01〜e03`・`test_entry.py`・`test_entry_b.py`・`test_entry_c.py`）の 9 ファイルを足して 21 ファイル。除外の一覧は版 c と同じです。
+
+### 回帰（版 d、46 件）
+
+`discover -p 'test_entry_d.py'` で 46 件すべて成功、skip 0（製品の変更 Step 22〜24 の前の作業コピーで。変更の後は、本当の作業コピーを e3c29d1d と比べる 14 件が作業コピーの違いで落ちる。新しい head の binding で確かめ直すのは Step 28）。新しく足した回帰：`aidlc/` の行の注記（test_09）、利用者の設定を読まないこと（壊れた `~/.gitconfig` と `$XDG_CONFIG_HOME/git/config` の一時 fixture。そのままの git は失敗し、入口の git は通る。test_05b）、`aidlc/` のパスを binding に書くと拒否（test_20）、compare の `aidlc/` の行は比べず、製品の行の多い・少ない・重なりは拒否（test_21）、手元の commit a7aecb72（`aidlc/` だけ 741 ファイル）で、300 件ちょうどの compare は拒否・299 件なら通り件数 741 と一覧の SHA-256 が出る（test_22）、一覧の SHA-256 の決まり（test_23）、再実行の許可の上限（test_47）、`expired`・`repository_id`（test_53）、履歴の 21 ファイル（test_63）、binding-e01〜e03 を渡すと拒否（test_64）。
+
+新しい検査を外すと落ちることを、`entry-d.py` のソースをメモリの中で 1 か所ずつ書き換えて 11 か所で確かめました（ファイルは変えない）：300 件の上限→test_22、binding の `aidlc/` のパス→test_20・22、手元の一覧を `aidlc/` の外に限ること→test_22、compare の製品の一覧→test_21・22、重なり→test_21、再実行の上限→test_47、`repository_id`→test_53、`expired`→test_53、`GIT_CONFIG_GLOBAL`→test_05・05b、`aidlc/` の注記→test_09、履歴の entry-c の固定→test_01 ほか 19 件。
+
+フォルダ全体の `discover -p 'test_*.py'` は 152 件のうち 4 件が失敗します（v1 の test_01・test_61、b の test_61、c の test_62）。どれも「生きている `unit.json` が起点の写しと同じ bytes」を前提にした回帰で、その記録が後の checkpoint（id `8123d7af-98e1-40a1-8c30-577c39f6e10c`）で置き換わったために落ちます。v1・b・c の回帰は履歴なので変えていません。版 d の test_62 は、置き換わった場合と同じ場合の両方を確かめます。
+
+### 本番の実行（版 d、2026-10-19）
+
+製品の変更（Step 22〜24）より前に、上のコマンドを 1 回実行し、**exit 0**。出力は `run-1792335808099662000-95657/result.json`（`c4cb4e11be0ec2d2baf7f64e0bf0ceeb716a9a648c21d00fc52cf357cc91d656`）。head＝起点＝e3c29d1d、`changed_paths` は空、`aidlc_changed_paths` は 0 件、675 ファイルのうち 673 が head と同じ bytes（残りは `.aidlc-version`・`mise.toml`）、`excluded_by_name` 27・`excluded_by_git_ignore` 10、`live_checkpoint_record` は「後の checkpoint（`8123d7af…`）に置き換わった。写しを使う」。
+
+### 次の head での注意（Step 28）
+
+手元の commit a7aecb72 は `aidlc/` だけで 741 ファイルを変えます。e3c29d1d から新しい head までの compare はこれを含むので、ファイル数が 300 件に達し、版 d は計画どおり「切り詰められているかもしれない」として拒否します。binding-e05 を作る前に、この扱い（例：compare を区間に分ける、または各 commit の tree の一致で代える）を人に伺う必要があります。
+
+### 確かめていないこと（版 d）
+
+版 c の「確かめていないこと」に加えて：`aidlc/` の中の変わったファイルが GitHub の compare と同じであること（手元の git だけで数える。GitHub の記録とは各 commit の tree の一致だけで結びつく）。
 
 人の判断と指示：
 
 1. 2026-10-18、選んだ選択肢「git の無視＋2 つ」：「git が無視するファイル（.gitignore、git check-ignore で読み取りだけ）を除外にし、.aidlc-version（bytes の違いを許す）と .venv-u15/ を除外の一覧に足す。入口と binding は新しい版（entry-b.py・binding-e02.json）で作り直す」
 2. 独立レビュー 01（NOT-READY）の Major 3 件と Minor を、coordinator 経由の指示で版 c として直す（git の無視は head の tree にある `.gitignore` の規則だけ、bytes の違いを許す追跡ファイルは 2 つだけ、binding で検査を緩められないこと）。
 
-## 版 c（現行）
+## 版 c（2026-10-18 に採用。版 d の採用までは正式な確認コマンド。作成時の見出しは「版 c（現行）」）
 
 | ファイル | SHA-256 |
 |---|---|

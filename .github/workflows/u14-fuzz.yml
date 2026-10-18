@@ -2,8 +2,6 @@ name: U14 fresh thirteen target ASan and LSan
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches: [codex/u14-jit-wasm]
 permissions:
   contents: read
 jobs:

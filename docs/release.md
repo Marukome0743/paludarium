@@ -212,10 +212,25 @@ and its registry checks are complete.
      lower than eleven within the publish job's 30 minutes, ask crates.io
      (help@crates.io) to raise it for this account first. If it is not
      raised, expect the run to stop at the limit and resume as below.
+   - **Declare the expected owners** (Step24). As **environment variables
+     of `release`** (Settings, Environments, `release`, Environment
+     variables; not secrets, they are not secret), set
+     `U15_CRATES_IO_OWNERS` to the comma-separated crates.io owner logins
+     every one of the eleven crates must have (users by login, teams as
+     `github:<org>:<team>`, exactly as `https://crates.io/api/v1/crates/<name>/owners`
+     lists them in `users[].login`), and `U15_NPM_MAINTAINERS` to the
+     comma-separated npm maintainer names of `@paludarium/wasm` (as
+     `https://registry.npmjs.org/%40paludarium%2Fwasm` lists them in
+     `maintainers[].name`). A resume (below) is refused when either is
+     unset, or when a present name has any other owner set (an extra or
+     missing owner included).
    - **Resuming a first publication that stopped partway** (rate limit,
      timeout, network error). Do not delete, yank or re-upload anything,
-     and do not move the tag. Keep `publication-progress.json` and the
-     logs of the stopped run. After the cause is gone (for the rate limit,
+     and do not move the tag. Keep the artifact
+     `u15-publication-progress-attempt-<n>` of the stopped run (Step24:
+     `release.yml` uploads `publication-progress.json` and the command
+     receipts, which hold no token values, even when the job stops; keep
+     it before its 90-day retention ends) and the job logs. After the cause is gone (for the rate limit,
      after the waiting time crates.io names), re-run the publish job of the
      same `release.yml` run (same tag and head; it needs the `release`
      approval again; the tokens must not have expired). The publish job's
@@ -225,10 +240,14 @@ and its registry checks are complete.
      equals the SHA-256 of that crate's approved `.crate`, and the npm
      `dist.integrity` equals the approved tarball's SHA-512 integrity
      (both taken from the `u15-package` artifact for the release head).
+     The crates.io version must also say `yanked: false`, and the name's
+     crates.io owners or npm maintainers must equal the declared ones
+     above exactly (Step24, review 04 findings 3 and 4).
      Those versions are only verified; the remaining ones are uploaded in
      dependency order. If even one present name has another version, a
-     different digest, or a digest that cannot be read, the job refuses
-     before uploading anything. Then the owner decides the recovery
+     different digest, a digest that cannot be read, a yanked version, or
+     other or unreadable owners, the job refuses before uploading
+     anything. Then the owner decides the recovery
      outside `release.yml` (for example a new version), never by
      overwriting a published version.
    The first publication is accepted only when the acceptance document
@@ -283,7 +302,8 @@ and its registry checks are complete.
    environment; a required reviewer (the maintainer, unless self-review is
    prevented) checks the head, version and digests and approves the
    deployment. Confirm: the run
-   succeeded and `target/u15/publication-progress.json` lists all eleven
+   succeeded and `publication-progress.json` (in the run's artifact
+   `u15-publication-progress-attempt-<n>`) lists all eleven
    crates and `@paludarium/wasm`; then, independently, each crate's
    `https://crates.io/api/v1/crates/<name>/0.1.0` `checksum` equals the
    `.crate` SHA-256 in the `u15-package` artifact, `npm view
@@ -332,7 +352,8 @@ queried first: an equal digest is verified without re-upload, a different
 digest or unknown network result stops the sequence. The same npm tarball is
 uploaded. Registry checksums/integrity are checked after each upload.
 
-On partial failure, preserve `publication-progress.json`, attempted uploads,
+On partial failure, preserve `publication-progress.json` (the run's artifact
+`u15-publication-progress-attempt-<n>`, uploaded even when the job stops), attempted uploads,
 unverified uploads and all logs. Do not delete, replace, move a tag or retry
 publication automatically. An owner must inspect registry state and propose
 the remaining recovery. For a first publication, the owner may re-run the

@@ -73,10 +73,13 @@ class BuildEvidence(unittest.TestCase):
 
     def test_push_never_runs_diagnostic_or_formal_measurement(self):
         root=pathlib.Path(__file__).resolve().parents[4]
-        diagnostic=(root/'.github/workflows/u14-cost-diagnostic.yml').read_text()
-        self.assertIn("  diagnostic-v2:\n    if: github.event_name == 'workflow_dispatch'\n",diagnostic)
+        # u14-cost-diagnostic.yml was removed in the CI cleanup (U15 Step 23, ci-config.md), so no push can run it.
+        self.assertFalse((root/'.github/workflows/u14-cost-diagnostic.yml').exists())
         acceptance=(root/'.github/workflows/u14-wasm-acceptance.yml').read_text()
-        self.assertIn("- name: Frozen paired full-probe performance\n        if: matrix.environment == 'node' && github.event_name == 'workflow_dispatch'",acceptance)
+        # The frozen performance measurement runs only by hand or on the nightly schedule, never on push or pull_request.
+        self.assertIn("- name: Frozen paired full-probe performance\n"
+            "        # Measured by hand before a release and by the nightly schedule (ci-config.md); never on push or pull_request.\n"
+            "        if: matrix.environment == 'node' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')\n",acceptance)
 
     def test_accepts_static_exec(self):
         self.assertTrue(static_elf(elf()))
