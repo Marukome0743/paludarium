@@ -2,11 +2,35 @@
 
 ## Summary
 
+- Builds: 今回の計画（再レビューのMinor R-10を直す）。手順書に残っていた見出し「現行完了確認（Steps11〜13）」を履歴にし、注記を1行足す。R-11は値が正しいので直さない。
+- Touches: U3のunit-test-instructions.mdとcode-summary.mdだけ。製品・CI・workflow・ほかのUnitの記録・traceability.json・source-manifest.jsonは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 前回のSummary（確かめ直しの指摘を記録で直す）
+
+- Builds: 前回の計画（確かめ直しの指摘を記録で直す）。U3の確かめ直し（review-06、READY、Major 2・Minor 4）のR-04〜R-09をU3の記録で直す：今の正式な確認コマンドの記述、手順書の古いtoolchainと置き換え済みのcoverageの絞り込み、manifestの消えたworkflow、ASan・Node/Safariの古い証拠への今のrunの参照。製品は変えない。
+- Touches: U3の記録だけ（code-summary.md、unit-test-instructions.md、source-manifest.json）。製品・CI・workflow・ほかのUnitの記録・traceability.jsonは変えない。呼び元が消えた `.github/scripts/u3-current-diagnostic.py` は製品のファイルなので、次の製品の変更のpushに回す。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 今回の計画：再レビューのMinor R-10を直す（2026-10-19）
+
+U3の記録の直しの再レビュー（review-07、READY、新しいMinor 2件）の後、checkpointで人がRequest Changesを選んだ（先にR-10を直す）。R-11（command SHAの末尾 `a159` の裏付け）は、checkpointの検証の記録が `00f5c8832e04f7d27b30c6b445fdc30e0e5d233dfa5452e02c2c99368a08a159` を示しており、書いた値は正しいので直さない。
+
+- [ ] **R-10を直す**。unit-test-instructions.mdの見出し「現行完了確認（Steps11〜13）」を「履歴：完了確認（Steps11〜13）（作成時の見出しは「現行完了確認（Steps11〜13）」）」にし、その直後に「この節の「承認済みchecker」はその時点のもので、今の正式な確認コマンドはentry-f・binding-e06f」の1行を足す（本文は変えない。計画のときに書いた）。code-summary.mdの「現在の状態（2026-10-19 JST）」節の末尾に、R-10を直したこととR-11を直さない理由を1行で書く。製品・CI・workflow・ほかのUnitの記録・traceability.json・source-manifest.jsonは変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR3、NFR9。
+
+## 前回の計画：確かめ直しの指摘を記録で直す（2026-10-19）
+
+2026-10-19 JST。U15のStep22〜28（push、head 27d05de1）でU3のmanifestにある `ci.yml` が変わり、`u3-current-verification.yml` が消え、正式な確認コマンドがU15の `entry-e3c29d1d/entry-f.py`・`binding-e06f.json` に替わった。U3の確かめ直し（review-06、READY、Major 2・Minor 4）の後、checkpointで人がRequest Changesを選んだ（先にR-04〜R-09を直す。呼び元が消えた製品の道具は次のpush）。人の指示：「ワークフローの順で進めてください。U1 の確かめ直しから始めて、ファイルが変わった Unit を順に確かめ直し、U15 のレビューと完了確認、U11 の確かめ直しまで進めてください。」
+
+- [ ] **確かめ直しの指摘を記録で直す**。(1) R-04・R-09：code-summary.mdの先頭に「現在の状態（2026-10-19 JST）」節を足し、今の正式な確認コマンドは `verification-command.txt` の U15 `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`（head 27d05de1、人が2026-10-19に採用）で、記録に出てくる `verify-current-u1-u7-u9-aligned.py`・`verify-current-u1-u7-u9-u3.py`・U2の `u2_candidate.py` はそれぞれの時点のもの（履歴）であること、`code-summary.md` の「未実行」はその時点の記述であることを書く。U3に関わる製品の変更（`ci.yml` の `push` は `main` だけ、`u3-current-verification.yml` の削除）と、U3の受け入れに要るもの（`ci.yml` の `diff_u3`・native入力の生成・CPU/Decoderの80%の下限、ASanは `u14-fuzz.yml`、Safariは `u11-acceptance.yml`）が残り、27d05de1のCI 8 runがすべて成功したこと（review-06の確かめた点）を書く。(2) R-05：手順書の先頭の新しい節に、今のtoolchainは `rust-toolchain.toml` の `nightly-2026-10-11` で、下の「Runner and ordering」「Unit-scoped commands」の `+nightly-2026-10-01` と `u3_tests:: --fail-under-lines 80` はその時点のもの（後者はSteps19〜21で置き換え済み）であることを書き、その2つの見出しの直後に同じ趣旨の1行を足す（本文は変えない）。(3) R-06：source-manifest.jsonのwritesから、消えた `.github/workflows/u3-current-verification.yml` を外し、理由（U15のCIの整理、`construction/ci-pipeline/ci-config.md` の「消す」）を新しい節に書く。呼び元が消えた `.github/scripts/u3-current-diagnostic.py` は残っていて、次の製品の変更のpushで扱うことも書く。(4) R-07：cpu_u2・mmu_u2・decodeのASanの今の裏付けは `u14-fuzz.yml` のrun 39149194521（27d05de1、成功）で、記録の旧い実行は履歴であることを新しい節に書く。(5) R-08：Node/Safariの「20ケース」「21ケース」とmoduleのハッシュはその時点のもので、今のSafariの確認はU15の `u11-safari-stability.yml`（run 39143558642、10回とも成功）と `u11-acceptance.yml`（27d05de1のCIで成功）であることを新しい節に書く。(6) 「現行」「今回」で始まる古い見出しは「履歴：…（作成時の見出しは「…」）」にする（本文は変えない）。製品・CI・workflow・ほかのUnitの記録・traceability.jsonは変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR3、NFR9。
+
+## 前回の計画のSummary（Build and TestのLoop-back 1）
+
 - Builds: 今回の計画（Build and TestのLoop-back 1）。製品は変えない。計画の古くなったTesting Contractを今の内容（`sha256:7ff27a24…`、方針は同じでproject層の学びが足されただけ）に置き換え、今の正式確認コマンドでU3を確かめ直す。
 - Touches: この計画のTesting Contractと「今回の計画」の節だけ。製品・テスト・ほかの記録は変えない。
 - Tests: 新しいテストの実行はない。独立再レビューと、今の正式確認コマンド（U2の `u2_candidate.py`）でのcheckpoint。前回までの結果は履歴として保持する。
 
-## 今回の計画：Testing Contractの更新と再確認（Build and TestのLoop-back 1）
+## 前回の計画：Testing Contractの更新と再確認（Build and TestのLoop-back 1）
 
 2026-10-17。U14の整数SSEのJIT（署名head 1ceae86c）とU1・U2の正式確認の更新の途中で、記録の誤り（Code Generationの段階全体へのRequest Changes）のため、各Unitを順に確かめ直している。U3の担当のsource-manifestには、今回変わったファイル（U14のJIT・wasm・テスト、`crates/paludarium-wasm/src/abi.rs`、`mise.toml`）は含まれない。この計画の「## Testing Contract」は、memory（project.mdの学び）の更新で古くなっていたため、`aidlc engine testing-posture render` の出力に置き換えた。テストの方針（Methodology custom、Ordering、Standard、80%下限など）は変わらない。
 

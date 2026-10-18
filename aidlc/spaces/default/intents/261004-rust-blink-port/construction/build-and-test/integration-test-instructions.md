@@ -31,6 +31,7 @@ env PATH="$HOME/.cargo/bin:$PATH" PALUDARIUM_TEST_NODE=/Users/mutoakio/.local/sh
 - 4 環境の各 14 ケースが native と一致する。
 - 30 秒の watchdog で止まった試験は失敗として記録し、揺れた試験は記録して直す（NFR7）。
 - Safari の WebDriver は、session の作成（`POST /session`）だけを 60 秒まで待つ。ほかの要求の待ち時間は 10 秒のまま（`packages/paludarium-wasm/tests/u11-browser-driver.mjs`、試験は `u11-browser-driver.test.mjs`。Loop-back 1 の修正、commit 2b8723ab・57a8c96f）。
+- Safari の session 作成が safaridriver 側の時間切れ（`"error":"session not created"` と「timed out while connecting to a Safari instance」の両方を含む失敗）で失敗したときだけ、Safari を止めて 1 回だけやり直す。1 回目の失敗は `session_retry` と stderr に残し、ほかの失敗はやり直さない。`u11-acceptance.yml` の Safari の job は試験の前に Safari を一度起動して閉じる（暖機、失敗しても job を落とさない）。効き目は `u11-safari-stability.yml`（まっさらな macOS の runner で 10 回）で確かめる（U15 Step22〜23、commit 8360be2e。27d05de1 の run 39143558642 で 10 回とも成功、やり直し 0 回）。U13・U14 の Safari の job（`u13-wasm-acceptance.yml`・`u14-wasm-acceptance.yml`）には暖機が無く、driver の中のやり直しだけが効く。
 - カバレッジの扱いは単体テストと合わせて行う（行カバレッジ 80% 以上、native Linux で測る）。
 
 ## テストデータ

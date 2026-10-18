@@ -2,9 +2,21 @@
 
 ## Summary
 
+- Builds: Step 48。27d05de1（U15 Steps22〜28）の後のU14の確かめ直し（review-13、NOT-READY、Major 5・Minor 3）の指摘をすべて、U14の記録で一度に直す：source-manifest.jsonの消えたworkflow（`u14-cost-diagnostic.yml`）、今の正式な確認コマンド（entry-c.pyからU15のentry-f・binding-e06fへ）、今のheadと、1ceae86cから変わったファイル（workflow 5つと、版0.1.0の両lockと `package.json`）、手順書の相対の見出しと古い期待結果、`verification/loopback1-next/README.md` の「Step46（現行）」、手順書の「未実装」「未検証」「現FR8…GAP」、traceability.jsonのNFR2・NFR3・NFR8・FR8.2の「現行」の文。レビューの前に記録の全行と「…」節の参照を確かめる。製品・CIは変えない。
+- Touches: U14の記録だけ（code-summary.md、traceability.json、source-manifest.json（消えたworkflowの1件を外す）、`verification/loopback1-next/README.md`（先頭に注記）、unit-test-instructions.md・この計画（計画のときに直した））。製品・CI・workflow・入口・binding・ほかのUnitの記録は変えない。
+- Tests: 新しい試験・CIの実行はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## Step48（27d05de1の後の確かめ直しの指摘を記録で直す）
+
+2026-10-19 JST。U15のStep22〜28（署名head 27d05de1、鎖 e3c29d1d → 8b415a7c → 8360be2e → 27d05de1、すべてVerified）で、U14のsource-manifestにあるworkflowのうち `.github/workflows/u1-u14-source-bound.yml`・`u14-fuzz.yml`・`u14-native-first.yml`・`u14-quality.yml`・`u14-wasm-acceptance.yml` が8360be2eで変わり（主に `push:` の起動条件を消した）、`.github/workflows/u14-cost-diagnostic.yml` が消えた。`u14-native-diagnostic.yml` は変わっていない。workflowのほかでは、`Cargo.lock`・`fuzz/Cargo.lock`・`packages/paludarium-wasm/package.json` がbb197e04（2026-10-18、U15の版0.1.0）でpaludariumの版0.0.0→0.1.0だけ変わった。U14のコード（`crates/`・`packages/paludarium-wasm` のJS・`tests/guests/u14/`・`scripts/`）は1ceae86cから27d05de1まで変わっていない（`git diff --name-only 1ceae86c 27d05de1 -- <manifestの全ファイル>` を読み取りで確かめた）。27d05de1のCIは8 runとも成功した（U12 current full quality run 39149189719はattempt 1で `u12-fuzz / fuzz (vfs_paths)` だけがapt.llvm.orgへの接続で失敗し、人の承認でそのjobだけをやり直したattempt 2で成功）。U14 current full quality（run 39149187727）とU14 fresh thirteen target ASan and LSan（run 39149194521）も成功した（U15の `ci-27d05de1/ci-27d05de1.json`・`ci-jobs-27d05de1.json`、品質の原本は `ci-27d05de1/u14-quality-39149187727/`）。正式な確認コマンドはU15の `entry-e3c29d1d/entry-f.py`・`binding-e06f.json` に替わった（2026-10-19に人が採用、intent直下の `verification-command.txt` の1行目）。確かめ直しのレビュー（review-13、NOT-READY）の後、checkpointで人がRequest Changesを選んだ。人の方針は「Minorもその場ですべて直す」。
+
+- [x] Step 48 — **確かめ直しの指摘を記録で一度に直す**。(1) source-manifest.jsonのwritesから、消えた `.github/workflows/u14-cost-diagnostic.yml` の1件を外す（91→90件。ほかの要素と並びは変えない）。(2) code-summary.mdの先頭の節を「現在の状態（2026-10-19 JST）」（見出しにStepを入れない）に書き直す：今の正式な確認コマンド（entry-f・binding-e06f、command SHA-256 `00f5c8832e04f7d27b30c6b445fdc30e0e5d233dfa5452e02c2c99368a08a159`。このコマンド行のSHA-256で、checkpointが `.aidlc-construction-checkpoints/u14-jit-wasm/unit.json` の `command_sha256` に記録する。entry-fは `aidlc/` の外の作業コピーのbytesだけを比べる）、今のhead 27d05de1、1ceae86cから変わったファイル（上のworkflowと、版だけの両lockと `package.json`）と変わっていないU14のコード、27d05de1のCI（U14 quality 39149187727、U14 ASan/LSan 39149194521、U12のrunのattempt 1の失敗とattempt 2の成功）、FR8.3の根拠は今も1ceae86cのrun 39030957672の1回の測定で、そのあとU14のコードは変わっていないこと。Step47の内容（entry-c.pyを正式な確認コマンドとしたこと）は、その節の1項目として「2026-10-18の時点」と書く。(3) 「履歴：現行Steps30〜44」節の「今の署名headは57a8c96f…U14のファイルのbytesは1ceae86cと同じ」（37行目）、「U14のファイルは変わっていない」（24行目の範囲）、「今の正式確認コマンド（人が採用済み）は…u11_candidate_v2.py」（26行目）に、その時点の記述である注記と今どうかを足す。(4) `verification/loopback1-next/README.md` の先頭に、「Step46（現行）」の「現行」「まだ採用されていません」「署名headは57a8c96f」は2026-10-18の時点の記述で、binding-07の入口は採用されず、今の正式な確認コマンドはentry-fである、という注記の節を足す（下の本文と、入口・binding・回帰のファイルは変えない）。(5) traceability.jsonのNFR2・NFR3・NFR8・FR8.2の「現行」の文の後ろに、27d05de1の時点の注記（U14のコードは1ceae86cから変わっていない、`u14-quality.yml`・`u14-fuzz.yml` などは8360be2eで起動条件だけ変わった、27d05de1のU14 quality 39149187727とU14 ASan/LSan 39149194521が成功）を足す。status・id・targetsは変えない。最上位に `history_note` があれば同じことを足し、なければ足す。行ごとにJSONとして直し、直す前の版（27d05de1）と比べて、notesと `history_note` のほかは変わっていないことを確かめる。(6) 手順書の先頭の節を「今回Step48」にし（計画のときに直した）、古い「今回Step47」「前回Steps42〜44」「前回Steps31〜41」の見出しは「履歴：…（日付）」に、`entry-c.py` の期待結果はその時点のものと注記し、373・391・411行目の「未実装」「未検証」と124行目の「現FR8/FR8.3/NFR3/NFR6 GAP」に、その時点の記述で今はどうか（実装済み、traceabilityはOK）の注記を足した（計画のときに直した）。(7) 全行の読み直し：直した後、U14のcode-summary.md・unit-test-instructions.md・traceability.json・README.mdの先頭とこの計画のSummaryを、「現行」「今回」「前回」「現在」「未実行」「未実装」「未検証」「未採用」「pending」「entry-c」「57a8c96f」「u14-cost-diagnostic」で探し、引用か時点の注記の付いたもののほかに残っていないことを確かめ、「…」節の参照が今ある見出し（または「作成時の見出しは…」の名前）を指していることをスクリプトで確かめる。製品・CI・workflow・入口・binding・ほかのUnitの記録は変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む（NFR2、NFR3、NFR8、FR8.2、FR8.3）。
+
+## 履歴：Summary（Step47、2026-10-18）（作成時の見出しは「Summary」）
+
 - Builds: Step47。残しているMinor 3件（再レビュー review-11 の R-14・R-15・R-16）を記録で直す。U14の記録は、もう正式な確認コマンドの入口（binding-07）に固定されていない（2026-10-18から正式な確認コマンドはU15の `entry-e3c29d1d/entry-c.py`）ので、traceability.json と code-summary.md を直せる。製品・workflow・入口・bindingは変えず、CI・性能測定・pushもしない。
 - Touches: U14の traceability.json（FR8.2・FR6.3・FR7.2 と NFR2・NFR3・NFR8 の行の説明文だけ）、code-summary.md（先頭に「現在の状態」の1節）、計画と手順書。
-- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-c.py）でのcheckpointがexit 0になることで確かめる。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-c.py）でのcheckpointがexit 0になることで確かめる。（2026-10-19 注記：2026-10-18の時点の記述。今の正式な確認コマンドはentry-fで、上の「Step48」節のとおり）
 
 ## Step47（残しているMinor R-14・R-15・R-16を記録で直す）
 
@@ -12,25 +24,25 @@
 
 - [x] Step 47 — **R-14・R-15・R-16を記録で直す**。(1) R-14：traceability.json の FR8.2・FR6.3・FR7.2 の「現行」の文に、根拠の U13 quality 39028305765 と U14 quality 39030957672 が attempt 2 で成功したこと（attempt 1 の失敗は code-summary.md 参照）を一言足す。(2) R-15：NFR2・NFR3・NFR8 の「現行」の文の参照先「FR8.2 の行」を「FR8.1 の行（7 run）」に直す。(3) R-16：code-summary.md の先頭に「現在の状態（2026-10-18 JST、Step47）」節を足し、Steps45〜46 と入口 v2（binding-07）は README.md の Step46 節を参照すること、正式な確認コマンドは2026-10-18からU15の `entry-e3c29d1d/entry-c.py` で、U14の入口（u14_candidate.py・u14_candidate_v2.py）は履歴として中身を変えずに残すこと、U14のcheckpointは entry-c.py で確かめることを書く（入口のhashは書かない。既存の節は履歴として残し、見出しに「履歴：」を付ける）。traceability.json の status と target は変えない。
 
-## 前回のSummary（Steps45〜46）
+## 履歴：Summary（Steps45〜46）（作成時の見出しは「前回のSummary（Steps45〜46）」）
 
 - Builds: Steps45〜46。Steps42〜44の再レビューの指摘を直す：traceability.jsonの親FR8の行（Major）とNFR1・2・3・8、FR6.3・7.2の行（Minor）に、現行と履歴（208fd965）の区別を付け、手順書の古い「今回…」の見出しを履歴に変える（Step45）。それを許す新しい入口 `u14_candidate_v2.py`（binding-07、U11 v2をそのまま呼ぶ）を作り、確かめ、再レビューのあと採用を人に提示する（Step46）。Step42の計画との違い（source-manifestは変えない、NFR7は足さない）を記録する。製品・workflowは変えず、新しいCI・性能測定・pushは行わない。
 - Touches: U14のtraceability.json・手順書の見出し・計画、必要ならcode-summary.mdの冒頭の節に1項目、`verification/loopback1-next/` の新しいファイル（入口・binding-07・回帰）とREADMEの節。
 - Tests: 新しい入口の回帰（拒否と正の対照、Step43の履歴の固定）を書いて実行する。仮採用のコマンドが想定どおり止まることと、新しい入口がexit 0になることを確かめる。正式sensor、独立再レビュー、人の採用のあとの正式checkpoint。
 
-## 前回のSummary（Steps42〜44）
+## 履歴：Summary（Steps42〜44）（作成時の見出しは「前回のSummary（Steps42〜44）」）
 
 - Builds: Steps42〜44（Loop-back 1の残り）。U14の記録（code-summary.md・traceability.json・source-manifest.json）を、整数SSEのJIT・正式性能（run 39030957672、FR8.3）・Safariの修正・npmのpinに合わせて更新し（Step42）、それを許す新しい確認の入口 `u14_candidate.py`（binding-06、U11 v2をそのまま呼ぶ）を作り、約束したMinor（U11のR-10：`--logical-child` のhash検査）も直す（Step43）。回帰・sensor・独立再レビューのあと、新しい入口の採用を人に提示する（Step44）。製品・workflowは変えず、新しいCI・性能測定・pushは行わない。
 - Touches: U14の記録3ファイルと計画・手順書、新しい `construction/u14-jit-wasm/code-generation/verification/loopback1-next/`（入口・binding-06・回帰・README）だけ。
 - Tests: 新しい入口の回帰（拒否と正の対照）を書いて実行する。今の正式確認コマンドが想定どおり止まることと、新しい入口がexit 0になることを確かめる。正式sensor、独立再レビュー、人の採用のあとの正式checkpoint。
 
-## 前回のSummary（Steps31〜41）
+## 履歴：Summary（Steps31〜41）（作成時の見出しは「前回のSummary（Steps31〜41）」）
 
 - Builds: Loop-back 1の第2段階（Steps31〜41）。Step31で手元の費用を測り（済み）、見積りで速くなるのは整数SSE群だけだったため、人の選択で今回は整数SSE群（wasmのSIMD、JITの状態にXMMを足してrollbackを400 byteに）だけをJITに足す。GPRのregister形式（Step35）とbyte比較群（Step36）は今回は行わず、正式性能の結果を見てから別の計画にする。CIで品質を確かめた後、正式な性能測定を1回だけ行う。Safariの待ち時間はU11を開き直して直す。mise.tomlにnpm 12.2.0を書き（今はグローバル設定に記載済み）、それを許す新しい正式確認コマンドを作って人の承認を受ける。
 - Touches: Step31は製品を変えない（`verification/loopback1-cost/` だけ）。その後：`tests/guests/u14/{native.c,validation.py,test_validation.py}`、`crates/paludarium-harness/tests/diff_u14.rs`、`crates/paludarium-jit/src/{block.rs,emit.rs,bridge.rs,lib.rs,cache.rs}`、`crates/paludarium-cpu`（XMM状態の受け渡しに必要な分だけ）、`crates/paludarium-wasm/src/abi.rs`、`packages/paludarium-wasm/jit-support.mjs`、JITのfuzz対象、`mise.toml`、U14の記録3ファイル、新しい `verification/loopback1-next/`。pushは2回（native先行、改善後）で、どちらも先にdiffを示して承認を受ける。
 - Tests: Step31は既存の実Worker microbenchで測った（済み）。実装の前に整数SSE群のfresh x86-64 Linuxの差分ケース（形式ごとの境界を含む）を用意し、interpreterで一致を確かめる。実装の後に各部品7件以上・JS境界8件以上の単体テストを書く。CIで4環境の各28比較、3OS、依存の検査、各集合の行カバレッジ80%以上、fuzz各600秒を確かめ、正式な性能測定（20標本、片側p<0.05）を1回だけ行う。
 
-## 入力と現状
+## 履歴：入力と現状（最初の計画を書いた時点の記述。作成時の見出しは「入力と現状」）
 
 Unit定義U14、要件FR8/FR8.1〜FR8.3、NFR1/2/3/6/8、契約C9/C10/C12、components.mdのJitを対象とする。既存NoopCodeCacheとnativeのインタプリタを保持する。下のSteps1〜7とlock overlayは初回構築の計画を保持したもの。現在は署名済みb79d30d5でJIT・4環境比較・overlayの証拠があるが、初回性能は平均JIT14.671968449秒／interpreter5.4624920141秒、全10ペアでJITが遅く片側p=1で未達。JE専用native差分と親FR8分類が不足している。今回実行する追加修復はSteps8〜14であり、旧成功を変更後の新実行へ読み替えない。
 
@@ -86,7 +98,7 @@ native JITと公開処理U15は対象外。旧native SIGSEGV・Windows race原�
 
 実行状況：Steps8〜12の実装・限定診断・JEのfresh native/interpreter/実Wasm三者確認は実施済み。a8e8332bの品質34/source-bound7/fuzz13と4環境各28比較は成功したが、正式性能20標本は全10ペア遅くp=1で未達原本を保持した。追加のdecode1lookup局所修復を署名head cd2de605へ送信済みで、現在の新CI・正式性能は結果待ち。Step13/14と正式確認・独立レビュー・完了承認は未完了。性能達成とunit全要件完了は主張しない。
 
-## 追加性能原因診断（今回の追加範囲）
+## 履歴：追加性能原因診断（Steps15〜19。作成時の見出しは「追加性能原因診断（今回の追加範囲）」）
 
 人の追加承認は診断段階だけを計画へ組み込むこと。以下の計画確認と内容確認が済むまでは実装しない。cd2de605の正式20標本はinterpreter平均5.581792195100001秒/JIT6.2825898274秒、全10ペア遅くp=1で未達。a8・b79・13753の失敗原本と分離して保存する。限定local診断のJIT命令190117/(190117+interpreterSteps16488376)=約1.14%、90324blocks/93340JS遷移は適用率・短block・境界回数の根拠であり、正式性能の時間寄与ではない。
 
@@ -96,7 +108,7 @@ native JITと公開処理U15は対象外。旧native SIGSEGV・Windows race原�
 - [x] Step 18 — 背景の重い処理を止めた後、現cd2のu11 acceptance probe/aube/oracle対応組を使い、新sourceの診断moduleを各mode新factoryで1回だけ実行する。guest30秒、外側180秒、8PASS/exit0/timeout=false、kill/reap/cleanup、interpreter modeへのJIT counter混入無しを必須にする。診断原本は旧ファイルと異なる新output directoryへ保存し、local:<sourceDigest>とbaseline signed headを区別する。観測率・chain分布・fallback密度・lookup/bytes・停止理由を集計し、測れない時間寄与は未検証とする。正式20標本・受理runnerは実行しない。同binaryの合格待ち測定をしない。FR8.3、NFR3/6。
 - [x] Step 19 — 変更feature有効CPU/JIT/runtime・既存JE/prepare中write・JS/Python・fuzz cfgと配布境界を検証し、変更診断codeを含む固定Rust/JS/Python/workspace各80%と追加集合80%を維持する。既存native fixture/4環境各28比較、3OS/依存4監査、変更closure13fuzz各600秒/MMU4608の証拠要件は保持し、不変対象の再利用はsource/locks/compiler/flags/suppression/binary一致で限定する。新sourceの外部検証が必要な場合は具体manifest/diffを提示し、既存fork同branchへの署名jjとVerified/head/bytes確認を親が担当する。既存fullqualityの正式性能stepは起動せず、必要な診断専用workflow `.github/workflows/u14-cost-diagnostic.yml` に品質・finite診断だけを接続する。観測からbatchの償却候補/中止理由と残る不足を提示する。候補率が低い・探索費用が大きい・時間寄与や安全意味論の根拠が足りない場合はbatchを進めず、unsupported hotspots/適用率を次の調査候補にする。batch製品実装はbreak-even条件・安全意味論・具体差分を別の実装計画承認へ提示するまで行わない。命令追加も別承認。旧canonical/binding/失敗原本は変更せず、新証拠を別に作り、summary/traceability/manifestの更新と正式sensors/独立レビュー・次の確認command採用はその新証拠へ束縛して親が調整する。FR8/FR8.3/NFR6は未達として保持し、u9専用coverage不足も解消したとしない。
 
-## Steps20〜27：JIT性能とU9専用coverageの追加修復（今回）
+## 履歴：Steps20〜27：JIT性能とU9専用coverageの追加修復（作成時の見出しは「Steps20〜27：JIT性能とU9専用coverageの追加修復（今回）」）
 
 2026-10-16 JST。今回の実行範囲は以下の追加Steps20〜27とする。上のSteps1〜19・各時点の失敗／診断／未完了判定は履歴として本文を保持し、今回の成功や許可へ読み替えない。Step19の未完了項目はSteps25・27で新証拠へ結合するまで完了にしない。U1・U2・U5の共有変更後の再確認は人が承認済み。U5 R-05は質問ファイル構造の未解決Minorとして保持する。製品実装・新診断・U9再測定・正式性能再測定は、この追加計画の承認後に開始する。
 
@@ -151,13 +163,13 @@ native JITと公開処理U15は対象外。旧native SIGSEGV・Windows race原�
 
 各Stepの要件対応：20はFR8.1/NFR8、21〜22はFR3/NFR3（人が指定したU9不足の修復）、23〜24はFR8.1/FR8.3/C9/NFR2/3/6、25はFR8.2/C10/C12/NFR1/2/3/8、26はFR8.3/NFR6、27は親FR8/NFR3/6。今回の上流には独立したUser Story IDがないため、Unit U14と実在するFR/NFRおよび人の修正依頼へ結び付け、架空のUS IDは作らない。
 
-## 今回の指摘対応：Step28（R-04・R-05）
+## 履歴：指摘対応：Step28（R-04・R-05）（作成時の見出しは「今回の指摘対応：Step28（R-04・R-05）」）
 
 2026-10-17 JST。ユーザーは、U14 checkpointの再確認（iteration 2、判定READY）でRequest Changesを選び、R-04とR-05への対応を指定した。再確認のきっかけは、2026-10-16のClaude Code harness追加で、ルート `.gitignore` のAI-DLCブロックに `aidlc/active-memory/` と `aidlc/.aidlc-request-text/` の2行が入ったことである。ルート `.gitignore` は、U14のsource-manifest（91パス）に含まれない。その後、人の承認でConstruction Verification Commandとして `/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u1-skeleton/code-generation/verification/r05-r11-repair-01/final_candidate.py`（SHA-256 `d799bbb919f5927304fbb5c5a57e4b3686a52436eaac70cd325ffe981afa9b3e`）が採用された。U14のcheckpointでもこのコマンドが実行される。2026-10-17の再確認後の実行は、終了コード0（checkpointの検証記録 `.aidlc-construction-checkpoints/u14-jit-wasm/unit.json`）であった。判定は `formal-candidate-1792198889197428000-95617/result.json` にあり、`source_compatibility` が `PASS`、`head` が be45b36c、`U15_acceptance` は GAP である。Step27（証拠結合と正式確認）は未完了の履歴として残す。
 
 - [x] Step 28 — code-summary.mdの記録更新（R-04・R-05）。code-summary.mdの末尾（「## 保存した失敗と残る確認」の後）に「## 現行Step28：正式検証コマンドとルート.gitignoreの位置づけ」節を加え、次を記録する。(a) R-04：checkpointで実行する正式コマンドは、採用済みの `final_candidate.py`（上のSHA-256）である。2026-10-17の再確認後の実行の終了コード0はcheckpointの検証記録に、判定は上の `result.json` にある。正式コマンドは実行のたびに `r05-r11-repair-01/` の下へ新しい `formal-candidate-<id>/` を作り、checkpointの最新の実行は `unit.json` の `verification.stdout_tail` に記録される。どの実行も、同じコマンドで同じ判定項目（source_compatibility、U15_acceptance）を出す。U14 Step27で予定していた「新しい検証候補」の正式採用は行っておらず、checkpointの正式検証はこの採用済みコマンドで行う。(b) R-05：ルート `.gitignore` はU14のビルド、テスト、JIT、wasmの入力ではない。manifest（91パス）に含めない、ビルド対象外の共有パスである。2026-10-16のharness追加で上の2行が入ったことが、再確認のきっかけになった。製品の除外（`/target/`、`paludarium.wasm`）は変わっていない。(c) 範囲：新しいCI・性能測定・Safari・ASan・U15の受理は主張しない。また、「## 保存した失敗と残る確認」節の最終段落（「新しい正式検証コマンドはまだ未採用である。」で始まる段落）の先頭に、「（履歴：final_candidate.py採用前の記述。現行は「現行Step28」節を参照）」を足す。その他の文と節は変えない。正式sensorを実行した後は全書込を止め、独立再レビュー、採用済み正式コマンドでのcheckpoint再検証、人の完了承認に進む（NFR3、NFR8）。
 
-## 今回の対応：Step29（固定bytesへの復元と記録の移動）
+## 履歴：Step29（固定bytesへの復元と記録の移動）（作成時の見出しは「今回の対応：Step29（固定bytesへの復元と記録の移動）」）
 
 2026-10-17 JST。Step28の後、独立再レビューはREADY（R-04・R-05はFixed）だった。しかし、採用済みの正式コマンドでのcheckpoint検証は終了コード1になった。失敗の原本は `construction/u1-skeleton/code-generation/verification/r05-r11-repair-01/formal-candidate-1792199458129316000-434/` にある。その中の `refusal.json` には、外側の汎用メッセージ「semantic validator failed or emitted unexpected stderr」だけが記録されている。具体的な理由 `ValueError: bound input changed: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u14-jit-wasm/code-generation/code-summary.md`（`final-verifier-208fd965/checks.py` の `verify_index`）は、内側の検証の標準エラー `0.stderr.bin` の末尾にある（R-06）。正式コマンドは、U14の `final-verifier-208fd965/binding-final-v3-01.json` の `produces` で、code-summary.md（sha256 `223488c21a911afdff961538442e4d6dfe1b8985fe91a7281a2c93c7a8a46edd`、6746 bytes）、traceability.json、source-manifest.jsonのbytesを固定している。この計画とunit-test-instructions.mdは固定されていない。人は「summaryを戻し、記録はplanへ」を選び、この作業に限りreview-freezeをオフにした。この失敗は原本として残し、成功へ読み替えない。
 

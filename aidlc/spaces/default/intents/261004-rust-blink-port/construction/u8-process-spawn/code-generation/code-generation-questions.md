@@ -7,15 +7,15 @@ instead of in chat, write your answer after `[Answer]:` and tell me in chat when
 
 Approve the code plan for u8-process-spawn?
 
-- Builds: Step16。製品は変えない。計画の古くなったTesting Contractを今の内容（`sha256:7ff27a24…`、方針は同じでproject層の学びが足されただけ）に置き換え、今の正式確認コマンドでU8を確かめ直す。
-- Touches: この計画のTesting ContractとStep16の節だけ。製品・テスト・ほかの記録は変えない。
-- Tests: 新しいテストの実行はない。独立再レビューと、今の正式確認コマンド（U2の `u2_candidate.py`）でのcheckpoint。Steps13〜15の結果は履歴として保持する。
+- Builds: Step19。Step18の再レビュー（review-08）のMinor R-14を直す：traceability.jsonのNFR8のnotesの後半（692264fa時点の差分テスト・3OSの結果）が、供給網の検査の結果ではないことを明記する。
+- Touches: U8のtraceability.json（NFR8のnotesの1行）とcode-summary.md（1文）だけ。製品・CI・workflow・ほかのUnitの記録・source-manifest.json・unit-test-instructions.mdは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
 
 Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u8-process-spawn/code-generation/code-generation-plan.md
 Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u8-process-spawn/code-generation/unit-test-instructions.md
 
-[Approval Fingerprint]: sha256:v3:c909bdcb45cc6dbc9d55efde1fd4e210f881bd3d86c4352e702b5f45ff088d37
-[Planned Source]: 1d007e145356f21dddcf25b720db0726f7c889de86622e95a640349d7b723024
+[Approval Fingerprint]: sha256:v3:8367e59e0b27f7daebe64e3b4873f39eb4692e1830239bb763d20288223f3f8a
+[Planned Source]: 2ddcf1227d570aa365619e0528ec9ef35513970dcf88c95dc5989daa435f32d3
 
 - A. Approve Plan
 - B. Request Changes

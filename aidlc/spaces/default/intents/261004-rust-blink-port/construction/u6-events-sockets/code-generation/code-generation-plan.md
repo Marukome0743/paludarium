@@ -2,16 +2,28 @@
 
 ## Summary
 
+- Builds: Step20。U6の確かめ直し（review-06、NOT-READY、Major 4・Minor 2）のR-05〜R-10（とR-04）をU6の記録で直す：traceability.jsonの消えたtarget、manifestの消えたworkflow、古い状態を今のものとして書いた箇所、今は測られていないU6だけの測定の明記。製品・CIは変えない。
+- Touches: U6の記録だけ（code-summary.md、unit-test-instructions.md、traceability.json、source-manifest.json）。製品・CI・workflow・ほかのUnitの記録は変えない。U6だけの測定をCIに戻すか（R-08）、`diff_u6` を差分のjobに足すか（R-10）は、残りのUnitを見てからまとめて決める（人の判断）。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 今回の計画：Step20（確かめ直しの指摘を記録で直す）
+
+2026-10-19 JST。U15のStep22〜28（push、head 27d05de1）で、U6のmanifestにある `u6-current-verification.yml`・`u6-native-diagnostic.yml`・`u6-quality.yml` が消え、正式な確認コマンドがU15の `entry-e3c29d1d/entry-f.py`・`binding-e06f.json` に替わった。U6の確かめ直し（review-06、NOT-READY、Major 4・Minor 2）の後、checkpointで人がRequest Changesを選んだ（U6の記録を直す。測定をCIに戻すかは、残りのUnitを見てからまとめて決める）。人の指示：「ワークフローの順で進めてください。U1 の確かめ直しから始めて、ファイルが変わった Unit を順に確かめ直し、U15 のレビューと完了確認、U11 の確かめ直しまで進めてください。」
+
+- [x] Step 20 — **確かめ直しの指摘を記録で直す**。(1) R-05：traceability.jsonのNFR8のtargetを `.github/workflows/ci.yml`、NFR9のtargetを `rust-toolchain.toml` に替え、それぞれのnotesの先頭に「2026-10-19：27d05de1で `u6-current-verification.yml` が消えたため、targetを替えた。以下はその時点の記録。」を足す（statusとidは変えない）。(2) R-06：source-manifest.jsonのwritesから、消えた3本（`.github/workflows/u6-current-verification.yml`・`u6-native-diagnostic.yml`・`u6-quality.yml`）を外す。(3) R-07：code-summary.mdの先頭に「現在の状態（2026-10-19 JST、Step20）」節を足し、今の正式な確認コマンド（entry-f・binding-e06f、command SHA-256 `00f5c883…a159`）、今のtoolchain（`nightly-2026-10-11`）、U6のworkflowの削除と、U6の受け入れが今どこで動くか（fuzzは `u11-fuzz.yml`・`u14-fuzz.yml`、3OSのテストは `ci.yml`・`u14-quality.yml`、`diff_u6` は `ci.yml` のcoverageのjobの `--workspace` の中）を書く。記録に出てくる `u2_candidate.py`・`verify-current-…` の候補、head 11c033c7、compiler 32dba69d6、Safari 26.6.2、「未検証」「承認前は実行しない」は、その時点の記述であることを書く。「現行」「今回」で始まる見出しは「履歴：…（作成時の見出しは「…」）」にする（本文は変えない）。traceability.jsonの「現行署名Verified 11c033c7」で始まる各行のnotesの先頭に「（履歴：11c033c7時点の観測。今の状態はcode-summary.mdの先頭の節）」を足す。(4) R-08：**U6だけの測定3つ（固定9ファイルのcoverage 85.83%、production wasmのNode/Safariの102件、`u6_tests::` の49件・ignored 0の件数）は、27d05de1から、どのworkflowでも測られていない**ことを新しい節に書き、NFR3・NFR7・FR2.4〜FR2.7のOKの根拠は11c033c7時点の履歴であることを書く。traceability.jsonのNFR3・NFR7のnotesの先頭にも同じ注記を足す（statusは変えない。CIに戻すか受け入れるかは、残りのUnitを見てからまとめて決める）。(5) R-09：`scripts/u6-coverage.py`・`scripts/u6-wasm-guests.py`・`scripts/u6-runner-test.py`・`packages/paludarium-wasm/tests/u6-check.mjs` は、残りのworkflowから呼ばれていない（手動用・CI未接続）ことを書く。(6) R-10：`diff_u6` は差分のjobの `--test` 一覧になく、`ci.yml` のcoverageのjobの中で動くことを書く。(7) R-04：code-summary.mdの「今回Steps16〜18の現行実行」への参照を、今の見出し名に合わせる。unit-test-instructions.mdの先頭の「今回」節と古い見出しの改名・注記は、計画のときに書いた。製品・CI・workflow・ほかのUnitの記録は変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR3、NFR7、NFR8、NFR9。
+
+## 前回のSummary（Step19）
+
 - Builds: Step19。製品は変えない。計画の古くなったTesting Contractを今の内容（`sha256:7ff27a24…`、方針は同じでproject層の学びが足されただけ）に置き換え、今の正式確認コマンドでU6を確かめ直す。
 - Touches: この計画のTesting ContractとStep19の節だけ。製品・テスト・ほかの記録は変えない。
 - Tests: 新しいテストの実行はない。独立再レビューと、今の正式確認コマンド（U2の `u2_candidate.py`）でのcheckpoint。Steps16〜18の結果は履歴として保持する。
 
-## 今回の計画：Step19（Build and TestのLoop-back 1：Testing Contractの更新と再確認）
+## 前回の計画：Step19（Build and TestのLoop-back 1：Testing Contractの更新と再確認）
 
 2026-10-17。U14の整数SSEのJIT（署名head 1ceae86c）とU1・U2の正式確認の更新の途中で、記録の誤り（Code Generationの段階全体へのRequest Changes）のため、各Unitを順に確かめ直している。U6の担当のsource-manifestには、今回変わったファイル（U14のJIT・wasm・テスト、`crates/paludarium-wasm/src/abi.rs`、`mise.toml`）は含まれない。この計画の「## Testing Contract」は、memory（project.mdの学び）の更新で古くなっていたため、`aidlc engine testing-posture render` の出力に置き換えた。テストの方針（Methodology custom、Ordering、Standard、80%下限など）は変わらない。
 
-- [ ] Step 19 — 製品・テスト・記録は変えない。今の正式確認コマンドでU6のcheckpointを確かめる。独立再レビューで、U6の記録が今のsourceと合っていることを確かめる。Steps16〜18の結果は履歴として保持し、今回の新しい実行とは数えない（NFR3、NFR9）。
-- [ ] Step 20 — 再レビュー（iteration 2）のMinorへの対応（人のRequest Changes「Minor を直す」）。code-summary.mdの先頭に「現行Step19〜20（Loop-back 1）」節を足し、次を書く：(a) Testing Contractを今の内容に置き換えたこと、(b) U6の担当source（source-manifest）は12d6a2f6・1ceae86cの変更に含まれないこと、(c) Steps16〜18のNode・本物Safariの全102ケースの証拠は、U14の変更より前のmodule（`4482b157…`、head 11c033c7）に対するもので、1ceae86cから作るmoduleとは別物であること。1ceae86cのmoduleでの4環境の比較はU14 quality run 39030957672で行ったが、U6の102ケースは今のmoduleでは測り直していないこと、(d) 「記録が今のsourceと合っている」はレビューで記録とsource-manifestを照らした範囲であり、新しい実行ではないこと。traceability.jsonの分類・targetは変えない。正式sensor 2件を実行し、独立再レビューと今の正式確認コマンドでのcheckpointに進む。
+- [x] Step 19 — 製品・テスト・記録は変えない。今の正式確認コマンドでU6のcheckpointを確かめる。独立再レビューで、U6の記録が今のsourceと合っていることを確かめる。Steps16〜18の結果は履歴として保持し、今回の新しい実行とは数えない（NFR3、NFR9）。
+- [x] Step 20 — 再レビュー（iteration 2）のMinorへの対応（人のRequest Changes「Minor を直す」）。code-summary.mdの先頭に「現行Step19〜20（Loop-back 1）」節を足し、次を書く：(a) Testing Contractを今の内容に置き換えたこと、(b) U6の担当source（source-manifest）は12d6a2f6・1ceae86cの変更に含まれないこと、(c) Steps16〜18のNode・本物Safariの全102ケースの証拠は、U14の変更より前のmodule（`4482b157…`、head 11c033c7）に対するもので、1ceae86cから作るmoduleとは別物であること。1ceae86cのmoduleでの4環境の比較はU14 quality run 39030957672で行ったが、U6の102ケースは今のmoduleでは測り直していないこと、(d) 「記録が今のsourceと合っている」はレビューで記録とsource-manifestを照らした範囲であり、新しい実行ではないこと。traceability.jsonの分類・targetは変えない。正式sensor 2件を実行し、独立再レビューと今の正式確認コマンドでのcheckpointに進む。
 
 ## 前回のSummary（Steps16〜18）
 
@@ -21,15 +33,15 @@
 
 ## 承認された追加検証（Steps16〜18）
 
-- [ ] Step 16: U6の82ケースと共有20ケースをケースIDで照合し、削除済み旧unsupported-tty拒否に由来するu6-check.mjsの総数assert一行だけを103から102へ整合する。U6ケース・期待値・比較条件を削除しない。専用診断CI/helperを準備し、現行入力集合と両lock、実使用compiler・ツール版・設定のbefore/after/currentを保存する。診断ファイルとassert修正も入力へ明示する。旧439入力の42変更・担当31中9変更・旧compiler相違を歴史として保持する。最新ツールの公式確認で追加設定変更が必要なら最小案を提示する。
-- [ ] Step 17: 同一現行ソースの署名済みCIでfresh x86-64 Linux native差分84件とTokio10反復、既存9製品ファイルの同分母規則coverage80%以上、3OSのKernel u6_tests49件・ignored0とfmt/Clippy/依存4検査を実行する。kernel_events_u6/kernel_sockets_u6を各600秒以上ASan/LSanで検証し、instrumentation、sanitizer runtime・flags、実使用compiler、依存閉包、全入力・両lock、生ログ・実exitを保存する。入力30秒watchdog、kill/reap、既存mask・比較規則・測定分母を維持する。失敗やskipを合格にしない。
-- [ ] Step 18: 同CI生成のproduction wasmとfresh native結果を用い、Nodeと本物Safariで共有20＋非threaded U6 82の全102ケースを実行する。module hash・ケースID・COOP/COEP/sharedMemory・停止と清掃・実exitと原本を結合する。Tokio/C66のwasm guest WorkerはU11境界として保持する。新CIの全入力・両lockと署名head/job/raw hashを結合して4成果物・strict source-manifestを更新し、正式検査・独立レビューへ渡す。新最終確認候補は構文確認までとし、変更承認後に実行する。先行Unitの保存証拠は一致範囲だけ再利用し、変更の影響があれば具体的追加案を示す。strict guard、80%下限、30秒制限を維持する。
+- [x] Step 16: U6の82ケースと共有20ケースをケースIDで照合し、削除済み旧unsupported-tty拒否に由来するu6-check.mjsの総数assert一行だけを103から102へ整合する。U6ケース・期待値・比較条件を削除しない。専用診断CI/helperを準備し、現行入力集合と両lock、実使用compiler・ツール版・設定のbefore/after/currentを保存する。診断ファイルとassert修正も入力へ明示する。旧439入力の42変更・担当31中9変更・旧compiler相違を歴史として保持する。最新ツールの公式確認で追加設定変更が必要なら最小案を提示する。
+- [x] Step 17: 同一現行ソースの署名済みCIでfresh x86-64 Linux native差分84件とTokio10反復、既存9製品ファイルの同分母規則coverage80%以上、3OSのKernel u6_tests49件・ignored0とfmt/Clippy/依存4検査を実行する。kernel_events_u6/kernel_sockets_u6を各600秒以上ASan/LSanで検証し、instrumentation、sanitizer runtime・flags、実使用compiler、依存閉包、全入力・両lock、生ログ・実exitを保存する。入力30秒watchdog、kill/reap、既存mask・比較規則・測定分母を維持する。失敗やskipを合格にしない。
+- [x] Step 18: 同CI生成のproduction wasmとfresh native結果を用い、Nodeと本物Safariで共有20＋非threaded U6 82の全102ケースを実行する。module hash・ケースID・COOP/COEP/sharedMemory・停止と清掃・実exitと原本を結合する。Tokio/C66のwasm guest WorkerはU11境界として保持する。新CIの全入力・両lockと署名head/job/raw hashを結合して4成果物・strict source-manifestを更新し、正式検査・独立レビューへ渡す。新最終確認候補は構文確認までとし、変更承認後に実行する。先行Unitの保存証拠は一致範囲だけ再利用し、変更の影響があれば具体的追加案を示す。strict guard、80%下限、30秒制限を維持する。
 
 ## 今回の再確認（Steps13〜15）
 
-- [ ] Step 13: FR2.4〜FR2.7/FR9.1、横断NFRと共有契約を確認し、現行担当ソース・両lock・実使用compiler・設定を保存する。旧e33cfbb4の439入力と31担当leaf、84native差分、Tokio10反復、9製品ファイルcoverage2352/2785、2ASan各601秒、Node/本物Safari各103件の証拠を個別に照合する。旧aeb7や修正前75pass/9failは歴史として保持し、現在の成功へ読み替えない。最新ツールは作業の区切りで公式情報を確認し、更新が必要なら具体的最小案を提示する。
-- [ ] Step 14: 現行U6限定Kernel内部テストを `cargo test --locked -p paludarium-kernel --lib u6_tests::` で実行し、実件数・ignored・exitと原本を保存する。Linux fresh84差分・Tokio10反復、固定9ファイルcoverage80%、3OS品質、kernel_events_u6/kernel_sockets_u6各600秒ASan/LSan、本番Node/本物Safariの証拠について依存ソース・両lock・実使用compiler・設定・測定対象の一致範囲を確定する。U5の成功はU6全品質の代替にしない。不足は具体的な追加実行案として人へ提示し、重い追加CIや製品修正はこの段階では実施しない。
-- [ ] Step 15: 実測結果と未検証をcode-summary・traceability・source-manifestへ反映する。要件原本と独立した担当割当を根拠に全要件をOK/Deferred/N/Aへ分類し、他Unit要件をU6実装済みと偽らない。正式検査・独立レビュー・承認済み最終確認へ渡す。既存確認コマンドが新U6証拠を検証できない場合は候補を具体化し、新承認後に実行する。strict guard、80%下限、30秒入力制限、比較maskと固定分母を維持する。Tokio・C66のwasm guest WorkerはU11境界であり、共有launcher成功と混同しない。ID競合の完全解消は実測範囲を超えて主張しない。
+- [x] Step 13: FR2.4〜FR2.7/FR9.1、横断NFRと共有契約を確認し、現行担当ソース・両lock・実使用compiler・設定を保存する。旧e33cfbb4の439入力と31担当leaf、84native差分、Tokio10反復、9製品ファイルcoverage2352/2785、2ASan各601秒、Node/本物Safari各103件の証拠を個別に照合する。旧aeb7や修正前75pass/9failは歴史として保持し、現在の成功へ読み替えない。最新ツールは作業の区切りで公式情報を確認し、更新が必要なら具体的最小案を提示する。
+- [x] Step 14: 現行U6限定Kernel内部テストを `cargo test --locked -p paludarium-kernel --lib u6_tests::` で実行し、実件数・ignored・exitと原本を保存する。Linux fresh84差分・Tokio10反復、固定9ファイルcoverage80%、3OS品質、kernel_events_u6/kernel_sockets_u6各600秒ASan/LSan、本番Node/本物Safariの証拠について依存ソース・両lock・実使用compiler・設定・測定対象の一致範囲を確定する。U5の成功はU6全品質の代替にしない。不足は具体的な追加実行案として人へ提示し、重い追加CIや製品修正はこの段階では実施しない。
+- [x] Step 15: 実測結果と未検証をcode-summary・traceability・source-manifestへ反映する。要件原本と独立した担当割当を根拠に全要件をOK/Deferred/N/Aへ分類し、他Unit要件をU6実装済みと偽らない。正式検査・独立レビュー・承認済み最終確認へ渡す。既存確認コマンドが新U6証拠を検証できない場合は候補を具体化し、新承認後に実行する。strict guard、80%下限、30秒入力制限、比較maskと固定分母を維持する。Tokio・C66のwasm guest WorkerはU11境界であり、共有launcher成功と混同しない。ID競合の完全解消は実測範囲を超えて主張しない。
 
 ## Testing Contract
 
@@ -104,18 +116,18 @@ Kernelがevent counter、epoll interest/ready状態とsocket endpoint/bufferを�
 
 ## Steps
 
-- [ ] Step 1: FR2.4〜2.7/NFR1。現Kernel Files/FileHandle/ThreadGroup/Host wait、poll/selectの既存範囲と対象tokio/UnixStream syscall実使用を限定調査し、U6変更path・syscall/flags/対応外表・guest ABIを記録する。open file description（OFD）identityとfd番号を区別する設計、lock順序と待機登録/再確認/通知の不可分境界を確定する。U6変更製品fileのLinux coverage分母をここで明示・固定し、以後減らさない。
-- [ ] Step 2: FR9.1/NFR7。tests/guests/u6/build.sh、scripts/u6-native-observe.pyとu6-runner-test.py、harness/tests/diff_u6.rs、Kernel u6_tests filter、.github/workflows/u6-native-diagnostic.ymlの最小runnerを用意する。下記unit commandの実行可能性を先に確認し、0件成功を検証としない。全processの30秒watchdog/process-group kill/reap、stdout/stderr/exit/timeoutとmanifest/binary hashを保存する。
-- [ ] Step 3: FR2.4〜2.7/NFR1。製品変更前に48件以上の有限guestケースとCOMPARISON.mdを用意する。eventfd counter/semaphore/8-byte ABI/overflow/EAGAIN、epoll LT/ET/ONESHOT/ADD-MOD-DEL/error/ready公平性、fd dup-close-reuse/OFD寿命、socketpair双方向/partial IO/EOF/shutdown/EPIPE/NONBLOCK/CLOEXEC、期限/signal/kill/masked signalとmetadata通知を含める。network拒否のpolicy例外を別に記録する。順序はchannel/guest handshakeで確定し、生fd/TID/時刻/順不同event集合を正規化する。各ケース名・件数・比較対象を固定する。
-- [ ] Step 4: FR2.4〜2.6/FR9.1。fixture-only sourceを親へpush-readyとして渡して停止する。親がsigned Linux CIで全native期待を取得しraw整合を確認後、明示goを受けて製品へ進む。静的expected fixtureを実行oracleに使わない。追加syscall必要時も追加ケースnative先行の順序を守る。
-- [ ] Step 5: FR2.4/NFR2。Kernel events部品とeventfd2を実装しread/write/flags/dup/status/closeへ接続する。counter上限・semaphore・blocking/NONBLOCK・EFAULT/errno・poll readinessをnative観測へ一致させる。実装後に単体8件以上を追加して実行する。待機中にMMU/fd table/event lockを保持しない。
-- [ ] Step 6: FR2.6/NFR2/4。Kernel socketpair endpointsを実装しSOCK_STREAM/NONBLOCK/CLOEXEC、双方向buffer、partial IO、EOF、shutdown、peer close/EPIPEとsignal、read/writeおよび必要なsend/recv APIへ接続する。buffer方式とbackpressureのnative比較規則を明記しNFR5の任意ゲスト資源上限を新設しない。実装後にendpoint単体8件以上を実行する。AF_INET/AF_INET6をHostへ接続せずEAFNOSUPPORTで拒否する。
-- [ ] Step 7: FR2.5/NFR1/2。自前epoll create/ctl/waitと対象で必要なpwait、readiness通知を実装する。LT/ET、ONESHOT rearm、ready→not-ready→ready、maxevents、公平性、data64、error/hangup、timeoutとsignal maskをnativeへ一致させる。通知登録前後の再確認でlost wakeを防ぎ、実signal/group終了/外部停止とtimer metadataを区別する。実装後にepoll単体8件以上を実行する。
-- [ ] Step 8: FR2.4〜2.6/NFR7。OFD identityによるepoll登録、dup/fcntlでの同一description共有、closeと最後の参照、fd再利用、CLONE_FILES共有/非共有tableに接続する。lock順序・owner ack/send競合・通知先行・timeout勝者を検査する。実装後にfd/readiness境界単体8件以上と同期統合8件以上を実行し、既存U5/U7/U9回帰を保持する。
-- [ ] Step 9: FR2.4〜2.6/FR9.1。static-muslのU6限定tokio multi-thread timer guestとUnixStream::pair guestを現sourceで通す。実使用syscallを記録し、timerfdが必要ならケース追加→fixture-only native観測→go→実装の順を守る。全有限ケースで毎CI fresh nativeとの差分を実行し、比較件数をrunner/build/harness/manifest/checkerへ一致させる。後続Unit依存によるprobe全量未達は具体的に分け、U6対象の失敗を後続依存へ隠さない。
-- [ ] Step 10: NFR2/3/8/9。U6限定quality CIとcoverage/fuzz設定を作る。固定nightly/locked、3OS単体/fmt/clippy警告エラー/依存検査、固定U6製品file分母のLinux coverage80%以上を確認する。kernel_events_u6/kernel_sockets_u6各600秒ASan/LSan、exit0/lock before-after/current/raw artifactを確認する。失敗・未知CPU profile・未検証を記録し、閾値や対象を減らさない。
-- [ ] Step 11: NFR1/7/FR9.1。親が安定sourceをsigned pushし同headの全差分/quality/coverage/fuzz原本を収集する。現production wasmにU6 guestを含む限定回帰を追加し、製品LauncherでNode Workerと実Safariの同case集合、module hash、COOP/COEP/sharedMemory/cleanupを検証する。U11未接続のguest threadingは明示境界として扱い、既存共有heap/launcher成功とU6 guest clone成功を混同しない。先行Unit sourceと歴史証拠を保持して共有変更後の現source回帰を確認する。
-- [ ] Step 12: FR9.1/NFR1。code-summary、traceability.json、strict source-manifest（stage/unit/version/writes、repo/pathのみ）とread-only証拠checkerを作る。全notesとMarkdownを実際のhead/件数/coverage/fuzz/module/raw値へ照合し、現source inventory・歴史保存・commit/run/job/stream/hashを結合する。候補checker exit0後に成果物freezeを親へ渡す。親の新しい独立レビューとcanonical verification、人の完了確認を受ける。子はreviewやlifecycleを承認しない。
+- [x] Step 1: FR2.4〜2.7/NFR1。現Kernel Files/FileHandle/ThreadGroup/Host wait、poll/selectの既存範囲と対象tokio/UnixStream syscall実使用を限定調査し、U6変更path・syscall/flags/対応外表・guest ABIを記録する。open file description（OFD）identityとfd番号を区別する設計、lock順序と待機登録/再確認/通知の不可分境界を確定する。U6変更製品fileのLinux coverage分母をここで明示・固定し、以後減らさない。
+- [x] Step 2: FR9.1/NFR7。tests/guests/u6/build.sh、scripts/u6-native-observe.pyとu6-runner-test.py、harness/tests/diff_u6.rs、Kernel u6_tests filter、.github/workflows/u6-native-diagnostic.ymlの最小runnerを用意する。下記unit commandの実行可能性を先に確認し、0件成功を検証としない。全processの30秒watchdog/process-group kill/reap、stdout/stderr/exit/timeoutとmanifest/binary hashを保存する。
+- [x] Step 3: FR2.4〜2.7/NFR1。製品変更前に48件以上の有限guestケースとCOMPARISON.mdを用意する。eventfd counter/semaphore/8-byte ABI/overflow/EAGAIN、epoll LT/ET/ONESHOT/ADD-MOD-DEL/error/ready公平性、fd dup-close-reuse/OFD寿命、socketpair双方向/partial IO/EOF/shutdown/EPIPE/NONBLOCK/CLOEXEC、期限/signal/kill/masked signalとmetadata通知を含める。network拒否のpolicy例外を別に記録する。順序はchannel/guest handshakeで確定し、生fd/TID/時刻/順不同event集合を正規化する。各ケース名・件数・比較対象を固定する。
+- [x] Step 4: FR2.4〜2.6/FR9.1。fixture-only sourceを親へpush-readyとして渡して停止する。親がsigned Linux CIで全native期待を取得しraw整合を確認後、明示goを受けて製品へ進む。静的expected fixtureを実行oracleに使わない。追加syscall必要時も追加ケースnative先行の順序を守る。
+- [x] Step 5: FR2.4/NFR2。Kernel events部品とeventfd2を実装しread/write/flags/dup/status/closeへ接続する。counter上限・semaphore・blocking/NONBLOCK・EFAULT/errno・poll readinessをnative観測へ一致させる。実装後に単体8件以上を追加して実行する。待機中にMMU/fd table/event lockを保持しない。
+- [x] Step 6: FR2.6/NFR2/4。Kernel socketpair endpointsを実装しSOCK_STREAM/NONBLOCK/CLOEXEC、双方向buffer、partial IO、EOF、shutdown、peer close/EPIPEとsignal、read/writeおよび必要なsend/recv APIへ接続する。buffer方式とbackpressureのnative比較規則を明記しNFR5の任意ゲスト資源上限を新設しない。実装後にendpoint単体8件以上を実行する。AF_INET/AF_INET6をHostへ接続せずEAFNOSUPPORTで拒否する。
+- [x] Step 7: FR2.5/NFR1/2。自前epoll create/ctl/waitと対象で必要なpwait、readiness通知を実装する。LT/ET、ONESHOT rearm、ready→not-ready→ready、maxevents、公平性、data64、error/hangup、timeoutとsignal maskをnativeへ一致させる。通知登録前後の再確認でlost wakeを防ぎ、実signal/group終了/外部停止とtimer metadataを区別する。実装後にepoll単体8件以上を実行する。
+- [x] Step 8: FR2.4〜2.6/NFR7。OFD identityによるepoll登録、dup/fcntlでの同一description共有、closeと最後の参照、fd再利用、CLONE_FILES共有/非共有tableに接続する。lock順序・owner ack/send競合・通知先行・timeout勝者を検査する。実装後にfd/readiness境界単体8件以上と同期統合8件以上を実行し、既存U5/U7/U9回帰を保持する。
+- [x] Step 9: FR2.4〜2.6/FR9.1。static-muslのU6限定tokio multi-thread timer guestとUnixStream::pair guestを現sourceで通す。実使用syscallを記録し、timerfdが必要ならケース追加→fixture-only native観測→go→実装の順を守る。全有限ケースで毎CI fresh nativeとの差分を実行し、比較件数をrunner/build/harness/manifest/checkerへ一致させる。後続Unit依存によるprobe全量未達は具体的に分け、U6対象の失敗を後続依存へ隠さない。
+- [x] Step 10: NFR2/3/8/9。U6限定quality CIとcoverage/fuzz設定を作る。固定nightly/locked、3OS単体/fmt/clippy警告エラー/依存検査、固定U6製品file分母のLinux coverage80%以上を確認する。kernel_events_u6/kernel_sockets_u6各600秒ASan/LSan、exit0/lock before-after/current/raw artifactを確認する。失敗・未知CPU profile・未検証を記録し、閾値や対象を減らさない。
+- [x] Step 11: NFR1/7/FR9.1。親が安定sourceをsigned pushし同headの全差分/quality/coverage/fuzz原本を収集する。現production wasmにU6 guestを含む限定回帰を追加し、製品LauncherでNode Workerと実Safariの同case集合、module hash、COOP/COEP/sharedMemory/cleanupを検証する。U11未接続のguest threadingは明示境界として扱い、既存共有heap/launcher成功とU6 guest clone成功を混同しない。先行Unit sourceと歴史証拠を保持して共有変更後の現source回帰を確認する。
+- [x] Step 12: FR9.1/NFR1。code-summary、traceability.json、strict source-manifest（stage/unit/version/writes、repo/pathのみ）とread-only証拠checkerを作る。全notesとMarkdownを実際のhead/件数/coverage/fuzz/module/raw値へ照合し、現source inventory・歴史保存・commit/run/job/stream/hashを結合する。候補checker exit0後に成果物freezeを親へ渡す。親の新しい独立レビューとcanonical verification、人の完了確認を受ける。子はreviewやlifecycleを承認しない。
 
 ## Validation and boundaries
 

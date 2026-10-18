@@ -1,5 +1,7 @@
 # U5 要件と検証の対応
 
+（2026-10-19 Step34で追記）この表と次の行の「検証済み：source9aa14978」、NFR9の `nightly-2026-10-01` などのtoolchain・compiler・Nodeの値は、その時点（head 9aa14978）の観測である。今のtoolchainは `rust-toolchain.toml` の `nightly-2026-10-11`、今の状態は code-summary.md の先頭の「現在の状態」節。U5の製品のファイルが27d05de1まで変わっていないことは、U15の `construction/u15-release/code-generation/verification/ci-27d05de1/product-changes-e3c29d1d-27d05de1.txt`（e3c29d1d〜27d05de1の製品の変更の一覧）で確かめられる。
+
 検証済み：source9aa149786015ad9f789e8527cc30d7f30f2f9482（Verified）。原本・hash・job IDはfinal-proof.json、コマンドとexit0出力はverification/final-verification.md。
 
 | 要件 | 実装・証拠 |

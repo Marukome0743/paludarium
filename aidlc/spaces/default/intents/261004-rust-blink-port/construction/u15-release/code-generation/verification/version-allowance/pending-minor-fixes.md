@@ -22,7 +22,42 @@ v3 の 3 つのファイル（`u15_candidate_v3.py`・`binding-10.json`・`test_
 
 1. 入口：`claim_scope.u15_old_chain.approval` に v2 の時点の承認文が時点の表示なしで残る。時点を明記するか外し、回帰の `FORBIDDEN` に足す。
 2. 入口：README の v4 の節の「再実行していません」に「この入口を作る作業では」と範囲を足す（Safari の 1 job の再実行は人が選んだもの）。
-3. 製品：再開の判定で crates.io の owners と npm の maintainers を確かめない。手順書の確認に明記し、できれば API での確認を足す。
-4. 製品：crates.io の `yanked` を見ない。yank 済みの版は一致としない形にして試験を足す。
-5. 製品・手順書：`publication-progress.json` を保存する手順だが、`release.yml` に artifact 化がない。手順書を直すか artifact にする。
-6. 試験：`test_resume_stops_on_different_present_digest` の名前、`registries_absent(approved=None)` の扱い、`approved_digests` の 3 分岐の拒否の試験。
+3. （2026-10-18 の U15 Step24 で直した）製品：再開の判定で crates.io の owners と npm の maintainers を確かめない。手順書の確認に明記し、できれば API での確認を足す。
+4. （2026-10-18 の U15 Step24 で直した。ただし下の「U15 の review-09 で残したもの」の 2 のとおり、npm の `deprecated` と `registry_state` の扱いが残る）製品：crates.io の `yanked` を見ない。yank 済みの版は一致としない形にして試験を足す。
+5. （2026-10-18 の U15 Step24 で直した）製品・手順書：`publication-progress.json` を保存する手順だが、`release.yml` に artifact 化がない。手順書を直すか artifact にする。
+6. （2026-10-18 の U15 Step24 で直した）試験：`test_resume_stops_on_different_present_digest` の名前、`registries_absent(approved=None)` の扱い、`approved_digests` の 3 分岐の拒否の試験。
+
+## U13 の承認で残したもの（2026-10-19、U13 の review-08 の Minor 1 件）
+
+人は U13（Code Generation の確かめ直し、Step16〜18）を、review-08 の Minor 1 件を残したまま承認した。次に U13 の記録を更新するときに直す（詳細は `construction/u13-windows-host/code-generation/reviews/review-08.md`）。
+
+1. 記録：U13 の `code-generation-plan.md` に「前回のSummary」という見出しが 3 つ並ぶ（Step17・Step16・Steps13〜15）。節の見出しの「前回」「前々回」と同じく、Step の古い順に「前々回」「3 回前」などに揃えるか、相対の言葉を外して Step 名だけにする。
+
+## 入口 f の独立レビュー 04 で残したもの（2026-10-19、`verification/entry-e3c29d1d/independent-review-04.md`）
+
+入口 f（`entry-f.py`）は、この Minor 2 件と注記 2 件を残したまま、binding-e06f とともに人が正式な確認コマンドとして採用した。次に入口を作り直すときに直す。
+
+1. 試験：`test_entry_f.py` は `test_entry_e.py` を削った写しで、上位集合になっていない。`entry-f.py` に残っている検査のうち、鎖の端と並びの検査（e の test_23 の 2 つ目のケース）、記録の `tree` の欠落と `parents` がリストでない場合、別の親を模したケース、`commit_records` のキーなどのケースが無くなった。
+2. 試験：test_10 は、`--no-replace-objects` と `GIT_NO_REPLACE_OBJECTS=1` のどちらか片方だけを外しても通る（どちらも単独で replace ref を辿らないため）。それぞれが単独で効くことを示していない。upstream の head に使う `git_has_commit` は、replace ref に対して動かしていない。
+3. 注記：test_11 は `info/grafts` のファイルを拒否することを示すが、手元の git がそのファイルに従うことは示していない（今の git は grafts を無視することがある）。拒否は安全側の近似で、観測した攻撃ではない（対応は不要）。
+4. 注記：入口の bytes と binding は作業コピーから固定していて、push した head の tree からではない。`aidlc/` のファイルの中身は比べない。これは not_claimed の一覧にある（対応は不要）。
+
+## U15 の review-09 で残したもの（2026-10-19、製品・workflow の 3 件）
+
+人の方針（workflow の直しは記録に書き、あとでまとめて決める）に従い、次の製品の変更でまとめて直す（詳細は `construction/u15-release/code-generation/reviews/review-09.md`）。
+
+1. workflow：`nightly.yml` が `u14-fuzz.yml` を直接呼び、さらに `u14-quality.yml` の中の `u13-fuzz` も同じ fuzz を呼ぶので、毎晩同じ fuzz が 2 回走る。
+2. 製品：取り消しの確認で、npm の `deprecated` を見ていない（チームの方針は crates.io の yank と npm の deprecate）。authorize は `yanked` が明示の false でなければ拒否するが、公開の繰り返しの `registry_state` は `yanked` が無い場合を通す。
+3. 文書：`docs/release.md` に内部の Step・review の番号が残っている。`construction/ci-pipeline/ci-config.md` の「残す(20)」に `u11-safari-stability.yml` が載っていない。
+
+## U15 の承認で残したもの（2026-10-19、U15 の review-10 の Minor 1 件）
+
+人は U15（Step29）を、review-10 の R-32 を残したまま承認した。次にこの台帳を更新するときに直す。
+
+1. 記録：この台帳の「v4 の採用で残したもの」の 1・2（入口 v4 の `claim_scope.u15_old_chain.approval` と README の v4 の節）に、v4 が履歴の入口になったこと（今の正式な確認コマンドは版 f）を書き、直すか閉じるかの印を付ける。
+
+## CI Pipeline の確かめ直しで残したもの（2026-10-19、CI Pipeline の Q5 の A）
+
+`construction/ci-pipeline/ci-config.md` の「入れた後の食い違い」のとおり、次の製品の変更でまとめて直す。夜間の fuzz が 2 回走ることは、上の「U15 の review-09 で残したもの」の 1 と同じ。
+
+1. workflow：`u11-safari-stability.yml` が作業ブランチ `codex/build-and-test` へのそのファイルの push の起動条件を持つ（GitHub の手動起動が fork の既定のブランチの workflow しか起動できなかったため、人の判断で足した）。`ci-config.md` の残す一覧に足し、push の起動条件を外すか `main` に替える。

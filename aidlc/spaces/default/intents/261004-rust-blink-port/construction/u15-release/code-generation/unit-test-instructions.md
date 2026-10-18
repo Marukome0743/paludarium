@@ -1,6 +1,21 @@
 # U15 限定検証手順
 
-## 今回：Step22〜28（公開の前の仕上げ）
+## Step29〜30：記録の直し（2026-10-19。Step30も同じ確かめ方）
+
+記録だけを直すので、新しい試験・CI・push はない。project root で正式 sensor 2 件を実行する。
+
+```sh
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u15-release/code-generation/code-summary.md
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u15-release/code-generation/traceability.json
+```
+
+期待する結果：required-sections は pass。traceability は、実公開まで既存の FR10.1・NFR8 の GAP で `pass: false`（gaps がこの 2 件だけで、ほかの findings がないこと。status・id・target は変えない）。checkpoint では今の正式な確認コマンド（intent 直下の `verification-command.txt` の 1 行目、`verification/entry-e3c29d1d/entry-f.py`・`binding-e06f.json`、2026-10-19 に人が採用）を実行し、exit 0 になる想定。entry-f は作業コピーの bytes を `aidlc/` の外だけで比べるので、U15 の記録の変更はこの確認に影響しない。
+
+Step27・28 で実際に行ったこと（2026-10-19）：8b415a7c・8360be2e・27d05de1 を `codex/build-and-test` へ署名付きで送った（すべて Verified）。27d05de1 の CI 8 run はすべて成功した（U12 current full quality は人の承認で 1 job だけやり直した attempt 2）。`u11-safari-stability.yml` の 10 回はすべて成功し、やり直しは 0 回。速さの判定は U14 current full quality（run 39149187727）で 1 回だけ測り、p=1/1024 で合格。計画の「新しい head の binding-e05」は作らず（`binding-e05.json` は版 e の e3c29d1d 用）、人の判断で版 f の入口の binding-e06f を作り、本番の実行で exit 0 を確かめ、人が採用した。詳細は code-summary.md の先頭の「現在の状態」節にある。
+
+下の節は、それぞれの時点の手順・記録である。
+
+## 履歴：Step22〜28（公開の前の仕上げ、2026-10-18〜19）（作成時の見出しは「今回：Step22〜28（公開の前の仕上げ）」）
 
 Runner は既存のものを使う（JS は node:test、Python は unittest、Rust は cargo）。部品と道具なので、実装の後に試験を書いて実行する（test-after）。Python は `/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B`、Node は `~/.local/share/mise/installs/node/26.12.0/bin/node`（`PALUDARIUM_TEST_NODE` にも同じ実体のパスを渡す）を使う。
 
@@ -10,7 +25,7 @@ Step22（Safari の道具）：
 ~/.local/share/mise/installs/node/26.12.0/bin/node --test packages/paludarium-wasm/tests/u11-browser-driver.test.mjs
 ```
 
-期待する結果：既存の試験とあわせてすべて成功する。足した試験は次の 3 つ。
+期待する結果：既存の試験とあわせてすべて成功する。足した試験は次の 3 つ（2026-10-19 注記：実際に足したのは 4 件で、`u11-browser-driver.test.mjs` は 10 件から 14 件になった）。
 - safaridriver の時間切れで 1 回だけやり直して成功する。
 - ほかの失敗ではやり直さない。2 回目も失敗したら止まる。
 - 1 回目の失敗が結果に残る。
@@ -23,7 +38,7 @@ Step23（CI の整理）：
 actionlint .github/workflows/*.yml
 ```
 
-期待する結果：新しい指摘を足さない。既存の指摘（`ci.yml` 4 件、`u12-quality.yml` 5 件）は件数を記録する。消す workflow は ci-config.md の一覧の 21 個ちょうど。必須の 7 workflow の名前は変えない。
+期待する結果：新しい指摘を足さない。既存の指摘（`ci.yml` 4 件、`u12-quality.yml` 5 件）は件数を記録する（2026-10-19 注記：計画を書いた時点の見込み。独立レビュー review-09 の実測では既存の指摘は 11 件だった）。消す workflow は ci-config.md の一覧の 21 個ちょうど。必須の 7 workflow の名前は変えない。
 
 Step24（公開の部品）：
 
@@ -44,9 +59,9 @@ Step25（入口の版 d）：
 /Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u15-release/code-generation/verification/entry-e3c29d1d/entry-d.py --entry-sha256 <entry-d.py の SHA-256> --binding-sha256 <binding-e04.json の SHA-256>
 ```
 
-期待する結果：回帰はすべて成功し、skip は 0 件。本番の実行（e3c29d1d、差 0）は exit 0。
+期待する結果：回帰はすべて成功し、skip は 0 件。本番の実行（e3c29d1d、差 0）は exit 0。（2026-10-19 注記：その時点の手順。版 d は採用されず、今の作業コピーでは拒否される。今の正式な確認コマンドは版 f の entry-f・binding-e06f）
 
-Step27・28：push と CI の起動は、その前に人の承認を受ける。新しい head では binding-e05 を作り、本番の実行で exit 0 を確かめてから採用を伺う。
+Step27・28：push と CI の起動は、その前に人の承認を受ける。新しい head では binding-e05 を作り、本番の実行で exit 0 を確かめてから採用を伺う。（2026-10-19 注記：計画の時点の予定。実際に行ったことは上の「Step29〜30：記録の直し」節のとおりで、新しい head 用の binding-e05 は作っていない。`binding-e05.json` という名前のファイルはあるが、人の判断で版 e に替えたときに e3c29d1d 用に使ったもの）
 
 ## 実施済み：Step19〜21（e3c29d1dを起点にした新しい入口）
 

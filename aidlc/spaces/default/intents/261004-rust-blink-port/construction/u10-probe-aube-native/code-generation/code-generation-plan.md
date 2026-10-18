@@ -2,16 +2,64 @@
 
 ## Summary
 
+- Builds: Step36。Step35の再レビュー（review-18）のMinor R-25〜R-28を直し、レビューの前にU10の記録の全行を読み直して、印の無い古さが残っていないことを確かめる。
+- Touches: U10のcode-summary.md、unit-test-instructions.md（計画のときに直した）、traceability.json（`current_record_audit` だけ）。製品・CI・workflow・ほかのUnitの記録・source-manifest.jsonは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 前回のSummary（Step35）
+
+- Builds: Step35。Step34の再レビュー（review-17）のMinor R-22〜R-24と、同じ種類の古さをU10の記録全体から洗い出して一度に直す：時点の印の無いcode-summary.mdの節、先頭の節と手順書の見出しのStep番号、traceability.jsonの古い観測を書くnotes。
+- Touches: U10のcode-summary.md、unit-test-instructions.md（計画のときに直した）、traceability.json（notesの先頭の印だけ）。製品・CI・workflow・ほかのUnitの記録・source-manifest.jsonは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 前回のSummary（Step34）
+
+- Builds: Step34。Step33の再レビュー（review-16）のMinorを直す：手順書の古い見出し7つとtoolchainの注記（R-17）、code-summary.mdの古い見出し名への参照（R-20）、traceability.jsonのNFR2・NFR3のnotesに今は測られていないことの注記（R-21）。
+- Touches: U10のunit-test-instructions.md（計画のときに直した）、code-summary.md、traceability.json（NFR2・NFR3のnotesの2行）。製品・CI・workflow・ほかのUnitの記録・source-manifest.jsonは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 前回のSummary（Step33）
+
+- Builds: Step33。U10の確かめ直し（review-15、NOT-READY、Major 3・Minor 3）のR-14〜R-19をU10の記録で直す：traceability.jsonの消えたtargetと逆引きの行、manifestの消えたworkflowとU15が変えたファイルの記述、今の正式な確認コマンド、古い見出しと題名、古いtoolchain、今は測られていない測定の明記。製品・CIは変えない。
+- Touches: U10の記録だけ（code-summary.md、unit-test-instructions.md、traceability.json、source-manifest.json）。製品・CI・workflow・ほかのUnitの記録は変えない。`test_evidence.py` の一字一句の照合（R-18）、呼び元の無い `.github/scripts/u10-current-diagnostic.py`、測られていない測定をCIに戻すかは、製品の変更なので、残りのUnitを見てからまとめて決める。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 今回の計画：Step36（Step35の再レビューのMinor R-25〜R-28を直し、全行を読み直す）
+
+2026-10-19 JST。Step35の再レビュー（review-18、READY、新しいMinor R-25〜R-28）の後、checkpointで人がRequest Changesを選んだ（R-25〜R-28を直し、レビューの前にU10の記録の全行を読んで古さが残っていないことを確かめる）。
+
+- [x] Step 36 — **R-25〜R-28を直し、全行を読み直す**。(1) R-25：code-summary.mdの先頭の節の「27d05de1の版と比べて変わったのは、coverageのFR9.1の1行とreverseの1行だけ」「変わったのはFR9.1・NFR2・NFR3の3行とreverseの1行」を、Step33・34時点の記述であることと、Step35でcoverageの47行（印）とreverseの41行（印）も変えたことが分かる形に直す。(2) R-26：code-summary.mdの「最終確認候補」の節の参照先を、先頭の「現在の状態（2026-10-19 JST、Step33〜36）」節に合わせる。先頭の節の見出しと冒頭の文を「Step33〜36」にし、Step36の箇条を足す。(3) R-27：unit-test-instructions.mdの「Setup」「Unit-scoped Commands」「Tests and Coverage」「Traceability」「Guest License Regression」の見出しを「履歴（Steps1〜18の計画時の手順）：…（作成時の見出しは「…」）」にし、古いCI runを挙げる段落と、U10内部部品のcoverageを今の指示のように読ませる箇条に、その時点の記述で今は測られていないことの注記を付ける。先頭の節の見出しを「今回Step33〜36」にする（計画のときに書いた）。(4) R-28：traceability.jsonの `current_record_audit` の `limitations` の先頭に「（履歴：Steps19〜21時点の記述。その後の独立再レビュー・最終確認・完了承認は済んでいる。今の状態はcode-summary.mdの先頭の節）」を足し、`current_record_audit` に `history_note`（「`source_sha`・`ci_run`・`ci_status`・`final_evidence` はcb979713時点の値。今のheadは27d05de1、CIはU15の `verification/ci-27d05de1/ci-27d05de1.json`」）を足す。coverage・reverseの行は変えない（JSONとして直し、直す前の版と比べて変わったのが `current_record_audit` だけであることを確かめる）。(5) 全行の読み直し：上の直しの後、U10のcode-summary.md・unit-test-instructions.md・traceability.jsonを最初から最後まで読み、印の無い古い言い方（「現行」「今回」「現在」「未実行」「未検証」「承認前」、古いhead・run・toolchainを今のものとして書く文）が残っていないことを確かめる。残っていれば、このStepの中で同じ形で印を付け、何を直したかを先頭の節に書く。製品・CI・workflow・ほかのUnitの記録・source-manifest.jsonは変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR3、NFR9。
+
+## 前回の計画：Step35（記録全体の古さを一度に直す）
+
+2026-10-19 JST。Step34の再レビュー（review-17、READY、新しいMinor R-22〜R-24）の後、checkpointで人がRequest Changesを選んだ（R-22〜R-24と、同じ種類の古さをU10の記録全体から洗い出して一度に直す）。人はMinorもその場ですべて直す方針を選んだ（「B：その場ですべて」）。
+
+- [x] Step 35 — **U10の記録全体の古さを一度に直す**。(1) R-22：code-summary.mdで時点の印が無い節「概要（Steps19〜25の履歴）」「変更と判断」「検証結果」「残る確認と再現手順」の見出しを「履歴（Steps16〜25、cb979713時点）：…（作成時の見出しは「…」）」にする（本文は変えない）。(2) R-23：先頭の節の見出しを「現在の状態（2026-10-19 JST、Step33〜35）」にし、冒頭の「本節はStep33の記録である」をStep33〜35の記録であることに直し、Step35で直したことの箇条を足す。手順書の先頭の節の見出しを「今回Step33〜35」にし、Step34・35も同じsensor 2件と期待結果で確かめることを書く（計画のときに書いた）。(3) R-24：traceability.jsonのcoverageで、cb979713の観測や「現行」を書き、まだ時点の印が無い行（FR・NFRのOKの行。NFR1、NFR5〜NFR9など）のnotesの先頭に「（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない）」を1回ずつ足す。reverseで「現行」を書くnotesの先頭にも「（履歴：cb979713時点の記述）」を足す。JSONとして行ごとに直し、変わった行を直す前の版と比べて確かめる。target・status・idは変えない（NFR6などのstatusをどうするかは、測られていない測定をCIに戻すかと一緒に、人がまとめて決める）。(4) 洗い出し：上の直しの後に、U10の記録（code-summary.md・unit-test-instructions.md・traceability.json）で「現行」「今回」「現在」「未実行」「未検証」「承認前」を含み、時点の印の無い見出しやnotesが残っていないかを読み取りで確かめ、残っていればこのStepの中で同じ形で印を付ける。製品・CI・workflow・ほかのUnitの記録・source-manifest.jsonは変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR1、NFR3、NFR6、NFR9。
+
+## 前回の計画：Step34（Step33の再レビューのMinorを直す）
+
+2026-10-19 JST。Step33の再レビュー（review-16、READY、Minor：R-17 残り・R-19 判断待ち・新しいR-20・R-21）の後、checkpointで人がRequest Changesを選んだ（R-17・R-20・R-21と、手順書に残る「今回」の見出し5つをまとめて直す）。
+
+- [x] Step 34 — **review-16のMinorを記録で直す**。(1) R-17・手順書の見出し：unit-test-instructions.mdの「今回Step29」「今回Step28」「今回Step27」「今回Step26」「今回の確認参照修正（Steps22〜25）」と「承認された現行ソース追加検証（Steps13〜15）」「承認されたWindows精度の限定修正（Steps16〜18）」の見出しを「履歴：…（作成時の見出しは「…」）」にし、Steps13〜15の節（`nightly-2026-10-10` を「現行」と書く）、「Setup」と「Unit-scoped Commands」の節（`nightly-2026-10-01`）の直後に、その時点の版で今は `rust-toolchain.toml` の `nightly-2026-10-11` であることの1行を足す（本文は変えない。計画のときに書いた）。(2) R-20：code-summary.mdの74行目付近の「先頭の『現行Step31〜32』節を参照」を、今の先頭の「現在の状態（2026-10-19 JST、Step33）」節を指すように直す。(3) R-21：traceability.jsonのNFR2・NFR3のnotesの先頭に「2026-10-19：以下はcb979713時点の値である。U10のPython coreのcoverageと実行ファイルを含むllvm-covは、27d05de1でU10のworkflowが消えてから測られていない（NFR3の80%はRustの行coverageで `ci.yml` が測り続ける）。ASan/LSanは夜間・手動の `u14-fuzz.yml`。」の注記を、内容に合う行に1回ずつ足す（JSONとして行ごとに直し、変わったのがNFR2・NFR3の2行だけであることを直す前の版と比べて確かめる。target・status・idは変えない）。code-summary.mdの「現在の状態（Step33）」節に、Step34でこの3点を直したことを1文で書く。製品・CI・workflow・ほかのUnitの記録・source-manifest.jsonは変えない。R-19は判断待ちのまま。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR2、NFR3、NFR9。
+
+## 前回の計画：Step33（確かめ直しの指摘を記録で直す）
+
+2026-10-19 JST。U15のStep22〜28（push、head 27d05de1）で、U10のmanifestにある `ci.yml`・`tests/guests/u10/runner-tests/test_evidence.py` が変わり、`u10-current-verification.yml` が消え、正式な確認コマンドがU15の `entry-e3c29d1d/entry-f.py`・`binding-e06f.json` に替わった。U10の確かめ直し（review-15、NOT-READY）の後、checkpointで人がRequest Changesを選んだ（R-14〜R-19を直す。test_evidence.pyの一字一句の照合と測られていない測定は、記録に書き、製品の変更としてまとめて決める）。人の指示：「ワークフローの順で進めてください。U1 の確かめ直しから始めて、ファイルが変わった Unit を順に確かめ直し、U15 のレビューと完了確認、U11 の確かめ直しまで進めてください。」
+
+- [x] Step 33 — **確かめ直しの指摘を記録で直す**。traceability.jsonは文字列の置き換えではなく、行（idまたはpath）ごとにJSONとして直し、直す前の版（27d05de1）と比べて変わった行を確かめる。(1) R-14：traceability.jsonのcoverageのFR9.1のtargetを `.github/workflows/u10-native-diagnostic.yml` に替え、notesの先頭に理由を書く（FR9.1は要件書で「CIのたびにx86-64 Linuxで期待結果を作り、エミュレータの結果と比べる」。この workflow の native-first が毎回 `scripts/u10-run.py --native-only` で期待結果を作り、differential が `diff_u10` でエミュレータと比べる。`ci.yml` から呼ばれる）。reverseから、消えた `.github/workflows/u10-current-verification.yml` の行を外す。statusとidは変えない。(2) R-15：source-manifest.jsonのwritesから、消えた `u10-current-verification.yml` を外す。code-summary.mdの先頭に「現在の状態（2026-10-19 JST、Step33）」節を足し、U15が変えたU10のmanifestのファイル（`ci.yml` の `push` は `main` だけ、`test_evidence.py` は消えた `u14-cost-diagnostic.yml` を読む試験を「そのファイルが無いこと」と新しい条件の文の確認に直した）、下の節の「e4f84768と同じ」「`git diff --quiet e4f84768` がexit 0」はその時点の記述で今は成り立たないこと、呼び元の無い `.github/scripts/u10-current-diagnostic.py` は次のpushで扱うことを書く。(3) R-16：同じ節に、今の正式な確認コマンド（entry-f・binding-e06f、command SHA-256 `00f5c883…a159`）と、下の節の `u2_candidate.py`・`final_candidate.py` とそのexit 0はその時点のものであることを書く。「現行」「今回」で始まる見出しは「履歴：…（作成時の見出しは「…」）」にし、題名の「（独立レビュー待ち）」を外す。(4) R-17：今のtoolchainは `rust-toolchain.toml` の `nightly-2026-10-11` で、記録の `nightly-2026-10-10`・`nightly-2026-10-01` はその時点のものであることを新しい節に書き、traceability.jsonのその値を含む行のnotesの先頭に時点の印を足す。(5) R-18：`test_evidence.py` がU14のworkflowのコメント行と `if:` 行を一字一句で照らし合わせていて、整形が変わるだけで落ちることを新しい節に書く（直すかは製品の変更として、まとめて決める）。(6) R-19：U10の受け入れが今どこで動くか（probe/aubeのnative-first・`diff_u10`・runner testsは `ci.yml` から呼ぶ `u10-native-diagnostic.yml`、3OS・fmt・clippy・依存・workspaceの行80%・production wasmは `ci.yml`、ASan/LSanは夜間・手動の `u14-fuzz.yml`）と、**今は測られていないもの**（Python coreのcoverage 88.96%と追加5モジュールの85.30%、実行ファイルを含むllvm-cov、aubeの4操作の時間の記録（FR7.4・NFR6））を書き、記録の値は削除前の履歴であることを書く。unit-test-instructions.mdの先頭の「今回」節と古い見出しの改名・注記は、計画のときに書いた。製品・CI・workflow・ほかのUnitの記録は変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。FR7.4、FR9.1、NFR3、NFR6、NFR8、NFR9。
+
+## 前回のSummary（Step31）
+
 - Builds: Step31。U10が担当するファイルが、Build and Testで使った版（head e4f84768。U9 Step80の `u10-native-diagnostic.yml` の修正を含む）から変わっていないことを確かめ、今の正式確認コマンドで確かめ直す。製品・workflow・記録は変えない。
 - Touches: この計画と手順書のStep31の節だけ。source-manifest.json・traceability.json（旧い封印の対象）は変えない。
 - Tests: 新しいテスト・CIの実行はない。U10のsource-manifestの全ファイルがe4f84768と同じことを読み取りで確かめ、独立再レビューと、今の正式確認コマンド（U2の `u2_candidate.py`）でのcheckpointを行う。
 
-## 今回の計画：Step31（Build and TestのLoop-back 1：変更がないことの再確認）
+## 前回の計画：Step31（Build and TestのLoop-back 1：変更がないことの再確認）
 
 2026-10-18。U14の整数SSEのJIT（署名12d6a2f6・1ceae86c）と、U1・U2の正式確認の更新の途中で、記録の誤り（Code Generationの段階全体へのRequest Changes）のため、各Unitを順に確かめ直している。12d6a2f6・1ceae86cで変わったのは、U14のJIT・wasm・テストと `mise.toml` で、U10のsource-manifestのファイルは含まれない。1ceae86cのCIでは、U10の差分job（u12-quality・u13-qualityの中の `U10 fixed guests and fresh native differential`）も成功した。正式確認コマンドは、人の承認でU2の `verification/loopback1-next/u2_candidate.py` になっている。
 
-- [ ] Step 31 — U10のsource-manifestの全ファイルについて、作業コピーが e4f84768 と同じであることを読み取りで確かめる（`git diff --quiet e4f847686c8dccb1bc899de88c63a4b3b2a8dd1d -- <paths>`）。違いがあれば止めて報告する。記録は変えない。独立再レビューのあと、今の正式確認コマンドでcheckpointを検証し、人の承認を受ける（NFR3、NFR8）。
-- [ ] Step 32 — 再レビュー（iteration 2、READY）のMinor 2件への対応（人のRequest Changes）。製品・workflow・source-manifest.json・traceability.json（旧い封印の対象）は変えない。code-summary.md（封印の対象外）の先頭に「現行Step31〜32（Build and TestのLoop-back 1）」節を足し、次を書く：(a) U10の担当sourceは12d6a2f6・1ceae86cの変更に含まれず、e4f84768から変わっていないこと（`git diff --quiet` exit 0）、(b) 「現行Step30」節の「CI未実行」はその時点の記述であり、その後、e4f84768（PR CI 39015770796、u12-quality 39015780495、u13-quality 39015782530）と1ceae86c（u12-quality 39028303336、u13-quality 39028305765）のCIで、U10の差分jobを含めて成功したこと、(c) 「現行Step26」節が挙げるU1の `final_candidate.py` はその時点の正式確認コマンドであり、今の正式確認コマンドは人が採用した `/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u2-integer-isa/code-generation/verification/loopback1-next/u2_candidate.py` であること、(d) 2026-10-18のU10 checkpointの検証はexit 0だったこと。古い節の本文は変えない。正式sensor 2件を実行し、独立再レビューと今の正式確認コマンドでのcheckpointに進む。
+- [x] Step 31 — U10のsource-manifestの全ファイルについて、作業コピーが e4f84768 と同じであることを読み取りで確かめる（`git diff --quiet e4f847686c8dccb1bc899de88c63a4b3b2a8dd1d -- <paths>`）。違いがあれば止めて報告する。記録は変えない。独立再レビューのあと、今の正式確認コマンドでcheckpointを検証し、人の承認を受ける（NFR3、NFR8）。
+- [x] Step 32 — 再レビュー（iteration 2、READY）のMinor 2件への対応（人のRequest Changes）。製品・workflow・source-manifest.json・traceability.json（旧い封印の対象）は変えない。code-summary.md（封印の対象外）の先頭に「現行Step31〜32（Build and TestのLoop-back 1）」節を足し、次を書く：(a) U10の担当sourceは12d6a2f6・1ceae86cの変更に含まれず、e4f84768から変わっていないこと（`git diff --quiet` exit 0）、(b) 「現行Step30」節の「CI未実行」はその時点の記述であり、その後、e4f84768（PR CI 39015770796、u12-quality 39015780495、u13-quality 39015782530）と1ceae86c（u12-quality 39028303336、u13-quality 39028305765）のCIで、U10の差分jobを含めて成功したこと、(c) 「現行Step26」節が挙げるU1の `final_candidate.py` はその時点の正式確認コマンドであり、今の正式確認コマンドは人が採用した `/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u2-integer-isa/code-generation/verification/loopback1-next/u2_candidate.py` であること、(d) 2026-10-18のU10 checkpointの検証はexit 0だったこと。古い節の本文は変えない。正式sensor 2件を実行し、独立再レビューと今の正式確認コマンドでのcheckpointに進む。
 
 ## 前回のSummary（Step30）
 
@@ -23,23 +71,23 @@
 
 人の指示：「…同じ問題は u11-acceptance.yml・u10-native-diagnostic.yml（policy の指定なし）と u12-quality.yml（PALUDARIUM_TEST_NODE なし）にもあります。…手元への反映は、影響する Unit（U9〜U12）の再レビューを含めて正規の手順で進め、push と CI の前には承認を求めてください。」U10のsource-manifestが持つ `.github/workflows/u10-native-diagnostic.yml`（ゲストビルドを `python tests/guests/u10/build.py target/guests/u10 --advisory-policy u15-fixed-aube-zip9-name` に変更し、SHA固定の setup-python 3.15.0 を追加）と `.github/workflows/ci.yml`（envに `PALUDARIUM_TEST_NODE: node`）は、U9のSteps77〜79で直し、承認済み。根拠はU15の `verification/u12-quality-38994430947/README.md`（run 38994430947 で U10 の native-first job もゲストビルドの `cargo deny` で exit 1）。
 
-- [ ] Step 30 — 確認と記録（FR6.1、FR7.1、FR7.2、FR9.1）。actionlintで `u10-native-diagnostic.yml` と `ci.yml` を検査し、変更行に新しい指摘がないことを確かめる（ci.ymlの既存4件、87・203・226行目は既存の指摘として記録し、直さない）。code-summary.mdの冒頭に「現行Step30」節を加え、U9が直した2ファイルの変更内容・根拠・確認結果と、CIでの実行はまだで（Build and Testで人の承認後）、U10のfresh native・probe・aubeの新しい実行結果は未確認であることを書く。traceability.jsonとsource-manifest.jsonは封印対象なので変えない。正式sensorを実行した後は全書込を止め、独立再レビュー、正式コマンドでのcheckpoint再検証に進む。
+- [x] Step 30 — 確認と記録（FR6.1、FR7.1、FR7.2、FR9.1）。actionlintで `u10-native-diagnostic.yml` と `ci.yml` を検査し、変更行に新しい指摘がないことを確かめる（ci.ymlの既存4件、87・203・226行目は既存の指摘として記録し、直さない）。code-summary.mdの冒頭に「現行Step30」節を加え、U9が直した2ファイルの変更内容・根拠・確認結果と、CIでの実行はまだで（Build and Testで人の承認後）、U10のfresh native・probe・aubeの新しい実行結果は未確認であることを書く。traceability.jsonとsource-manifest.jsonは封印対象なので変えない。正式sensorを実行した後は全書込を止め、独立再レビュー、正式コマンドでのcheckpoint再検証に進む。
 
 ## 承認された現行ソース追加検証（Steps13〜15）
 
 Steps1〜12と旧証拠は履歴として保持する。旧7eb証拠と現行の44パス変更・追加、Rust10-01→10-10の差を新規実行と区別する。詳細はverification/current-audit-proposal.md。
 
-- [ ] Step 13 — 新診断 `.github/scripts/u10-current-diagnostic.py` と `.github/workflows/u10-current-verification.yml` だけを追加し、現行324入力＋2診断入力・両lock・実compiler・設定のbefore/after/currentを固定する。公式最新版を確認して診断ツールを固定する。既存source-lockとrust-toolchainのnightly-2026-10-10を使用する。固定aube v2.6.1/bd94e42fとprobeを新ビルドし、aube upstream1365入力の非改変、lock、static ELF、binary hash、root deny全bytes継承、webpki-root-certs1.0.9限定CDLA全文hash、probe/aubeの各依存4検査を保存する。製品・fixture・既存ビルド処理を変更しない。
-- [ ] Step 14 — 同一署名済みheadのx86-64 Linuxネットワーク名前空間内でfresh native14を先に取得し、同guestのemulator16と比較する。probe8、aube4、all/environment、default VFS追加操作、append-only主比較と元argv追加結果、node不在・#1645・0644 fixture・install/frozen/list状態・子孫回収を保持する。include-ignoredで差分本体を必ず実行する。内部44件、3OS品質・既存回帰、空profilesから既存workspace全体coverage80%以上を実測する。Python evidence/comparison/runnerの全実行可能行を固定3モジュール集合として80%以上確認し、追加build/native/differential/metadata/comparison_argsの5モジュールを別集合で報告する。統合実行を含め、除外pragma/omitや比較maskを追加しない。同head production wasmビルドとaube4操作の逐次wall timeを保存する。30秒guest制限・kill/reapを維持し、失敗・0件・skipを合格にしない。
-- [ ] Step 15 — 132製品依存・両lock・実compiler32dba/LLVM23.1.3・flags・設定・成功job・601秒原本が一致するASan保存証拠だけを限定再利用する。新fuzzやU10のNode/Safari合格とは主張しない。署名Verified head・CI実exit・全入力・生ログ・coverage分母を結合し、4成果物・strict manifest・全60要件の独立分類による正式検査を更新して独立レビューへ渡す。新最終確認候補は構文確認までとし、人の別承認後に実行する。strict guard、80%下限、30秒制限、先行Unitの成果物を維持し、ID競合の完全解消と背景負荷完全ゼロは未検証とする。
+- [x] Step 13 — 新診断 `.github/scripts/u10-current-diagnostic.py` と `.github/workflows/u10-current-verification.yml` だけを追加し、現行324入力＋2診断入力・両lock・実compiler・設定のbefore/after/currentを固定する。公式最新版を確認して診断ツールを固定する。既存source-lockとrust-toolchainのnightly-2026-10-10を使用する。固定aube v2.6.1/bd94e42fとprobeを新ビルドし、aube upstream1365入力の非改変、lock、static ELF、binary hash、root deny全bytes継承、webpki-root-certs1.0.9限定CDLA全文hash、probe/aubeの各依存4検査を保存する。製品・fixture・既存ビルド処理を変更しない。
+- [x] Step 14 — 同一署名済みheadのx86-64 Linuxネットワーク名前空間内でfresh native14を先に取得し、同guestのemulator16と比較する。probe8、aube4、all/environment、default VFS追加操作、append-only主比較と元argv追加結果、node不在・#1645・0644 fixture・install/frozen/list状態・子孫回収を保持する。include-ignoredで差分本体を必ず実行する。内部44件、3OS品質・既存回帰、空profilesから既存workspace全体coverage80%以上を実測する。Python evidence/comparison/runnerの全実行可能行を固定3モジュール集合として80%以上確認し、追加build/native/differential/metadata/comparison_argsの5モジュールを別集合で報告する。統合実行を含め、除外pragma/omitや比較maskを追加しない。同head production wasmビルドとaube4操作の逐次wall timeを保存する。30秒guest制限・kill/reapを維持し、失敗・0件・skipを合格にしない。
+- [x] Step 15 — 132製品依存・両lock・実compiler32dba/LLVM23.1.3・flags・設定・成功job・601秒原本が一致するASan保存証拠だけを限定再利用する。新fuzzやU10のNode/Safari合格とは主張しない。署名Verified head・CI実exit・全入力・生ログ・coverage分母を結合し、4成果物・strict manifest・全60要件の独立分類による正式検査を更新して独立レビューへ渡す。新最終確認候補は構文確認までとし、人の別承認後に実行する。strict guard、80%下限、30秒制限、先行Unitの成果物を維持し、ID競合の完全解消と背景負荷完全ゼロは未検証とする。
 
 ## 承認されたWindows精度の限定修正（Steps16〜18）
 
 Steps13〜15の初回・中間結果は履歴として保存する。詳細はverification/step14-windows-time-proposal.md。WindowsのSystemTimeは100ns単位であり、旧±1ns期待値2件の失敗を製品のmtime変換不具合と混同しない。
 
-- [ ] Step 16 — crates/paludarium-host/src/native_fs.rsのcfg(test)内の既存mtimeテスト2件だけを修正する。Windowsでは正負1/99nsを0、100/101nsを100nsとして検査し、既存の秒・大値境界も100ns単位に合わせる。非Windowsは1ns精度の期待値と正負・大値境界を維持する。製品mtime_nsと公開型・fixtureは変更しない。修正差分を厳密に固定し、既存失敗原本・公式仕様を保存する。
-- [ ] Step 17 — 修正後の同一署名headでSteps13〜14の固定guest新ビルド・限定CDLA監査・fresh Linux native14/emulator16・元argv・内部44件・3OS品質/回帰・workspace80%・Python core3全行80%と追加5別集合・production wasm・aube4時間を再確認する。全326入力・両lock・before/after/currentと原本exitを保存し、30秒・kill/reap・比較mask・分母を維持する。古い実行は修正後の成功へ読み替えない。
-- [ ] Step 18 — native_fs.rsのテスト限定差分を機械的に分類し、ASanの132依存・実compiler・flags/settings・バイナリ・原本の再利用条件を再評価する。一致を証明できない対象は未検証として具体的追加案を提示する。旧先行checkerを保持し、限定差分と新CIを厳密に結合する新候補をAST検査のみで準備する。4成果物・manifest・全要件の正式検査を更新して独立レビューへ渡す。先行Unitの再確認が必要なら通常の手順で扱う。strict guard、80%下限、30秒制限を維持し、新最終確認コマンドは別承認後に実行する。
+- [x] Step 16 — crates/paludarium-host/src/native_fs.rsのcfg(test)内の既存mtimeテスト2件だけを修正する。Windowsでは正負1/99nsを0、100/101nsを100nsとして検査し、既存の秒・大値境界も100ns単位に合わせる。非Windowsは1ns精度の期待値と正負・大値境界を維持する。製品mtime_nsと公開型・fixtureは変更しない。修正差分を厳密に固定し、既存失敗原本・公式仕様を保存する。
+- [x] Step 17 — 修正後の同一署名headでSteps13〜14の固定guest新ビルド・限定CDLA監査・fresh Linux native14/emulator16・元argv・内部44件・3OS品質/回帰・workspace80%・Python core3全行80%と追加5別集合・production wasm・aube4時間を再確認する。全326入力・両lock・before/after/currentと原本exitを保存し、30秒・kill/reap・比較mask・分母を維持する。古い実行は修正後の成功へ読み替えない。
+- [x] Step 18 — native_fs.rsのテスト限定差分を機械的に分類し、ASanの132依存・実compiler・flags/settings・バイナリ・原本の再利用条件を再評価する。一致を証明できない対象は未検証として具体的追加案を提示する。旧先行checkerを保持し、限定差分と新CIを厳密に結合する新候補をAST検査のみで準備する。4成果物・manifest・全要件の正式検査を更新して独立レビューへ渡す。先行Unitの再確認が必要なら通常の手順で扱う。strict guard、80%下限、30秒制限を維持し、新最終確認コマンドは別承認後に実行する。
 
 ## Sources
 
@@ -52,18 +100,18 @@ Steps13〜15の初回・中間結果は履歴として保存する。詳細はve
 
 ## Implementation Steps
 
-- [ ] Step 1 — 既存CLI/Harness・固定ソース・probe項目一覧・#1645 fixture・CheerpX背景資料を照合する（FR6.1、FR6.4、FR7.1、FR7.3、FR7.4）。依存ライセンスとcrate取得元を確認。formicariumの8項目との一覧比較を保存し、項目変更が必要なら実装前に人へ返す。
-- [ ] Step 2 — scripts/u10-run.py と tests/guests/u10/cases.json の最小runner/configを用意し、単体のrunner準備検査を実行できる状態にする（FR9.1、NFR7）。実行コマンドはunit-test-instructions.mdに固定する。nativeとemulatorの各操作に30秒の上限、子孫停止と回収を用意する。新しい全体成功をまだ主張しない。
-- [ ] Step 3 — probeの8項目とaube version/install/frozen/list、node不在、#1645のケース・入力fixture・比較仕様を実装より先に定義する（FR6.1、FR7.2、FR7.3、NFR1）。環境・cwd・入力・network不在を揃え、pid/path/時刻等の変動値の正規化を明示。出力の欠落やFAILを正規化で消さない。
-- [ ] Step 4 — paludarium独自のprobeを tests/guests/u10/probe/ に作る（FR6.1、FR6.2、FR6.4）。8項目の標準実行をformicariumの項目一覧に合わせ、tokio multi-thread timer、UnixStream pair、rayon4並列、Mutex/Condvar、作成/hardlink/symlink/flockを扱う。ゲストcrateはworkspace外、lock付き、static-muslでビルドする。
-- [ ] Step 5 — scripts/u10-build-guests.sh と source-lock.json を作り、公式aube固定revisionを専用target/source領域でビルドする（FR7.1、NFR8、NFR9）。既存のprimer条件を調べて記録し、ソース非改変・lock・toolchain・ビルド引数・SHA256・ELF static属性・exitを保存する。ビルド不可なら停止して扱いを相談する。guest-license-change-proposal.mdの具体案に従い、webpki-root-certs@1.0.9のCDLA-Permissive-2.0だけを専用build出力のaube監査設定で許可し、CDLA全文をguest binaryのartifactへ添付する。root deny.tomlの全bytesを保持して当該1件だけを追加し、probe監査はroot設定を使う。全4監査をビルド前に実行し、root/生成設定/ライセンスhashと例外をreceiptへ記録する。成功・失敗双方で固定ソースbefore/after一致を記録し、不一致は成功にしない。source-lock、build.py、evidence.py、対応内部テスト、diagnostic workflowの保持対象を更新する。別crate・別版の一般許可はしない。
-- [ ] Step 6 — 所有forkのx86-64 Linux CIでStep 3のnative期待結果を先に取る（FR9.1、NFR1）。probe8 PASS/exit0、同一aubeによる4コマンドとnode不在を観測し、#1645の0.0.0再現を確認する。出力・exit・fixture状態・時間を保存する。過去ログは履歴として保持し、期待値をリポジトリ固定にはしない。
-- [ ] Step 7 — crates/paludarium-harness/tests/diff_u10.rs と support/u10.rs を実装し、C10/C11で同じguest bytesを現在のエミュレータへ渡す（FR6.3、FR7.2、FR7.3）。先にnativeで得た結果とstdout/exitを比較しstderrとguest filesystem状態を診断として保存する。default VFSへfixtureを配置し、必要なmounted fixtureも境界を限定する。
-- [ ] Step 8 — 内部のビルド証拠検証・結果比較・fixture/runner管理の3部品に各7単体テストを実装後に追加し実行する（NFR1、NFR2、NFR4、NFR7、NFR8）。改ざんhash/非static ELF、FAILや欠落項目、stdout/exit不一致、変動値、timeout/cleanup、fixture汚染、network/node不在を含む。期待結果を自身の出力で作らない。
-- [ ] Step 9 — 現在の製品によるプログラム差分を実機CIで実行する（FR6.3、FR7.2、FR7.3、FR9.1）。製品の不足や不一致は最小再現・担当Unit・失敗ログを記録する。成功条件を弱めず、製品修正が必要な場合は修正対象と回帰を具体化した計画を人へ提示してから進める。
-- [ ] Step 10 — .github/workflows/ci.yml と u10-native-diagnostic.yml に固定ビルド・毎回のnative期待結果・U10差分・coverageを接続する（NFR3、NFR8、NFR9）。jjで対象ソースだけ署名付きcommit/pushし、3OS unit/lint/deps、U8等の既存回帰、production wasm buildの現行head一致を照合する。公開・PR作成はこの計画に含めない。
-- [ ] Step 11 — バックグラウンド負荷を除いてnative/emulatorのaube4操作のwall timeを測り、CheerpX 1.3.9背景資料と条件を併記する（FR7.4、NFR6）。速さの合否下限を新設しない。Linux行coverage80%以上と既存品質下限を検査し、未測定を明示する。
-- [ ] Step 12 — docs/u10/ と README、code-summary.md、source-manifest.json、traceability.jsonを確定する（全担当FR/NFR）。Linux合格と後続環境の未検証を区別し、固定head・CI・生ログ・実行コマンド・分母を添える。独立レビューと現在ソースに合う人が承認した最終確認を経てU10完了承認へ進む。
+- [x] Step 1 — 既存CLI/Harness・固定ソース・probe項目一覧・#1645 fixture・CheerpX背景資料を照合する（FR6.1、FR6.4、FR7.1、FR7.3、FR7.4）。依存ライセンスとcrate取得元を確認。formicariumの8項目との一覧比較を保存し、項目変更が必要なら実装前に人へ返す。
+- [x] Step 2 — scripts/u10-run.py と tests/guests/u10/cases.json の最小runner/configを用意し、単体のrunner準備検査を実行できる状態にする（FR9.1、NFR7）。実行コマンドはunit-test-instructions.mdに固定する。nativeとemulatorの各操作に30秒の上限、子孫停止と回収を用意する。新しい全体成功をまだ主張しない。
+- [x] Step 3 — probeの8項目とaube version/install/frozen/list、node不在、#1645のケース・入力fixture・比較仕様を実装より先に定義する（FR6.1、FR7.2、FR7.3、NFR1）。環境・cwd・入力・network不在を揃え、pid/path/時刻等の変動値の正規化を明示。出力の欠落やFAILを正規化で消さない。
+- [x] Step 4 — paludarium独自のprobeを tests/guests/u10/probe/ に作る（FR6.1、FR6.2、FR6.4）。8項目の標準実行をformicariumの項目一覧に合わせ、tokio multi-thread timer、UnixStream pair、rayon4並列、Mutex/Condvar、作成/hardlink/symlink/flockを扱う。ゲストcrateはworkspace外、lock付き、static-muslでビルドする。
+- [x] Step 5 — scripts/u10-build-guests.sh と source-lock.json を作り、公式aube固定revisionを専用target/source領域でビルドする（FR7.1、NFR8、NFR9）。既存のprimer条件を調べて記録し、ソース非改変・lock・toolchain・ビルド引数・SHA256・ELF static属性・exitを保存する。ビルド不可なら停止して扱いを相談する。guest-license-change-proposal.mdの具体案に従い、webpki-root-certs@1.0.9のCDLA-Permissive-2.0だけを専用build出力のaube監査設定で許可し、CDLA全文をguest binaryのartifactへ添付する。root deny.tomlの全bytesを保持して当該1件だけを追加し、probe監査はroot設定を使う。全4監査をビルド前に実行し、root/生成設定/ライセンスhashと例外をreceiptへ記録する。成功・失敗双方で固定ソースbefore/after一致を記録し、不一致は成功にしない。source-lock、build.py、evidence.py、対応内部テスト、diagnostic workflowの保持対象を更新する。別crate・別版の一般許可はしない。
+- [x] Step 6 — 所有forkのx86-64 Linux CIでStep 3のnative期待結果を先に取る（FR9.1、NFR1）。probe8 PASS/exit0、同一aubeによる4コマンドとnode不在を観測し、#1645の0.0.0再現を確認する。出力・exit・fixture状態・時間を保存する。過去ログは履歴として保持し、期待値をリポジトリ固定にはしない。
+- [x] Step 7 — crates/paludarium-harness/tests/diff_u10.rs と support/u10.rs を実装し、C10/C11で同じguest bytesを現在のエミュレータへ渡す（FR6.3、FR7.2、FR7.3）。先にnativeで得た結果とstdout/exitを比較しstderrとguest filesystem状態を診断として保存する。default VFSへfixtureを配置し、必要なmounted fixtureも境界を限定する。
+- [x] Step 8 — 内部のビルド証拠検証・結果比較・fixture/runner管理の3部品に各7単体テストを実装後に追加し実行する（NFR1、NFR2、NFR4、NFR7、NFR8）。改ざんhash/非static ELF、FAILや欠落項目、stdout/exit不一致、変動値、timeout/cleanup、fixture汚染、network/node不在を含む。期待結果を自身の出力で作らない。
+- [x] Step 9 — 現在の製品によるプログラム差分を実機CIで実行する（FR6.3、FR7.2、FR7.3、FR9.1）。製品の不足や不一致は最小再現・担当Unit・失敗ログを記録する。成功条件を弱めず、製品修正が必要な場合は修正対象と回帰を具体化した計画を人へ提示してから進める。
+- [x] Step 10 — .github/workflows/ci.yml と u10-native-diagnostic.yml に固定ビルド・毎回のnative期待結果・U10差分・coverageを接続する（NFR3、NFR8、NFR9）。jjで対象ソースだけ署名付きcommit/pushし、3OS unit/lint/deps、U8等の既存回帰、production wasm buildの現行head一致を照合する。公開・PR作成はこの計画に含めない。
+- [x] Step 11 — バックグラウンド負荷を除いてnative/emulatorのaube4操作のwall timeを測り、CheerpX 1.3.9背景資料と条件を併記する（FR7.4、NFR6）。速さの合否下限を新設しない。Linux行coverage80%以上と既存品質下限を検査し、未測定を明示する。
+- [x] Step 12 — docs/u10/ と README、code-summary.md、source-manifest.json、traceability.jsonを確定する（全担当FR/NFR）。Linux合格と後続環境の未検証を区別し、固定head・CI・生ログ・実行コマンド・分母を添える。独立レビューと現在ソースに合う人が承認した最終確認を経てU10完了承認へ進む。
 
 ## Acceptance and Boundaries
 
@@ -142,41 +190,41 @@ Steps13〜15の初回・中間結果は履歴として保存する。詳細はve
 
 製品・既存試験・旧証拠は保持する。今回の対象はAI-DLC preview更新後のTesting Contractと承認記録の整合、および保存証拠の適用範囲の照合である。重い試験や外部送信を追加しない。
 
-- [ ] Step 19 — 正式なrender出力でTesting Contract全体を置換し、更新後の計画承認と必要な内容確認を記録する。既存の80%下限、ゲスト30秒制限、strict guardを維持する。
-- [ ] Step 20 — 現行の担当ソース・両lockと保存証拠の適用範囲を照合し、過去の実行と今回の照合を区別して記録する。正式検査と独立再レビューを行い、不足や失敗は保持する。製品修正や追加実行が必要なら具体案を提示する。
-- [ ] Step 21 — 承認済みの最終確認コマンドで検証し、U10の完了承認後にU14へ戻る正式手順を進める。コマンド変更が必要なら別途承認を得る。AI-DLC本体とguardは変更しない。
+- [x] Step 19 — 正式なrender出力でTesting Contract全体を置換し、更新後の計画承認と必要な内容確認を記録する。既存の80%下限、ゲスト30秒制限、strict guardを維持する。
+- [x] Step 20 — 現行の担当ソース・両lockと保存証拠の適用範囲を照合し、過去の実行と今回の照合を区別して記録する。正式検査と独立再レビューを行い、不足や失敗は保持する。製品修正や追加実行が必要なら具体案を提示する。
+- [x] Step 21 — 承認済みの最終確認コマンドで検証し、U10の完了承認後にU14へ戻る正式手順を進める。コマンド変更が必要なら別途承認を得る。AI-DLC本体とguardは変更しない。
 
 ## 承認された確認参照の限定修正（Steps22〜25）
 
 旧最終確認は `validate_current_u10` が更新後の `traceability.json` を旧 `CURRENT_TRACE_SHA` と直接比較し、`Trace original digest differs` でexit1となった。失敗原本とレビュー指摘は保持する。今回の追加は検証参照の修正に限り、新しいguest・CI・coverage・ASan実行や外部送信を追加しない。
 
-- [ ] Step 22 — 旧対応表の取得元と期待hashを旧署名済みソース・保存原本から特定する。同じ参照原因を確認候補の依存経路で監査し、旧原本の完全hash一致を必須にする。旧checkerと旧検査条件を変更せず、新helperで検証時だけ旧参照へ正しい原本を渡す。
-- [ ] Step 23 — 現行U10対応表を別経路で完全hash・構造・担当要件と適用範囲へ照合する新確認候補を作る。旧／現行の取り違え、原本欠落・改変、余分な差分、hash不一致、構造・要件の欠落を拒否する正常／境界回帰を12件以上実装する。成功を仮定する置換、全体の検査省略、一般的な差分許可はしない。
-- [ ] Step 24 — 回帰と既存内部44件を実行し、旧全検査を保持した新候補を診断として最後まで実行する。正式検査と独立再レビューへ渡す前に全書込みを完了し、旧実行と現行の照合を区別する。診断の成功を正式完了証明へ代用しない。
-- [ ] Step 25 — 新しい最終確認コマンドを具体化して別途承認を得た後、正式再検証とU10完了承認を行い、U14へ戻る。旧記録・80%下限・guest30秒制限・strict guardを維持し、追加不一致は未解消として報告する。
+- [x] Step 22 — 旧対応表の取得元と期待hashを旧署名済みソース・保存原本から特定する。同じ参照原因を確認候補の依存経路で監査し、旧原本の完全hash一致を必須にする。旧checkerと旧検査条件を変更せず、新helperで検証時だけ旧参照へ正しい原本を渡す。
+- [x] Step 23 — 現行U10対応表を別経路で完全hash・構造・担当要件と適用範囲へ照合する新確認候補を作る。旧／現行の取り違え、原本欠落・改変、余分な差分、hash不一致、構造・要件の欠落を拒否する正常／境界回帰を12件以上実装する。成功を仮定する置換、全体の検査省略、一般的な差分許可はしない。
+- [x] Step 24 — 回帰と既存内部44件を実行し、旧全検査を保持した新候補を診断として最後まで実行する。正式検査と独立再レビューへ渡す前に全書込みを完了し、旧実行と現行の照合を区別する。診断の成功を正式完了証明へ代用しない。
+- [x] Step 25 — 新しい最終確認コマンドを具体化して別途承認を得た後、正式再検証とU10完了承認を行い、U14へ戻る。旧記録・80%下限・guest30秒制限・strict guardを維持し、追加不一致は未解消として報告する。
 
 ## 今回の指摘対応：Step26（R-04・R-05）
 
 ユーザーは、U10 checkpointの再確認（iteration 3、判定READY）でRequest Changesを選び、R-04とR-05への対応を指定した。再確認のきっかけは、2026-10-16のClaude Code harness追加で、ルート `.gitignore` のAI-DLCブロックに `aidlc/active-memory/` と `aidlc/.aidlc-request-text/` の2行が入ったことである。ルート `.gitignore` はU10のsource-manifest（42パス）に含まれない。その後、Construction Verification Commandとして `/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u1-skeleton/code-generation/verification/r05-r11-repair-01/final_candidate.py`（SHA-256 `d799bbb919f5927304fbb5c5a57e4b3686a52436eaac70cd325ffe981afa9b3e`）が人の承認で採用され、U10のcheckpointでもこのコマンドが実行される（2026-10-17の再確認時はexit 0、source_compatibility PASS、U15_acceptance GAP）。
 
-- [ ] Step 26 — code-summary.mdの記録更新（R-04・R-05）とレビューの準備。code-summary.mdのH1の直後に「## 現行Step26：ルート.gitignoreの位置づけと正式検証コマンド」節を加え、次を記録する。(a) R-04：ルート `.gitignore` はU10のビルド、テスト、probe、aubeの入力ではない。manifestに含めない、ビルド対象外の共有パスである。2026-10-16のharness追加で上の2行が入ったことが再確認のきっかけになった。U10のmanifestにある `tests/guests/u10/.gitignore` と `tests/guests/u10/probe/.gitignore` は変わっていない。(b) R-05：checkpointで実行する正式コマンドは採用済みの `final_candidate.py`（上のSHA-256）である。「最終候補」節の `verify-current-u1-u7-u9-u3-u5-u6-u8-u10.py` は、採用前の候補として履歴に残す（構文確認のみで未実行のまま）。その実行結果を今回の成功とは扱わない。既存の節の本文は変えない。ただし「最終候補」節の段落の先頭に「（履歴：採用前の候補。現行の正式コマンドは現行Step26節を参照）」を足す。正式sensorを実行した後は全書込を止め、独立再レビュー、採用済み正式コマンドでのcheckpoint再検証、人の完了承認に進む。新しいguest実行・CI・Node／Safari・ASanやU15の受理は主張しない（NFR8、NFR9、全担当FR/NFR）。
+- [x] Step 26 — code-summary.mdの記録更新（R-04・R-05）とレビューの準備。code-summary.mdのH1の直後に「## 現行Step26：ルート.gitignoreの位置づけと正式検証コマンド」節を加え、次を記録する。(a) R-04：ルート `.gitignore` はU10のビルド、テスト、probe、aubeの入力ではない。manifestに含めない、ビルド対象外の共有パスである。2026-10-16のharness追加で上の2行が入ったことが再確認のきっかけになった。U10のmanifestにある `tests/guests/u10/.gitignore` と `tests/guests/u10/probe/.gitignore` は変わっていない。(b) R-05：checkpointで実行する正式コマンドは採用済みの `final_candidate.py`（上のSHA-256）である。「最終候補」節の `verify-current-u1-u7-u9-u3-u5-u6-u8-u10.py` は、採用前の候補として履歴に残す（構文確認のみで未実行のまま）。その実行結果を今回の成功とは扱わない。既存の節の本文は変えない。ただし「最終候補」節の段落の先頭に「（履歴：採用前の候補。現行の正式コマンドは現行Step26節を参照）」を足す。正式sensorを実行した後は全書込を止め、独立再レビュー、採用済み正式コマンドでのcheckpoint再検証、人の完了承認に進む。新しいguest実行・CI・Node／Safari・ASanやU15の受理は主張しない（NFR8、NFR9、全担当FR/NFR）。
 
 ## 今回の指摘対応：Step27（R-06・R-07）
 
 ユーザーはStep26後のU10 checkpointでRequest Changesを選び、R-06とR-07への対応を指定した。正式コマンドの実行記録は、checkpointの証拠ファイル `aidlc/spaces/default/intents/261004-rust-blink-port/.aidlc-construction-checkpoints/u10-probe-aube-native/unit.json` と、各実行の出力ディレクトリ（U1 verification `r05-r11-repair-01/formal-candidate-<id>/`）に残っている。2026-10-17の再確認（iteration 3の後）の出力は `formal-candidate-1792186532618870000-51059`、Step26の後の出力は `formal-candidate-1792187027222463000-56058` で、どちらもexit 0、source_compatibility PASS、U15_acceptance GAPである。
 
-- [ ] Step 27 — code-summary.mdの構成と参照の修正（R-06・R-07）。(1) R-06：「現行Step26」節の後に続く、見出しのない導入段落3つ（「今回追加したSteps22〜25では…」「今回の対象はSteps19〜21の記録更新です…」「検証済み：42担当パスに欠落なし…」）の直前に、`## 概要（Steps19〜25の履歴）` というH2を1つ加える。段落の本文は変えない。(2) R-07：「現行Step26」節のR-05の項目にある「2026-10-17の再確認ではexit 0、source_compatibility PASS、U15_acceptance GAPでした。」の直後に、実行記録の参照（checkpoint証拠ファイル `.aidlc-construction-checkpoints/u10-probe-aube-native/unit.json` と、出力ディレクトリ `construction/u1-skeleton/code-generation/verification/r05-r11-repair-01/formal-candidate-1792186532618870000-51059/`）を1文で添える。証拠ファイルには最新の実行が記録され、今後の再検証で更新されることも書く。その他の文と節は変えない。正式sensorを実行した後は全書込を止め、独立再レビュー、採用済み正式コマンドでのcheckpoint再検証、人の完了承認に進む（NFR8、NFR9）。
+- [x] Step 27 — code-summary.mdの構成と参照の修正（R-06・R-07）。(1) R-06：「現行Step26」節の後に続く、見出しのない導入段落3つ（「今回追加したSteps22〜25では…」「今回の対象はSteps19〜21の記録更新です…」「検証済み：42担当パスに欠落なし…」）の直前に、`## 概要（Steps19〜25の履歴）` というH2を1つ加える。段落の本文は変えない。(2) R-07：「現行Step26」節のR-05の項目にある「2026-10-17の再確認ではexit 0、source_compatibility PASS、U15_acceptance GAPでした。」の直後に、実行記録の参照（checkpoint証拠ファイル `.aidlc-construction-checkpoints/u10-probe-aube-native/unit.json` と、出力ディレクトリ `construction/u1-skeleton/code-generation/verification/r05-r11-repair-01/formal-candidate-1792186532618870000-51059/`）を1文で添える。証拠ファイルには最新の実行が記録され、今後の再検証で更新されることも書く。その他の文と節は変えない。正式sensorを実行した後は全書込を止め、独立再レビュー、採用済み正式コマンドでのcheckpoint再検証、人の完了承認に進む（NFR8、NFR9）。
 
 ## 今回の指摘対応：Step28（R-08）
 
 ユーザーはStep27後のU10 checkpointでRequest Changesを選び、R-08への対応を指定した。出力ディレクトリ `formal-candidate-1792186532618870000-51059/` には `result.json`（`"source_compatibility": "PASS"`、`"head": "be45b36ce9d7a65719ba1f86cf6a0b018070741b"`）と、各検査の `*.receipt.json`・`*.result.json` がある。exit 0 そのものは、エンジンの検証記録（checkpointの証拠ファイル）に残る。
 
-- [ ] Step 28 — 裏付けファイルの明示（R-08）。code-summary.mdの「現行Step26」節のR-05の項目で、Step27で足した参照文の出力ディレクトリの部分を、ディレクトリ内の `result.json`（`source_compatibility` が `PASS`、`head` が be45b36c）を指す形にする。あわせて、終了コード0はcheckpointの検証記録に、判定は `result.json` にあることを分けて書く。その他の文と節は変えない。正式sensorを実行した後は全書込を止め、独立再レビュー、採用済み正式コマンドでのcheckpoint再検証、人の完了承認に進む（NFR8、NFR9）。
+- [x] Step 28 — 裏付けファイルの明示（R-08）。code-summary.mdの「現行Step26」節のR-05の項目で、Step27で足した参照文の出力ディレクトリの部分を、ディレクトリ内の `result.json`（`source_compatibility` が `PASS`、`head` が be45b36c）を指す形にする。あわせて、終了コード0はcheckpointの検証記録に、判定は `result.json` にあることを分けて書く。その他の文と節は変えない。正式sensorを実行した後は全書込を止め、独立再レビュー、採用済み正式コマンドでのcheckpoint再検証、人の完了承認に進む（NFR8、NFR9）。
 
 ## 今回の指摘対応：Step29（R-09）
 
 ユーザーはStep28後のU10 checkpointでRequest Changesを選び、R-09への対応を指定した。正式コマンドは実行のたびに、U1 verification `r05-r11-repair-01/` の下に新しい `formal-candidate-<id>/` を作る。checkpointの証拠ファイル `unit.json` は最新の実行だけを記録し、その出力先は `verification.stdout_tail` の `output` に書かれる。そのため、特定の「最新」ディレクトリ名を文書に書いても、次の再検証でずれる。
 
-- [ ] Step 29 — 参照の対応関係の明記（R-09）。code-summary.mdの「現行Step26」節のR-05の項目で、Step28の参照文の直後に1文を足す。足す内容は次のとおり。51059は2026-10-17の再確認（iteration 3の後）の初回の実行である。正式コマンドは実行ごとに新しい出力ディレクトリを作る。checkpointの最新の実行の出力先と判定は、`unit.json` の `verification.stdout_tail` に記録される。どの実行も、同じ採用済みコマンド（SHA-256 `d799bbb9…`）で、同じ判定項目（source_compatibility、U15_acceptance）を出す。特定の最新ディレクトリ名は書かない。その他の文と節は変えない。正式sensorを実行した後は全書込を止め、独立再レビュー、採用済み正式コマンドでのcheckpoint再検証、人の完了承認に進む（NFR8、NFR9）。
+- [x] Step 29 — 参照の対応関係の明記（R-09）。code-summary.mdの「現行Step26」節のR-05の項目で、Step28の参照文の直後に1文を足す。足す内容は次のとおり。51059は2026-10-17の再確認（iteration 3の後）の初回の実行である。正式コマンドは実行ごとに新しい出力ディレクトリを作る。checkpointの最新の実行の出力先と判定は、`unit.json` の `verification.stdout_tail` に記録される。どの実行も、同じ採用済みコマンド（SHA-256 `d799bbb9…`）で、同じ判定項目（source_compatibility、U15_acceptance）を出す。特定の最新ディレクトリ名は書かない。その他の文と節は変えない。正式sensorを実行した後は全書込を止め、独立再レビュー、採用済み正式コマンドでのcheckpoint再検証、人の完了承認に進む（NFR8、NFR9）。
 
 

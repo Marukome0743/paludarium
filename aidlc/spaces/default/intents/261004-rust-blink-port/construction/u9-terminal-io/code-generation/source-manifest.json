@@ -55,9 +55,6 @@
       "path": ".github/workflows/ci.yml"
     },
     {
-      "path": ".github/workflows/native-diagnostic.yml"
-    },
-    {
       "path": "crates/paludarium-host/tests/u9_public_api.rs"
     },
     {
@@ -73,34 +70,13 @@
       "path": "scripts/build-wasm.sh"
     },
     {
-      "path": ".github/workflows/u11-native-first.yml"
-    },
-    {
-      "path": ".github/workflows/u6-quality.yml"
-    },
-    {
       "path": ".github/workflows/u11-acceptance.yml"
-    },
-    {
-      "path": ".github/workflows/u5-quality.yml"
-    },
-    {
-      "path": ".github/workflows/u6-native-diagnostic.yml"
-    },
-    {
-      "path": ".github/workflows/u2-production-sanitizers.yml"
-    },
-    {
-      "path": ".github/workflows/u11-firefox-diagnostic.yml"
     },
     {
       "path": ".github/workflows/u11-fuzz.yml"
     },
     {
       "path": ".github/workflows/u10-native-diagnostic.yml"
-    },
-    {
-      "path": ".github/workflows/u8-native-diagnostic.yml"
     },
     {
       "path": "crates/paludarium-harness/tests/diff_u7.rs"
@@ -110,9 +86,6 @@
     },
     {
       "path": ".github/scripts/u9-safari-diagnostic.mjs"
-    },
-    {
-      "path": ".github/workflows/u9-current-verification.yml"
     }
   ]
 }

@@ -1,10 +1,34 @@
 # U2 Integer ISA — Code Generation Plan
 
-## 今回の計画：Step71（Build and TestのLoop-back 1：共有のabi.rsの再確認と正式確認のbinding更新）
+## 今回の計画：Step73（Step72のレビューのMinor 2件を直す）
+
+2026-10-19 JST。Step72の再レビュー（review-39、READY、新しいMinor 2件）の後、checkpointで人がRequest Changesを選んだ（先にMinor 2件を直す）。
+
+- [ ] Step 73 — **review-39のMinor 2件を記録で直す**。(1) code-summary.mdの「現在の状態（2026-10-19 JST、Step72）」節の「古い記述の注記」の箇条を、履歴の節にあるtoolchainの版 `nightly-2026-10-01`（Step33〜51の節など）と `nightly-2026-10-10`（Step58〜60の節）の両方がその時点の記述で、今の `rust-toolchain.toml` は `nightly-2026-10-11` だと書き直す。見出しに「履歴」が付いていない末尾の3節（「現在の実装と契約」「更新した記録と所有境界」「品質の限界」）の見出しの直後に、それぞれ「（Step20〜35時点の記録。今の状態は先頭の「現在の状態」節）」の1行を足す（本文は変えない）。(2) 同じ節の「U2の受け入れに要るものは残る」の箇条の末尾に、27d05de1のrun 39149194521は今のtoolchain（`nightly-2026-10-11`）とworkflowのLLVMの入手手順で動いたもので、U2の製品のソースは変わっていないことを1文で足す。unit-test-instructions.mdの先頭に「今回Step73」節を足す（sensor 2件、checkpointはentry-f）。製品・CI・workflow・ほかのUnitの記録・traceability.json・source-manifest.jsonは変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR2、NFR3、NFR8。
+
+## Summary
+
+- Builds: Step73。Step72の再レビュー（review-39）のMinor 2件をU2の記録で直す：古いtoolchainの版の注記を10-01と10-10の両方に広げ、日付のない末尾の3節に時点の注記を付ける。fuzzの裏付けのrunが今のtoolchainで動いたことを1文足す。
+- Touches: U2のcode-summary.mdとunit-test-instructions.mdだけ。製品・CI・workflow・ほかのUnitの記録・traceability.json・source-manifest.jsonは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 前回の計画：Step72（確かめ直しの指摘を記録で直す）
+
+2026-10-19 JST。U15のStep22〜28（push、head 27d05de1）でU2のmanifestにある `ci.yml`・`nightly.yml` が変わり、`u2-production-sanitizers.yml` が消え、正式な確認コマンドがU15の `entry-e3c29d1d/entry-f.py`・`binding-e06f.json` に替わった。U2の確かめ直し（review-38、READY、Minor 3）の後、checkpointで人がRequest Changesを選んだ（先にU2の記録の3件を直す）。人の指示：「ワークフローの順で進めてください。U1 の確かめ直しから始めて、ファイルが変わった Unit を順に確かめ直し、U15 のレビューと完了確認、U11 の確かめ直しまで進めてください。」
+
+- [ ] Step 72 — **確かめ直しの指摘を記録で直す**。(1) code-summary.mdの先頭に「現在の状態（2026-10-19 JST、Step72）」節を足す：今の正式な確認コマンドは `verification-command.txt` の U15 `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`（head 27d05de1、人が2026-10-19に採用）で、下の節の `final_candidate.py`（d799bbb9…）とU2の `u2_candidate.py`・binding-03はそれぞれの時点の正式なコマンド（履歴）であること。U2に関わる製品の変更（`ci.yml` の `push` は `main` だけ、`nightly.yml` は `u14-fuzz.yml`・`u14-quality.yml` を呼ぶ形、`u2-production-sanitizers.yml` は削除）と、U2のASan/LSanの4対象（cpu_u2・mmu_u2・decode・load_elf）が今は `u14-fuzz.yml` にあり27d05de1のrun 39149194521で成功したこと、`ci.yml` の diff_u2・parallel_u2 と80%の下限が残ること（いずれもreview-38の確かめた点）。U2の製品のコードは変えていないこと。(2) source-manifest.jsonのwritesから、消えた `.github/workflows/u2-production-sanitizers.yml` を外し、新しい節に理由（U15のCIの整理、`construction/ci-pipeline/ci-config.md` の「消す」）を書く。(3) 「現行Step58〜60」節のtoolchainの版の記述は、今の `rust-toolchain.toml`（nightly-2026-10-11）と違うので、新しい節にその時点の記述であることを書く（履歴の本文は変えない）。traceability.jsonの `current_source_fuzz_verified` は旧head 178da99eに結び付いた当時の記録で、今の裏付けはrun 39149194521であることも新しい節に書く（traceability.jsonは変えない）。(4) 「現行」で始まる見出しの節は、見出しを「履歴：…（作成時の見出しは「…」）」にする（本文は変えない）。unit-test-instructions.mdの先頭に「今回Step72」節を足し、checkpointはentry-fで確かめることを書く。製品・CI・workflow・ほかのUnitの記録・traceability.jsonのstatusとtargetは変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR2、NFR3、NFR8。
+
+## 前回のSummary（Step72）
+
+- Builds: Step72。U2の確かめ直し（review-38）のMinor 3件をU2の記録で直す：今の正式な確認コマンド（entry-f・binding-e06f）の記述、source-manifestの消えたworkflow、古いtoolchainの版とfuzzの裏付けの記述。
+- Touches: U2の記録だけ（code-summary.md、unit-test-instructions.md、source-manifest.json）。製品・CI・workflow・ほかのUnitの記録・traceability.jsonは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 前回の計画：Step71（Build and TestのLoop-back 1：共有のabi.rsの再確認と正式確認のbinding更新）
 
 2026-10-17。U14のLoop-back 1で、整数SSEのJIT（署名head 12d6a2f6・1ceae86c）のために、U2が担当する `crates/paludarium-wasm/src/abi.rs` が変わった（JITの状態の大きさ144を `paludarium_jit::STATE_BYTES`（400）に置き換え、`// SAFETY:` のコメントを更新）。1ceae86cのCI（PR・U12・U13・U14 quality・fuzz・source-bound）はすべて成功し、FR8.3の正式な性能測定は合格した。人はU1のStep71・72で作った新しい正式確認コマンド（`construction/u1-skeleton/code-generation/verification/loopback1-next/new_candidate.py`、checker `a7836f9b…`、binding-02）を採用し、U1は承認された。このコマンドは旧い正式確認の封印（`final-verifier-208fd965/consumer-v3/history-seal.json`）をそのまま使い、その封印にはこの計画とunit-test-instructions.mdのbytesが入っている。そのため、この計画を書き足すとコマンドはexit 1になる。人は「U2 で binding を更新」を選んだ。
 
-- [x] Step 71 — 共有のabi.rsの再確認と正式確認のbinding更新（C12、NFR3、NFR8）。
+- [ ] Step 71 — 共有のabi.rsの再確認と正式確認のbinding更新（C12、NFR3、NFR8）。
   1. abi.rsの変更（1ceae86cと12d6a2f6の差分）を読み、U2の記録（code-summary.md・traceability.json・source-manifest.json）の主張（C12の境界、`unsafe` のSAFETYの説明、production wasmの状態の受け渡し）が今のsourceでも正しいかを確かめる。正しくない記述があれば、U2のcode-summary.mdに「現行Step71」節を足して直す。製品のsourceは変えない。
   2. U1の記録のchecker・binding・旧い封印は変えない。U2の記録の `verification/loopback1-next/` に、U1のcheckerをそのまま呼び出す新しい入口（例：`u2_candidate.py`）と新しいbinding（binding-03）を作る。binding-02から増やす許可は、この計画とunit-test-instructions.md、U2のcode-summary.md・traceability.jsonの、このStepの後の新しいbytesだけにする（各ファイルの旧いbytesは封印の値、新しいbytesはSHA-256で固定）。ほかの許可・検査は弱めない。
   3. U1の承認時に人と約束したMinor 2件を直す：(a) Step72で足した、receiptとjobの照合（job ID、attempt 1の成功、後のattemptでの再実行がないこと、artifactの作成順）と「attempt 2は失敗したjobだけの再実行」の検査に、それぞれ拒否の回帰を足す、(b) `result.json` の `claim_scope` の `performance_1ceae86c` に、moduleの結び付きがartifactのmetadataに頼っていてsourceのdigestがないという限界を書く。U1のcheckerの中身を変えずにできないものは、新しい入口の側で行う。
@@ -16,7 +40,7 @@
 
 前回の実行対象はStep68〜70。Step64〜67の原本回収・14件回帰と全checker診断exit1、以前の正式失敗を履歴として保持する。新しい計画承認と内容確認の取得前には追加実装・検証を実行しない。
 
-## Summary
+## 前回のSummary（Step71）
 
 - Builds: Step71。U14の変更で変わったU2担当の `abi.rs`（144→`STATE_BYTES`）を再確認し、U2の記録を必要なら直す。U2の計画・手順書が旧い封印に入っているため、U2の記録の変更だけを許す新しいbinding（binding-03）と、U1のcheckerを呼び出す新しい入口を作る。U1の承認時に約束したMinor 2件（receiptとjobの照合などの回帰、result.jsonの限界の記述）も直す。
 - Touches: U2の記録（計画・手順書・code-summary.md・traceability.json・`verification/loopback1-next/`）。製品・CI・lock・mise.toml・U1とほかのUnitの記録・旧原本は変えない。

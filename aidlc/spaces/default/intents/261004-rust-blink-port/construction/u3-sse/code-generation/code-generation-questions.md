@@ -7,15 +7,15 @@ instead of in chat, write your answer after `[Answer]:` and tell me in chat when
 
 Approve the code plan for u3-sse?
 
-- Builds: 今回の計画（Build and TestのLoop-back 1）。製品は変えない。計画の古くなったTesting Contractを今の内容（`sha256:7ff27a24…`、方針は同じでproject層の学びが足されただけ）に置き換え、今の正式確認コマンドでU3を確かめ直す。
-- Touches: この計画のTesting Contractと「今回の計画」の節だけ。製品・テスト・ほかの記録は変えない。
-- Tests: 新しいテストの実行はない。独立再レビューと、今の正式確認コマンド（U2の `u2_candidate.py`）でのcheckpoint。前回までの結果は履歴として保持する。
+- Builds: 今回の計画（再レビューのMinor R-10を直す）。手順書に残っていた見出し「現行完了確認（Steps11〜13）」を履歴にし、注記を1行足す。R-11は値が正しいので直さない。
+- Touches: U3のunit-test-instructions.mdとcode-summary.mdだけ。製品・CI・workflow・ほかのUnitの記録・traceability.json・source-manifest.jsonは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
 
 Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u3-sse/code-generation/code-generation-plan.md
 Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u3-sse/code-generation/unit-test-instructions.md
 
-[Approval Fingerprint]: sha256:v3:d691358cc4feabfa1bf933be88ba49e90f4fefecd7eaad1f421725af8de7388a
-[Planned Source]: 1d007e145356f21dddcf25b720db0726f7c889de86622e95a640349d7b723024
+[Approval Fingerprint]: sha256:v3:01a7a577eb1e1cb0778fd2796e8b8c7572f95cdd7e0b6af4556f84bb2a0f9d14
+[Planned Source]: 2ddcf1227d570aa365619e0528ec9ef35513970dcf88c95dc5989daa435f32d3
 
 - A. Approve Plan
 - B. Request Changes

@@ -5,6 +5,7 @@
   "source_sha": "832abd0fb9c67f20af0fbb8b58119f019c1f9f4a",
   "ci_run": 38236916982,
   "ci_status": "all29 success; complete pre-review diagnostic exit0",
+  "history_note": "Step16（2026-10-19）：source_sha（832abd0f）・ci_run（38236916982）・ci_status・current_verificationはStep10時点の値で、今の証拠ではない。今のheadは27d05de1（CIは8 runとも成功、U15のverification/ci-27d05de1/ci-27d05de1.json。U12 current full quality run 39149189719はattempt 1でu12-fuzz / fuzz (vfs_paths)だけがapt.llvm.orgへの接続で失敗し、人の承認でそのjobだけをやり直したattempt 2で成功。u13-quality run 39149192303は成功し、windows-host jobも成功）。今の正式な確認コマンドはU15のentry-e3c29d1d/entry-f.py・binding-e06f.json。U13の製品のファイルはe4f84768から変わっていない（manifestのworkflow 2つは8360be2eで変わった）。詳細はcode-summary.mdの先頭の「現在の状態」節。",
   "upstream_ids": [
     "C2",
     "FR5.1",
@@ -96,7 +97,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR5.1",
@@ -125,7 +126,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR6.3",
@@ -154,7 +155,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending. Steps11-12 (code-summary.md 現行Steps11〜12): after Build and Test fork run 39009466368 (head bd247f1e) failed jobs 117328658403 (u13-oracle / native-first, aube cargo deny exit 1 without advisory policy) and 117328658441 (unit tests (windows-latest), PALUDARIUM_TEST_NODE missing), u13-native-first.yml and u13-wasm-acceptance.yml now build guests with tests/guests/u10/build.py --advisory-policy u15-fixed-aube-zip9-name (wasm-acceptance adds SHA-pinned setup-python 3.15.0) and u13-quality.yml sets PALUDARIUM_TEST_NODE: node; actionlint exit 0 before and after; CI re-run not yet performed and unverified."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending. 2026-10-17（Steps11〜12）の記録：Steps11-12 (code-summary.md 現行Steps11〜12): after Build and Test fork run 39009466368 (head bd247f1e) failed jobs 117328658403 (u13-oracle / native-first, aube cargo deny exit 1 without advisory policy) and 117328658441 (unit tests (windows-latest), PALUDARIUM_TEST_NODE missing), u13-native-first.yml and u13-wasm-acceptance.yml now build guests with tests/guests/u10/build.py --advisory-policy u15-fixed-aube-zip9-name (wasm-acceptance adds SHA-pinned setup-python 3.15.0) and u13-quality.yml sets PALUDARIUM_TEST_NODE: node; actionlint exit 0 before and after; CI re-run not yet performed and unverified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR7.2",
@@ -183,7 +184,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR7.3",
@@ -212,7 +213,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR9.1",
@@ -241,7 +242,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR1",
@@ -270,7 +271,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR2",
@@ -299,7 +300,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR3",
@@ -328,7 +329,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR4",
@@ -357,7 +358,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR5",
@@ -386,7 +387,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR6",
@@ -415,7 +416,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR7",
@@ -444,7 +445,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR8",
@@ -473,7 +474,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR9",
@@ -502,7 +503,7 @@
         "tests/guests/u13/settings.py",
         "tests/guests/u13/windows_job.py"
       ],
-      "notes": "Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Finite U13 scope verified by step10-acceptance-evidence.json and complete pre-review diagnostic; independent review and formal command approval remain pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR1",
@@ -514,7 +515,7 @@
       ],
       "owner": "u1-skeleton",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR1.1",
@@ -526,7 +527,7 @@
       ],
       "owner": "u1-skeleton",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR1.2",
@@ -538,7 +539,7 @@
       ],
       "owner": "u1-skeleton",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR1.3",
@@ -550,7 +551,7 @@
       ],
       "owner": "u2-integer-isa",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR1.4",
@@ -562,7 +563,7 @@
       ],
       "owner": "u3-sse",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR1.5",
@@ -574,7 +575,7 @@
       ],
       "owner": "u1-skeleton",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR1.6",
@@ -586,7 +587,7 @@
       ],
       "owner": "u2-integer-isa",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR10",
@@ -598,7 +599,7 @@
       ],
       "owner": "u15-release",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR10.1",
@@ -610,7 +611,7 @@
       ],
       "owner": "u15-release",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR2",
@@ -622,7 +623,7 @@
       ],
       "owner": "u4-memory-signals",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR2.1",
@@ -634,7 +635,7 @@
       ],
       "owner": "u1-skeleton",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR2.10",
@@ -646,7 +647,7 @@
       ],
       "owner": "u7-vfs",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR2.2",
@@ -658,7 +659,7 @@
       ],
       "owner": "u4-memory-signals",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR2.3",
@@ -670,7 +671,7 @@
       ],
       "owner": "u5-threads-futex",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR2.4",
@@ -682,7 +683,7 @@
       ],
       "owner": "u6-events-sockets",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR2.5",
@@ -694,7 +695,7 @@
       ],
       "owner": "u6-events-sockets",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR2.6",
@@ -706,7 +707,7 @@
       ],
       "owner": "u6-events-sockets",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR2.7",
@@ -718,7 +719,7 @@
       ],
       "owner": "u6-events-sockets",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR2.8",
@@ -730,7 +731,7 @@
       ],
       "owner": "u8-process-spawn",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR2.9",
@@ -742,7 +743,7 @@
       ],
       "owner": "u4-memory-signals",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR3",
@@ -754,7 +755,7 @@
       ],
       "owner": "u7-vfs",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR3.1",
@@ -766,7 +767,7 @@
       ],
       "owner": "u7-vfs",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR3.2",
@@ -778,7 +779,7 @@
       ],
       "owner": "u7-vfs",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR3.3",
@@ -790,7 +791,7 @@
       ],
       "owner": "u7-vfs",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR3.4",
@@ -802,7 +803,7 @@
       ],
       "owner": "u7-vfs",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR4",
@@ -814,7 +815,7 @@
       ],
       "owner": "u9-terminal-io",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR4.1",
@@ -826,7 +827,7 @@
       ],
       "owner": "u9-terminal-io",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR4.2",
@@ -838,7 +839,7 @@
       ],
       "owner": "u9-terminal-io",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR5",
@@ -850,7 +851,7 @@
       ],
       "owner": "u11-wasm-launcher",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR5.2",
@@ -862,7 +863,7 @@
       ],
       "owner": "u11-wasm-launcher",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR5.3",
@@ -874,7 +875,7 @@
       ],
       "owner": "u11-wasm-launcher",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR5.4",
@@ -886,7 +887,7 @@
       ],
       "owner": "u5-threads-futex",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR6",
@@ -898,7 +899,7 @@
       ],
       "owner": "u10-probe-aube-native",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR6.1",
@@ -910,7 +911,7 @@
       ],
       "owner": "u10-probe-aube-native",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR6.2",
@@ -922,7 +923,7 @@
       ],
       "owner": "u10-probe-aube-native",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR6.4",
@@ -934,7 +935,7 @@
       ],
       "owner": "u10-probe-aube-native",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR7",
@@ -946,7 +947,7 @@
       ],
       "owner": "u10-probe-aube-native",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR7.1",
@@ -958,7 +959,7 @@
       ],
       "owner": "u10-probe-aube-native",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR7.4",
@@ -970,7 +971,7 @@
       ],
       "owner": "u10-probe-aube-native",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR8",
@@ -982,7 +983,7 @@
       ],
       "owner": "u14-jit-wasm",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR8.1",
@@ -994,7 +995,7 @@
       ],
       "owner": "u14-jit-wasm",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR8.2",
@@ -1006,7 +1007,7 @@
       ],
       "owner": "u14-jit-wasm",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR8.3",
@@ -1018,7 +1019,7 @@
       ],
       "owner": "u14-jit-wasm",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR9",
@@ -1030,7 +1031,7 @@
       ],
       "owner": "u1-skeleton",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR9.2",
@@ -1042,7 +1043,7 @@
       ],
       "owner": "u11-wasm-launcher",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     },
     {
       "id": "FR9.3",
@@ -1054,7 +1055,7 @@
       ],
       "owner": "u1-skeleton",
       "required_for": "owner",
-      "notes": "U13\u62c5\u5f53\u5916\u3002\u4e0a\u6d41\u5272\u5f53\u306e\u62c5\u5f53Unit\u3092\u53c2\u7167\u3059\u308b\u3002\u4ed6Unit\u306e\u65e2\u5b8c\u4e86\u627f\u8a8d\u3092\u53d6\u308a\u6d88\u3055\u305a\u3001U13\u306e\u65b0\u3057\u3044\u5b9f\u88c5\u30fb\u5408\u683c\u3092\u4e3b\u5f35\u3057\u306a\u3044\u3002 No new acceptance claim for another Unit."
+      "notes": "U13担当外。上流割当の担当Unitを参照する。他Unitの既完了承認を取り消さず、U13の新しい実装・合格を主張しない。 No new acceptance claim for another Unit."
     }
   ],
   "reverse": [
@@ -1080,7 +1081,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": ".github/workflows/u13-quality.yml",
@@ -1104,7 +1105,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": ".github/workflows/u13-wasm-acceptance.yml",
@@ -1128,7 +1129,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u13.rs",
@@ -1152,7 +1153,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "crates/paludarium-harness/tests/support/u13.rs",
@@ -1176,7 +1177,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "crates/paludarium-host/src/lib.rs",
@@ -1200,7 +1201,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "crates/paludarium-host/src/native_fs.rs",
@@ -1214,7 +1215,7 @@
         "NFR8"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "crates/paludarium-host/src/u13_tests.rs",
@@ -1238,7 +1239,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "crates/paludarium-host/src/windows.rs",
@@ -1262,7 +1263,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "scripts/u13-run.py",
@@ -1286,7 +1287,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "tests/guests/u13/fixture.py",
@@ -1310,7 +1311,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "tests/guests/u13/host_comparison.py",
@@ -1334,7 +1335,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "tests/guests/u13/operation.py",
@@ -1358,7 +1359,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "tests/guests/u13/oracle.py",
@@ -1382,7 +1383,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "tests/guests/u13/runner-tests/test_boundaries.py",
@@ -1406,7 +1407,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "tests/guests/u13/runner-tests/test_oracle.py",
@@ -1430,7 +1431,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "tests/guests/u13/runner-tests/test_settings.py",
@@ -1454,7 +1455,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "tests/guests/u13/runner-tests/test_stop.py",
@@ -1478,7 +1479,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "tests/guests/u13/runner.py",
@@ -1502,7 +1503,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "tests/guests/u13/settings.py",
@@ -1526,7 +1527,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "tests/guests/u13/windows_job.py",
@@ -1550,7 +1551,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Signed U13 source binding and fresh CI evidence verified; final review/approval pending."
+      "notes": "Step10時点（832abd0f、CI 38236916982）の記録：Signed U13 source binding and fresh CI evidence verified; final review/approval pending.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの先頭の「現在の状態」節と「履歴：Step13〜15」節のとおり。u13-qualityはe4f84768・1ceae86c・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "crates/paludarium-runtime/src/workers.rs",
@@ -1568,6 +1569,7 @@
     "candidate": "verification/verify-current-u13-separated.py",
     "formal_executed": false,
     "first_attempt_failure_preserved": true,
-    "evidence_index": "construction/u13-windows-host/code-generation/verification/step10-acceptance-evidence.json"
+    "evidence_index": "construction/u13-windows-host/code-generation/verification/step10-acceptance-evidence.json",
+    "history_note": "Step10時点の値。candidateのverify-current-u13-separated.pyはStep10時点の確認の候補（パスはintent直下のverification/からの相対で、aidlc/spaces/default/intents/261004-rust-blink-port/verification/verify-current-u13-separated.pyにある）で、今の正式な確認コマンドではない。formal_executed: falseはその時点の状態。今の正式な確認コマンドはU15のentry-e3c29d1d/entry-f.py・binding-e06f.json（2026-10-19採用）。"
   }
 }

@@ -4,7 +4,6 @@
   "version": 1,
   "writes": [
     {"path": ".github/scripts/u10-current-diagnostic.py"},
-    {"path": ".github/workflows/u10-current-verification.yml"},
     {"path": "crates/paludarium-host/src/native_fs.rs"},
     {"path": "tests/guests/u10/comparison_args.py"},
     {"path": "tests/guests/u10/runner-tests/test_comparison_args.py"},

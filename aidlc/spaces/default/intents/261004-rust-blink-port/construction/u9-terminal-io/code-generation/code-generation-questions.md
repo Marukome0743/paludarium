@@ -7,15 +7,15 @@ instead of in chat, write your answer after `[Answer]:` and tell me in chat when
 
 Approve the code plan for u9-terminal-io?
 
-- Builds: Step81。U9が担当するファイルは、Step80の承認（head e4f84768）の後に変わっていないことを確かめ、今の正式確認コマンドで確かめ直す。製品・workflow・試験・記録は変えない。
-- Touches: この計画と手順書のStep81の節だけ。
-- Tests: 新しいテスト・CIの実行はない。U9のsource-manifestの全ファイルが e4f84768 の版と同じことを読み取りで確かめ、独立再レビューと、今の正式確認コマンド（U2の `u2_candidate.py`）でのcheckpointを行う。
+- Builds: Step82。U9の確かめ直し（review-16、READY、Minor 4）のうち、U9の記録で直せる3件（R-13 manifestの消えたworkflow、R-14 古い「未実行」の記述、R-16 今の正式な確認コマンドの記述）を直す。R-15（呼び元が消えた `.github/scripts/u9-source-audit.py`）は製品のファイルなので、次の製品の...
+- Touches: U9の記録だけ（code-summary.md、unit-test-instructions.md、source-manifest.json）。製品・CI・workflow・ほかのUnitの記録・traceability.jsonは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
 
 Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u9-terminal-io/code-generation/code-generation-plan.md
 Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u9-terminal-io/code-generation/unit-test-instructions.md
 
-[Approval Fingerprint]: sha256:v3:7dbfef2ab153ecab19e8a02b7bd574f476f796482eae87da65962e6f2d72bf00
-[Planned Source]: 1d007e145356f21dddcf25b720db0726f7c889de86622e95a640349d7b723024
+[Approval Fingerprint]: sha256:v3:c534c4cb0174db6705147e5755b6d0837b78bc44e52d1684e100a78d21f65286
+[Planned Source]: 2ddcf1227d570aa365619e0528ec9ef35513970dcf88c95dc5989daa435f32d3
 
 - A. Approve Plan
 - B. Request Changes

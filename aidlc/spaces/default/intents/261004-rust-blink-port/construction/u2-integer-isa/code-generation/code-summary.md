@@ -1,6 +1,19 @@
 # U2 コード生成の現在source確認
 
-## 現行Step71（Loop-back 1）：共有のabi.rsの再確認とbinding-03
+## 現在の状態（2026-10-19 JST、Step72）
+
+本節はStep72の記録である（Step73で、Step72の再レビュー review-39 のMinor 2件に合わせ、「古い記述の注記」と「U2の受け入れに要るものは残る」の2つの箇条を直し、末尾の3節に時点の注記を付けた）。U15のStep22〜28で製品のファイルが変わってfork `codex/build-and-test` へ送られた（head 27d05de1、e3c29d1d→8b415a7c→8360be2e→27d05de1、4つともVerified）ので、U2を確かめ直した（`reviews/review-38.md`、READY、Minor 3）。checkpointで人がRequest Changesを選んだので、U2の記録で直せる3件を直した。U2の製品のコード・CI・workflow・ほかのUnitの記録・traceability.jsonは変えていない。
+
+- **今の正式な確認コマンド**：`aidlc/spaces/default/intents/261004-rust-blink-port/verification-command.txt` の U15 `construction/u15-release/code-generation/verification/entry-e3c29d1d/entry-f.py`・`binding-e06f.json`（head 27d05de1、人が2026-10-19に採用、command SHA-256 `00f5c883…a159`）。下の節の `construction/u1-skeleton/code-generation/verification/r05-r11-repair-01/final_candidate.py`（command SHA-256 `d799bbb9…`）と、U2の `verification/loopback1-next/u2_candidate.py`・binding-03は、それぞれの時点の正式なコマンドや入口（履歴）である。U2のcheckpointはentry-fで確かめる。entry-fは作業コピーのbytesを `aidlc/` の外だけで比べるので、U2の記録の変更はその結果に影響しない想定である（結果はcheckpointの記録が持つ）。
+- **U2に関わる製品の変更**：U2のsource-manifestにあるworkflowのうち、`ci.yml`（`push` は `main` だけ）と `nightly.yml`（`u14-fuzz.yml` と `u14-quality.yml` を呼ぶ形）が変わり、`u2-production-sanitizers.yml` が消えた（U15のCIの整理、`construction/ci-pipeline/ci-config.md` の「消す」）。U2の製品のコード（`crates/`・`tests/guests/u2`・`fuzz/`）は変わっていない。
+- **U2の受け入れに要るものは残る**（review-38の確かめた点）：U2のASan/LSanの4対象（cpu_u2・mmu_u2・decode・load_elf）は `u14-fuzz.yml` にあり、設定（seed 1、600秒、timeout 30、rss 2048、max_len はcpu_u2が4096・mmu_u2が4608）はU2の記録と同じで、27d05de1のrun 39149194521で成功した。`ci.yml` には diff_u2・parallel_u2 と行カバレッジ80%の下限が残る。27d05de1のCI 8 runはすべて成功した（U12は人が認めた1 jobの再実行。記録はU15の `verification/ci-27d05de1/`）。消えた `u2-production-sanitizers.yml` の実行の証拠は、保存済みの原本（step47-proof.jsonなど）に履歴として残る。run 39149194521は、今のtoolchain（`nightly-2026-10-11`）と `u14-fuzz.yml` のLLVMの入手手順で動いたもので、U2の製品のソースは変わっていない。
+- **source-manifest.json**：writesから、消えた `.github/workflows/u2-production-sanitizers.yml` を外した。ほかのpathは変えていない。下の節の「124/124 一致」などの件数は、それぞれの時点の記録である。
+- **古い記述の注記**：下の履歴の節にある製品のtoolchainの版、`nightly-2026-10-01`（Step33〜51の節や末尾の「品質の限界」節など）と `nightly-2026-10-10`（「履歴：Step58〜60」節）は、どちらもその時点の記述である。今の `rust-toolchain.toml` は `nightly-2026-10-11`。末尾の3節（「現在の実装と契約」「更新した記録と所有境界」「品質の限界」）は見出しに「履歴」が付いていないが、Step20〜35時点の記録で、見出しの直後にその注記を付けた（本文は変えていない）。traceability.jsonの `current_source_fuzz_verified: true` は旧head 178da99eに結び付いた当時の記録で、今の裏付けは27d05de1のrun 39149194521である（traceability.jsonは変えていない）。
+- 「現行」で始まっていた見出しは「履歴：…（作成時の見出しは「…」）」にした。本文は変えていない。
+- 未検証：この作業ではentry-fを実行していない（checkpointで実行する）。夜間の起動（`schedule` からの `workflow_call`）は実際には確かめていない。U2の受け入れはそれに依らない。独立再レビューはこの記録の後に行う。
+- 下の節は、それぞれの時点の履歴として読む。
+
+## 履歴：Step71（Loop-back 1）：共有のabi.rsの再確認とbinding-03（作成時の見出しは「現行Step71（Loop-back 1）：共有のabi.rsの再確認とbinding-03」）
 
 2026-10-17、計画のStep71（Build and TestのLoop-back 1）の記録。下の「現行Step71：採用済み正式検証コマンド…」節は、2026-10-16のレビュー指摘R-05への別の記録であり、この節とは別物である（その節は変更していない）。製品のsource・CI・lock・mise.toml・.gitignore・U1とほかのUnitの記録・旧verification原本は変更していない。
 
@@ -27,7 +40,7 @@ export（`buffer_new` の64 MiBの上限など）、`unsafe extern "C"` のimpor
 
 U1の正式確認コマンド（`construction/u1-skeleton/code-generation/verification/loopback1-next/new_candidate.py`、checker `a7836f9b…`、binding-02 `6315b735…`）は、再利用する旧い封印（`final-verifier-208fd965/consumer-v3/history-seal.json`）でこの計画（封印の値 `d6fe6500…`）とunit-test-instructions.md（`b3ec56ae…`）のbytesを固定しているため、これらの更新後はコード上exit 1になる（今回、U1のcheckerは実行していない）。U1のchecker・binding・旧い封印は変えず、U2の記録の `verification/loopback1-next/` に、U1のcheckerの関数をそのまま呼ぶ新しい入口 `u2_candidate.py` と `binding-03.json`、回帰 `test_u2_candidate.py`、`README.md` を作った。binding-02から増やす許可は、この計画（checkboxの状態だけを無視した形で固定）、unit-test-instructions.md、このcode-summary.md（封印には入っていないので新しいbytesを固定するだけ）の3ファイルで、旧いbytesは封印の値、新しいbytesはSHA-256で固定する。traceability.jsonは変えていないので許可に入れていない。コマンド行、SHA-256、回帰の一覧と件数、実行結果はそのREADME.mdに書く。新しい入口は、人が採用してからU2のcheckpointで実行する。U1のcheckerでの成功は履歴であり、新しい入口の成功と読み替えない。
 
-## 現行Step71：採用済み正式検証コマンドとU2 checkpointの実行結果
+## 履歴：Step71：採用済み正式検証コマンドとU2 checkpointの実行結果（作成時の見出しは「現行Step71：採用済み正式検証コマンドとU2 checkpointの実行結果」）
 
 本節は再確認レビュー指摘R-05への記録対応であり、計画のStep68〜70には属さない。計画（code-generation-plan.md）とunit-test-instructions.mdは採用済みコマンドの履歴sealでbytesが固定されており変更できないため、本節はcode-summary.mdにのみ置く。unit-test-instructions.mdのStep61〜67にある「別途のコマンド承認後に `verify-current-u2-u11-revalidated.py` を正式な完了確認として実行する」旨の記述は履歴であり、採用済みコマンド（SHA-256 `d799bbb919f5927304fbb5c5a57e4b3686a52436eaac70cd325ffe981afa9b3e`、2026-10-16T12:32:15Z採用）に置き換えられている。
 
@@ -49,7 +62,7 @@ U2 checkpoint 実行履歴（古い順。以後の実行は成否を問わず末
 
 この実行は保存済み証拠の純粋再解析であり、U2の全経路・新Linux差分・coverage測定の成功の証拠ではなく、U15別配布Wasm受理の証拠でもない。以下の `verify-current-u2-u11-revalidated.py`（診断）と `verify-current-u10-probe-aube-native.py`（履歴）の記述はそのまま保持する。
 
-## 現行Step68〜70：時間項目の明示指定
+## 履歴：Step68〜70：時間項目の明示指定（作成時の見出しは「現行Step68〜70：時間項目の明示指定」）
 
 内容確認e1c2c013eca5827a4ea44cb5c3dd2670cc97a61632ea889907858de92696d839後、successfulの時間項目引数を既定wall_secondsとして追加し、U11の4環境rowsだけsecondsを明示指定した。U10とU11 nativeはwall_secondsを保持する。fallbackを使わず、数値型/bool拒否/有限/0<=t<=30/exit0/timed_out falseの全条件を維持した。製品・他Unit原本・歴史trace原本の期待hash・現行traceの検査・旧canonical全検査は保持する。
 
@@ -57,19 +70,19 @@ U2 checkpoint 実行履歴（古い順。以後の実行は成否を問わず末
 
 検証済み：レビュー前の全checker読取診断は05:03:31.583105〜05:04:43.716114Z、72.13秒、exit0、timeoutなし、stderr空。歴史U10、現行U10、有限U2/U11結合の3成功行をverification/step69-whole-checker-diagnostic.jsonへ全原本保存した。checker SHA d46d14b8ac6ce0475b27bf529394f41c4b57bcac674b45299cdecaeb9f623ec4。独立レビュー・正式checkpoint検査・人のU2完了承認・U11復帰は未完了。
 
-## 現行Step64〜67：歴史trace原本と現行traceの分離
+## 履歴：Step64〜67：歴史trace原本と現行traceの分離（作成時の見出しは「現行Step64〜67：歴史trace原本と現行traceの分離」）
 
 内容確認eeec80372acb01185755a679ac60d1d2af0719e9520338e56486a893a82fb9ac後に実施。検証済み：versioned revision969ecaac390da4a7e50ea1527bae74859ef7450bのU10 verification/step13-historical-traceability.jsonを読取回収し、U2 verification/step64-historical-u10-traceability.jsonへ生bytesで保存した。SHA2164fbd9af6bf6478c06ecf10ef3e3bc7d5dd3bb1a3be845e8855a5a13857764、source5b319／CI38010586387／歴史37が完全一致。歴史proof hashと論理pathを保持し、両関数のtrace/current_binding/preserved/historical_hashes/終了時hashの物理参照を原本copyへ統一した。有限参照監査はverification/step64-original-reference-audit.json。
 
 現行U10 traceは別にSHA0bde9d5eae3205020fe85e0d3e434cfe9c63ba5d7238612e5bb4859e338ad87c、sourcecb979／CI38095031011、全要求60・reverse42・unit/stateとsource digestで厳密検査する。歴史37／現行42、EXTRA2、全旧canonical検査と品質下限を保持する。検証済み：構文3ファイル、readiness14件、旧inventory8＋新trace6は各30秒外側timeout内でexit0、skipなし（verification/step65-local-results.json）。正式失敗c2481414のHistorical trace/proof binding differsは保持する。レビュー前診断の結果と正式完了検査は分離し、U2完了承認／U11同時dispose修正は未完了。製品・他Unit原本は変更していない。
 
-## 現行Step61〜63：歴史37／現行42の限定修正
+## 履歴：Step61〜63：歴史37／現行42の限定修正（作成時の見出しは「現行Step61〜63：歴史37／現行42の限定修正」）
 
 内容確認1b39b8ba10ce51bd8a0387d1f47e4e78474f34249ad510bab777e94a1979bde1後に共通checkerだけを修正した。歴史37の固定順序・歴史trace/proof・当時署名source digestと、現行42のmanifest全順序・重複なし・現在／署名2b387／保存CI source2c690 digestを分離し、既存全検査・EXTRA2件・有限差分を保持した。検証済み：読み取り限定source照合42件に不一致なし（verification/step61-current42-digest-audit.json）。保存build receiptのupstream guest source inventoryを製品42件のinventoryと混同しない。
 
 検証済み：Python3.15.0のast.parseで2ファイル構文正常、unittest readiness8件、外側timeout30秒の局所回帰8件は0.002秒・exit0・skipなし。正常2件とmissing/extra/duplicate/reordered/digest/歴史現行取り違えの拒否を確認した（verification/step62-syntax-readiness.json、step62-local-results.json）。製品・他Unit成果物は変更していない。前回の正式checkerのManifest inventory differs失敗は保持し、修正後の正式checkerは未承認・未実行。独立レビュー、新command承認と実行、人のU2完了承認、U11同時dispose修正への復帰は未完了。MMU4608原本とCPU/decode32dba当時条件の限定適用を維持し、新CIを反復していない。
 
-## 現行Step58〜60：MMU4608と最終確認候補
+## 履歴：Step58〜60：MMU4608と最終確認候補（作成時の見出しは「現行Step58〜60：MMU4608と最終確認候補」）
 
 内容確認4e28bdfab40ec819ef95b30d3d55b5f5bc8bc2fd5ba200cd6446bfa96d5ef53c後に実施。検証済み：署名fa21cbaff2c5fbd8c87456422c5ca64814c57e1b（connector Verified/valid）のLinux CI38109584503/job114382184327はMMU一対象のみ、raw command max_len4608/max_total_time600/timeout30/rss2048/seed1、ASan/LSan既存suppressionで2852233 runs/601秒/exit0。全774 signed入力before/after一致、現行application329入力と両Cargo.lock一致、compiler fullhash6f5da406b56c2db6607202b63daee73aa8c61297、実binary fc44562820911d2c4198bc694de005d63c76c00526b58a8119ad3dd502146a2d、原ZIP88f1aad8a85cb58da7912fcaaf9caab603f8771689e0cae65956dce4daa30f01を照合した。証拠はverification/step58-mmu-proof.jsonとstep58-mmu-artifact原本。compileを含む03:49:51〜04:00:22の壁時計と、fuzz終了行601秒を区別する。
 
@@ -81,7 +94,7 @@ U2 checkpoint 実行履歴（古い順。以後の実行は成否を問わず末
 
 製品・他Unit成果物・engine状態は変更していない。manifest124とtrace既存92担当/status/targetsを保持し、今回実測を追加した。Step58/59完了、Step60は正式レビュー・command承認実行・人U2完了承認・U11復帰が未完了。U9再承認と承認済みU11同時dispose修正は後続であり完了を主張しない。80%/30秒/strict guard/custom順序/比較maskを維持する。
 
-## 現行Step55：共有変更後の有限証拠照合
+## 履歴：Step55：共有変更後の有限証拠照合（作成時の見出しは「現行Step55：共有変更後の有限証拠照合」）
 
 今回の内容確認 `3a6bdc9a242ab7d36cf26c1ab5ceaf91a4aa94862821083be64915315c4f69ab` 後に実施。検証済み：`python3 .../u2-integer-isa/code-generation/verification/step55-audit.py` 最終exit0。実体jjの `--ignore-working-copy file show -r 2b3874eabda6fe6f1d1334202421db733445fd21 <path>` とSHA256で329 application入力、U2担当124/124を照合し不一致0。currentと4環境観測b263との差は品質workflow `.github/workflows/u11-fuzz.yml` のみ。全path/両hash/証拠hashはverification/step55-current-source-proof.json。manifestと既存traceability92 IDs/status/target、製品実装は変更していない。
 
@@ -208,6 +221,8 @@ GAP：NFR2/NFR3/NFR2.2/NFR3.4の4GAPを維持。decoder/ELF等の現行600秒、
 
 ## 現在の実装と契約
 
+（Step20〜35時点の記録。今の状態は先頭の「現在の状態」節）
+
 C1 ArithmeticFaultはKernelでSIGFPEへ渡り、C3の幅/prefix/暗黙operandをC5が解釈する。C4のtyped atomicと通常アクセス/mappingは共通同期に参加する。FS/GS atomicの最終linear address、failed compareのwrite preflight、128-bit alignment、REP再開を現在sourceとnative回帰へ照合した。
 
 REPfault flagsは明示的なCpuState policyで、既定 `RestoreInitial` はIntel設計の開始flags復元を維持する。`PreserveCompleted` は観測済みAMD EPYC modelで、productionがhost CPUを検出して変更することはない。native差分fixtureだけがobserverのCPUID vendorに応じて選択し、未知vendorを失敗にする。start/partial/budget/fetchの両model内部testsは通過。現在native runnerはAMD、Intel成功はe081時点の履歴で、関連7sourceのbytes一致を確認した。
@@ -216,9 +231,13 @@ REPfault flagsは明示的なCpuState policyで、既定 `RestoreInitial` はInt
 
 ## 更新した記録と所有境界
 
+（Step20〜35時点の記録。今の状態は先頭の「現在の状態」節）
+
 code-summary.md、evidence-current.md、traceability.json、source-manifest.jsonの現claim照合snapshot、およびplan Step20〜23のチェックを更新。先行summary/evidence-current/traceabilityは historical-* に保存し、evidence.mdと旧reviewsを保持した。manifestのstrict schemaと95 owning pathsを維持し、共有CPU/observerのREP修復は現在source確認対象として説明する。新しいapplication-sourceは作成・変更・削除していない。
 
 ## 品質の限界
+
+（Step20〜35時点の記録。今の状態は先頭の「現在の状態」節）
 
 履歴（Step30〜32時点）：当時はREP修復後sourceの各600秒ASan未実行だった。現在はStep33〜35でCPU636751/MMU910789各601秒実行済み、両LSan終了fatal/exit1（verification/step35-current-asan-proof.jsonとraw logs）。過去CPU/MMU成功は旧sourceの履歴で現在の合格へ転用せず、4GAPを維持する。新fork診断CI結果はまだ未検証。既存nightly各600秒、30秒watchdog、nightly-2026-10-01、比較mask、coverage80%を変更していない。
 

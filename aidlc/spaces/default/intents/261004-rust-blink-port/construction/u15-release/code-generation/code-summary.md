@@ -1,6 +1,39 @@
 # U15 公開実装・ローカル検証
 
-## 現在の状態（2026-10-18 JST、Step22〜26）
+## 現在の状態（2026-10-19 JST）
+
+Step27〜28を行い、そのあとStep29で独立レビュー（`reviews/review-09.md`、READY、Major 2・Minor 7）の指摘を記録で直し、Step30で消したworkflowの受け持ちをmanifestに入れた。Step27〜28では、push・CIの起動・再実行・正式な確認コマンドの採用は、それぞれ人の判断の後に行った。tag・registryへのアクセス・トークンの扱いはしていない。
+
+- **Step27（署名pushとCI一式）**：
+  - 人の判断（原文）：「push してください。記録の commit と新しい commit を fork の codex/build-and-test に送り、CI 一式と Safari の 10 回の確認を動かしてください。」
+  - 送ったcommit：8b415a7c（記録、aidlc/ の741ファイル）、8360be2e（Step22〜26の製品の45 pathと記録の42ファイル）。どちらもGitHubでVerified。commitの中身は作業コピーと同じことを確かめた（例外は監査の記録1つで、commitの後にも追記が続いたため、commitにはその手前までが入っている）。
+  - `u11-safari-stability.yml` は手動起動だけだったが、GitHubの手動起動は既定のブランチ（forkの `main`）にあるworkflowしか起動できず、404になった。人の判断（原文）：「案 A で進めてください。push 時に起動する条件を足す commit を作って、codex/build-and-test に push してください。」に従い、このファイル自身が変わる `codex/build-and-test` へのpushで起動する条件を足した27d05de1（1ファイルだけ、Verified）を送った。計画の「1回だけ送る」と違い、pushは2回になった。
+  - 8360be2eで手で起動した5つ（U14・U12・U13の全品質、U14のfuzz、U1〜U14のソースの照合）はすべて成功したが、headが27d05de1になったため、正式な確認の入口で使えなかった。人の判断（原文）：「案 A で進めてください。u14-quality・u12-quality・u13-quality・u14-fuzz・u1-u14-source-bound を 27d05de1 で起動し直してください。8360be2e の結果は履歴として残してください。」に従い、27d05de1で起動し直した。計画の「1回だけ起動」と違い、5つは2回目の起動になった。8360be2eの7 runの記録は `verification/ci-8360be2e-history/runs-8360be2e.json`（CIは27d05de1へのpushで古い実行としてcancelled。失敗ではない）。
+  - 27d05de1のrun（8つ、すべて成功）：CI 39143561947、Release package checks 39143562106、U11 Safari stability 39143558642、U14 current full quality 39149187727、U12 current full quality 39149189719（attempt 2）、U13 current full quality 39149192303、U14 fresh thirteen target ASan and LSan 39149194521、U1 U14 current-source evidence 39149196791。必須の7 workflowのjobの集合は、e3c29d1dと同じ。
+  - U12のattempt 1では `u12-fuzz / fuzz (vfs_paths)`（job 117739162319）だけが、fuzzのbuildの後、LLVM symbolizerを用意するstep 8でapt.llvm.orgに接続できず（`curl: (7) Failed to connect to apt.llvm.org port 443`）落ちた。fuzzは走っていない。人の判断（原文）：「U12 current full quality（run 39149189719）の失敗した job「u12-fuzz / fuzz (vfs_paths)」（job 117739162319）だけをやり直してください。原因は apt.llvm.org につながらなかったことです。」に従い、そのjobだけを再実行して成功した。ログは `verification/ci-27d05de1/u12-quality-39149189719/attempt-1/job-117739162319.log`。
+  - 速さの判定（FR8.3）：27d05de1で1回だけ測り、U14 current full quality（run 39149187727）のu11-nodeで `passed: true`、p=1/1024（0.0009765625）、平均はインタプリタ5.752、JIT 4.549。
+  - **NFR7（Safariの揺れ）**：U11 Safari stability（run 39143558642、head 27d05de1）で、まっさらなmacOSのrunnerでの10回がすべて成功し、各回14ケースがそろい、時間切れ0回、safaridriverのやり直しも0回（`retried` は空）。計画の「0回か、やり直しで全部通れば Met」に当たる。記録は `verification/safari-stability-27d05de1/`（まとめ `stability-summary.json`、SHA-256 `38a3e9fa…44ff3`）。ただし、やり直しの仕組みはCIでは一度も働いていない（働くことは単体の試験14件だけで確かめた）。暖機が効いたのか、たまたま揺れなかったのかは、10回では区別できない。
+- **Step28（新しいheadのbindingと採用）**：
+  - 計画は「entry-dでbinding-e05」だったが、人の判断で版e→版fに替わったため、entry-f（`18567771…a46f`、独立レビュー04はREADY）の新しいbinding `verification/entry-e3c29d1d/binding-e06f.json`（`9a7e8e39…acf9`）を作った。入口は変えていない。
+  - 記録：各commitの記録 `entry-e3c29d1d/commits-27d05de1.json`（e3c29d1d→8b415a7c→8360be2e→27d05de1、4つともVerified）、CIの記録 `verification/ci-27d05de1/`（`ci-27d05de1.json`・`ci-jobs-27d05de1.json`・`ci-artifacts-27d05de1.json`、u11-nodeのZIPと原本、U12のattempt 1のログ）。作ったのは `verification/ci-27d05de1/build_records.py` で、GitHubへは読み取りのGETだけ。
+  - head 27d05de1の8 runをbindingに入れた。入口はheadのrunの一覧とbindingのrunの集合が同じことを求めるため、U11 Safari stabilityも入れ、e3c29d1dに無いworkflowなので、その12 jobを人の判断の原文を付けた新しい集合にした。U12の再実行は、名前とidを挙げた1 jobの許可として入れた。
+  - 変わったファイル：aidlc/ の外が45件、aidlc/ の中が766件。
+  - 本番の実行：`entry-e3c29d1d/run-1792347449027149000-39214/` でexit 0（0.66秒）。`excluded_by_name` 27、`excluded_by_git_ignore` 10。
+  - 採用：AI-DLCの確認コマンドの問いで、人がApproveを選んだ（2026-10-19）。今の正式な確認コマンドは `verification-command.txt` の `entry-f.py`・`binding-e06f.json`（command SHA-256 `00f5c883…a159`）。entry-c・binding-e03は履歴になった。
+  - 計画との違い：計画は「独立レビューの後に採用を伺う」だったが、入口（版f）は独立レビュー04でREADYで、binding-e06fはデータとして独立レビューを受けないまま採用を伺った。binding-e06fと記録は、このUnitの独立レビューで確かめる。
+- 確かめていないもの：nightly・`u14-quality.yml` の `workflow_call` の実際の起動、`release.yml` の新しいartifactの手順とowners・yankedの確認の本物のregistryでの動き、実公開。FR10.1とNFR8は実公開と公開後の照合までGAPのまま。
+- **Step29（独立レビュー review-09 の指摘を記録で直す、2026-10-19）**：製品・CI・workflow・入口・bindingは変えず、push・CIの起動はしていない。
+  - 手順書の先頭に「Step29」節を足し、今の正式な確認コマンド（entry-f・binding-e06f）とStep27・28で実際に行ったことを書いた。古い節は「履歴：」にし、Step22の足した試験の数（4件）、Step23のactionlintの既存の指摘の数（review-09の実測で11件）、Step25の版dの実行とStep27・28の予定（binding-e05）がその時点のものであることを注記した。
+  - source-manifest.jsonのwritesに、Step22〜24で変えた今あるファイル18件（`.github/workflows/` の15件、`packages/paludarium-wasm/tests/u11-browser-driver.mjs`・`u11-browser-driver.test.mjs`、`tests/guests/u10/runner-tests/test_evidence.py`）を足した（33→51件）。Step23で消した21のworkflowは、Step29の時点ではファイルが無いのでmanifestに入れなかった（Step30で入れた。次の項）。一覧は `construction/ci-pipeline/ci-config.md` の「消す」にある。
+  - traceability.jsonのFR10.1・NFR8の行の先頭の文を、この節（先頭の「現在の状態」節）とStep27〜28で行ったことに直した。status・id・targetは変えていない。
+  - `verification/entry-e3c29d1d/README.md` の先頭に、今の正式な確認コマンドは版fの `entry-f.py`＋`binding-e06f.json` で、下の「現行は版c」「版dは…まだ正式ではない」と表のfの行の「採用の前」は書いた時点の記述である、という注記の節を足した。
+  - `verification/version-allowance/pending-minor-fixes.md` に、Step24で直した4件の印、entry-fの独立レビュー04で残したMinor 2件と注記2件、review-09の製品・workflowの3件を書いた。
+- **Step30（消したworkflowの受け持ち、2026-10-19）**：U15はStep29の後に承認されたが、Code Generationの段階を閉じるところでAI-DLCが止めた（`.github/workflows/native-diagnostic.yml`・`u2-production-sanitizers.yml` を消したことを、どのUnitのレビューも受け持っていない。この2件はU11のmanifestにあったが、U11のStep32で消えたファイルとして外した）。人は「U15でStep30」を選び、AI-DLCはU15だけのCode Generationを開き直した。U15がStep23で消した21のworkflowのパスを、U15のsource-manifest.jsonのwritesに足した（51→72件。ファイルは無いが、消したことをU15が受け持つ）。製品・CI・workflow・入口・bindingは変えず、push・CIの起動はしていない。
+- **NFR7の10回の確認の範囲**：`u11-safari-stability.yml` の10回は、暖機を入れた `u11-acceptance.yml` と同じ経路（暖機＋driverのやり直し）だけを確かめたものである。U13・U14のSafariのjob（`u13-wasm-acceptance.yml`・`u14-wasm-acceptance.yml`）には暖機が無く、driverの中のやり直しだけが効く。そちらの揺れの頻度は確かめていない。
+- 次：このUnitの再レビューとUnitの完了確認、そのあとBuild and Test。U1〜U14の確かめ直し（U11を含む）は2026-10-19に終わり、どれも承認された。
+- 下の節は、それぞれの時点の履歴として読む。
+
+## 履歴：現在の状態（2026-10-18 JST、Step22〜26）（作成時の見出しは「現在の状態（2026-10-18 JST、Step22〜26）」）
 
 人はSafariの揺れ（NFR7）を「PRの前に直す。できれば根本的に」とし、計画のStep22〜28をPlan Approvalで承認した（内容確認 `step22-28-summary-questions.md` はLooks correct）。このattemptではStep22〜26を手元で行った（実際の作業は2026-10-18〜19 JST）。push・commit・CIの起動・tag・registryへのアクセス・トークンの扱いはしていない。外へは読み取りだけを行った：GitHubのAPIへのGET 5回（forkのrepository id、download-artifact・upload-artifactのSHAの版の2回、actionlint・shellcheckの最新版の2回）と、PyPIのcoverageの最新版の読み取り1回。作業の順は計画の番号と違い、Step25を最初に行った（入口dの本番の実行を、製品を変える前のbytesで行うため）。
 

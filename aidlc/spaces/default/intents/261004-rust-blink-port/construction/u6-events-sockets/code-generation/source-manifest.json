@@ -7,9 +7,6 @@
       "path": ".github/scripts/u6-current-diagnostic.py"
     },
     {
-      "path": ".github/workflows/u6-current-verification.yml"
-    },
-    {
       "path": "crates/paludarium-host/src/fs.rs"
     },
     {
@@ -86,12 +83,6 @@
     },
     {
       "path": "fuzz/fuzz_targets/kernel_sockets_u6.rs"
-    },
-    {
-      "path": ".github/workflows/u6-native-diagnostic.yml"
-    },
-    {
-      "path": ".github/workflows/u6-quality.yml"
     },
     {
       "path": "packages/paludarium-wasm/tests/checks.mjs"

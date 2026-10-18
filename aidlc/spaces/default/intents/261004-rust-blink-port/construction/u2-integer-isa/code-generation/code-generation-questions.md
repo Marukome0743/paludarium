@@ -7,15 +7,15 @@ instead of in chat, write your answer after `[Answer]:` and tell me in chat when
 
 Approve the code plan for u2-integer-isa?
 
-- Builds: Step71。U14の変更で変わったU2担当の `abi.rs`（144→`STATE_BYTES`）を再確認し、U2の記録を必要なら直す。U2の計画・手順書が旧い封印に入っているため、U2の記録の変更だけを許す新しいbinding（binding-03）と、U1のcheckerを呼び出す新しい入口を作る。U1の承認時に約束したMinor 2件（receiptとjobの照合な...
-- Touches: U2の記録（計画・手順書・code-summary.md・traceability.json・`verification/loopback1-next/`）。製品・CI・lock・mise.toml・U1とほかのUnitの記録・旧原本は変えない。
-- Tests: 新しい入口がexit 0、回帰（U1の29件と追加分）がすべて期待どおり、正式sensor 2件、独立再レビュー。新しい入口は人が採用してからU2のcheckpointで実行する。
+- Builds: Step73。Step72の再レビュー（review-39）のMinor 2件をU2の記録で直す：古いtoolchainの版の注記を10-01と10-10の両方に広げ、日付のない末尾の3節に時点の注記を付ける。fuzzの裏付けのrunが今のtoolchainで動いたことを1文足す。
+- Touches: U2のcode-summary.mdとunit-test-instructions.mdだけ。製品・CI・workflow・ほかのUnitの記録・traceability.json・source-manifest.jsonは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
 
 Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u2-integer-isa/code-generation/code-generation-plan.md
 Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u2-integer-isa/code-generation/unit-test-instructions.md
 
-[Approval Fingerprint]: sha256:v3:8809c4117c09fc05ad28efe0f60918d8b5f4c6e7070538db0b8710843d4c6d19
-[Planned Source]: 1d007e145356f21dddcf25b720db0726f7c889de86622e95a640349d7b723024
+[Approval Fingerprint]: sha256:v3:9bfbd00d0bda36d29ae64b8cabc80c2b7b17cdbe89615f432f78cad0ea2b53ab
+[Planned Source]: 2ddcf1227d570aa365619e0528ec9ef35513970dcf88c95dc5989daa435f32d3
 
 - A. Approve Plan
 - B. Request Changes

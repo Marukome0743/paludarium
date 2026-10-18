@@ -1,6 +1,33 @@
 # U11 実装サマリー
 
-## 現行Step31（再レビューのMinor R-08・R-09への対応）（2026-10-18）
+## 現在の状態（2026-10-19 JST、Step32〜33）
+
+U11の確かめ直し（review-13、NOT-READY）の指摘R-11〜R-19をStep32で、その再レビュー（review-14、READY）の新しい指摘4件をStep33で、U11の記録だけで直した。製品・CI・workflow・ほかのUnitの記録は変えていない。下の各節は、見出しの日付の時点の記録（履歴）である。
+
+- **head**：fork `Marukome0743/paludarium` の `codex/build-and-test` の署名head `27d05de1`（鎖 e3c29d1d → 8b415a7c → 8360be2e → 27d05de1、すべてVerified）。27d05de1のCIは8 runとも成功した（U15の `construction/u15-release/code-generation/verification/ci-27d05de1/ci-27d05de1.json`）。
+- **今の正式な確認コマンド**：U15の `entry-e3c29d1d/entry-f.py --entry-sha256 185677712836e73d6a716657a24521c42581504550f9f398c5bb1ca7eaa4a46f --binding-sha256 9a7e8e396706f83bba6de41c1e032dade923b2cf953decb786a2b9450ce8acf9`（binding-e06f、command SHA-256 `00f5c8832e04f7d27b30c6b445fdc30e0e5d233dfa5452e02c2c99368a08a159`、2026-10-19に人が採用。intent直下の `aidlc/spaces/default/intents/261004-rust-blink-port/verification-command.txt` の1行目）。entry-fは `aidlc/` の外の作業コピーのbytesだけを比べるので、U11の記録の変更はこの確認に影響しない。下のStep30の `u11_candidate.py`（binding-04）とStep31の `u11_candidate_v2.py`（binding-05）は採用されなかった履歴であり、今の確認には使わない。
+- **U11の製品**（Step33で直した。Step32では「a19bea35〜27d05de1の間で変わっていない」と書いたが、根拠が覆うのはe3c29d1d〜27d05de1だけで、誤りだった）：
+  - a19bea35（2026-10-11）〜e3c29d1dでは、U11の製品ファイルが3 commitで変わった（`git diff --stat a19bea35 e3c29d1d` と `git log` を読み取りで確かめた）。`bd247f1e`（2026-10-17、U11自身のSteps20〜25とU12〜U14の変更をまとめたcommit。`crates/paludarium-wasm/src/abi.rs`・`filesystem.rs`、`crates/paludarium-host`・`-runtime`・`-vfs`・`-kernel`、`packages/paludarium-wasm` の `index.mjs`・`coordinator.mjs`・`execution.mjs`・`worker-support.mjs`・`filesystem-snapshot.mjs`・`jit-support.mjs`・`package.json` など）、`1ceae86c`（2026-10-17、U14の整数SSE。`abi.rs`・`jit-support.mjs`）、`bb197e04`（2026-10-18、U15の版0.1.0。`package.json`）。
+  - e3c29d1d〜27d05de1では、U11の製品ファイル（crates/と `packages/paludarium-wasm` の試験以外）は変わっていない（`ci-27d05de1/product-changes-e3c29d1d-27d05de1.txt`）。
+  - 今の製品でのU11の確かめは、27d05de1のCIである：`ci.yml` から呼ぶ `u11-acceptance.yml` の `u11-programs / build-oracle` と4環境（Node・Chromium・Firefox・本物のSafari）の `differential`、`u11-fuzz.yml`（U15の `ci-27d05de1/ci-jobs-27d05de1.json`）。
+  - 下の履歴の節の、製品についての主張（a19bea35の製品での4環境14ケース、JSのcoverage 426/455など）は、それぞれの時点の製品についてのもので、今の製品にそのまま当てはまるとは扱わない。
+- **NFR7（Safariの揺れ）の直し（27d05de1まで）**：
+  - `packages/paludarium-wasm/tests/u11-browser-driver.mjs`：session作成の段階で、失敗の内容に `"error":"session not created"` と「timed out while connecting to a Safari instance」の両方を含むときだけ、Safariを止めて（10秒以内）session作成を1回だけやり直す。1回目の失敗は `session_retry`（observations.json）とstderrに残す。ほかの失敗はやり直さず、2回目も失敗したときは1回目の失敗を添えて止まる。SHA-256は `9d7fcb2579616184b865ad4b002fd9e6ca4b9b5766cd53b4530651d8a7bdb458`。
+  - `packages/paludarium-wasm/tests/u11-browser-driver.test.mjs`：やり直しの条件・1回の上限・ほかの失敗をやり直さないこと・2回目の失敗の扱いを、仮のsafaridriverで確かめる4件を足して14件（10＋4）。SHA-256は `72f1061abafdec53002f2fd81f8e10049be5d47e965a399d8614d1e935f5f0f0`。
+  - `.github/workflows/u11-acceptance.yml`：Safariのjobに暖機を足した（失敗してもjobを落とさない）。SHA-256は `4497e5fce25dc2e6c2a90d1b85b93d3cab9c09f14fb4c1cdaf5ea26945a7325c`。
+  - `.github/workflows/u11-safari-stability.yml`（新しいworkflow、SHA-256 `4b97f58fa1d8a1fa36fece8cf808db202d340bd5d9bcf71bd82cdfd40e905a0b`）：27d05de1のrun 39143558642で、新しいmacOSのrunnerで本物のSafariを10回続けて動かし、10回とも成功、やり直しは0回（U15の `verification/safari-stability-27d05de1/`）。やり直しが0回なので、やり直しの経路が本物のSafariで動いた証拠はなく、根拠は仮のsafaridriverでの単体の試験だけである。10回の成功は、揺れが今後起きない保証ではない。
+- **今の確かめる場所**（R-17）：PRとmainへのpushでは、`ci.yml` が `u11-acceptance.yml`（Pythonのrunner試験、固定guestのbuild、build-oracleが毎回x86-64 Linuxで作る期待結果、Node・Chromium・Firefox・本物のSafariの14ケース、`node --test packages/paludarium-wasm/tests/u11-*.test.mjs` とu11-api-check）、`u11-fuzz.yml`（U11の7対象×600秒のASan/LSan）、3OSの単体試験、Linuxのcoverage（U11のRustのcrateを80%以上で測るjob）を呼ぶ。夜間は `nightly.yml` が `u14-fuzz.yml`（13対象。U11の7対象を含む）と `u14-quality.yml`（`u14-wasm-acceptance.yml` の4環境、3OS）を呼ぶ。
+- **今はPRのゲートで測っていないもの**（R-17。workflowを変えるかは、次にworkflowを変えるときに人がまとめて決める）：
+  - JSの製品ファイルの行coverage 80%：PRのゲートには無く、夜間と手動の `u14-wasm-acceptance.yml` の「Fixed production JavaScript coverage」（`u14-coverage.mjs`）だけで測る。`u14-coverage.mjs` の母集団は `jit-support.mjs` を含む6ファイルで、下の記録の5ファイル（426/455 = 93.626%、a19bea35時点）とは母集団が違う（`u14-coverage.mjs` の `population` を読んで確かめた。手順書の「履歴：quality populations and evidence」の見出しも、Step33で同じ内容に揃えた）。
+  - `u11-browser-ready.mjs` の準備検査（呼んでいた `u11-browser-readiness.yml` が消えた）、製品の実装前のnative期待結果の取得（`u11-native-first.yml`・`u11-native-metadata.yml`。今は毎回build-oracleで作る）、Firefoxの診断（`u11-firefox-diagnostic.yml`）、`u11-current-verification.yml` の品質の確認。これらのworkflowは27d05de1までに消えた。配布tarballの検査はU15の `release-check.yml` 側にある。
+- **CIのNodeの版**（R-16）：U11の `u11-acceptance.yml` と `u11-safari-stability.yml` はNode 26.11.1を固定している。`u14-wasm-acceptance.yml` と手元（mise）は26.12.0。次にworkflowを変えるときにまとめて26.12.0に上げる（project.mdの Corrections「CI の workflow の変更は次の製品の変更と一緒にまとめて行う」）。
+- **Safariの暖機**（R-18）：暖機はPRのSafari（`u11-acceptance.yml`）と `u11-safari-stability.yml` にだけあり、夜間のSafari（`u14-wasm-acceptance.yml`）には無い。やり直しはdriver（`u11-browser-driver.mjs`）の中にあるので、夜間の確認がこのdriverを使うなら効くが、使うかはU14の範囲で、ここでは確かめていない。やり直したことは `session_retry` とstderrに残るが、jobの結果には出ない。夜間のSafariで同じ揺れが出たら、同じ暖機を足すか、U14の記録で扱う。
+- **呼ぶworkflowが無いU11の道具**（R-19。消さずに、U11の証拠の再現のために手動または履歴として残す）：`packages/paludarium-wasm/tests/u11-browser-ready.mjs`、`packages/paludarium-wasm/tests/u11-baseline.mjs`、`scripts/u11-run.py` の `--baseline`（`--native-only` などは `u11-acceptance.yml`・`u14-wasm-acceptance.yml` から呼ばれる）、`verification/` の補助スクリプト（`current-js-coverage.mjs`・`collect-*.py`・`bind-current-quality-source.py` など）。`tests/guests/u11/fixture_metadata.py` は `scripts/u11-run.py` がimportしているので、今も使われている。
+- **traceability.json**（R-11〜R-13）：coverageの13行（FR5.3、FR6.3、FR7.2、FR7.3、FR9.1、FR9.2、NFR1〜NFR4、NFR7〜NFR9）のtargetsから消えたworkflow 3つを外し、FR5.3・NFR7に `u11-safari-stability.yml`、NFR2に `u14-fuzz.yml`、NFR3に `u14-wasm-acceptance.yml` を足して、各行のnotesの先頭に理由を書いた。reverseから消えたworkflowの18行を外し、`u11-safari-stability.yml` の行を足した。reverseのnotesの「Current signed329 input audit…」と、最上位の `source_sha`（a19bea35）・`ci_run`（38118128088）・`final_evidence`・`current_verification`・`packaging_repair` は、a19bea35時点（2026-10-11〜14）の値であることを書いた（`final_evidence`・`current_verification`・`packaging_repair` の文の値の先頭に印を付け（ファイル名の値はそのまま）、`source_sha`・`ci_run`・`ci_status` については最上位に足した `history_note` の欄に書いた）。statusとidは変えていない。source-manifest.jsonのwritesから消えたworkflowの18件を外し、`u11-safari-stability.yml` を足した。
+- **traceability.json（Step33）**：`history_note` の製品についての文を上の事実に直し、NFR2・NFR3のnotesに、`u14-fuzz.yml`・`u14-wasm-acceptance.yml` はU14が持つworkflowを証拠の置き場所として指すもので、U11のmanifestとreverseには入れない（U11が書くファイルではないため）、と足した。
+- **確かめていないこと**：この節を書いた時点で、新しいCI・ブラウザ・coverage・ASanの実行はしていない。上のCIの結果はU15の記録の保存済みの証拠である。
+
+## 履歴：Step31（再レビューのMinor R-08・R-09への対応）（2026-10-18）（作成時の見出しは「現行Step31（再レビューのMinor R-08・R-09への対応）」）
 
 再レビュー（iteration 1・2、READY）のMinor 2件に対応した。人は「60 秒のテストを足す」（R-08）と「hash を固定する」（R-09）を指定し、U11のcheckpointでRequest Changesを選んだ。Step30の入口（`u11_candidate.py`、binding-04）は、checkpointに進むために仮に採用したもので、今は履歴である（下の「Step30の入口の扱い」）。製品（Rust・起動用JS・`u11-browser-driver.mjs` を含む）・guest・workflow・lock・mise.toml・.gitignore・source-manifest.json・ほかのUnitの記録・旧い証拠は変えていない。
 
@@ -37,11 +64,13 @@ Step30の入口とbinding-04は2b8723abのbytesを固定しているので、57a
 
 **人がこのコマンド行（2つのhashの値を含む）を採用してから、U11のcheckpointで実行する。** この作業では採用・登録をしていない。
 
+（2026-10-19 注記：このコマンドは採用されなかった。今の正式な確認コマンドはU15のentry-f・binding-e06fで、先頭の「現在の状態」節のとおり。）
+
 ### Step30の入口の扱い
 
 `u11_candidate.py` とbinding-04、その実行結果（`run-*`）は履歴として残し、変えていない。binding-04の仮の採用は、checkpointに進むための一時的なもので、Step31の後は履歴である。57a8c96fの試験のファイルと、このStepで変えたU11の記録のため、今は終了コード1になる（README.mdの「実行結果」）。
 
-## 現行Step29〜30（Loop-back 1）（2026-10-17〜18）
+## 履歴：Step29〜30（Loop-back 1）（2026-10-17〜18）（作成時の見出しは「現行Step29〜30（Loop-back 1）」）
 
 （この節は見出しを含めて当時のまま履歴として残す。traceability.json の参照を保つため。Step30の入口は上の「現行Step31」節のとおり履歴になった。）
 
@@ -82,7 +111,9 @@ Step 28で取り消したSafariのsession作成の待ち時間の修正を、Ste
 
 この入口はまだ採用されていない。独立再レビューのあと、人が採用（Construction Verification Commandの決定）してから、checkpointで実行する。
 
-## 現行Step28：Step 27 の取り消し（2026-10-17）
+（2026-10-19 注記：この入口はcheckpointのために仮に採用された後、Step31で履歴になった。今の正式な確認コマンドはU15のentry-f・binding-e06f。）
+
+## 履歴：Step28：Step 27 の取り消し（2026-10-17）（作成時の見出しは「現行Step28」）
 
 人の判断に従い、Step 27 の変更を取り消した。下の「現行Step27」節は見出しを含めて当時のまま履歴として残す（traceability.json の参照を保つため）が、その変更はもう現行のソースにない。
 
@@ -98,9 +129,13 @@ Step 28で取り消したSafariのsession作成の待ち時間の修正を、Ste
 
 Safariの揺れの扱い：CIの本物のSafariがWebDriverのsession作成で10秒のタイムアウトになる揺れ（Step27節のrun・job）は、今回は直さない。揺れたときは再実行し、そのrun・jobを記録する。待ち時間の修正は、道具の版の更新（新しい正式な確認コマンドが必要）と一緒に後の作業で行う。揺れは解消しておらず、未解決として残る。
 
+（2026-10-19 注記：その後、Step29〜31で待ち時間を直し、27d05de1でやり直しと暖機を足して、u11-safari-stability.ymlのrun 39143558642で10回とも成功した。先頭の「現在の状態」節のとおり。）
+
 未確認：正式コマンドでのcheckpoint再検証（終了コード0に戻ること）と独立再レビューは、この節を書いた時点ではまだ行っていない。
 
-## 現行Step27：Safariのsession作成の待ち時間（2026-10-17）
+（2026-10-19 注記：その後のcheckpointと再レビューはStep29〜31の節とreviews/のとおり。今の正式な確認コマンドはentry-f。）
+
+## 履歴：Step27：Safariのsession作成の待ち時間（2026-10-17。Step28で取り消し済み）（作成時の見出しは「現行Step27」）
 
 Build and Testからの差し戻し（人は「今直す」を選択）に従い、本物のSafariの確認がWebDriverのsession作成で揺れる問題だけを直した。製品・guest・workflow・source-manifest.json（2ファイルは記載済み）は変更していない。
 
@@ -117,7 +152,9 @@ Build and Testからの差し戻し（人は「今直す」を選択）に従い
 
 未確認：修正後のCIでの再実行（本物のSafariでのsession作成）はまだ行っていない。60秒で足りるか、揺れがなくなったかは未確認であり、以下の節の保存済みCI成功を今回の合格へ読み替えない。
 
-## 現行Step26：共有workflowの再レビュー（2026-10-17）
+（2026-10-19 注記：この変更はStep28で取り消され、Step29で同じ修正をやり直して、署名head 2b8723abのCIで本物のSafariが成功した。）
+
+## 履歴：Step26：共有workflowの再レビュー（2026-10-17）（作成時の見出しは「現行Step26」）
 
 Build and Testからの差し戻し（人の指示）に従い、U11のsource-manifestが持つ共有workflow 3ファイルをU9が直した（U9 Steps77〜79、承認済み）ことへの再確認だけを行った。U11自身の製品・起動用JS・guest・workflowは変更していない。source-manifest.jsonは3ファイルを記載済みのため変更していない。
 
@@ -133,21 +170,23 @@ U9が直した内容：
 
 未確認：変更後のworkflowはまだCIで実行していない（push・CI起動は、Build and Testで人の承認を得てから行う）。そのため、U11の4環境（Node・Chromium・Firefox・本物Safari）各14ケースについて、変更後のworkflowでの新しい実行結果はない。以下の節の保存済みCI成功を、変更後のworkflowの合格へ読み替えない。
 
-## 今回Steps23〜25：配布物修正（2026-10-14）
+（2026-10-19 注記：変更後のworkflowは、その後の2b8723ab・57a8c96f・27d05de1のCIで実行された。27d05de1ではci.ymlとu11-acceptance.ymlがさらに変わり、SHA-256は先頭の「現在の状態」節のとおり。上の3ファイルのSHA-256はStep26の時点の値。）
+
+## 履歴：Steps23〜25：配布物修正（2026-10-14）（作成時の見出しは「今回Steps23〜25」）
 
 検証済み：package.jsonのfilesへjit-support.mjsだけを追加した。修正前の実tarball10entryは隔離importでERR_MODULE_NOT_FOUNDになり、修正後の実tarball11entryは全JS依存閉包とimportに成功した。配布物のみのJSと同梱production wasmでcreatePaludarium、固定helloのstdout `hello\n`・stderr空・exit0、同時/二重dispose、dispose後拒否と自然process終了を確認した。missing-JS・破損wasm・無効guestも拒否する新7testsはexit0。リポジトリJSへのfallbackはなく、Rust・固定guest・既存wasmは変更していない。
 
 検証済み：公式最新Node26.11.1/npm12.2.0/Python3.15.0を確認し、不足npm/Pythonをmiseで導入した。最新実体で新7testsと既存C12/disposeを各外部60秒のprocess-group監督下で実行し、exit0/timed_out=false/process_group_cleaned=true。既存JS32testsもexit0。wasm SHAfea988…は保存production CI原本と一致、hello SHA67eeda…は固定manifestと一致する限定再利用で、新ビルドではない。
 
-今回の証拠はverification/packaging-current-proof.jsonとpackaging-current-setup.md。最新Playwright1.64.1に対し既存lock1.64.0、Chromium準備はrev1248不在でexit1。今回の新規ブラウザー14guest、Linux coverage、ASan/LSan、3OS CIは未実行。保存結果と旧失敗は履歴として保持し、新実行へ読み替えない。品質80%下限は変更していない。
+今回の証拠はverification/packaging-current-proof.jsonとpackaging-current-setup.md。最新Playwright1.64.1に対し既存lock1.64.0、Chromium準備はrev1248不在でexit1。この時点（2026-10-14）の新規ブラウザー14guest、Linux coverage、ASan/LSan、3OS CIは未実行（その後のCIはStep26〜31の節と、先頭の「現在の状態」節のとおり）。保存結果と旧失敗は履歴として保持し、新実行へ読み替えない。品質80%下限は変更していない。
 
-検証候補verification/verify-packed-current.pyは旧preview13入口/述語を保持し、package.jsonのjit-support挿入だけを厳密照合・旧package入力へ投影する。新test2ファイルを固定hashで照合し、別段で最新実体npm/Nodeによるfreshpackと60秒cleanupを要求する。旧367入力の成功だけを現在package成功へ流用しない。正式登録・独立レビュー・完了は親担当が扱う。現行の再実行手順は専用setupを正本とし、以下のツール版/コマンド/CI成功は各当時の保存記録である。
+検証候補verification/verify-packed-current.pyは旧preview13入口/述語を保持し、package.jsonのjit-support挿入だけを厳密照合・旧package入力へ投影する。新test2ファイルを固定hashで照合し、別段で最新実体npm/Nodeによるfreshpackと60秒cleanupを要求する。旧367入力の成功だけを現在package成功へ流用しない。正式登録・独立レビュー・完了は親担当が扱う（2026-10-19 注記：この候補は採用されなかった。今の正式な確認コマンドはentry-f）。この時点の再実行手順は専用setupを正本とし、以下のツール版/コマンド/CI成功は各当時の保存記録である。
 
-## 保存された修正と検証結果（2026-10-11）
+## 履歴：保存された修正と検証結果（2026-10-11）
 
 大規模idle FSのdisposeがsnapshotの64MiB制限に巻き込まれる不具合を、二つの34MiBファイルで実再現した。承認済みの最小修正でPrivateFsのIdle/Active/Closed状態を単一lockで管理し、ABIのdispose成功時だけregistryを除去する。coordinatorの不要snapshot生成を廃止した。snapshot上限、active借用拒否、公開C12の二重dispose/所有/kill契約を保持する。新Rust7境界＋既存7が14/14、signedmtimeを含むfilesystem15/15、実Wasmの大規模disposeとC12が成功した。
 
-最新ツールはNode26.11.1/Python3.15.0/Playwright1.64.0/nightly-2026-10-10/npm12.2.0。署名head `b263121214981a549ad8bfb7ddb975de03226f58` はGitHub Verified/valid。326baseline＋追加3applicationの329入力、CIが使うrecord helper2を同署名bytesへ照合した。専用CI `38103577222` は全jobs成功。fresh固定guest/native/current moduleに対し、Node26.11.1/Chromium156.0.8078.4/Firefox157.0/本物Safari26.6.2の各14が成功し、module/oracle/guest hashesの全一致を原本で確認した。U5差分43・U6差分84が成功、全5製品JS coverage420/449（93.5412%）が成功した。Workerを含む全fileの測定を確認した。証拠はverification/current-unaffected-proof.json、原本はverification/final-current-ci。CI負荷独占は未検証なので、秒数は生観測としてcurrent-timings.mdに保存する。
+この時点（2026-10-11）の最新ツールはNode26.11.1/Python3.15.0/Playwright1.64.0/nightly-2026-10-10/npm12.2.0（2026-10-19 注記：今はrust-toolchain.tomlがnightly-2026-10-11、手元のNodeは26.12.0）。署名head `b263121214981a549ad8bfb7ddb975de03226f58` はGitHub Verified/valid。326baseline＋追加3applicationの329入力、CIが使うrecord helper2を同署名bytesへ照合した。専用CI `38103577222` は全jobs成功。fresh固定guest/native/current moduleに対し、Node26.11.1/Chromium156.0.8078.4/Firefox157.0/本物Safari26.6.2の各14が成功し、module/oracle/guest hashesの全一致を原本で確認した。U5差分43・U6差分84が成功、全5製品JS coverage420/449（93.5412%）が成功した。Workerを含む全fileの測定を確認した。証拠はverification/current-unaffected-proof.json、原本はverification/final-current-ci。CI負荷独占は未検証なので、秒数は生観測としてcurrent-timings.mdに保存する。
 
 fresh CI module `fea98818013c28be329f48107bb2a6aa4b8faaa1c5013e3b6200f6a7c98983dd` を実package生成物へ反映し、npm12.2のpack dry-runはfilesystem-snapshot.mjsを含む10entry・wasm1個で成功した。公開はしていない。既存cacheのEPERMと新npmのJSON形式変更で止まった準備記録も保持した。同module/guest/oracleで実Node→Chromium→Firefox→本物Safari27.0.1を逐次実行し、各14成功・cleanupを確認した。既知build/npm/guest背景負荷を止めた条件と生秒数はcurrent-sequential-timing-proof.json/current-sequential-timings.mdへ保存した。OS全体の負荷独占は未検証である。
 
@@ -161,11 +200,13 @@ fresh CI module `fea98818013c28be329f48107bb2a6aa4b8faaa1c5013e3b6200f6a7c98983d
 
 最終headと4環境source b263は329入力中328が同一、差はu11-fuzz.ymlだけであり、4環境/JS/U5U6/packの実入力を明示結合した。品質head2cからの差はworkflow2件と新JS APIテスト1件だけで、Rust製品/試験/lock/compiler設定不変。個別3OS単体/lint/依存/Linux差分/production wasm成功はこの範囲で再利用し、旧full run failureは保持する。native coverageはworkspace10680/11475（93.07%）、U1 10208/10974（93.02%）、U3 LCOV2246/2758（81.44%）、U9 4851/5601（86.61%）、U11 5823/6723（86.61%）。wasm固有分岐全体の80%実行率は主張しない。
 
-現行manifestは329、traceは63IDを宣言し担当外要件を上流ownerへDeferredとした。U9が直接claimするu11-fuzz.ymlの品質設定変更を明記し、U9成果物は変更していない。U9の先行完了/正式検査はこの変更後まだ再承認されておらず、親担当が正規再確認を扱う。候補正式checker verify-current-u11-repaired.pyは構文確認のみで未実行。新正式commandの人の承認・独立review・完了承認は親担当が進める。
+この時点のmanifestは329、traceは63IDを宣言し担当外要件を上流ownerへDeferredとした。U9が直接claimするu11-fuzz.ymlの品質設定変更を明記し、U9成果物は変更していない。U9の先行完了/正式検査はこの変更後まだ再承認されておらず、親担当が正規再確認を扱う。候補正式checker verify-current-u11-repaired.pyは構文確認のみで未実行。新正式commandの人の承認・独立review・完了承認は親担当が進める。
+
+（2026-10-19 注記：この候補は採用されなかった。U9の再確認はその後のU9の記録のとおり。今のmanifestは消えたworkflowの18件を外し、u11-safari-stability.ymlを足した314件、今の正式な確認コマンドはentry-f。）
 
 以下の旧実装・旧CI記録は歴史であり、現行の全検証成功を意味しない。
 
-## 今回の同時dispose修正（Steps20〜22）
+## 履歴：同時dispose修正（Steps20〜22、署名head a19bea35は2026-10-11）（作成時の見出しは「今回の同時dispose修正（Steps20〜22）」）
 
 検証済み：index.mjsのFS破棄は処理中Promiseを共有する。成功後は冪等、失敗後は共有Promiseを解除して再試行できる。通常FS・68MiB FSの同時呼び出し、active時の同時拒否とkill後の再試行を実production wasmで確認した。Rust、固定guest、snapshot上限は変更していない。修正前exit1と修正後exit0の原本はverification/step20-concurrent-dispose-before.jsonとstep21-dispose-results/api-supervisor.jsonに保存した。
 
@@ -175,7 +216,9 @@ fresh CI module `fea98818013c28be329f48107bb2a6aa4b8faaa1c5013e3b6200f6a7c98983d
 
 7ASan/LSanの601秒証拠はRust・依存・compiler・binary・設定が一致する範囲で限定再利用し、今回新規fuzzを実行したとは主張しない。旧確認スクリプトを固定hashのまま保持し、旧329入力・2helper・U2追加64claimの計395原本を署名2b387へ照合したimmutable snapshotで歴史検査を実施する。SCMのcwdは実repoへ固定し、ROOTはfinallyで復帰する。新確認候補verify-current-u11-concurrent-dispose.pyは現行2ファイルbridgeと新CIを別検査する。正式コマンド承認・独立レビュー・完了承認は親担当が扱う。セッションID競合の完全解消は未検証。
 
-## 実装
+（2026-10-19 注記：新確認候補verify-current-u11-concurrent-dispose.pyは採用されなかった。今の正式な確認コマンドはentry-f。）
+
+## 履歴：実装（Steps1〜19の記録）（作成時の見出しは「実装」）
 
 既存production wasmと起動用JSを拡張した。guest cloneは共有Rust heap・Kernel・MMUを保持した実Workerへ割り当て、各Workerにstack/TLSを持たせる。診断Workerとguest Workerを区別し、登録・待機・join・kill・fatal cleanupの所有を接続した。製品のguest自動30秒停止を除き、テスト側で30秒期限とsuite全体600秒の回収を行う。
 
@@ -183,13 +226,13 @@ C12へ互換追加した`createFileSystem`/`run({filesystem})`はlauncher所有�
 
 人の承認を受けて最小mtime対応を追加した。MemFs既定時計はepoch0を維持し、runtimeはHostのrealtime時計を注入する。create/write/truncateとhardlinkの同一inode時刻を扱い、native statとguest stat・snapshotへ秒/ナノ秒を渡す。
 
-## 差分検証
+## 履歴：差分検証（Steps1〜19の記録）（作成時の見出しは「差分検証」）
 
 製品実装前のfresh Linux native14ケースと失敗した既存wasm結果を保存した。最終CIは同一ビルドのguest・module・fresh native oracleをNode、Chromium、Firefox、本物Safariへ渡す。aubeのinstall→node_modules除去→frozen→listを同じprivate VFSで実行する。stdout/stderr/exit、fixture全inventory、mode、symlink、hardlink、内容hash、#1645を照合する。
 
 初期fixture時刻とcwd/HOME/TMPDIRを同じ値へ揃える。生成lockfile時刻は各側の実statとの整合を検査後、明示的に正規化する。公式append-only reporterを双方のinstall/frozenへ指定する変更は人が承認した。元のprogress付き不一致を生証拠として保持する。固定aubeの根拠と比較規則はfilesystem-comparison.mdを参照する。
 
-## 検証済みと残件
+## 履歴：検証済みと残件（Steps1〜19、署名head 7eb1819fまでの記録）（作成時の見出しは「検証済みと残件」）
 
 検証済み：Python24件、JS29件、実wasmのC12境界、Host task/VFS mtime/kernel cwdの内部試験、workspace check・fmt・clippy、npm pack dry-run。NodeとChromiumの14ケース、公式reporterを使ったFirefox153.0の14ケースはローカル実行で成功した。Safariの準備検査はmacOS CIの実Safari26.6.2で成功した。
 
@@ -197,12 +240,12 @@ C12へ互換追加した`createFileSystem`/`run({filesystem})`はlauncher所有�
 
 syscall_argsはfuzz専用Hostのwait_on quota不足をdecoded empty-pipe回帰で確認し、最小修正後7件成功した。Firefoxは3回のtask traceでWorker maxactive6と逐次進行を観測した。MMU候補は単体試験に成功してもLinux Firefoxの3回ずつで改善しなかった。上流Playwrightのdebugger設定が最適化wasmを無効にする根拠を確認し、隔離1.63の既定Firefoxで同一probeが3回4.50〜5.37秒で成功した。人が承認した修正に従い既存依存を1.63へ更新しMMU候補を47aへ戻した。候補専用coverage/fuzz追加は除き、元の品質下限と7対象600秒fuzz、30秒期限を維持する。最終同head全CI38021278452は成功した。詳しい生証拠はverification/syscall-wait-regression.md、mmu-read-path.md、firefox-driver-repair-proposal.mdに保存する。
 
-source-manifest.jsonとverification/source-hashes.jsonは署名source `7eb1819f52acede33e83775374dd4ee93edf643b` の65変更パスを記録する。fuzz修正3ファイル、spike依存2ファイル、診断workflow、U10reporter比較修正3ファイルを含み、撤回MMU候補は含まない。traceability.jsonは全jobs成功のCI `38021278452` に結びdraft=falseへ確定した。正式検証コマンドの変更承認・独立レビュー・完了承認は親担当が進める。
+source-manifest.jsonとverification/source-hashes.jsonは署名source `7eb1819f52acede33e83775374dd4ee93edf643b` の65変更パスを記録する。fuzz修正3ファイル、spike依存2ファイル、診断workflow、U10reporter比較修正3ファイルを含み、撤回MMU候補は含まない。traceability.jsonは全jobs成功のCI `38021278452` に結びdraft=falseへ確定した。正式検証コマンドの変更承認・独立レビュー・完了承認は親担当が進める。（2026-10-19 注記：この時点の記録。manifestはその後329件になり、Step32で消えたworkflowを外した。）
 
 CI38020455766ではU11の4環境が成功し、coverageはworkspace10512/11311（92.94%）、U1 10127/10897（92.93%）、U3 LCOV2246/2758（81.44%）、U9 LCOV4770/5524（86.35%）、U11 LCOV5656/6559（86.23%）だった。ただし既存U10の元reporter差分が遅いC10のheartbeat stderrで失敗したため全体は未完了。同じ承認済みappend-only比較をU10runnerへ適用し、元argvの補足生観測を保持する最小テスト修正を適用した。後述の最終署名headで全CIを再検証し成功した。
 
 新head7ebのCI38021278452はattempt3で全jobs成功。Node/Chromium/Firefox/本物Safari各14ケースが同一module/oracle/guest hashで成功した。主生結果はverification/final-7eb-ci、最新Safari成功はverification/final-7eb-safari-attempt3（job114126928791）へ別保存し、先行Safari準備失敗を成功へ読み替えない。aube4操作の秒数と負荷条件はtimings.mdへ記録した。coverage raw job114124851606のartifact期間に一致する集計はworkspace10514/11311（92.95%）、U1 10126/10897（92.92%）。LCOVはU3 2246/2758、U9 4770/5524、U11 5657/6559（86.25%）。completeなNodeconsumerのmodule hashを検証してCI wasmをパッケージ生成物へ反映し、pack dry-runは9entry・wasm1つで成功、公開はしていない。U3とvfs_pathsは同head再実行で成功し、7対象の各600秒ASan/LSan fuzzは全成功した。既存3OS単体/lint/依存/Linux差分/production wasmも成功した。再実行履歴と準備失敗の原因未確定は保持する。
 
-## 梱包と範囲
+## 履歴：梱包と範囲（Steps1〜19の記録。その後2026-10-11にfilesystem-snapshot.mjsを含む10 entry、Steps23〜25でjit-support.mjsを足して11 entry）（作成時の見出しは「梱包と範囲」）
 
 pack dry-runではwasm1個、起動JS、coordinator/execution/Worker補助、型宣言、README、Apache-2.0 LICENSEを含む9ファイルを確認した。READMEにCOOP/COEP、状態保持、所有、mode/cwd/terminal、停止とエラーを説明する。npmへの公開は行っていない。JIT、ホストmount、ネットワーク機能は本Unitの対象外。

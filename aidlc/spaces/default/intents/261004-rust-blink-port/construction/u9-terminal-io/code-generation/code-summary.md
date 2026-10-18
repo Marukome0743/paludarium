@@ -1,6 +1,20 @@
 # U9 現行公開端末契約と検証
 
-## 現行Steps77〜78：共有workflowのゲストビルドとJIT試験のNode指定
+## 現在の状態（2026-10-19 JST、Step82）
+
+本節はStep82の記録である。U15のStep22〜28で製品のファイルが変わってfork `codex/build-and-test` へ送られた（head 27d05de1、e3c29d1d→8b415a7c→8360be2e→27d05de1、4つともVerified）ので、U9を確かめ直した（`reviews/review-16.md`、READY、Minor 4）。checkpointで人がRequest Changesを選んだので、U9の記録で直せる3件（R-13・R-14・R-16）を直した。U9の製品のコード・CI・workflow・ほかのUnitの記録・traceability.jsonは変えていない。
+
+- **今の正式な確認コマンド（R-16）**：`aidlc/spaces/default/intents/261004-rust-blink-port/verification-command.txt` の U15 `construction/u15-release/code-generation/verification/entry-e3c29d1d/entry-f.py`・`binding-e06f.json`（head 27d05de1、人が2026-10-19に採用、command SHA-256 `00f5c883…a159`）。下の節に出てくる正式なコマンドや入口（U2の `u2_candidate.py` など）は、それぞれの時点のもの（履歴）である。U9のcheckpointはentry-fで確かめる。entry-fは作業コピーのbytesを `aidlc/` の外だけで比べるので、U9の記録の変更はその結果に影響しない想定である（結果はcheckpointの記録が持つ）。
+- **U9に関わる製品の変更**：U9のsource-manifestにあるworkflowのうち、`ci.yml`（`push` は `main` だけ）、`u11-acceptance.yml`（Safariのjobに暖機の手順、`continue-on-error: true`）、`u11-fuzz.yml`（古い作業ブランチの `push` を外した）が変わり、9つのworkflowが消えた（U15のCIの整理、`construction/ci-pipeline/ci-config.md` の「消す」）。U9の製品のコードは変わっていない。
+- **U9の受け入れに要るものは残る**（review-16の確かめた点）：`ci.yml` の差分のjob（`diff_u9` を含む）とU9のcoverage 80%、`ci.yml` から呼ぶ `u11-acceptance.yml`（Node・Chromium・Firefox・実Safariの14ケース）と `u10-native-diagnostic.yml`。`pull_request` の起動は残る。27d05de1のCI 8 runはすべて成功した（U12は人が認めた1 jobの再実行。記録はU15の `verification/ci-27d05de1/`）。
+- **source-manifest.json（R-13）**：writesから、27d05de1で消えた9つ（`.github/workflows/` の `native-diagnostic.yml`・`u11-firefox-diagnostic.yml`・`u11-native-first.yml`・`u2-production-sanitizers.yml`・`u5-quality.yml`・`u6-native-diagnostic.yml`・`u6-quality.yml`・`u8-native-diagnostic.yml`・`u9-current-verification.yml`）を外した（37件→28件）。ほかのpathは変えていない。
+- **R-14**：下の「履歴：Steps77〜78」節の「変更した3 workflowは未実行」はその時点の記述である。3つ（`u11-acceptance.yml`・`u10-native-diagnostic.yml`・`ci.yml`）は27d05de1のCIで動いて成功した。
+- **R-15（次のpushで扱う）**：`.github/scripts/u9-source-audit.py` は、呼び元の `u9-current-verification.yml` が消えたので、どこからも呼ばれない。製品のファイルで、消すと正式な確認コマンドがhead 27d05de1との違いで拒否するので、次の製品の変更のpushで扱う。
+- 「現行」で始まっていた見出しは「履歴：…（作成時の見出しは「…」）」にした。本文は変えていない。
+- 未検証：この作業ではentry-fを実行していない（checkpointで実行する）。独立再レビューはこの記録の後に行う。
+- 下の節は、それぞれの時点の履歴として読む。
+
+## 履歴：Steps77〜78：共有workflowのゲストビルドとJIT試験のNode指定（作成時の見出しは「現行Steps77〜78：共有workflowのゲストビルドとJIT試験のNode指定」）
 
 ### 変更した3行
 
@@ -80,7 +94,7 @@ Build and Testで、承認を得てfork `codex/build-and-test` にpushしたCI�
 - Step 79で `actions/setup-python`（3.15.0）を足したが、そのPythonで `build.py` の `u15-fixed-aube-zip9-name` が2つのworkflowで動くか、ゲストビルドとaubeの `cargo deny` が通るかは、CIで確かめるまで未確認である。
 - actionlintの終了コードは、`ci.yml` の既存4件のため1のままである（0ではない）。
 
-## 現行Steps74〜75：coverage再集計のcompiler・lockへの結合とR-04・R-05の訂正
+## 履歴：Steps74〜75：coverage再集計のcompiler・lockへの結合とR-04・R-05の訂正（作成時の見出しは「現行Steps74〜75：coverage再集計のcompiler・lockへの結合とR-04・R-05の訂正」）
 
 ### (a) compiler・lock・toolchainへの結合（R-02）
 
@@ -114,7 +128,7 @@ Build and Testで、承認を得てfork `codex/build-and-test` にpushしたCI�
 - スクリプト：`verification/step74_u9_coverage_binding.py`（Python 3.15標準ライブラリのみ、引数なし）。結果：`verification/step74-u9-coverage-binding.json`（排他作成、`passed: true`、`failures` 0件、`new_ci_run: false`）。実行は終了コード0。
 - 新しいCI実行・push・外部送信は行っていない。Linux差分・Node／Safari・ASanの新しい実行、全経路差分、U15の受理の証拠ではない。compilerはrust-cacheが認識した版の記録に限る。Step72のスクリプト・結果JSON、製品source、既存試験、旧証拠、`source-manifest.json`、CI設定は変更していない。
 
-## 現行Steps72〜73：U9固有coverageの現行再集計と.gitignoreの位置づけ
+## 履歴：Steps72〜73：U9固有coverageの現行再集計と.gitignoreの位置づけ（作成時の見出しは「現行Steps72〜73：U9固有coverageの現行再集計と.gitignoreの位置づけ」）
 
 ### (a) U9固有coverageの現行再集計（R-02）
 

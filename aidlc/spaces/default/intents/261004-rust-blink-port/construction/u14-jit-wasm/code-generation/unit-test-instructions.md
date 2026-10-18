@@ -1,6 +1,21 @@
 # U14 単体テスト手順
 
-## 今回Step47：残しているMinor R-14・R-15・R-16を記録で直す
+## 今回Step48：27d05de1の後の確かめ直しの指摘を記録で直す（2026-10-19）
+
+記録だけを直すので、新しい試験・CI・性能測定はない。project rootで正式sensor 2件を実行する。
+
+```sh
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u14-jit-wasm/code-generation/code-summary.md
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u14-jit-wasm/code-generation/traceability.json
+```
+
+期待する結果：required-sectionsはpass、traceabilityはpass・findings 0（status・id・targetsは変えない）。checkpointでは今の正式な確認コマンド（intent直下の `verification-command.txt` の1行目、U15の `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`、2026-10-19に人が採用）を実行し、exit 0になる想定。entry-fは作業コピーのbytesを `aidlc/` の外だけで比べるので、U14の記録の変更はこの確認に影響しない。
+
+今のU14の確かめ方（27d05de1）：U14 qualityは `u14-quality.yml`（手動と、`nightly.yml` から）、U14のfuzzは `u14-fuzz.yml`（手動と夜間）、U1〜U14のsource-boundは `u1-u14-source-bound.yml`。どれも8360be2eで `push:` の起動条件が消え、手動か呼び出しでだけ動く。`u14-cost-diagnostic.yml` は8360be2eで消えた。
+
+下の節は、それぞれの時点の手順・記録である。下の節の `entry-c.py`（2026-10-18）・`u14_candidate.py`・`u14_candidate_v2.py`・`u11_candidate_v2.py` は、それぞれの時点の正式な確認コマンドか候補で、今は使わない。
+
+## 履歴：Step47：残しているMinor R-14・R-15・R-16を記録で直す（2026-10-18）（作成時の見出しは「今回Step47：…」）
 
 記録だけを直すので、新しい試験・CI・性能測定はない。project rootで正式sensor 2件を実行する。
 
@@ -12,9 +27,9 @@ aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spa
 期待する結果：
 - required-sections は pass になる。
 - traceability は前と同じ結果になる（status と target は変えていない）。
-- checkpoint では、今の正式な確認コマンド（U15 の `entry-e3c29d1d/entry-c.py`）が exit 0 になる想定。U14 の記録は `aidlc/` の中にあり、この入口が bytes を比べる製品のファイルではないため。結果は checkpoint の記録で確かめる。
+- checkpoint では、今の正式な確認コマンド（U15 の `entry-e3c29d1d/entry-c.py`）が exit 0 になる想定。U14 の記録は `aidlc/` の中にあり、この入口が bytes を比べる製品のファイルではないため。結果は checkpoint の記録で確かめる。（2026-10-19 注記：2026-10-18の時点の期待結果。今の正式な確認コマンドはentry-fで、上の「今回Step48」節のとおり）
 
-## 履歴：Steps45〜46：指摘への対応と新しい入口（作成時の見出しは「今回Steps45〜46：…」）
+## 履歴：Steps45〜46：指摘への対応と新しい入口（2026-10-18）（作成時の見出しは「今回Steps45〜46：…」）
 
 新しい製品のテスト・CI・性能測定は行わない。project rootで、次を実行する（`<entry>`・`<binding>` は `u14_candidate_v2.py` と `binding-07.json` のSHA-256）。
 
@@ -28,7 +43,7 @@ aidlc engine sensor-required-sections --stage code-generation --output-path aidl
 
 期待する結果：回帰は全件成功・skip 0。仮採用のコマンド（`u14_candidate.py`、binding-06）は、Step45の変更で想定どおりexit 1（拒否の理由を記録する）。新しい入口はexit 0。sensorは2件ともpass。traceability.jsonの親FR8とNFR1・2・3・8、FR6.3・7.2の行に「現行」と「履歴（208fd965）」の区別があり、statusとtargetが変わっていないことを読んで確かめる。
 
-## 前回Steps42〜44：記録の更新と新しい確認の入口
+## 履歴：Steps42〜44：記録の更新と新しい確認の入口（2026-10-18）（作成時の見出しは「前回Steps42〜44：…」）
 
 新しい製品のテスト・CI・性能測定は行わない。project rootで、次を実行する（`<entry>`・`<binding>` は入口と `binding-06.json` のSHA-256）。
 
@@ -44,7 +59,7 @@ aidlc engine sensor-required-sections --stage code-generation --output-path aidl
 
 拒否の回帰で確かめること：U14の記録の別のbytes・欠落、許可外のpath、ほかのcompiled sourceの変更、別のhead、入口とbindingのhashの違い・引数の欠落と順の違い、U11の入口とbinding-05の差し替え、`--logical-child` の分岐のhash検査（R-10）。正の対照も入れる。
 
-## 前回Steps31〜41：費用の測定と、整数SSEのJIT
+## 履歴：Steps31〜41：費用の測定と、整数SSEのJIT（2026-10-17〜18）（作成時の見出しは「前回Steps31〜41：…」）
 
 Step31は実施済み（記録は `verification/loopback1-cost/`。`--baseline-head` には完全なSHA `e4f847686c8dccb1bc899de88c63a4b3b2a8dd1d` を渡した）。人の選択「SSEだけ先に」により、Step35（GPR）とStep36（byte比較）は今回は行わない。
 
@@ -121,7 +136,7 @@ aidlc engine sensor-required-sections --stage code-generation --output-path aidl
 
 ## 履歴：Steps20〜27：JIT性能とU9専用coverage（作成時の見出しは「今回Steps20〜27：JIT性能とU9専用coverage」）
 
-この節が今回の追加実装・検証手順である。以下に保存したSteps15〜19およびSteps8〜14の本文は当時の履歴・継続条件であり、その「今回」や未実装という表記を新しい実行結果と読み替えない。旧手順は一括再実行せず、追加計画のStep20→27を順守する。製品実装・新計測はPlan Approval後。元c9失敗の直接原因未特定、U5 R-05 Minor、現FR8/FR8.3/NFR3/NFR6 GAPを保持する。
+この節が今回の追加実装・検証手順である。以下に保存したSteps15〜19およびSteps8〜14の本文は当時の履歴・継続条件であり、その「今回」や未実装という表記を新しい実行結果と読み替えない。旧手順は一括再実行せず、追加計画のStep20→27を順守する。製品実装・新計測はPlan Approval後。元c9失敗の直接原因未特定、U5 R-05 Minor、現FR8/FR8.3/NFR3/NFR6 GAPを保持する。（2026-10-19 注記：その時点の記述。その後、FR8.3は1ceae86cのrun 39030957672で合格し、今のtraceability.jsonの行はOK）
 
 ### 保存と起動準備（Step20）
 
@@ -370,7 +385,7 @@ cargo test --locked -p paludarium-harness --test diff_u14 -- --nocapture
 - U14 fuzz：`.github/workflows/u14-fuzz.yml` の13対象（旧11＋U14 2対象）、各600秒。
 - 検証器：`python3 -m unittest discover -s tests/guests/u14/runner-tests -p 'test_*.py'`。
 
-新入口はStep2/6で作成する予定で、現在は未実装。入口はそのUnitの対象だけを実行し、内部で既存共有検査を必要に応じて一度実行する。包括的なcargo testやnpm testをUnitごとの通常コマンドへ入れない。
+新入口はStep2/6で作成する予定で、現在は未実装（2026-10-19 注記：最初の計画を書いた時点の記述。その後 `scripts/u14-run.py` などの入口を作った）。入口はそのUnitの対象だけを実行し、内部で既存共有検査を必要に応じて一度実行する。包括的なcargo testやnpm testをUnitごとの通常コマンドへ入れない。
 
 ## テスト数と境界
 
@@ -388,7 +403,7 @@ Rust JIT crate（追加全製品ファイル）、変更JSとPython固定対象�
 
 ## 固定guest限定advisory例外の回帰
 
-承認済み例外はU14専用設定でcrates.io unsafe-libyaml 0.2.11のRUSTSEC-2024-0449だけに適用する。`python3 -m unittest discover -s tests/guests/u14 -p 'test_guest_policy.py'`で10件以上の境界（正常、別ID、版、パッケージ、source、lock重複、root設定改変、生成設定/hash改変、他advisory失敗の伝播）を検査する。既存U10設定と証拠検査の回帰を維持し、製品deny.toml/probe/source/lockの不変を照合する。旧CDLA限定条件を完全に継承し、Linux CIで依存4監査とguest14＋元argv14比較を再確認する。これらはまだ未実装であり、例外を加えた設定の成功を無例外の監査成功と表現しない。
+承認済み例外はU14専用設定でcrates.io unsafe-libyaml 0.2.11のRUSTSEC-2024-0449だけに適用する。`python3 -m unittest discover -s tests/guests/u14 -p 'test_guest_policy.py'`で10件以上の境界（正常、別ID、版、パッケージ、source、lock重複、root設定改変、生成設定/hash改変、他advisory失敗の伝播）を検査する。既存U10設定と証拠検査の回帰を維持し、製品deny.toml/probe/source/lockの不変を照合する。旧CDLA限定条件を完全に継承し、Linux CIで依存4監査とguest14＋元argv14比較を再確認する。これらはまだ未実装であり（2026-10-19 注記：その時点の記述。その後 `tests/guests/u14/guest_policy.py` と回帰を作った）、例外を加えた設定の成功を無例外の監査成功と表現しない。
 
 ## U14限定rustls lock overlay修復
 
@@ -408,7 +423,7 @@ receiptは元source/元lockとbuild source/build lockを別のsnapshot/digestで
 
 拒否対象は元lock/source digest不一致、rustls重複/欠落、旧新版違い、registry/checksum違い、別package・依存一覧変更、更新lock digest違い、U14以外への適用、receipt元/更新lock取り違え、元/build source改変、ignore追加、他advisory失敗伝播の14件以上。検査設定・snapshot・coverage下限・guest30秒process-group cleanupを弱めない。
 
-更新guest buildはU14専用CIで依存4監査を先に通し、同じ新binaryをfresh Linux native14＋元argv14、命令11、4環境それぞれ14ケース×JITなし/あり、各10回性能へ渡す。新binary/module/headと元/overlay/workspace/fuzz各lockを証拠へ固定する。Rust/JS/Python/workspace80%以上、新JITと依存変更した既存対象600秒ASan/LSanを維持し、旧実測は履歴と区別する。更新guest・監査・全比較・coverage・性能・sanitizerの成功は実行前には未検証とする。
+更新guest buildはU14専用CIで依存4監査を先に通し、同じ新binaryをfresh Linux native14＋元argv14、命令11、4環境それぞれ14ケース×JITなし/あり、各10回性能へ渡す。新binary/module/headと元/overlay/workspace/fuzz各lockを証拠へ固定する。Rust/JS/Python/workspace80%以上、新JITと依存変更した既存対象600秒ASan/LSanを維持し、旧実測は履歴と区別する。更新guest・監査・全比較・coverage・性能・sanitizerの成功は実行前には未検証とする。（2026-10-19 注記：その時点の記述。その後 `tests/guests/u14/lock_overlay.py` を作り、208fd965と1ceae86cのCIで確かめた）
 
 ## 完了証拠
 

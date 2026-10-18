@@ -13,7 +13,6 @@
     { "path": "tests/test_u1_frame_regression.py" },
     { "path": "scripts/u1-frame-diagnostic.py" },
     { "path": "tests/test_u1_frame_diagnostic.py" },
-    { "path": ".github/workflows/u1-frame-diagnostic.yml" },
     {
       "path": "Cargo.toml"
     },
@@ -300,9 +299,6 @@
       "path": "fuzz/fuzz_targets/syscall_args.rs"
     },
     {
-      "path": ".github/workflows/native-diagnostic.yml"
-    },
-    {
       "path": "crates/paludarium-cpu/src/u2_tests.rs"
     },
     {
@@ -322,9 +318,6 @@
     },
     {
       "path": "crates/paludarium-vfs/src/mount.rs"
-    },
-    {
-      "path": ".github/workflows/u1-source-bound-verification.yml"
     },
     {
       "path": ".github/workflows/u1-u14-source-bound.yml"

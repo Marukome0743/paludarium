@@ -1,6 +1,19 @@
 # U8 テスト手順
 
-## 承認された現行ソース追加検証（Steps13〜15）
+## 今回：確かめ直しの指摘を記録で直す（2026-10-19）
+
+記録だけを直すので、新しい試験はない。project rootで正式sensor 2件を実行する。
+
+```sh
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u8-process-spawn/code-generation/code-summary.md
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u8-process-spawn/code-generation/traceability.json
+```
+
+期待する結果：required-sectionsはpass、traceabilityはpass・findings 0（NFR8のtargetを `ci.yml` に替え、消えたworkflowの逆引きの行を外した後）。checkpointでは今の正式な確認コマンド（`verification-command.txt` の U15 `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`、人が2026-10-19に採用）を実行する。entry-fは作業コピーのbytesを `aidlc/` の外だけで比べる（`entry-f.py` の `verify_working_copy`）ので、exit 0になる想定で、結果はcheckpointの記録が持つ。
+
+今のtoolchainは `rust-toolchain.toml` の `nightly-2026-10-11`。3OSのテストは今は `ci.yml` の `test` のjobがU1_PACKAGES全体を `cargo test` で動かし、`u8_` のテストもそこに含まれる（下の節の `--lib u8_` の56件の個別記録は今は行われていない）。下の節の「現在の承認済みコマンド」「計画時点では未実行」「今は計画のため全U8テストは未検証」は、それぞれの時点の記述である。
+
+## 履歴：現行ソース追加検証（Steps13〜15）（作成時の見出しは「承認された現行ソース追加検証（Steps13〜15）」）
 
 既存製品・guest fixtureを保持し、新専用診断CI/helperを含む全入力・両lock・実使用compiler・設定のbefore/after/currentを保存する。旧証拠は履歴として区別する。
 

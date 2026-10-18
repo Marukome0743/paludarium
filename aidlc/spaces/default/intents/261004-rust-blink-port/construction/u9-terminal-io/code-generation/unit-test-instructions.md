@@ -1,6 +1,19 @@
 # U9 単体・差分テスト手順
 
-## 今回Step 81：変更がないことの再確認
+## 今回Step82：確かめ直しの指摘を記録で直す
+
+記録だけを直すので、新しい試験はない。project rootで正式sensor 2件を実行する。
+
+```sh
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u9-terminal-io/code-generation/code-summary.md
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u9-terminal-io/code-generation/traceability.json
+```
+
+期待する結果：required-sectionsはpass、traceabilityは前と同じ（traceability.jsonを変えていない）。checkpointでは今の正式な確認コマンド（`verification-command.txt` の U15 `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`）を実行する。entry-fは作業コピーのbytesを `aidlc/` の外だけで比べる（`entry-f.py` の `verify_working_copy`）ので、exit 0になる想定で、結果はcheckpointの記録が持つ。
+
+## 履歴：Step 81（作成時の見出しは「今回Step 81：変更がないことの再確認」）
+
+（この節の正式確認コマンド（U2の `u2_candidate.py`）は2026-10-17時点のもの。2026-10-19からは上の Step82 の節のとおり entry-f・binding-e06f。）
 
 新しいテスト・CIの実行はない。project rootで、U9のsource-manifestの全ファイルが e4f84768 と同じであることを確かめる（読み取りだけ）。
 

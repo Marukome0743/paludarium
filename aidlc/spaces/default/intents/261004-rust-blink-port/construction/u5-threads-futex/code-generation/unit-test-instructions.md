@@ -1,6 +1,19 @@
 # U5 テスト手順
 
-## 今回Step33：変更がないことの再確認
+## 今回Step34：確かめ直しの指摘を記録で直す
+
+記録だけを直すので、新しい試験はない。project rootで正式sensor 2件を実行する。
+
+```sh
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u5-threads-futex/code-generation/code-summary.md
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u5-threads-futex/code-generation/traceability.json
+```
+
+期待する結果：required-sectionsはpass、traceabilityはpass・findings 0（Step34bでNFR2・NFR8のtargetを今のworkflowに替えた後。Step35ではnotesの先頭の注記だけを足す）。checkpointでは今の正式な確認コマンド（`verification-command.txt` の U15 `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`、人が2026-10-19に採用）を実行する。Step35も同じsensor 2件と同じ期待結果で確かめる。entry-fは作業コピーのbytesを `aidlc/` の外だけで比べる（`entry-f.py` の `verify_working_copy`）ので、exit 0になる想定で、結果はcheckpointの記録が持つ。
+
+## 履歴：Step33（作成時の見出しは「今回Step33：変更がないことの再確認」）
+
+（この節の正式確認コマンド（U2の `u2_candidate.py`）は2026-10-17時点のもの。2026-10-19からは上の Step34 の節のとおり entry-f・binding-e06f。）
 
 新しいテスト・CIの実行はない。project rootで、U5のsource-manifestの全ファイルがe4f84768と同じであることを確かめる（読み取りだけ）。
 
@@ -16,7 +29,7 @@ git diff --quiet e4f847686c8dccb1bc899de88c63a4b3b2a8dd1d -- $(python3 -I -c "im
 
 正常2件と想定外version・他tool・asset・source・lock変更、欠落、余分な入力、symlink、旧現行混同、digest改変を含む12境界以上を新helperの回帰で検査する。既存回帰と全スクリプト診断後に正式sensorと独立レビューへ進む。全mise.toml除外や旧原本のhash再基準化は禁止する。診断を正式完了証拠へ代用せず、新最終確認コマンドを別途承認後に実行する。新しい重い試験と外部送信は追加せず、coverage80%・guest30秒・strictを維持する。
 
-## 今回の記録更新（Steps26〜28）
+## 履歴：記録更新（Steps26〜28）（作成時の見出しは「今回の記録更新（Steps26〜28）」）
 
 Testing Contractを正式renderで更新し、製品・既存試験を保持する。現行共有ソースと署名済みCI原本を照合し、旧U5専用のLinux43差分・固定13ファイルcoverage・threads/futexの記録を現行の新規実行へ読み替えない。既存の命令・固定対象・80%下限・30秒制限を維持する。正式検査と独立再レビュー後、現在承認済みの最終確認コマンドで原本を検査する。新しい重い試験や外部送信は追加しない。
 
@@ -30,7 +43,7 @@ kernel_threads_u5／kernel_futex_u5は現行実使用nightlyで各600秒以上AS
 
 Node/本物SafariはU9証拠の共有機能についてケース単位の一致条件を記録して限定再利用する。guest clone/futexの43 native差分やnative Hostへの実スレッド割当とは別の証拠であり、wasmゲストWorker接続のU11完了を主張しない。失敗・不足は具体的に記録し、閾値・比較条件を弱めない。正式検査・独立レビュー後、新最終確認コマンドは変更承認を得て実行する。
 
-## 今回の現行ソース再確認（Steps20〜22）
+## 履歴：現行ソース再確認（Steps20〜22）（作成時の見出しは「今回の現行ソース再確認（Steps20〜22）」）
 
 以下のStep19以前の手順・版・結果は履歴であり、今回そのまま再実施する指示ではない。sensor本体の移行・配布対応は別チャットで継続する。
 

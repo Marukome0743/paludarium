@@ -7,9 +7,6 @@
       "path": ".github/workflows/ci.yml"
     },
     {
-      "path": ".github/workflows/u8-native-diagnostic.yml"
-    },
-    {
       "path": "README.md"
     },
     {
@@ -80,9 +77,6 @@
     },
     {
       "path": ".github/scripts/u8-current-diagnostic.py"
-    },
-    {
-      "path": ".github/workflows/u8-current-verification.yml"
     }
   ]
 }

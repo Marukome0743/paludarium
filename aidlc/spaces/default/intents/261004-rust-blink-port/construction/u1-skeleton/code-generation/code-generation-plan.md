@@ -2,7 +2,19 @@
 
 ## Summary
 
-- Builds: 今回の実行対象はStep73。残しているMinor 2件（独立再レビュー review-45 の R-27・R-28）を記録で閉じる。2件とも `verification/loopback1-next/new_candidate.py` についての指摘だが、正式な確認コマンドは2026-10-18にU15の新しい入口 `entry-e3c29d1d/entry-c.py` に替わり、new_candidate.py はもう実行されない履歴になった。そのためcheckerの中身は変えず、限界を記録に書いて閉じる。
+- Builds: 今回の実行対象はStep74。U15のStep22〜28（push、head 27d05de1）でU1のmanifestにあるworkflowが変わり、正式な確認コマンドがentry-f・binding-e06fに替わったので、U1の確かめ直し（review-48、READY）の指摘のうちU1の記録で直せるもの（R-34のMajor、R-35、R-31〜R-33）を直す。人はcheckpointでRequest Changesを選んだ。
+- Touches: U1の記録だけ（code-summary.md、unit-test-instructions.md、source-manifest.json、`verification/loopback1-next/README.md`）。製品・CI・workflow・ほかのUnitの記録・traceability.jsonのstatusとtargetは変えない。R-36（ルートの `README.md` の夜間の確認の説明）は製品のファイルで、直すと正式な確認コマンドがhead 27d05de1との違いで拒否するため、次の製品の変更のときにまとめて直す。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## Step74（確かめ直しの指摘を記録で直す）
+
+2026-10-19 JST。人の指示：「ワークフローの順で進めてください。U1 の確かめ直しから始めて、ファイルが変わった Unit を順に確かめ直し、U15 のレビューと完了確認、U11 の確かめ直しまで進めてください。」。U1の確かめ直し（review-48、READY、Major 1・Minor 2）の後、checkpointで人がRequest Changesを選んだ（先にU1の記録を直す）。
+
+- [x] Step 74 — **確かめ直しの指摘を記録で直す**。(1) R-34（Major）：code-summary.mdの先頭に「現在の状態（2026-10-19 JST、Step74）」節を足し、今の正式な確認コマンドは `verification-command.txt` の U15 `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`（head 27d05de1、人が2026-10-19に採用）で、entry-cは2026-10-18〜19の間の正式なコマンド（履歴）であることを書く。U15のStep22〜28でU1のmanifestにある `ci.yml`・`nightly.yml`・`u14-quality.yml`・`u1-u14-source-bound.yml` が変わり、`native-diagnostic.yml`・`u1-frame-diagnostic.yml`・`u1-source-bound-verification.yml` が消えたこと、27d05de1のCI 8 runがすべて成功したこと（U12は人が認めた1 jobの再実行）、U1の製品のコードは変えていないことを書く。既存の「現在の状態（Step73）」節は見出しを「履歴：…（作成時の見出しは「…」）」にする（本文は変えない）。unit-test-instructions.mdの先頭に「今回のStep74」節を足し、checkpointはentry-f・binding-e06fで確かめることを書く。「今回のStep73」の見出しは「履歴：Step73（作成時の見出しは「今回のStep73：…」）」にし、15行目の期待（entry-cのexit 0）はその時点のものであることを注記する。(2) R-35：source-manifest.jsonのwritesから、27d05de1で消えた3つ（`.github/workflows/u1-frame-diagnostic.yml`・`native-diagnostic.yml`・`u1-source-bound-verification.yml`）を外し、外したことと理由（U15のCIの整理、`construction/ci-pipeline/ci-config.md` の「消す」）をcode-summary.mdの新しい節に書く。(3) R-31：`verification/loopback1-next/README.md` の冒頭に「2026-10-18から履歴。今の正式な確認コマンドはU15の `entry-e3c29d1d/entry-f.py`（binding-e06f）」と1行足す。(4) R-32：Step73の節の5行目の「計画・unit-test-instructions.md は変更していない」は、その時点の事実と食い違うので、新しい節に「Step73では計画と手順書にもStep73の節を足した」と訂正を書く（履歴の本文は変えない）。(5) R-33：手順書の新しい節で、checkpointの結果（exitと出力のフォルダ）はcheckpointの記録が持つことと、entry-fが `aidlc/` の中を比べない（README「binding-e06f」の節）ことを根拠として書く。(6) R-36はこのStepでは直さず、新しい節に「次の製品の変更で直す」と書く。traceability.jsonのstatusとtargetは変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR3、NFR8。
+
+## 前回のSummary（Step73）
+
+- Builds: Step73。残しているMinor 2件（独立再レビュー review-45 の R-27・R-28）を記録で閉じる。2件とも `verification/loopback1-next/new_candidate.py` についての指摘だが、正式な確認コマンドは2026-10-18にU15の新しい入口 `entry-e3c29d1d/entry-c.py` に替わり、new_candidate.py はもう実行されない履歴になった。そのためcheckerの中身は変えず、限界を記録に書いて閉じる。
 - Touches: U1の記録の `verification/loopback1-next/README.md`（「この方法の限界」に1項目）とcode-summary.md（現在の状態の1節）。new_candidate.py・binding・回帰・製品・CI・ほかのUnitの記録は変えない。
 - Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-c.py）でのcheckpointがexit 0になることで確かめる。
 

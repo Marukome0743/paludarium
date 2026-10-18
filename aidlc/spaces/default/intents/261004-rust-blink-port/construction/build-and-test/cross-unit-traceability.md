@@ -1,13 +1,13 @@
 # Unit をまたぐ要件の対応（最終確認）
 
-2026-10-18、`aidlc engine sensor-traceability --stage build-and-test` の出力から作った（Loop-back 2 の後にもう一度実行し、未対応は FR10.1 の 1 件だけで変わらないことを確かめた）。対象は 15 Unit の Code Generation の成果（各 Unit の `code-generation-plan.md`・`unit-test-instructions.md`・`code-summary.md` と `traceability.json`）。
+2026-10-18、`aidlc engine sensor-traceability --stage build-and-test` の出力から作った（Loop-back 2 の後にもう一度実行し、未対応は FR10.1 の 1 件だけで変わらないことを確かめた）。2026-10-19、U15 の Step22〜30 と U1〜U15 の確かめ直しの後（head 27d05de1）にもう一度実行し、未対応は FR10.1 の 1 件だけで変わらないことを確かめ、FR9.1 の行を今の出力に合わせた（U10 の `u10-current-verification.yml` は U15 の Step23 で消え、今の出力では `u10-native-diagnostic.yml`）。対象は 15 Unit の Code Generation の成果（各 Unit の `code-generation-plan.md`・`unit-test-instructions.md`・`code-summary.md` と `traceability.json`）。
 
 ## 判定
 
 **不合格**（未対応 1 件：FR10.1）。
 
 - FR1〜FR9 のすべての小項目と NFR1〜NFR9 は、どれかの Unit で作られているか、詳細の NFR を通して対応している。
-- FR10.1（成功条件を満たしたら、タグを打って CI から crates.io と npm に公開し、公開の前に人が承認する）は、どの Unit の成果にも「作った」として対応していない。公開はまだしていない（`test-results.md` の Target Verification Matrix では Unverified）。U15 は公開の仕組み（`release.yml`・`scripts/release/`）と公開物の確認を作り、Loop-back 2 で版を 0.1.0 にそろえ、受け入れの証拠を作る部品（`u15-acceptance.yml`）、初回の限定トークン、途中で止まった初回の公開の再開を足したが、実際の公開は人が行う手順（`docs/release.md` の Owner hand-off）の後になる。
+- FR10.1（成功条件を満たしたら、タグを打って CI から crates.io と npm に公開し、公開の前に人が承認する）は、どの Unit の成果にも「作った」として対応していない。公開はまだしていない（`test-results.md` の Target Verification Matrix では Unverified）。U15 は公開の仕組み（`release.yml`・`scripts/release/`）と公開物の確認を作り、Loop-back 2 で版を 0.1.0 にそろえ、受け入れの証拠を作る部品（`u15-acceptance.yml`）、初回の限定トークン、途中で止まった初回の公開の再開を足し、Step24 で再開の判定の owners・yanked の確認を足したが、実際の公開は人が行う手順（`docs/release.md` の Owner hand-off）の後になる。
 
 ## 要件ごとの対応
 
@@ -50,7 +50,7 @@
 | FR8.1 | OK | u14-jit-wasm：`crates/paludarium-jit/src/lib.rs` |
 | FR8.2 | OK | u14-jit-wasm：`crates/paludarium-harness/tests/diff_u14.rs` |
 | FR8.3 | OK | u14-jit-wasm：`packages/paludarium-wasm/tests/u14-performance.mjs` |
-| FR9.1 | OK | u1〜u9・u10〜u13 の差分テスト（`diff_u1.rs`〜`diff_u8.rs`、`.github/workflows/ci.yml`・`u10-current-verification.yml`、`tests/guests/u9/oracle.py`、`u11-suite.mjs`、Host の `lib.rs`・`windows.rs`） |
+| FR9.1 | OK | u1〜u9・u10〜u13 の差分テスト（`diff_u1.rs`〜`diff_u8.rs`、`.github/workflows/ci.yml`・`u10-native-diagnostic.yml`、`tests/guests/u9/oracle.py`、`u11-suite.mjs`、Host の `lib.rs`・`windows.rs`） |
 | FR9.2 | OK | u11-wasm-launcher：`packages/paludarium-wasm/tests/u11-browser-check.mjs` |
 | FR9.3 | OK | u4-memory-signals：`fuzz/fuzz_targets/syscall_args.rs`、u7-vfs：`fuzz/fuzz_targets/vfs_paths.rs` |
 | FR10.1 | **未対応** | なし（公開は未実施。U15 の公開の仕組みはあるが、公開の実行は人の設定の後） |

@@ -4,13 +4,121 @@
   "version": 1,
   "writes": [
     {
+      "path": ".github/workflows/ci.yml"
+    },
+    {
+      "path": ".github/workflows/native-diagnostic.yml"
+    },
+    {
+      "path": ".github/workflows/nightly.yml"
+    },
+    {
       "path": ".github/workflows/release-check.yml"
     },
     {
       "path": ".github/workflows/release.yml"
     },
     {
+      "path": ".github/workflows/u1-frame-diagnostic.yml"
+    },
+    {
+      "path": ".github/workflows/u1-source-bound-verification.yml"
+    },
+    {
+      "path": ".github/workflows/u1-u14-source-bound.yml"
+    },
+    {
+      "path": ".github/workflows/u10-current-verification.yml"
+    },
+    {
+      "path": ".github/workflows/u11-acceptance.yml"
+    },
+    {
+      "path": ".github/workflows/u11-browser-readiness.yml"
+    },
+    {
+      "path": ".github/workflows/u11-current-verification.yml"
+    },
+    {
+      "path": ".github/workflows/u11-firefox-diagnostic.yml"
+    },
+    {
+      "path": ".github/workflows/u11-fuzz.yml"
+    },
+    {
+      "path": ".github/workflows/u11-native-first.yml"
+    },
+    {
+      "path": ".github/workflows/u11-native-metadata.yml"
+    },
+    {
+      "path": ".github/workflows/u11-safari-stability.yml"
+    },
+    {
+      "path": ".github/workflows/u12-fuzz.yml"
+    },
+    {
+      "path": ".github/workflows/u12-native-first.yml"
+    },
+    {
+      "path": ".github/workflows/u12-quality.yml"
+    },
+    {
+      "path": ".github/workflows/u13-native-first.yml"
+    },
+    {
+      "path": ".github/workflows/u13-quality.yml"
+    },
+    {
+      "path": ".github/workflows/u14-cost-diagnostic.yml"
+    },
+    {
+      "path": ".github/workflows/u14-fuzz.yml"
+    },
+    {
+      "path": ".github/workflows/u14-native-first.yml"
+    },
+    {
+      "path": ".github/workflows/u14-quality.yml"
+    },
+    {
+      "path": ".github/workflows/u14-wasm-acceptance.yml"
+    },
+    {
       "path": ".github/workflows/u15-acceptance.yml"
+    },
+    {
+      "path": ".github/workflows/u2-production-sanitizers.yml"
+    },
+    {
+      "path": ".github/workflows/u3-current-verification.yml"
+    },
+    {
+      "path": ".github/workflows/u5-current-verification.yml"
+    },
+    {
+      "path": ".github/workflows/u5-native-diagnostic.yml"
+    },
+    {
+      "path": ".github/workflows/u5-quality.yml"
+    },
+    {
+      "path": ".github/workflows/u6-current-verification.yml"
+    },
+    {
+      "path": ".github/workflows/u6-native-diagnostic.yml"
+    },
+    {
+      "path": ".github/workflows/u6-quality.yml"
+    },
+    {
+      "path": ".github/workflows/u8-current-verification.yml"
+    },
+    {
+      "path": ".github/workflows/u8-native-diagnostic.yml"
+    },
+    {
+      "path": ".github/workflows/u9-current-verification.yml"
     },
     {
       "path": "Cargo.lock"
@@ -67,6 +175,12 @@
       "path": "packages/paludarium-wasm/package.json"
     },
     {
+      "path": "packages/paludarium-wasm/tests/u11-browser-driver.mjs"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/u11-browser-driver.test.mjs"
+    },
+    {
       "path": "scripts/release/acceptance.py"
     },
     {
@@ -77,6 +191,9 @@
     },
     {
       "path": "scripts/release/policy.py"
+    },
+    {
+      "path": "tests/guests/u10/runner-tests/test_evidence.py"
     },
     {
       "path": "tests/release/__init__.py"

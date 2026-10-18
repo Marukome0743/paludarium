@@ -7,15 +7,15 @@ instead of in chat, write your answer after `[Answer]:` and tell me in chat when
 
 Approve the code plan for u12-macos-host?
 
-- Builds: Step13〜15。U12が担当するファイルが、Steps11〜12の修正を含むBuild and Testの版（head e4f84768）から変わっていないことを確かめ、今の正式確認コマンドで確かめ直す。checkpointでの人のRequest Changesにより、レビューのMinor（code-summary.mdが古いまま）をStep14で直し、その再レビューの新...
-- Touches: この計画と手順書のStep13〜15の節、code-summary.mdの冒頭の新しい節と、既存の見出し2つ・文1つへの履歴の表示だけ。
-- Tests: 新しいテスト・CIの実行はない。U12のsource-manifestの全ファイルがe4f84768と同じことを読み取りで確かめ、独立再レビューと、今の正式確認コマンド（U11の `u11_candidate_v2.py`、hash付き）でのcheckpointを行う。
+- Builds: Step 19。Step18の再レビュー（review-09、READY、R-18はFixed）の新しいMinor 2件を、U12の記録で直す：traceability.jsonの15行のnotesの末尾の注記で、同じ括弧の中に「code-summary.mdの先頭の「現在の状態」節」が2回出てくること、前回（Step18）のSummaryの「今の見出しは「Step16〜17...
+- Touches: U12の記録だけ（traceability.json、code-summary.mdの先頭の節、unit-test-instructions.mdの先頭の見出しとこの計画の前回のSummary（計画のときに直した））。製品・CI・workflow・source-manifest.json・ほかのUnitの記録は変えない。
+- Tests: 新しい試験・CIの実行はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
 
 Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u12-macos-host/code-generation/code-generation-plan.md
 Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u12-macos-host/code-generation/unit-test-instructions.md
 
-[Approval Fingerprint]: sha256:v3:d6c3ef7334fe929194d97cefc3d7fd38b37b420e99f9b5bcc90d8c0f548e61a2
-[Planned Source]: 99e09a3421bd0ef18415d9a03e5d838ccf012c5d0bfab45d8502f1d66ce49535
+[Approval Fingerprint]: sha256:v3:7569faaafccac9f6d12966b62f58a64fb2150d2bd6ee5eb722daed6d5845f4df
+[Planned Source]: 2ddcf1227d570aa365619e0528ec9ef35513970dcf88c95dc5989daa435f32d3
 
 - A. Approve Plan
 - B. Request Changes

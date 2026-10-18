@@ -106,16 +106,7 @@
       "path": "fuzz/fuzz_targets/kernel_futex_u5.rs"
     },
     {
-      "path": ".github/workflows/u5-native-diagnostic.yml"
-    },
-    {
-      "path": ".github/workflows/u5-quality.yml"
-    },
-    {
       "path": ".github/scripts/u5-current-diagnostic.py"
-    },
-    {
-      "path": ".github/workflows/u5-current-verification.yml"
     }
   ]
 }

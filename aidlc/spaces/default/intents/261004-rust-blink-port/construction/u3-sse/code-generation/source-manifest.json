@@ -7,9 +7,6 @@
       "path": ".github/scripts/u3-current-diagnostic.py"
     },
     {
-      "path": ".github/workflows/u3-current-verification.yml"
-    },
-    {
       "path": ".github/workflows/ci.yml"
     },
     {

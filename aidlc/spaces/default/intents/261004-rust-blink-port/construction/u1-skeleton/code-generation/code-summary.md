@@ -1,6 +1,20 @@
 # コード生成の結果（u1-skeleton）
 
-## 現在の状態（2026-10-18 JST、Step73）
+## 現在の状態（2026-10-19 JST、Step74）
+
+本節はStep74の記録である。U15のStep22〜28で製品のファイルが変わってfork `codex/build-and-test` へ送られた（head 27d05de1、e3c29d1d→8b415a7c→8360be2e→27d05de1、4つともVerified）ので、U1を確かめ直した（`reviews/review-48.md`、READY、Major 1・Minor 2）。checkpointで人がRequest Changesを選んだので、U1の記録で直せる指摘を直した。U1の製品のコード・CI・workflow・ほかのUnitの記録・traceability.jsonのstatusとtargetは変えていない。
+
+- **今の正式な確認コマンド（R-34）**：`aidlc/spaces/default/intents/261004-rust-blink-port/verification-command.txt` の U15 `construction/u15-release/code-generation/verification/entry-e3c29d1d/entry-f.py`・`binding-e06f.json`（head 27d05de1、人が2026-10-19に採用、command SHA-256 `00f5c883…a159`）。下の「履歴：Step73」節の `entry-c.py` は、2026-10-18〜19の間の正式なコマンド（履歴）である。entry-cはe3c29d1dに固定した入口なので、27d05de1では製品45件の違いで通らない。U1のcheckpointはentry-fで確かめる。entry-fは `aidlc/` の中のbytesを比べないので、U1の記録の変更はその結果に影響しない想定である（結果はcheckpointの記録が持つ）。
+- **U1に関わる製品の変更**：U1のsource-manifestにあるworkflowのうち、`ci.yml`（`push` は `main` だけ）・`nightly.yml`（`u14-fuzz.yml` と `u14-quality.yml` を呼ぶ形）・`u14-quality.yml`（`workflow_call` を足した）・`u1-u14-source-bound.yml`（古い作業ブランチの `push` を外した）が変わり、`native-diagnostic.yml`・`u1-frame-diagnostic.yml`・`u1-source-bound-verification.yml` が消えた（U15のCIの整理、`construction/ci-pipeline/ci-config.md` の「消す」）。27d05de1のCI 8 runはすべて成功した（U12は人が認めた1 jobの再実行。記録はU15の `verification/ci-27d05de1/`）。U1の現行の主張は消えたworkflowに依らない（review-48の確かめた点1）。
+- **source-manifest.json（R-35）**：writesから、消えた3つ（`.github/workflows/u1-frame-diagnostic.yml`・`.github/workflows/native-diagnostic.yml`・`.github/workflows/u1-source-bound-verification.yml`）を外した。これらはU1の作業で書いたファイルだが、27d05de1にはもう無い。ほかのpathは変えていない。
+- **R-31**：`verification/loopback1-next/README.md` の冒頭に、そのcheckerが2026-10-18から履歴で、今の正式な確認コマンドがentry-f（binding-e06f）であることを1行足した。
+- **R-32（訂正）**：下の「履歴：Step73」節の最初の段落は「計画・unit-test-instructions.md は変更していない」と書くが、Step73では計画と手順書にもStep73の節を足していた。製品・証拠・checker・binding・回帰・traceabilityのstatusとtargetを変えていないという趣旨は正しい。履歴の本文は変えていない。
+- **R-33**：手順書の「今回のStep74」節に、checkpointの結果（exitと出力のフォルダ）はcheckpointの記録が持つことと、entry-fが `aidlc/` の中を比べないこと（U15の入口のREADMEの「binding-e06f」の節）を根拠として書いた。
+- **直していないもの（R-36）**：リポジトリのルートの `README.md` 120行目の夜間の確認の説明（`nightly.yml` が wasm のスレッドの確認を独立に持つように読める）は古い。製品のファイルで、直すと正式な確認コマンドがhead 27d05de1との違いで拒否するので、次の製品の変更のときに直す。
+- 未検証：この作業ではentry-fを実行していない（checkpointで実行する）。独立再レビューはこの記録の後に行う。
+- 下の節は、それぞれの時点の履歴として読む。
+
+## 履歴：Step73（2026-10-18 JST）（作成時の見出しは「現在の状態（2026-10-18 JST、Step73）」）
 
 本節はStep73の記録である。再レビュー（`reviews/review-45.md`）で残していたMinor R-27・R-28を、記録で閉じた。直したのは、この記録と `verification/loopback1-next/README.md` の「この方法の限界」だけである。`new_candidate.py`・binding・回帰・証拠・製品source・CI・ほかのUnitの記録・計画・unit-test-instructions.md・verification-command.txtは変更していない。traceability.jsonのstatusとtargetも変えていない。
 

@@ -1,6 +1,21 @@
 # U11 単体・差分テスト実行手順
 
-## 今回Steps 29〜30：Safariの待ち時間の修正と新しい正式確認の入口
+## 今回Step32〜33：確かめ直しの指摘を記録で直す（2026-10-19。Step33も同じ確かめ方）
+
+記録だけを直すので、新しい試験はない。project rootで正式sensor 2件を実行する。
+
+```sh
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u11-wasm-launcher/code-generation/code-summary.md
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u11-wasm-launcher/code-generation/traceability.json
+```
+
+期待する結果：required-sectionsはpass、traceabilityはpass・findings 0。checkpointでは今の正式な確認コマンド（`verification-command.txt` の U15 `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`、人が2026-10-19に採用）を実行する。entry-fは作業コピーのbytesを `aidlc/` の外だけで比べる（`entry-f.py` の `verify_working_copy`）ので、exit 0になる想定で、結果はcheckpointの記録が持つ。
+
+今のU11の確かめ方（27d05de1）：PRとmainへのpushでは `ci.yml` が `u11-acceptance.yml`（Pythonのrunner試験、固定guestのbuild、x86-64 Linuxの期待結果、Node・Chromium・Firefox・本物Safariの14ケース、`node --test packages/paludarium-wasm/tests/u11-*.test.mjs`、`u11-api-check`）と `u11-fuzz.yml`（7対象×600秒のASan/LSan）、3OSの単体試験、LinuxのU11のRustのcoverage 80%を動かす。夜間は `nightly.yml` が `u14-fuzz.yml` と `u14-quality.yml` を呼ぶ。Safariの揺れの確認は `u11-safari-stability.yml`（手動か、そのファイルが変わるpush）。今のtoolchainは `rust-toolchain.toml` の `nightly-2026-10-11`、CIのNodeは `u11-acceptance.yml` が26.11.1、手元は26.12.0。WebDriverの道具の試験は `u11-browser-driver.test.mjs` の14件（既存10件と、U15のStep22で足した4件）。
+
+下の節はすべて、それぞれの時点の手順・記録である（見出しに「履歴：」を付けた）。下の節の入口 `u11_candidate.py`（binding-04）・`u11_candidate_v2.py`（binding-05）は採用されなかった候補で、`u11_candidate.py` は57a8c96f以降exit 1になる。
+
+## 履歴：Steps 29〜30（作成時の見出しは「今回Steps 29〜30：Safariの待ち時間の修正と新しい正式確認の入口」。「既存8件と新しい回帰1件」はその時点の件数で、今は14件）
 
 Step 29：この Mac で WebDriver の道具の試験を実行する（本物の Safari は使わない。endpoint は試験の中の仮の HTTP サーバー）。本物の Safari での確認は、人の承認を受けた push の後の CI（PR CI と u12-quality）で行う。u14-quality は正式な性能測定を含むので起動しない。
 
@@ -21,7 +36,7 @@ aidlc engine sensor-required-sections --stage code-generation --output-path aidl
 
 期待する結果：新しい入口はexit 0。拒否の回帰（2ファイルの別のbytes、ほかのcompiled sourceの変更、別のhead、CIの欠落・失敗、U11記録の許可外の変更）はすべて拒否。sensor 2件はpass。新しい入口は、人が採用してからcheckpointで実行する。
 
-## 前回Step 28：Step 27 の取り消し
+## 履歴：Step 28：Step 27 の取り消し（作成時の見出しは「前回Step 28：Step 27 の取り消し」）
 
 Step 27 で変えた2ファイルを元のバイトに戻し、既存の試験が通ることを確かめる。
 
@@ -33,7 +48,7 @@ aidlc engine sensor-required-sections --stage code-generation --output-path aidl
 
 期待する結果：2ファイルの SHA-256 が head e4f84768 の版と一致する。`node --test` は既存8件が成功し失敗0件。sensorは2件とも pass。
 
-## 前回Step 27：Safariのsession作成の待ち時間（取り消し済み）
+## 履歴：Step 27：Safariのsession作成の待ち時間（取り消し済み）（作成時の見出しは「前回Step 27：…」）
 
 この Mac で WebDriver の道具の試験を実行する（本物の Safari は使わない。endpoint は試験の中の仮の HTTP サーバー）。本物の Safari での確認は Build and Test の CI 再実行で行う。
 
@@ -45,7 +60,7 @@ aidlc engine sensor-required-sections --stage code-generation --output-path aidl
 
 期待する結果：`node --test` は失敗0件（既存の試験と新しい回帰1件）。sensorは2件とも pass。
 
-## 今回Step26：共有workflowの再確認
+## 履歴：Step26：共有workflowの再確認（作成時の見出しは「今回Step26：共有workflowの再確認」）
 
 新しいテストはない。U9が直したworkflowの書き方を actionlint で確かめる（shellcheck はインストール済みの 0.11.0 を明示する）。CIでの実行は、Build and Testで人の承認を得てから行う。
 
@@ -57,7 +72,7 @@ aidlc engine sensor-required-sections --stage code-generation --output-path aidl
 
 期待する結果：u11-acceptance.yml と u10-native-diagnostic.yml の指摘0件。ci.yml は今回触れない87・203・226行目の既存4件（SC2086×2、SC1090×2）だけで、新しい指摘はない（このため終了コードは1）。sensorは2件とも pass。
 
-## 今回Steps23〜25：配布パッケージと再実行手順
+## 履歴：Steps23〜25：配布パッケージと再実行手順（作成時の見出しは「今回Steps23〜25：配布パッケージと再実行手順」）
 
 修正前と修正後の両方で実際のnpm tarballを生成し、プロジェクト内の隔離ディレクトリへ展開する。公開しない。npm cacheはプロジェクト内の専用領域を使用し、別作業のcacheや設定を変更しない。実体Node/npm/Pythonはmiseの実pathから解決する。既存Rustの固定版はrust-toolchain.tomlを正本として読み、過去のnightly-2026-10-10を現在の固定版と扱わない。公式最新情報と実versionとの差は必要な更新・限定再利用・未実行のいずれかで明記する。
 
@@ -69,11 +84,11 @@ aidlc engine sensor-required-sections --stage code-generation --output-path aidl
 
 製品package.jsonの変更後は旧設定差分専用canonicalが現ソースをそのまま受け入れると仮定しない。変更した入力を厳密に結合した新入口の必要性を確認し、正式コマンドの変更は具体化・手動検証・人の変更承認後に行う。
 
-## 保存手順Steps20〜22：同時dispose修正
+## 履歴：Steps20〜22：同時dispose修正（作成時の見出しは「保存手順Steps20〜22：同時dispose修正」）
 
 公開APIの処理中Promiseを共有し、同時disposeの両呼び出し成功、成功後の冪等性、実行中拒否後の終了・再試行、大規模FS破棄を実moduleで検証する。Rust・固定guest・snapshot上限は保持する。既存u11-api-check.mjsへ境界回帰を追加し、既存のNode／Chromium／Firefox／本物Safari各14guestとC12を同一入力で再確認する。全製品JSの既存測定範囲で80%下限を維持する。実体ツール、全入力・両lock・module／guest hash、生ログ・実exit・30秒境界・cleanupを保存する。旧ASanはRust依存・binary・compiler・設定一致範囲だけ再利用し、失敗や未検証を隠さない。新確認コマンドは別承認後に正式実行する。以下の旧手順は各時点の履歴として保持する。
 
-## Steps17–19 dispose限定修正（新しい承認後）
+## 履歴：Steps17–19 dispose限定修正（作成時の見出しは「Steps17–19 dispose限定修正（新しい承認後）」）
 
 保存再現は verification/dispose-current-proposal.md。新しい承認前は製品を修正しない。準備済みrunnerを使い、修正後は以下を実行する。RUSTC/CARGO/U11_NODEは下記Current Setupの実体を使用する。
 
@@ -87,7 +102,7 @@ env PATH=/Users/mutoakio/.cargo/bin:/usr/bin:/bin RUSTC="$U11_RUSTC" bash script
 
 実Wasmコマンドは既存Python3.15 supervisorで外部60秒以下、診断内部30秒を維持し、exit/timeout/process_group_cleanedを記録する。修正後の限定再現はcreate成功、snapshotは既存64MiB上限による拒否を維持、dispose成功が期待結果。Rust内部はidle/large idle/active拒否と解放/closed acquire/snapshot/remove/二重closeなど7件以上、JSは既存C12 active/stale/他launcher/idempotenceと大規模disposeを保持する。その後Steps15–16のfresh4環境14件、3OS、定義coverage80%、厳密ASan依存比較、freshpackを実施する。
 
-## Historical Steps14–16 Setup（当時のツール指定）
+## 履歴：Steps14–16 Setup（作成時の見出しは「Historical Steps14–16 Setup（当時のツール指定）」。Node 26.11.1・nightly-2026-10-10はその時点の版で、今は手元のNode 26.12.0と `rust-toolchain.toml` の nightly-2026-10-11）
 
 以下は新計画承認・内容確認後の実行手順。旧手順と旧成功は末尾へ履歴として保持し、現行のpassへ読み替えない。製品ソースは保持し、disposeの最小修正は限定再現の結果を親へ報告した後に別途扱う。
 
@@ -97,7 +112,7 @@ env PATH=/Users/mutoakio/.cargo/bin:/usr/bin:/bin RUSTC="$U11_RUSTC" bash script
 
 同期対象はspikes/wasm-threads/package.json・package-lock.json、必要U11 workflow/configのみ。Playwright1.64.0 lock確定後に `$U11_NPM ci --prefix spikes/wasm-threads`、`$U11_NODE spikes/wasm-threads/node_modules/playwright/cli.js install chromium firefox` を行い、install/runで同じPLAYWRIGHT_BROWSERS_PATHを使う。Linux CIは `install --with-deps chromium firefox`。Safariは本物のsafaridriver（CIのみ既存enable手順）、prefs/profilerは使わない。
 
-## Historical U11-scoped commands（当時のツール・検証範囲）
+## 履歴：U11-scoped commands（作成時の見出しは「Historical U11-scoped commands（当時のツール・検証範囲）」。`u11-browser-ready.mjs` は今はどのworkflowからも呼ばれない）
 
 準備/内部試験（最新同期後に実行し、old Python3.9/installedPlaywright1.62での観測は履歴に残す）：
 
@@ -118,7 +133,7 @@ $U11_NODE packages/paludarium-wasm/tests/u11-browser-ready.mjs safari
 
 idle largeFS限定診断は専用record-only helperで二つの34MiBファイルをcreate、snapshotとdisposeを別々に観測し、外部600秒以下監督・cleanupを付ける。期待はidle dispose成功で、snapshotサイズ制限をdisposeの失敗理由へ転用しない。再現がない段階で製品修正を実施しない。再現したら対象ABI/PrivateFs/coordinatorと所有/active/stale/idempotent回帰を具体化して親へ返す。
 
-## Current quality populations and evidence
+## 履歴：quality populations and evidence（作成時の見出しは「Current quality populations and evidence」。2026-10-11〜14の記録で、PRのゲートのworkflowが消える前の説明。今はJSの製品5ファイルのcoverage 80%はPRのゲートで測られず、夜間・手動の `u14-wasm-acceptance.yml` だけが測る（その `u14-coverage.mjs` の `population` は `jit-support.mjs` を含む6ファイルで、下の5ファイルとは違う。Step32で確かめた）。今の確かめ方は先頭の「今回Step32〜33」節）
 
 U11 Rust行coverageの定義はhost/vfs/kernel/runtime/wasm全lib（実行されたnative cfg）のLCOV、80%以上。CI専用コマンドは `cargo llvm-cov --locked -p paludarium-host -p paludarium-vfs -p paludarium-kernel -p paludarium-runtime -p paludarium-wasm --lib --ignore-filename-regex 'paludarium-(cpu|decoder|mmu|loader|types|jit)/' --fail-under-lines 80 --lcov --output-path target/u11-coverage.lcov`。workspace/U1/U3/U9等の既存下限と3OS/整形/clippy/依存4監査/Linux差分は全体CIで1回実施し、このUnit手順のrunへ裸のworkspace commandを追加しない。共有変更の影響はU5/U6/U8 unitとdiffの実test名・rawlogで確認する。
 
@@ -128,11 +143,11 @@ ASan/LSanの元7対象はvfs_paths/load_elf/syscall_args/kernel_threads_u5/kerne
 
 現326baseline＋実変更をbefore/after/signed headへ照合し、全FR/NFR対応、raw4環境/coverage/sanitizer/pack/timingsへ結び付ける。packはfresh CI moduleだけをprepare-pack.pyで反映してdry-runし、公開しない。速度測定は既知バックグラウンド負荷停止後に逐次実行し、完全な無負荷が未確認なら明記する。現正式commandは親の人による変更承認まで変更・実行しない。
 
-## Historical Setup（Steps1–13）
+## 履歴：Setup（Steps1–13）（作成時の見出しは「Historical Setup（Steps1–13）」）
 
 Rustはrust-toolchain.tomlの固定nightly、wasmは共有std/atomics/TLSを含むscripts/build-wasm.shのproduction moduleを使う。Nodeとブラウザのrunnerは既存の手段を拡張する。Linux native生成はU10固定static-musl guestとfixtureを再利用する。macOSのSafariは本物のWebDriverを使う。新規依存は既存設定/ライセンスを調べてから限定追加する。
 
-## U11-scoped Commands
+## 履歴（Steps1–13の計画時の手順）：U11-scoped Commands（作成時の見出しは「U11-scoped Commands」。`--baseline` と `u11-browser-ready.mjs` は今はどのworkflowからも呼ばれない）
 
 Step2で最小runnerを用意し、以下の準備検査が成功するまで最初の実guest差分段階へ入らない。
 
@@ -180,7 +195,7 @@ syscall_argsの空pipe待機inputはfuzz専用Hostのwait_on quotaを回帰7件�
 
 MMU候補は実Firefoxの3回ずつの検証で改善せず、承認済み修正により署名済み47a38745の実装へ戻した。候補の試験・失敗記録はverification/mmu-read-path.mdへ保持する。専用MMU追加coverageと追加3fuzzは候補撤回に合わせ除き、既存workspace/U1下限は維持する。独立したfuzz専用Hostのquota修正と7件の回帰を維持し、元の7対象各600秒ASan/LSan・入力30秒を新headで実行する。Firefox検証器の上流修正と隔離比較はverification/firefox-driver-repair-proposal.mdを参照する。
 
-## Tests and Coverage
+## 履歴（Steps1–13の計画時の手順）：Tests and Coverage（作成時の見出しは「Tests and Coverage」）
 
 - 新規/変更内部部品は各7件、C12境界は8件。正常と最低2種の異常/境界を含める。Worker開始失敗、trap、timeout、kill、dispose、stdin EOF、streamエラー、複数ゲストの状態分離を確認する。
 - probe8項目＋all/environmentとaube4操作を同じバイナリでNode/Chromium/Firefox/本物Safariへ渡す。各操作でstdout/stderr/exit、filesystem、fixture0644、node不在、#1645をfresh Linux nativeに照合する。
@@ -189,7 +204,7 @@ MMU候補は実Firefoxの3回ずつの検証で改善せず、承認済み修正
 - 変更Rust部品はLinux行coverage80%以上、既存workspace/U1/U3/U9など設定済み下限を維持する。対象source依存が変われば既存fuzz証拠を自動再利用せず必要な600秒ASan/LSanを再実行する。
 - 既存3OS単体/lint/依存/Linux差分/production wasmはCI全体の必須チェックとして維持する。U11手順はU11の専用実行だけを定義する。
 
-## Evidence and Traceability
+## 履歴（7eb1819f時点）：Evidence and Traceability（作成時の見出しは「Evidence and Traceability」。「最終実装証拠」「正式検証コマンドは親担当が…」はその時点の記述で、今の正式な確認コマンドは entry-f・binding-e06f）
 
 最終実装証拠は署名head7eb1819f52acede33e83775374dd4ee93edf643b、CI38021278452（attempt3全jobs成功）。Node/Chromium/Firefox/native/coverage/fuzzはverification/final-7eb-ci、最新実Safari成功はverification/final-7eb-safari-attempt3を参照する。旧final-7eb-ci/u11-safariは準備失敗であり受入成功の証拠へ使わない。65パスmanifest/hash、traceability、acceptance-evidence、pack-proof、timingsを同headへ結び付けた。正式検証コマンドは親担当が人の変更承認後に実行し、これらの実装試験でその承認・独立レビューを代替しない。
 

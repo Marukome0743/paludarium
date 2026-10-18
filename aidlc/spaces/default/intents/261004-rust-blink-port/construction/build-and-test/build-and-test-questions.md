@@ -93,6 +93,15 @@ Does this all look correct before I generate the artifact?
 - 書き足すこと：今の正式な確認コマンドが `entry-c.py`（`binding-e03.json`）であること、U15 の checkpoint がこのコマンドで exit 0（約 0.6 秒）になったこと、入口 v1〜v4 は履歴になったこと。
 - 結果と判定は前回のまま：FR8.3 は Met、NFR7 は Not Met（Q9 の A）、FR10.1 は Unverified。判定は失敗。人が前回 Accept failure を選んだ扱いも変えない。
 
+（U15 の Step22〜30 と U1〜U15 の確かめ直しの後、2026-10-19 に見直した要約）
+
+- Q10 の回答：A（Modify）。
+- 残すもの：手順書（build・integration・performance・security）と前回までの結果（e3c29d1d・1ceae86c〜57a8c96f・bd247f1e〜e4f84768）は履歴として残す。`## Loop-Back Log` は追記だけ。
+- 結び直すもの：各目標の証拠を head 27d05de1 の保存済みの CI 8 run（U15 の `verification/ci-27d05de1/`）、Safari の 10 回の確認（run 39143558642）、速さの判定（U14 current full quality run 39149187727、p = 1/1024）に結び直す。
+- この Mac で実行し直すもの：`cargo build --workspace --locked`、`cargo fmt --check`、clippy（`-D warnings`）、workspace の単体テスト（`PALUDARIUM_TEST_NODE` に Node 26.12.0 の実体のパス）、tests/release の全件、Safari の道具の試験（`u11-browser-driver.test.mjs`）。
+- 判定の見込み：NFR7 は Met（10 回の確認は暖機のある PR の Safari の経路だけで、やり直しの経路は本物の Safari では動いていない、と注記する）。FR8.3 は Met。FR10.1 は公開前で Unverified のまま。FR10.1 が残るので、この段階は失敗のままで、最後に公開の進め方を伺う。
+- 製品・CI・workflow は変えない。push・CI の起動はしない。
+
 - Looks correct
 - Request changes
 
@@ -141,6 +150,17 @@ U15 の後の head e3c29d1d で CI 一式を実行し、7 run すべて最終的
 A. Not Met として記録し、直し（session 作成が safaridriver 側の時間切れで失敗したときに 1 回だけやり直すなど）は、公開の前に製品をもう一度変えるときにまとめて行う。Build and Test は FR10.1 でもともと失敗のまま（推奨）
 B. Met のままにする。1 回だけの外の揺れとして記録し、直さない
 C. 今すぐ直す。U11 の Code Generation に戻り（Loop-back 3）、直してから CI 一式と確認コマンドの入口を作り直す
+X. Other (please specify)
+
+[Answer]: A
+
+## Q10. [品質エンジニア] head 27d05de1 でのまとめ直しの進め方
+
+Q9 の A のとおり、NFR7 の直し（Safari の暖機と、safaridriver 側の時間切れのときだけ 1 回やり直す）を U15 の Step22〜28 で入れ、head 27d05de1 で CI 一式（8 run、すべて成功。U12 の品質 run は人の承認で 1 job だけやり直した attempt 2）と Safari の 10 回の確認（10 回とも成功、やり直し 0 回）を動かした。速さの判定（FR8.3）も 27d05de1 で 1 回だけ測り、p = 1/1024 で合格した。そのあと U1〜U15 の確かめ直しと承認が終わった。今の作業コピーの製品コードは 27d05de1 と同じ。FR10.1（公開）は、まだ公開していないので Unverified のまま。どう進めますか。
+
+A. Modify：手順書と前回の記録は履歴として残し、目標の証拠を 27d05de1 の保存済みの CI 8 run・Safari の 10 回・速さの判定に結び直す。この Mac でビルド・fmt・clippy・workspace の単体テスト・tests/release・Safari の道具の試験を今の作業コピーで実行し直す。NFR7 は Met（ただし 10 回の確認は暖機のある PR の Safari の経路だけで、やり直しの経路は本物の Safari では動いていない、と注記する）。FR10.1 は Unverified のままで、最後に公開の進め方を伺う（推奨）
+B. Modify だが、この Mac での再実行はせず、CI の保存済みの証拠だけで結び直す
+C. Redo：手順書から作り直す
 X. Other (please specify)
 
 [Answer]: A

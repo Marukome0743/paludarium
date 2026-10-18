@@ -6,7 +6,8 @@
     "report": "verification/step20-applicability.md",
     "scope": "記録更新のみ。既存coverageのstatusとtargetは保持し、cb979713／CI38095031011への歴史上の対応を示す。現行ソースの新規guest成功を表さない。",
     "observed": "Python内部44件・runner準備検査成功。42claimsに欠落なし、旧hash対象37中30一致7変更、文書5は旧コミットと差分なし。17manifest／1674原本hash一致。",
-    "limitations": "両lock・compiler指定・共有Host/Runtime等が変更。旧coverageとASanの現行適用はこの照合だけで保証しない。独立再レビュー・最終確認・完了承認は未完了。"
+    "limitations": "（履歴：Steps19〜21時点の記述。その後の独立再レビュー・最終確認・完了承認は済んでいる。今の状態はcode-summary.mdの先頭の節） 両lock・compiler指定・共有Host/Runtime等が変更。旧coverageとASanの現行適用はこの照合だけで保証しない。独立再レビュー・最終確認・完了承認は未完了。",
+    "history_note": "2026-10-19（Step36）：`source_sha`・`ci_run`・`ci_status`・`final_evidence` はcb979713時点の値である。今のheadは27d05de1、CIはU15の `construction/u15-release/code-generation/verification/ci-27d05de1/ci-27d05de1.json`。"
   },
   "upstream_ids": [
     "FR1",
@@ -81,37 +82,37 @@
       "id": "FR1.1",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u1-skeleton、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u1-skeleton、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR1.2",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u1-skeleton、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u1-skeleton、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR1.3",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u2-integer-isa、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u2-integer-isa、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR1.4",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u3-sse、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u3-sse、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR1.5",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u1-skeleton、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u1-skeleton、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR1.6",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u2-integer-isa、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u2-integer-isa、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR2",
@@ -123,61 +124,61 @@
       "id": "FR2.1",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u1-skeleton、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u1-skeleton、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR2.2",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u4-memory-signals、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u4-memory-signals、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR2.3",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u5-threads-futex、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u5-threads-futex、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR2.4",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u6-events-sockets、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u6-events-sockets、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR2.5",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u6-events-sockets、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u6-events-sockets、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR2.6",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u6-events-sockets、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u6-events-sockets、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR2.7",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u6-events-sockets、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u6-events-sockets、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR2.8",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u8-process-spawn、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u8-process-spawn、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR2.9",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u4-memory-signals、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u4-memory-signals、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR2.10",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u7-vfs、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u7-vfs、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR3",
@@ -189,25 +190,25 @@
       "id": "FR3.1",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u7-vfs、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u7-vfs、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR3.2",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u7-vfs、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u7-vfs、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR3.3",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u7-vfs、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u7-vfs、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR3.4",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u7-vfs、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u7-vfs、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR4",
@@ -219,13 +220,13 @@
       "id": "FR4.1",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u9-terminal-io、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u9-terminal-io、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR4.2",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u9-terminal-io、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u9-terminal-io、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR5",
@@ -237,25 +238,25 @@
       "id": "FR5.1",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u1-skeleton、required_for=participants。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u1-skeleton、required_for=participants。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR5.2",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u11-wasm-launcher、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u11-wasm-launcher、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR5.3",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u11-wasm-launcher、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u11-wasm-launcher、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR5.4",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u5-threads-futex、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u5-threads-futex、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR6",
@@ -267,25 +268,25 @@
       "id": "FR6.1",
       "status": "OK",
       "target": "tests/guests/u10/probe/src/main.rs",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
     },
     {
       "id": "FR6.2",
       "status": "OK",
       "target": "tests/guests/u10/probe/src/main.rs",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
     },
     {
       "id": "FR6.3",
       "status": "OK",
       "target": "crates/paludarium-harness/tests/diff_u10.rs",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
     },
     {
       "id": "FR6.4",
       "status": "OK",
       "target": "docs/u10/source-review.md",
-      "notes": "文書根拠：既存docs/u10/source-review.mdの標準8項目名称/条件照合を保持。検証済み：現行Linux probe8のPASS。formicarium最新版との新規同期は未検証。"
+      "notes": "（履歴：cb979713時点の記述） 文書根拠：既存docs/u10/source-review.mdの標準8項目名称/条件照合を保持。検証済み：現行Linux probe8のPASS。formicarium最新版との新規同期は未検証。"
     },
     {
       "id": "FR7",
@@ -297,25 +298,25 @@
       "id": "FR7.1",
       "status": "OK",
       "target": "tests/guests/u10/source-lock.json",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
     },
     {
       "id": "FR7.2",
       "status": "OK",
       "target": "tests/guests/u10/differential.py",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
     },
     {
       "id": "FR7.3",
       "status": "OK",
       "target": "tests/guests/u10/comparison.py",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
     },
     {
       "id": "FR7.4",
       "status": "OK",
       "target": "docs/u10/timings.md",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。 4操作walltimeは逐次測定。速度閾値を追加せず、背景負荷完全ゼロは未検証。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。 4操作walltimeは逐次測定。速度閾値を追加せず、背景負荷完全ゼロは未検証。"
     },
     {
       "id": "FR8",
@@ -327,19 +328,19 @@
       "id": "FR8.1",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u14-jit-wasm、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u14-jit-wasm、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR8.2",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u14-jit-wasm、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u14-jit-wasm、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR8.3",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u14-jit-wasm、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u14-jit-wasm、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR9",
@@ -350,20 +351,20 @@
     {
       "id": "FR9.1",
       "status": "OK",
-      "target": ".github/workflows/u10-current-verification.yml",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
+      "target": ".github/workflows/u10-native-diagnostic.yml",
+      "notes": "2026-10-19（Step33）：27d05de1で `u10-current-verification.yml` が消えたため、targetを替えた（FR9.1は要件書で「CIのたびにx86-64 Linuxで期待結果を作り、エミュレータの結果と比べる」。`ci.yml` から呼ばれる `u10-native-diagnostic.yml` の native-first が毎回 `scripts/u10-run.py --native-only` で期待結果を作り、differential が `diff_u10` でエミュレータと比べる）。以下はその時点の記録。 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
     },
     {
       "id": "FR9.2",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u11-wasm-launcher、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u11-wasm-launcher、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR9.3",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u1-skeleton、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u1-skeleton、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "FR10",
@@ -375,61 +376,61 @@
       "id": "FR10.1",
       "status": "Deferred",
       "target": "aidlc/spaces/default/intents/261004-rust-blink-port/inception/units-generation/unit-of-work.md",
-      "reason": "主担当u15-release、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u15-release、required_for=owner。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "NFR1",
       "status": "OK",
       "target": "tests/guests/u10/comparison.py",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
     },
     {
       "id": "NFR2",
       "status": "OK",
       "target": "tests/guests/u10/runner-tests/test_comparison.py",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。 ASanは132依存/同compiler/settings・新8 instrumented binary SHA一致に限り旧601秒原本を再利用。新fuzzなし、全入力保証なし。"
+      "notes": "2026-10-19（Step34）：以下はcb979713時点の値である。U10のPython coreのcoverageと実行ファイルを含むllvm-covは、27d05de1でU10のworkflowが消えてから測られていない（NFR3の80%はRustの行coverageで `ci.yml` が測り続ける）。ASan/LSanは夜間・手動の `u14-fuzz.yml`。 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。 ASanは132依存/同compiler/settings・新8 instrumented binary SHA一致に限り旧601秒原本を再利用。新fuzzなし、全入力保証なし。"
     },
     {
       "id": "NFR3",
       "status": "OK",
       "target": ".github/workflows/ci.yml",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
+      "notes": "2026-10-19（Step34）：以下はcb979713時点の値である。U10のPython coreのcoverageと実行ファイルを含むllvm-covは、27d05de1でU10のworkflowが消えてから測られていない（NFR3の80%はRustの行coverageで `ci.yml` が測り続ける）。ASan/LSanは夜間・手動の `u14-fuzz.yml`。 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
     },
     {
       "id": "NFR4",
       "status": "Deferred",
       "target": "crates/paludarium-runtime/src/u10_tests.rs",
-      "reason": "主担当u7-vfs、required_for=participants。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
+      "reason": "（履歴：cb979713時点の記述） 主担当u7-vfs、required_for=participants。U10担当外。今回の有限Linux guest検証で他Unit全体を合格扱いしない。"
     },
     {
       "id": "NFR5",
       "status": "OK",
       "target": "crates/paludarium-runtime/src/lib.rs",
-      "notes": "文書根拠：既存guest資源quotaを追加しない方針を保持。ホスト資源無制限の保証ではない。検証済み：現行内部44/有限guest操作。"
+      "notes": "（履歴：cb979713時点の記述） 文書根拠：既存guest資源quotaを追加しない方針を保持。ホスト資源無制限の保証ではない。検証済み：現行内部44/有限guest操作。"
     },
     {
       "id": "NFR6",
       "status": "OK",
       "target": "docs/u10/timings.md",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。 4操作walltimeは逐次測定。速度閾値を追加せず、背景負荷完全ゼロは未検証。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。 4操作walltimeは逐次測定。速度閾値を追加せず、背景負荷完全ゼロは未検証。"
     },
     {
       "id": "NFR7",
       "status": "OK",
       "target": "tests/guests/u10/runner.py",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
     },
     {
       "id": "NFR8",
       "status": "OK",
       "target": "tests/guests/u10/build.py",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。"
     },
     {
       "id": "NFR9",
       "status": "OK",
       "target": "tests/guests/u10/source-lock.json",
-      "notes": "検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。 Host診断Python3.15.0/coverage7.16.2、Rust32dba/LLVM23.1.3。ASan system Python3.11.2は監査専用固定再現環境。全OS道具最新版の断定なし。"
+      "notes": "（履歴：cb979713時点の観測。今の状態はcode-summary.mdの先頭の節。U10のPython coreのcoverage・aubeの4操作の時間・実行ファイルを含むllvm-covは今は測られていない） 検証済み：head cb9797138313046b3cf9bbbfcab0515910b81215/run38095031011、全326/both locks、内部44、fresh Linux native14/emulator16と元argv14/16、3OS品質、workspace93.0528%/Python core88.9610%。原本step18-current-proof.json。有限のLinux担当検証。U11/U12/U13 guest全体・ID競合完全解消は未検証。 Host診断Python3.15.0/coverage7.16.2、Rust32dba/LLVM23.1.3。ASan system Python3.11.2は監査専用固定再現環境。全OS道具最新版の断定なし。"
     }
   ],
   "reverse": [
@@ -442,18 +443,7 @@
         "NFR3",
         "NFR9"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
-    },
-    {
-      "path": ".github/workflows/u10-current-verification.yml",
-      "id": ".github/workflows/u10-current-verification.yml",
-      "status": "OK",
-      "target": "NFR3, NFR9",
-      "upstream_ids": [
-        "NFR3",
-        "NFR9"
-      ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "crates/paludarium-host/src/native_fs.rs",
@@ -464,7 +454,7 @@
         "NFR3",
         "NFR9"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/comparison_args.py",
@@ -475,7 +465,7 @@
         "NFR3",
         "NFR9"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/runner-tests/test_comparison_args.py",
@@ -486,7 +476,7 @@
         "NFR3",
         "NFR9"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/.gitignore",
@@ -498,7 +488,7 @@
         "FR7.1",
         "FR7.4"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/probe/.gitignore",
@@ -511,7 +501,7 @@
         "FR6.4",
         "NFR8"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "scripts/u10-run.py",
@@ -523,7 +513,7 @@
         "NFR7",
         "NFR2"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "scripts/u10-build-guests.sh",
@@ -535,7 +525,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/runner.py",
@@ -547,7 +537,7 @@
         "NFR7",
         "NFR2"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/evidence.py",
@@ -559,7 +549,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/comparison.py",
@@ -572,7 +562,7 @@
         "FR7.3",
         "NFR1"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/build.py",
@@ -584,7 +574,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/native.py",
@@ -597,7 +587,7 @@
         "FR7.3",
         "FR9.1"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/cases.json",
@@ -610,7 +600,7 @@
         "FR7.3",
         "FR9.1"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/source-lock.json",
@@ -622,7 +612,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/probe/Cargo.toml",
@@ -635,7 +625,7 @@
         "FR6.4",
         "NFR8"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/probe/Cargo.lock",
@@ -648,7 +638,7 @@
         "FR6.4",
         "NFR8"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/probe/src/main.rs",
@@ -661,7 +651,7 @@
         "FR6.4",
         "NFR8"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/fixtures/app/package.json",
@@ -673,7 +663,7 @@
         "FR7.3",
         "NFR4"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/fixtures/app/filedep/package.json",
@@ -685,7 +675,7 @@
         "FR7.3",
         "NFR4"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/fixtures/outside/linked/package.json",
@@ -697,7 +687,7 @@
         "FR7.3",
         "NFR4"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/runner-tests/test_ready.py",
@@ -709,7 +699,7 @@
         "NFR7",
         "NFR2"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/runner-tests/test_evidence.py",
@@ -721,7 +711,7 @@
         "NFR7",
         "NFR2"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/runner-tests/test_policy.py",
@@ -733,7 +723,7 @@
         "NFR7",
         "NFR2"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/runner-tests/test_comparison.py",
@@ -746,7 +736,7 @@
         "FR7.3",
         "NFR1"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/runner-tests/test_runner.py",
@@ -758,7 +748,7 @@
         "NFR7",
         "NFR2"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/differential.py",
@@ -771,7 +761,7 @@
         "FR7.3",
         "FR9.1"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/metadata.py",
@@ -783,7 +773,7 @@
         "FR7.3",
         "NFR4"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/runner-tests/test_metadata.py",
@@ -795,7 +785,7 @@
         "NFR7",
         "NFR2"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "crates/paludarium-harness/tests/diff_u10.rs",
@@ -808,7 +798,7 @@
         "FR7.3",
         "FR9.1"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "crates/paludarium-harness/tests/support/u10.rs",
@@ -821,7 +811,7 @@
         "FR7.3",
         "FR9.1"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "crates/paludarium-runtime/src/lib.rs",
@@ -832,7 +822,7 @@
         "FR7.2",
         "NFR4"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "crates/paludarium-runtime/src/u10_tests.rs",
@@ -843,7 +833,7 @@
         "FR7.2",
         "NFR4"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": ".github/workflows/ci.yml",
@@ -855,7 +845,7 @@
         "NFR3",
         "NFR8"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "tests/guests/u10/COMPARISON.md",
@@ -868,7 +858,7 @@
         "FR7.3",
         "NFR1"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "docs/u10/source-review.md",
@@ -880,7 +870,7 @@
         "FR7.1",
         "FR7.4"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "docs/u10/static-pie-checker.md",
@@ -892,7 +882,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": ".github/workflows/u10-native-diagnostic.yml",
@@ -904,7 +894,7 @@
         "NFR3",
         "NFR8"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "README.md",
@@ -916,7 +906,7 @@
         "FR7.1",
         "FR7.4"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "docs/u10/README.md",
@@ -928,7 +918,7 @@
         "FR7.1",
         "FR7.4"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     },
     {
       "path": "docs/u10/timings.md",
@@ -939,7 +929,7 @@
         "FR7.4",
         "NFR6"
       ],
-      "notes": "現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
+      "notes": "（履歴：cb979713時点の記述） 現行U10担当/保持履歴。今回の変更は診断2パスとnative_fs.rs cfg(test)2件のみ。step18-current-proof.jsonとstep16-test-delta.jsonで境界を保存。"
     }
   ],
   "source_sha": "cb9797138313046b3cf9bbbfcab0515910b81215",

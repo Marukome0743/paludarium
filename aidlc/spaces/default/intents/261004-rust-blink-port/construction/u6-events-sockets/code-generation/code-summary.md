@@ -1,6 +1,20 @@
 # U6 イベントとソケット
 
-## 現行Step19〜20（Build and TestのLoop-back 1）：Testing Contractの更新と証拠の時点
+## 現在の状態（2026-10-19 JST、Step20）
+
+本節はStep20の記録である。U15のStep22〜28で製品のファイルが変わってfork `codex/build-and-test` へ送られた（head 27d05de1、e3c29d1d→8b415a7c→8360be2e→27d05de1、4つともVerified）ので、U6を確かめ直した（`reviews/review-06.md`、NOT-READY、Major 4・Minor 2）。checkpointで人がRequest Changesを選んだので、U6の記録で直せるR-04〜R-10を直した。U6の製品のコード・CI・workflow・ほかのUnitの記録は変えていない。traceability.jsonは、NFR8・NFR9のtargetと、各行のnotesの先頭の注記だけを変えた（statusとidは変えていない）。
+
+- **今の正式な確認コマンド（R-07）**：`aidlc/spaces/default/intents/261004-rust-blink-port/verification-command.txt` の U15 `construction/u15-release/code-generation/verification/entry-e3c29d1d/entry-f.py`・`binding-e06f.json`（head 27d05de1、人が2026-10-19に採用、command SHA-256 `00f5c8832e04f7d27b30c6b445fdc30e0e5d233dfa5452e02c2c99368a08a159`）。今のtoolchainは `rust-toolchain.toml` の `nightly-2026-10-11`。下の節の `u2_candidate.py`・`verify-current-…` の候補、head 11c033c7、compiler 32dba69d6／LLVM 23.1.3、Safari 26.6.2、「未検証」「承認前は実行しない」は、それぞれの時点の記述である。U6のcheckpointはentry-fで確かめる。entry-fは作業コピーのbytesを `aidlc/` の外だけで比べるので、U6の記録の変更はその結果に影響しない想定である（結果はcheckpointの記録が持つ）。
+- **U6に関わる製品の変更**：U6の製品のファイルは変わっていない。U6のsource-manifestにあった `u6-current-verification.yml`・`u6-native-diagnostic.yml`・`u6-quality.yml` は消えた（U15のCIの整理、`construction/ci-pipeline/ci-config.md` の「消す」）。source-manifest.jsonのwritesから3本を外した（33件→30件、R-06）。
+- **U6の受け入れが今どこで動くか**（review-06の確かめた点）：events・socketsの600秒のASan/LSanのfuzzは、`ci.yml` が呼ぶ `u11-fuzz.yml` と、夜間の `u14-fuzz.yml`。3OSのテスト（`paludarium-kernel`、`u6_tests` を含む）は `ci.yml` と `u14-quality.yml`。`diff_u6` は差分テストのjobの `--test` 一覧になく、`ci.yml` のcoverageのjobの `cargo llvm-cov --workspace`（`PALUDARIUM_U6_EMULATOR` を設定）の中で動く（R-10）。27d05de1のCI 8 runはすべて成功した（U12は人が認めた1 jobの再実行。記録はU15の `verification/ci-27d05de1/`）。
+- **U6だけの測定は今は測られていない（R-08）**：U6の固定9ファイルのcoverage（前回85.83%）、production wasmのNode/本物Safariの102件（共有20件とU6の82件）、`u6_tests::` の49件・ignored 0の件数は、27d05de1でU6のworkflowが消えてから、どのworkflowでも測られていない。残るのはworkspace全体・U11・U9の80%の下限と、U11の14ケースである。NFR3・NFR7・FR2.4〜FR2.7のOKの根拠は11c033c7時点の履歴で、traceability.jsonの該当行のnotesの先頭にもそう書いた。CIに戻すか受け入れるかは、残りのUnitを見てからまとめて決める（人の判断、2026-10-19）。
+- **呼ばれていないU6の道具（R-09）**：`scripts/u6-coverage.py`・`scripts/u6-wasm-guests.py`・`scripts/u6-runner-test.py`・`packages/paludarium-wasm/tests/u6-check.mjs` は、残りのworkflowから呼ばれていない（手動用・CI未接続）。
+- **traceability.json（R-05・R-07）**：NFR8のtargetを `.github/workflows/ci.yml`、NFR9のtargetを `rust-toolchain.toml` に替え、notesの先頭に理由を書いた。11c033c7の観測を書いた13行（FR2.4〜FR2.7、FR9.1、NFR1〜NFR5、NFR7〜NFR9）のnotesの先頭に「（履歴：11c033c7時点の観測。今の状態はcode-summary.mdの先頭の節）」を1回ずつ足し、NFR3・NFR7・FR2.4〜FR2.7にはU6だけの測定が今は測られていないことの注記を1回ずつ足した。最初の作業では同じ文の行が多かったため注記がFR2.4の行に重なって入ったので（review-07のNOT-READY）、27d05de1のtraceability.jsonから行ごとに作り直した。
+- 「現行」「今回」で始まっていた見出しは「履歴：…（作成時の見出しは「…」）」にした。本文は変えていない。下の「履歴：Step19〜20」節の「今回Steps16〜18の現行実行」は、今の見出し「履歴：Steps16〜18の現行実行（2026-10-17のStep19〜20の前）」を指す（R-04）。
+- 未検証：この作業ではentry-fを実行していない（checkpointで実行する）。独立再レビューはこの記録の後に行う。
+- 下の節は、それぞれの時点の履歴として読む。
+
+## 履歴：Step19〜20（Build and TestのLoop-back 1）：Testing Contractの更新と証拠の時点（作成時の見出しは「現行Step19〜20（Build and TestのLoop-back 1）：Testing Contractの更新と証拠の時点」）
 
 2026-10-17。U14の整数SSEのJIT（署名12d6a2f6・1ceae86c）と正式確認コマンドの更新（今はU2の `verification/loopback1-next/u2_candidate.py`）の途中で、Code Generationの段階全体の作り直しのため、U6を確かめ直した。
 - (a) 計画の「## Testing Contract」を、memoryの更新で古くなっていたため、今の内容（contract `sha256:7ff27a24…`）に置き換えた。テストの方針（custom、Ordering、Standard、80%下限）は変わらない。
@@ -19,7 +33,7 @@
 
 ドキュメント根拠：先行Unit証拠の旧320入力は今回の全入力一致とは呼ばず、319一致＋明示したassert一行の旧/新SHAで限定的に結合する（verification/step18-baseline-binding.md）。新確認候補verify-current-u1-u7-u9-u3-u5-u6.pyは構文確認のみで、実行には新しいコマンド承認が必要。C66/Tokioのwasm guest WorkerはU11境界、セッションID競合の完全解消は未検証。
 
-## 今回Steps13〜15の確認と未検証
+## 履歴：Steps13〜15の確認と未検証（作成時の見出しは「今回Steps13〜15の確認と未検証」）
 
 この節は追加検証前の初回判定である。下記の不足は上のSteps16〜18で現行原本を取得して解消した。
 

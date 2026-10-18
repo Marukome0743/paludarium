@@ -1,8 +1,118 @@
 # Build and Test の試験結果
 
-2026-10-18 に、Loop-back 2 の後の版（head e3c29d1d）でまとめ直した（Modify。手順書と前回の記録は残し、結果を今の版に結び直した）。Loop-back 1 の後の結果（head 1ceae86c〜57a8c96f）と、その前（2026-10-17）の結果は「前回の結果（履歴）」に残す。
+2026-10-19 に、U15 の Step22〜30 と U1〜U15 の確かめ直しの後の版（head 27d05de1）でまとめ直した（Modify、Q10 の A。手順書と前回までの記録は残し、結果を今の版に結び直した）。前の版の結果は、下の「履歴：」の節に残す。
 
 ## 実行した版と環境
+
+- 製品コード：fork `Marukome0743/paludarium` のブランチ `codex/build-and-test`、head `27d05de165c703f4681fcf1789b1bf6defd97f47`（鎖 e3c29d1d → 8b415a7c → 8360be2e → 27d05de1、すべて GitHub で Verified）。
+  - e3c29d1d からの製品の差は 8360be2e（U15 Step22〜26）と 27d05de1（`u11-safari-stability.yml` に push の起動条件を足しただけ）：Safari の暖機（`u11-acceptance.yml`）と、safaridriver 側の時間切れのときだけ 1 回やり直す driver（`packages/paludarium-wasm/tests/u11-browser-driver.mjs` と試験 4 件）、新しい `u11-safari-stability.yml`、診断の workflow 21 個の削除と残す workflow の起動条件の整理、公開の部品（`scripts/release/check.py`）の owners・yanked の確認と試験、`docs/release.md`、U10 の `test_evidence.py`。JIT・interpreter・crates/ の製品コードは e3c29d1d と同じ。
+  - CI 一式はすべてこの head で実行した。
+  - 今の作業コピーと 27d05de1 の差は、ビルドの出力（`target/` の中）・`__pycache__`・手元用の `mise.toml`・`tools/aidlc-recovery/`・`.aidlc-version`、`aidlc/` の記録だけで、製品コードと試験は同じ（`git diff --name-only 27d05de1` を読み取りで確かめた）。
+- 道具：Rust nightly-2026-10-11（`rustc 1.101.0-nightly (6f5da406b 2026-10-10)`、Q5 で今の版のまま測る）、Node 26.12.0、Python 3.15.0（`verification/local-27d05de1/versions.txt`）。
+- この Mac：macOS（Apple Silicon）、`~/.cargo/bin/cargo`。`PALUDARIUM_TEST_NODE` に Node 26.12.0 の実体のパスを渡した。
+
+## ビルド
+
+| 確認 | 結果 | 証拠 |
+|---|---|---|
+| `cargo build --workspace --locked`（この Mac、今の作業コピー） | 成功（終了コード 0）。manifest の `license` と `license-file` の重複の警告は前と同じ | `verification/local-27d05de1/build.log`・`exits.txt`（2026-10-19） |
+| wasm32 向けの decoder・mmu・cpu（この Mac） | 成功（終了コード 0） | `verification/local-27d05de1/build-wasm32.log` |
+| `cargo fmt --all --check`・`cargo clippy --workspace --all-targets --locked -- -D warnings`（この Mac） | 成功（どちらも 0） | `verification/local-27d05de1/fmt.log`・`clippy.log` |
+| production wasm | 成功 | PR ゲート run 39143561947 の `production wasm (shared Rust heap, nested Workers)` |
+
+## 試験の結果
+
+| 試験 | 結果 | 証拠 |
+|---|---|---|
+| この Mac のワークスペース全体の単体テスト | 809 成功・1 失敗・4 無視。失敗は `diff_u8` の `u8_runner_ready`（x86-64 Linux 以外では合格にしない作り。前と同じ） | `cargo test --workspace --locked --no-fail-fast`、`verification/local-27d05de1/test.log`（2026-10-19） |
+| U15 の公開の部品（`tests/release`、この Mac） | 156 件成功 | `verification/local-27d05de1/release-tests.log` |
+| Safari の道具の試験（`u11-browser-driver.test.mjs`、この Mac） | 14 件成功（やり直しの条件・1 回の上限・ほかの失敗をやり直さないこと・2 回目の失敗の扱いを、仮の safaridriver で確かめる 4 件を含む） | `verification/local-27d05de1/driver-tests.log` |
+| PR ゲート（`ci.yml`、23 job） | 全 job 成功（attempt 1） | run 39143561947 |
+| 全品質（`u14-quality.yml`、34 job） | 全 job 成功（attempt 1） | run 39149187727 |
+| macOS の品質（`u12-quality.yml`、29 job） | 全 job 成功（attempt 2） | run 39149189719。attempt 1 は `u12-fuzz / fuzz (vfs_paths)`（job 117739162319）だけが apt.llvm.org への接続で落ちた（fuzz の対象が動く前）。人の承認でその job だけをやり直した |
+| Windows の品質（`u13-quality.yml`、29 job） | 全 job 成功（attempt 1） | run 39149192303 |
+| ファジング（`u14-fuzz.yml`、13 対象×600 秒、ASan/LSan） | 13 job すべて成功（attempt 1） | run 39149194521 |
+| U1〜U14 の現行ソースの照合（`u1-u14-source-bound.yml`、7 job） | 成功（attempt 1） | run 39149196791 |
+| 公開物の確認（`release-check.yml`） | 成功（attempt 1） | run 39143562106 |
+| Safari の安定性の確認（`u11-safari-stability.yml`、10 回、12 job） | 10 回とも成功、時間切れ 0 回、safaridriver のやり直し 0 回 | run 39143558642、U15 の `verification/safari-stability-27d05de1/` |
+
+run と job の一覧は U15 の `construction/u15-release/code-generation/verification/ci-27d05de1/ci-27d05de1.json`・`ci-jobs-27d05de1.json` に保存されている。
+
+## カバレッジ（行、native x86-64 Linux、PR ゲート run 39143561947 の `line coverage >= 80%`、job 117722778218）
+
+| 集計 | 行 | 割合 |
+|---|---|---|
+| workspace 全体 | 13038 / 13891 | 93.86% |
+| U1 の 11 crate | 12566 / 13390 | 93.85% |
+| U9 の対象 | 4955 / 5707 | 86.82% |
+| U11 の Rust 5 crate（lcov から計算） | 5932 / 6829 | 86.86% |
+| U3 の CPU・デコーダ 9 ファイル（alu・cpuid・crypto・exec・lib・softfloat・sse・state・decoder lib） | 2507 / 3031 | 82.71% |
+
+- job のログは `verification/ci-27d05de1/coverage-job-117722778218.log`（SHA-256 `10b96da7…758b`）、U11 の lcov は `verification/ci-27d05de1/u11-coverage-lcov/u11-coverage.lcov`（SHA-256 `36e1984a…42e3f`）に保存した。
+- U3 の手順の表の TOTAL は 76.83% だが、これには CLI の `paludarium/src/cli.rs`・`main.rs`（0%）が入っている。U3 の目標は 9 ファイルの集合で、上の数字はその表から CLI の 2 ファイルを除いて計算した（前と同じ）。U5・U6・U12・U13・U14 の集合は、それぞれの品質 run（39149187727・39149189719・39149192303）の 80% の下限の手順が成功している。U15 の Python の 4 ファイルは公開物の確認 run 39143562106 の下限の手順が成功している。
+
+## 速さの判定（FR8.3）
+
+全品質 run 39149187727 の Node の job。artifact `u11-node` を U15 の `verification/ci-27d05de1/u14-quality-39149187727/u11-node/performance/observations.json` に保存した。
+
+- head 27d05de1、Node v26.12.0。20 回すべて PASS（`complete`・`passed: true`）。
+- 平均：JIT なし 5.7522 秒、JIT あり 4.5488 秒（JIT ありの方が約 20.9% 速い）。
+- 1024 通りの符号反転による片側の正確検定：p = 1/1024 = 0.00098（< 0.05）。
+- 判定：**合格**。測り直しはしていない（この run の 1 回の測定）。JIT・interpreter のコードは 1ceae86c から変わっていない。
+
+## Safari の揺れ（NFR7）
+
+- e3c29d1d の U12 の品質 run 39114110570 の 1 回目で、safaridriver 自身が Safari の起動を待つ間に時間切れになった（下の「履歴：head e3c29d1d の結果」）。Q9 の A のとおり、公開の前の製品の変更（U15 Step22〜28）で直した：
+  - `u11-acceptance.yml` の Safari の job に暖機（Safari を一度起動して閉じる。失敗しても job を落とさない）を足した。
+  - `u11-browser-driver.mjs` で、session 作成の段階で `"error":"session not created"` と「timed out while connecting to a Safari instance」の両方を含む失敗のときだけ、Safari を止めて 1 回だけやり直す。1 回目の失敗は `session_retry` と stderr に残す。ほかの失敗はやり直さない。
+- 効き目の確認：27d05de1 の `u11-safari-stability.yml`（run 39143558642）で、まっさらな macOS の runner での 10 回がすべて成功し、時間切れ 0 回、やり直し 0 回。PR ゲート run 39143561947 と U13・U14 の品質 run（39149192303・39149187727、どちらも attempt 1 で全 job 成功）の Safari の job も成功した。U12 の品質 run 39149189719 の Safari の job も成功した（この run は vfs_paths の 1 job だけをやり直した attempt 2）。
+- 判定：**Met**。ただし次のことを注記する：
+  - 10 回の確認は、暖機を入れた `u11-acceptance.yml` と同じ経路（暖機＋やり直し）だけを確かめた。U13・U14 の Safari の job（`u13-wasm-acceptance.yml`・`u14-wasm-acceptance.yml`）には暖機が無く、driver の中のやり直しだけが効く。そちらの揺れの頻度は確かめていない。
+  - やり直しが 0 回だったので、やり直しの経路が本物の Safari で動いた証拠はない。根拠は仮の safaridriver での単体の試験（上の 14 件の中の 4 件）だけである。
+  - 10 回の成功は、揺れが今後起きないことの保証ではない。
+
+## Target Verification Matrix
+
+| Target ID | Source | Expected | Actual | Evidence | Owning Stage | Verdict |
+|---|---|---|---|---|---|---|
+| BT-BUILD | build-instructions.md | workspace・wasm32・production wasm のビルドが終了コード 0 | すべて成功 | `verification/local-27d05de1/`（2026-10-19）、run 39143561947 `lint`・`production wasm` | build-and-test | Met |
+| NFR1 / FR9.1 | requirements.md NFR1・FR9.1 | 差分テストが fresh native x86-64 Linux と一致 | diff_u1〜u9・parallel_u2・U10 差分が成功 | run 39143561947 `differential tests (x86-64 Linux)`・U10 differential | build-and-test | Met |
+| NFR3.2 | requirements.md NFR3 | fmt と clippy `-D warnings` が 0 件 | 0 件 | run 39143561947 `lint`、`verification/local-27d05de1/fmt.log`・`clippy.log` | build-and-test | Met |
+| NFR3.3 | requirements.md NFR3、team.md Q5 | 各集合で行 80% 以上 | 93.86%・93.85%・86.82%・86.86%・82.71%、ほか各品質 run の下限の手順が成功 | 上のカバレッジの表 | build-and-test | Met |
+| NFR3.1 | requirements.md NFR3 | `unsafe` がホスト接続部と JIT の外にない | forbid と lint が通る | run 39143561947 `lint` | build-and-test | Met |
+| NFR2 / FR9.3 | requirements.md NFR2・FR9.3 | ファジング 13 対象×600 秒、終了コード 0 | 13 対象すべて成功 | run 39149194521 | build-and-test | Met |
+| NFR8.1 | requirements.md NFR8 | `cargo deny` が通る | 成功 | run 39143561947 `dependencies` | build-and-test | Met |
+| NFR8.2 | requirements.md NFR8 | Actions がすべて SHA 固定 | 外部の `uses:` 217 件のうち SHA 固定でないものは 0 件（ほかにリポジトリ内の workflow の呼び出しが 18 件、workflow は 21 ファイル） | `.github/workflows/*.yml` の検査（2026-10-19、27d05de1 の作業コピー） | build-and-test | Met |
+| NFR9 | requirements.md NFR9、Q5 | `rust-toolchain.toml` の nightly で CI と手元が同じ | nightly-2026-10-11 で統一 | 各 job の toolchain、`verification/local-27d05de1/versions.txt` | build-and-test | Met |
+| NFR7 | requirements.md NFR7 | 時間切れの上限があり、揺れた試験は記録して直す | 上限は守られ、e3c29d1d の揺れは記録して直した（暖機と 1 回だけのやり直し）。27d05de1 の 10 回の確認で 10 回とも成功、やり直し 0 回。注記：確認は暖機のある経路だけ、やり直しの経路は本物の Safari では動いていない | 上の「Safari の揺れ」、run 39143558642 | build-and-test | Met |
+| FR5.1 | requirements.md FR5.1 | 3OS の単体テストが通る | 3OS とも成功 | run 39143561947 `unit tests (*)` | build-and-test | Met |
+| FR5.2 / FR5.3 / FR9.2 | requirements.md FR5.2・FR5.3・FR9.2 | Node・Chromium・Firefox・本物 Safari で各 14 ケースが native と一致 | 4 環境とも成功（Safari の job は、PR ゲートと U13・U14 の品質 run では attempt 1、U12 の品質 run では最新の attempt で成功。Safari の 10 回の確認も成功） | run 39143561947 `u11-programs`、run 39149187727、run 39143558642 | build-and-test | Met |
+| FR6.3 / FR7.2 / FR7.3 (Linux) | requirements.md FR6・FR7 | probe・aube・#1645 が native と一致 | 成功 | run 39143561947 U10 differential | build-and-test | Met |
+| FR6.3 / FR7.2 / FR7.3 (macOS) | U12 の計画 | macOS native が fresh Linux と一致 | 成功 | run 39149189719 `macos-host` | build-and-test | Met |
+| FR6.3 / FR7.2 / FR7.3 (Windows) | U13 の計画 | Windows の guest が fresh Linux と一致 | 成功 | run 39149192303 `windows-host` | build-and-test | Met |
+| FR7.4 / NFR6 | requirements.md FR7.4・NFR6 | aube 4 コマンドの時間を記録 | U10 差分の artifact に記録 | run 39143561947 の U10 differential の artifact | build-and-test | Met |
+| FR8.2 | requirements.md FR8.2 | 4 環境で JIT あり・なしが一致 | 成功 | run 39149187727 の wasm acceptance | build-and-test | Met |
+| FR8.3 | requirements.md FR8.3 | JIT ありが有意水準 5% で速い | 平均 4.5488 秒 対 5.7522 秒（約 20.9% 速い）、p = 1/1024 = 0.00098 | run 39149187727、上の「速さの判定」 | build-and-test | Met |
+| FR3.2 / NFR4 (Windows race) | U7 の計画 | symlink rename race が条件を満たす | 成功 | run 39149187727・39149192303 の Windows の job | build-and-test | Met |
+| U15-PKG | U15 の計画 | 公開物の確認が通る | 成功（版 0.1.0 の 11 crate と npm tarball） | run 39143562106（`release-check.yml`） | build-and-test | Met |
+| FR10.1 | requirements.md FR10.1、Q4・Q6・Q7 | 成功条件（FR6.3・FR7.2・FR7.3・FR8.2・FR8.3）を満たした後に公開 | 成功条件はそろい、版は 0.1.0、公開の部品と手順もそろった（owners・yanked の確認を含む）。upstream への取り込み、`release` environment、名前の所有と初回の公開、Trusted Publisher、`u15-acceptance` の起動、tag は人の手順でまだ | `docs/release.md` の Owner hand-off、U15 の `code-summary.md` | build-and-test | Unverified |
+| CI-BEFORE-MERGE | 各 Unit の Testing Contract と team.md Q7 | 選んだ試験をマージ前に CI で実行する | N/A | CI Pipeline, later in this plan, sets up CI to run these tests before merge | ci-pipeline | N/A |
+
+## 判定
+
+Build and Test は**失敗**（FR10.1 が Unverified）。NFR7 は直しと 27d05de1 の 10 回の確認で Met（上の注記つき）、FR8.3 は 27d05de1 でも合格し、ほかの目標はすべて Met。FR10.1 は人の手順（upstream への取り込みから tag まで）が終わるまで Unverified のまま。
+
+人の選択（2026-10-19）：Build Failure の問い（FR10.1 の原因は人の手順で、コードで直す道は無い no-fix の形）で Accept failure を選んだ。この失敗を記録したまま段階の承認の場に進む（Loop-back は使っていない。使った数は 2/3 のまま）。
+
+## 正式な確認コマンド（2026-10-19）
+
+今の正式な確認コマンドは、U15 の `verification/entry-e3c29d1d/entry-f.py`・`binding-e06f.json`（intent 直下の `verification-command.txt` の 1 行目、command SHA-256 `00f5c8832e04f7d27b30c6b445fdc30e0e5d233dfa5452e02c2c99368a08a159`、2026-10-19 に人が採用）。U1〜U15 の checkpoint は、このコマンドでどれも exit 0 だった。下の履歴の節の `entry-c.py` は 2026-10-18 の時点の正式な確認コマンドで、今は使わない。
+
+## 履歴：head e3c29d1d の結果（2026-10-18、Loop-back 2 の後）
+
+ここに残す結果は U15 の Step22〜28 の前の版（e3c29d1d）のもので、今の版の合格の証拠にはしない。見出しと本文は当時のまま（見出しの深さだけ 1 段下げた）。
+
+### 実行した版と環境
 
 - 製品コード：fork `Marukome0743/paludarium` のブランチ `codex/build-and-test`、head `e3c29d1d8c2dae3c705d54de2c6fb0a2451e46d9`（GitHub で Verified）。
   - 57a8c96f からの差は U15 の 3 つの commit：bb197e04（版を 0.1.0 にそろえ、受け入れの証拠を作る部品を足す、11 ファイル）、a54315f9（初回の限定トークンと release gate の直し、12 ファイル）、e3c29d1d（最初の公開の再開と子プロセスの環境の許可リスト、7 ファイル）。Rust の製品コードの差は版の行（`Cargo.toml`・`Cargo.lock`・`fuzz/Cargo.lock`）だけで、JIT・interpreter は同じ。
@@ -11,7 +121,7 @@
 - 道具：Rust nightly-2026-10-11（`rustc 1.101.0-nightly (6f5da406b 2026-10-10)`、Q5 で今の版のまま測ることにした）、Node 26.12.0（CI の JIT の判定と、手元の試験）、Python 3.15.0。
 - この Mac：macOS（Apple Silicon）、`~/.cargo/bin/cargo`。手元の試験では `PALUDARIUM_TEST_NODE` に Node 26.12.0 の実体のパス（`~/.local/share/mise/installs/node/26.12.0/bin/node`）を渡した。最初は `node` の名前で渡し、mise の shim がこのフォルダで版を決められずに JIT の bridge の 21 件が「Node batch runner failed」で落ちた（道具の設定の問題で、製品の不具合ではない）。
 
-## ビルド
+### ビルド
 
 | 確認 | 結果 | 証拠 |
 |---|---|---|
@@ -19,7 +129,7 @@
 | `cargo fmt --all --check`・`cargo clippy --locked --workspace --all-targets -- -D warnings`（この Mac） | 成功（どちらも 0） | 2026-10-18 の手元の実行 |
 | wasm32 向けの decoder・mmu・cpu、production wasm | 成功 | PR ゲート run 39114018191 の `lint`・`production wasm` |
 
-## 試験の結果
+### 試験の結果
 
 | 試験 | 結果 | 証拠 |
 |---|---|---|
@@ -37,7 +147,7 @@
 
 - run 39114110570 attempt 1（e3c29d1d）：Safari の job `u11-programs / differential (macos-latest, safari)`（job 117638480843）だけが落ちた。safaridriver が `session not created`（「Safari の起動を待つ間に時間切れ」）を返し、こちらの session 作成の待ち（60 秒）より前の 31 秒で止まった。人の判断で失敗した job だけを再実行し、attempt 2（job 117645706087）で成功した。1 回目の原本（run・job 一覧・ログ）は U15 の `verification/ci-e3c29d1d/u12-quality-39114110570/attempt-1/` に保存した。原因は確かめていない。下の NFR7 を参照。
 
-## カバレッジ（行、native x86-64 Linux、PR ゲート run 39114018191 の `line coverage >= 80%`）
+### カバレッジ（行、native x86-64 Linux、PR ゲート run 39114018191 の `line coverage >= 80%`）
 
 | 集計 | 行 | 割合 |
 |---|---|---|
@@ -50,7 +160,7 @@
 - U11 の lcov は `verification/ci-e3c29d1d/ci-39114018191/u11-coverage-lcov/u11-coverage.lcov` に保存した（artifact の digest `sha256:549b55f5…`）。
 - 注意（前回と同じ）：U3 の手順の表の TOTAL は 76.83% だが、これには CLI の `paludarium/src/cli.rs`・`main.rs`（0%）が入っている。U3 の目標は 9 ファイルの集合で、上の数字はその表から CLI の 2 ファイルを除いて計算した。U5・U6・U12・U13・U14・U15 の集合は、それぞれの品質 run（39114108809・39114110570・39114112207）の 80% の下限の手順が成功している。U15 の Python の 4 ファイルは公開物の確認 run 39114018143 の下限の手順が成功している。
 
-## 速さの判定（FR8.3）
+### 速さの判定（FR8.3）
 
 全品質 run 39114108809 の Node の job（「Frozen paired full-probe performance」）。artifact `u11-node` を U15 の `verification/ci-e3c29d1d/u14-quality-39114108809/u11-node/performance/observations.json` に保存した（ZIP の SHA-256 は API の digest と一致）。
 
@@ -60,13 +170,13 @@
 - 判定：**合格**（`passed: true`）。測り直しはしていない（この run の 1 回の測定）。
 - 参考：同じ版の系列で、1ceae86c（run 39030957672）・bb197e04・a54315f9（run 39096893624）でも p = 1/1024 で合格している。
 
-## Safari の揺れ（NFR7）
+### Safari の揺れ（NFR7）
 
 - Loop-back 1 の直し（session の作成だけを 60 秒まで待つ。commit 2b8723ab・57a8c96f）の後、4 つの run で Safari の job が 1 回目で成功していた（下の「前回の結果（履歴）」）。
 - 今回：e3c29d1d の U12 の品質 run 39114110570 の 1 回目で、Safari の job が落ちた。今度は safaridriver 自身が Safari の起動を待つ間に時間切れになった（31 秒）。前回の「こちらの待ち時間が短い」揺れとは別の種類で、今の直しでは防げない。e3c29d1d の PR ゲート run 39114018191 の Safari の job は 1 回目で成功した。
 - 人の判断（Q9 の A）：NFR7 は **Not Met** とする。揺れは記録した。直し（session 作成が safaridriver 側の時間切れで失敗したときに 1 回だけやり直すなど）は、公開の前に製品をもう一度変えるときにまとめて行う。
 
-## Target Verification Matrix
+### Target Verification Matrix
 
 | Target ID | Source | Expected | Actual | Evidence | Owning Stage | Verdict |
 |---|---|---|---|---|---|---|
@@ -93,13 +203,13 @@
 | FR10.1 | requirements.md FR10.1、Q4・Q6・Q7 | 成功条件（FR6.3・FR7.2・FR7.3・FR8.2・FR8.3）を満たした後に公開 | 成功条件はそろい、版は 0.1.0 に決まり、公開の部品と手順（初回の限定トークン、再開、許可リスト）もそろった。upstream への取り込み、`release` environment、名前の所有と初回の公開、Trusted Publisher、`u15-acceptance` の起動、tag は人の手順でまだ | `docs/release.md` の Owner hand-off、U15 の `code-summary.md` | build-and-test | Unverified |
 | CI-BEFORE-MERGE | 各 Unit の Testing Contract と team.md Q7 | 選んだ試験をマージ前に CI で実行する | N/A | CI Pipeline, later in this plan, sets up CI to run these tests before merge | ci-pipeline | N/A |
 
-## 判定
+### 判定
 
 Build and Test は**失敗**（FR10.1 が Unverified、NFR7 が Not Met）。FR8.3 は e3c29d1d でも合格し、ほかの目標はすべて Met。NFR7 は Q9 の A のとおり、直しを公開の前の製品の変更にまとめる。FR10.1 は人の手順（upstream への取り込みから tag まで）が終わるまで Unverified のまま。
 
 人の選択（2026-10-18）：Build Failure の問いで Accept failure を選んだ。この失敗を記録したまま段階の承認の場に進む（Loop-back は使っていない。使った数は 2/3 のまま）。
 
-## 正式な確認コマンドの変更（2026-10-18）
+### 正式な確認コマンドの変更（2026-10-18）
 
 この結果をまとめた後、U15 の Code Generation で、e3c29d1d を起点にした新しい確認コマンドの入口を作り、人が採用した。製品は変わっていない（head は e3c29d1d のまま）ので、上の試験・CI・測定の結果と判定はそのまま有効で、やり直していない。
 
@@ -111,7 +221,7 @@ Build and Test は**失敗**（FR10.1 が Unverified、NFR7 が Not Met）。FR8
 - 入口 v1〜v4（`construction/u15-release/code-generation/verification/version-allowance/`）は履歴になった。新しい入口はその bytes だけを固定する。
 - 次に製品を変えて新しい head にするときは、入口のコードは変えない。新しい binding を作り、採用を伺う。
 
-## 前回の結果（履歴、2026-10-18、Loop-back 1 の後、head 1ceae86c〜57a8c96f）
+## 履歴：head 1ceae86c〜57a8c96f の結果（2026-10-18、Loop-back 1 の後）（作成時の見出しは「前回の結果（履歴、2026-10-18、Loop-back 1 の後、head 1ceae86c〜57a8c96f）」）
 
 ここに残す結果は Loop-back 2 の前の版のもので、今の版の合格の証拠にはしない。見出しと本文は当時のまま（見出しの深さだけ 1 段下げた）。
 
@@ -220,7 +330,7 @@ Build and Test は**失敗**（FR10.1 が Unverified、NFR7 が Not Met）。FR8
 
 Build and Test は**失敗**（FR10.1 が Unverified）。FR8.3 と NFR7 は Met になり、FR10.1 のほかの目標はすべて Met。FR10.1 は Q4 の B のとおりこの段階の中で公開まで行うが、公開に要る設定は人が行うため、その手順と時期を人に伝えて進め方を相談する。
 
-## 前々回の結果（履歴、2026-10-17、head bd247f1e〜e4f84768）
+## 履歴：head bd247f1e〜e4f84768 の結果（2026-10-17）（作成時の見出しは「前々回の結果（履歴、2026-10-17、head bd247f1e〜e4f84768）」）
 
 ここに残す結果は Loop-back 1 の前の版のもので、今の版の合格の証拠にはしない。
 

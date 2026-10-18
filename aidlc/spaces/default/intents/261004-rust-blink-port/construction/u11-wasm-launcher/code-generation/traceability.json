@@ -3,17 +3,37 @@
   "unit": "u11-wasm-launcher",
   "draft": false,
   "packaging_repair": {
-    "steps": [23, 24, 25],
+    "steps": [
+      23,
+      24,
+      25
+    ],
     "current_evidence": "verification/packaging-current-proof.json",
     "current_setup": "verification/packaging-current-setup.md",
-    "fresh": "Node packaged hello/import/negative inputs/cleanup, C12 disposal, JS32",
-    "historical_only": "existing CI14guest/coverage/ASan and following source_sha/ci_run fields",
-    "upstream_ids": ["C12", "FR5.2", "FR5.3", "FR9.1", "FR9.2", "NFR1", "NFR2", "NFR7", "NFR8", "NFR9"],
-    "targets": ["packages/paludarium-wasm/package.json", "packages/paludarium-wasm/tests/packed-distribution.test.mjs", "packages/paludarium-wasm/tests/packed-distribution-child.mjs"]
+    "fresh": "Steps23〜25（2026-10-14）時点の記録：Node packaged hello/import/negative inputs/cleanup, C12 disposal, JS32",
+    "historical_only": "Steps23〜25（2026-10-14）時点の記録：existing CI14guest/coverage/ASan and following source_sha/ci_run fields",
+    "upstream_ids": [
+      "C12",
+      "FR5.2",
+      "FR5.3",
+      "FR9.1",
+      "FR9.2",
+      "NFR1",
+      "NFR2",
+      "NFR7",
+      "NFR8",
+      "NFR9"
+    ],
+    "targets": [
+      "packages/paludarium-wasm/package.json",
+      "packages/paludarium-wasm/tests/packed-distribution.test.mjs",
+      "packages/paludarium-wasm/tests/packed-distribution-child.mjs"
+    ]
   },
   "source_sha": "a19bea3549a77a0f665b20626d65049ecc6e2f6a",
   "ci_run": 38118128088,
   "ci_status": "success",
+  "history_note": "Step32（2026-10-19）：source_sha（a19bea35）・ci_run（38118128088）・ci_status、final_evidence・current_verificationは（ファイル名の欄はそのまま、文の欄には先頭に印を付けた）、a19bea35時点（2026-10-11〜14）の値で、今の証拠ではない（packaging_repairはSteps23〜25、2026-10-14時点）。今のheadは27d05de1（CIは8 runとも成功、U15のverification/ci-27d05de1/ci-27d05de1.json）、今の正式な確認コマンドはU15のentry-e3c29d1d/entry-f.py・binding-e06f.json。U11の製品ファイルは、a19bea35〜e3c29d1dではbd247f1e・1ceae86c・bb197e04で変わり、e3c29d1d〜27d05de1では変わっていない（Step33で直した。Step32では「a19bea35から27d05de1まで変わっていない」と誤って書いた）。今の製品でのU11の確かめは27d05de1のCI（u11-acceptance.ymlのbuild-oracleと4環境のdifferential、u11-fuzz.yml）。詳細はcode-summary.mdの「現在の状態（2026-10-19 JST、Step32〜33）」節。",
   "upstream_ids": [
     "C10",
     "C12",
@@ -507,10 +527,8 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
+        ".github/workflows/u11-safari-stability.yml",
         "Cargo.lock",
         "packages/paludarium-wasm/LICENSE",
         "packages/paludarium-wasm/README.md",
@@ -545,7 +563,7 @@
         "tests/guests/u11/supervisor.py"
       ],
       "target": "packages/paludarium-wasm/tests/u11-browser-check.mjs",
-      "notes": "Step27（2026-10-17）：CIの本物のSafariがWebDriverのsession作成で10秒のタイムアウトにより揺れたため、u11-browser-driver.mjsのwebdriverRequestに待ち時間の引数（既定10秒）を足し、POST /sessionだけ60秒にした。回帰1件を足し、この Mac で node --test 9件成功。CIでの再実行は未確認。詳細はcode-summary.mdの「現行Step27」節。Step28（2026-10-17）：正式な確認コマンドのバイト照合（compiled source changed、終了コード1）のため、人の判断でStep27を取り消し、2ファイルをe4f84768の版に戻した（git diff差分なし、node --test既存8件成功）。詳細はcode-summary.mdの「現行Step28」節。Step29〜30（2026-10-17〜18、Loop-back 1）：Step27と同じ修正を署名head 2b8723ab（親1ceae86c、Verified、変更は2ファイルだけ）でpushした。node --test 9件成功。PR CI run 39044785452（Safari job 117432507127）とU12 quality run 39044793102（attempt 2、Safari job 117432917070はattempt 1で成功、attempt 1のload_elfはapt.llvm.orgへの接続の一時的な失敗）で本物のSafariが時間切れなく成功した。u14-qualityは起動していない。今の正式確認コマンド（U2のu2_candidate.py）は2ファイルの変更でexit 1になるため、それを変えずに呼ぶ新しい入口verification/loopback1-next/u11_candidate.py（binding-04、未採用）を作った。詳細はcode-summary.mdの「現行Step29〜30（Loop-back 1）」節。Step31（2026-10-18、再レビューのMinor R-08・R-09）：u11-browser-driver.test.mjsに、仮のsafaridriverとWebDriverでsafari()を動かし、POST /sessionだけが60000 ms、ほかの要求は10000 msであることを確かめる回帰を1件足した（driverは変えていない）。署名head 57a8c96f（親2b8723ab、その親1ceae86c、Verified、変更は試験の1ファイルだけ）でpushし、node --test 10件成功。PR CI run 39073492190（Safari job 117517258710）とU12 quality run 39073501121（attempt 2、Safari job 117517348944はattempt 1で成功、attempt 1のdifferential tests (x86-64 Linux)はU3のnative契約の未観測CPU（GenuineIntel 000606a6）での設計どおりの停止）で本物のSafariが時間切れなく成功した。u14-qualityは起動していない。Step30の入口（binding-04）は仮の採用を経て履歴になり、コマンド行の引数で自分自身とbindingのSHA-256を要求する新しい入口verification/loopback1-next/u11_candidate_v2.py（binding-05、未採用）を作った。詳細はcode-summary.mdの「現行Step31」節。"
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow（u11-browser-readiness.yml・u11-native-first.yml・u11-native-metadata.yml）をtargetsから外した。COOP/COEP付きのページで動くこと（Node・Chromium・Firefox・本物のSafariの14ケース）は、ci.ymlから呼ぶu11-acceptance.ymlのdifferentialで毎回確かめる。Safariの揺れの直しを10回続けて確かめるu11-safari-stability.yml（run 39143558642、10回とも成功、やり直し0回）を足した。27d05de1までのNFR7の直しはNFR7のnotesとcode-summary.mdの「現在の状態（2026-10-19 JST、Step32）」節に書いた。下の各Stepの記述は、それぞれの日付の時点の記録（履歴）。 Step27（2026-10-17）：CIの本物のSafariがWebDriverのsession作成で10秒のタイムアウトにより揺れたため、u11-browser-driver.mjsのwebdriverRequestに待ち時間の引数（既定10秒）を足し、POST /sessionだけ60秒にした。回帰1件を足し、この Mac で node --test 9件成功。CIでの再実行は未確認。詳細はcode-summary.mdの「現行Step27」節。Step28（2026-10-17）：正式な確認コマンドのバイト照合（compiled source changed、終了コード1）のため、人の判断でStep27を取り消し、2ファイルをe4f84768の版に戻した（git diff差分なし、node --test既存8件成功）。詳細はcode-summary.mdの「現行Step28」節。Step29〜30（2026-10-17〜18、Loop-back 1）：Step27と同じ修正を署名head 2b8723ab（親1ceae86c、Verified、変更は2ファイルだけ）でpushした。node --test 9件成功。PR CI run 39044785452（Safari job 117432507127）とU12 quality run 39044793102（attempt 2、Safari job 117432917070はattempt 1で成功、attempt 1のload_elfはapt.llvm.orgへの接続の一時的な失敗）で本物のSafariが時間切れなく成功した。u14-qualityは起動していない。今の正式確認コマンド（U2のu2_candidate.py）は2ファイルの変更でexit 1になるため、それを変えずに呼ぶ新しい入口verification/loopback1-next/u11_candidate.py（binding-04、未採用）を作った。詳細はcode-summary.mdの「現行Step29〜30（Loop-back 1）」節。Step31（2026-10-18、再レビューのMinor R-08・R-09）：u11-browser-driver.test.mjsに、仮のsafaridriverとWebDriverでsafari()を動かし、POST /sessionだけが60000 ms、ほかの要求は10000 msであることを確かめる回帰を1件足した（driverは変えていない）。署名head 57a8c96f（親2b8723ab、その親1ceae86c、Verified、変更は試験の1ファイルだけ）でpushし、node --test 10件成功。PR CI run 39073492190（Safari job 117517258710）とU12 quality run 39073501121（attempt 2、Safari job 117517348944はattempt 1で成功、attempt 1のdifferential tests (x86-64 Linux)はU3のnative契約の未観測CPU（GenuineIntel 000606a6）での設計どおりの停止）で本物のSafariが時間切れなく成功した。u14-qualityは起動していない。Step30の入口（binding-04）は仮の採用を経て履歴になり、コマンド行の引数で自分自身とbindingのSHA-256を要求する新しい入口verification/loopback1-next/u11_candidate_v2.py（binding-05、未採用）を作った。詳細はcode-summary.mdの「現行Step31」節。"
     },
     {
       "id": "FR5.4",
@@ -631,10 +649,7 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
         "Cargo.lock",
         "crates/paludarium-host/src/fs.rs",
         "crates/paludarium-host/src/lib.rs",
@@ -686,7 +701,8 @@
         "tests/guests/u11/settings.py",
         "tests/guests/u11/supervisor.py"
       ],
-      "target": "packages/paludarium-wasm/tests/u11-suite.mjs"
+      "target": "packages/paludarium-wasm/tests/u11-suite.mjs",
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つ（u11-browser-readiness.yml・u11-native-first.yml・u11-native-metadata.yml）をtargetsから外した。残るci.yml・u11-acceptance.yml・u11-fuzz.ymlで確かめる。"
     },
     {
       "id": "FR6.4",
@@ -724,10 +740,7 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
         "Cargo.lock",
         "crates/paludarium-kernel/src/files.rs",
         "crates/paludarium-kernel/src/lib.rs",
@@ -773,7 +786,8 @@
         "tests/guests/u11/settings.py",
         "tests/guests/u11/supervisor.py"
       ],
-      "target": "packages/paludarium-wasm/tests/u11-filesystem.mjs"
+      "target": "packages/paludarium-wasm/tests/u11-filesystem.mjs",
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つ（u11-native-first.yml・u11-native-metadata.yml・u11-browser-readiness.yml）をtargetsから外した。期待結果はci.ymlから呼ぶu11-acceptance.ymlのbuild-oracleが毎回x86-64 Linuxで作る。"
     },
     {
       "id": "FR7.3",
@@ -781,10 +795,7 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
         "Cargo.lock",
         "crates/paludarium-kernel/src/files.rs",
         "crates/paludarium-kernel/src/lib.rs",
@@ -830,7 +841,8 @@
         "tests/guests/u11/settings.py",
         "tests/guests/u11/supervisor.py"
       ],
-      "target": "packages/paludarium-wasm/tests/u11-filesystem.mjs"
+      "target": "packages/paludarium-wasm/tests/u11-filesystem.mjs",
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つ（u11-native-first.yml・u11-native-metadata.yml・u11-browser-readiness.yml）をtargetsから外した。期待結果はci.ymlから呼ぶu11-acceptance.ymlのbuild-oracleが毎回x86-64 Linuxで作る。"
     },
     {
       "id": "FR7.4",
@@ -899,10 +911,7 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
         "Cargo.lock",
         "crates/paludarium-host/src/fs.rs",
         "crates/paludarium-host/src/lib.rs",
@@ -954,7 +963,8 @@
         "tests/guests/u11/settings.py",
         "tests/guests/u11/supervisor.py"
       ],
-      "target": "packages/paludarium-wasm/tests/u11-suite.mjs"
+      "target": "packages/paludarium-wasm/tests/u11-suite.mjs",
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つ（u11-native-first.yml・u11-native-metadata.yml・u11-browser-readiness.yml）をtargetsから外した。期待結果はci.ymlから呼ぶu11-acceptance.ymlのbuild-oracleが毎回x86-64 Linuxで作る。"
     },
     {
       "id": "FR9.2",
@@ -962,10 +972,7 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
         "Cargo.lock",
         "crates/paludarium-host/src/fs.rs",
         "crates/paludarium-host/src/lib.rs",
@@ -1018,7 +1025,7 @@
         "tests/guests/u11/supervisor.py"
       ],
       "target": "packages/paludarium-wasm/tests/u11-browser-check.mjs",
-      "notes": "Step26（2026-10-17）：U9のSteps77〜79が共有workflowのu11-acceptance.yml・u10-native-diagnostic.yml（setup-python 3.15.0、--advisory-policy u15-fixed-aube-zip9-name）とci.yml（PALUDARIUM_TEST_NODE）を直した。actionlintで新しい指摘なし。変更後のworkflowはCI未実行。詳細はcode-summary.mdの「現行Step26」節。"
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つをtargetsから外した。Firefoxを含む4環境の結果はci.ymlから呼ぶu11-acceptance.ymlで毎回確かめる。下のStep26の「CI未実行」はその時点の記述で、その後27d05de1のCI（8 run成功、ci-27d05de1.json）で実行された。 Step26（2026-10-17）：U9のSteps77〜79が共有workflowのu11-acceptance.yml・u10-native-diagnostic.yml（setup-python 3.15.0、--advisory-policy u15-fixed-aube-zip9-name）とci.yml（PALUDARIUM_TEST_NODE）を直した。actionlintで新しい指摘なし。変更後のworkflowはCI未実行。詳細はcode-summary.mdの「現行Step26」節。"
     },
     {
       "id": "FR9.3",
@@ -1036,10 +1043,7 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
         "Cargo.lock",
         "crates/paludarium-host/src/fs.rs",
         "crates/paludarium-host/src/lib.rs",
@@ -1091,7 +1095,8 @@
         "tests/guests/u11/settings.py",
         "tests/guests/u11/supervisor.py"
       ],
-      "target": "packages/paludarium-wasm/tests/u11-suite.mjs"
+      "target": "packages/paludarium-wasm/tests/u11-suite.mjs",
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つ（u11-native-first.yml・u11-native-metadata.yml・u11-browser-readiness.yml）をtargetsから外した。期待結果はci.ymlから呼ぶu11-acceptance.ymlのbuild-oracleが毎回x86-64 Linuxで作る。"
     },
     {
       "id": "NFR2",
@@ -1099,10 +1104,8 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
+        ".github/workflows/u14-fuzz.yml",
         "Cargo.lock",
         "crates/paludarium-host/src/fs.rs",
         "crates/paludarium-host/src/lib.rs",
@@ -1154,7 +1157,8 @@
         "tests/guests/u11/settings.py",
         "tests/guests/u11/supervisor.py"
       ],
-      "target": ".github/workflows/u11-fuzz.yml"
+      "target": ".github/workflows/u11-fuzz.yml",
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つをtargetsから外した。ファジングはPRではci.ymlから呼ぶu11-fuzz.yml（U11の7対象×600秒のASan/LSan）、夜間はnightly.ymlから呼ぶu14-fuzz.yml（13対象。U11の7対象を含む）で実行する。u14-fuzz.ymlを足した。u14-fuzz.ymlはU14が持つworkflowで、証拠の置き場所として指すもの。U11が書くファイルではないので、U11のmanifestとreverseには入れない（Step33、2026-10-19）。"
     },
     {
       "id": "NFR3",
@@ -1162,10 +1166,8 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
+        ".github/workflows/u14-wasm-acceptance.yml",
         "Cargo.lock",
         "packages/paludarium-wasm/tests/checks.mjs",
         "packages/paludarium-wasm/tests/u11-api-check.mjs",
@@ -1191,7 +1193,8 @@
         "tests/guests/u11/settings.py",
         "tests/guests/u11/supervisor.py"
       ],
-      "target": ".github/workflows/ci.yml"
+      "target": ".github/workflows/ci.yml",
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つ（u11-current-verification.ymlの代わりを含む）をtargetsから外した。Rustの行coverage 80%はci.ymlのLinuxのcoverage jobで毎回測る。JSの製品ファイルの行coverage 80%は、今はPRのゲートでは測らず、夜間と手動のu14-wasm-acceptance.ymlの「Fixed production JavaScript coverage」（u14-coverage.mjs）だけで測るため、u14-wasm-acceptance.ymlを足した。u14-coverage.mjsの母集団はjit-support.mjsを含む6ファイルで、U11の記録の5ファイル（426/455 = 93.626%、a19bea35時点）とは母集団が違う。PRのゲートに戻すかは、次にworkflowを変えるときに人がまとめて決める。u14-wasm-acceptance.ymlはU14が持つworkflowで、証拠の置き場所として指すもの。U11が書くファイルではないので、U11のmanifestとreverseには入れない（Step33、2026-10-19）。"
     },
     {
       "id": "NFR4",
@@ -1199,10 +1202,7 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
         "Cargo.lock",
         "crates/paludarium-host/src/fs.rs",
         "crates/paludarium-host/src/lib.rs",
@@ -1254,7 +1254,8 @@
         "tests/guests/u11/settings.py",
         "tests/guests/u11/supervisor.py"
       ],
-      "target": "crates/paludarium-runtime/src/lib.rs"
+      "target": "crates/paludarium-runtime/src/lib.rs",
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つ（u11-browser-readiness.yml・u11-native-first.yml・u11-native-metadata.yml）をtargetsから外した。残るci.yml・u11-acceptance.yml・u11-fuzz.ymlで確かめる。"
     },
     {
       "id": "NFR5",
@@ -1282,10 +1283,8 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
+        ".github/workflows/u11-safari-stability.yml",
         "Cargo.lock",
         "crates/paludarium-host/src/fs.rs",
         "crates/paludarium-host/src/lib.rs",
@@ -1338,7 +1337,7 @@
         "tests/guests/u11/supervisor.py"
       ],
       "target": "tests/guests/u11/supervisor.py",
-      "notes": "Step29〜30（2026-10-17〜18、Loop-back 1）：揺れたテスト（本物のSafariのWebDriver session作成の10秒の時間切れ）を記録して直した。session作成の要求だけ待ち時間を60秒にし、guest 30秒・suite全体の期限・cleanupは変えていない。署名head 2b8723abのPR CI run 39044785452とU12 quality run 39044793102で、本物のSafariのjobが2回とも時間切れなく成功した（2回の成功であり、揺れが今後起きない保証ではない）。正式確認の新しい入口u11_candidate.py（binding-04）は未採用。詳細はcode-summary.mdの「現行Step29〜30（Loop-back 1）」節。Step31（2026-10-18）：60秒の待ち時間がsession作成の要求だけに渡ることを回帰で確かめ（driverと期限・cleanupは変えていない）、署名head 57a8c96fのPR CI run 39073492190とU12 quality run 39073501121でも本物のSafariのjobが時間切れなく成功した（合計4回の成功であり、揺れが今後起きない保証ではない）。正式確認の新しい入口u11_candidate_v2.py（binding-05、コマンド行で2つのSHA-256を要求）は未採用。詳細はcode-summary.mdの「現行Step31」節。"
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つ（u11-browser-readiness.yml・u11-native-first.yml・u11-native-metadata.yml）をtargetsから外し、u11-safari-stability.ymlを足した。27d05de1までの直し：u11-browser-driver.mjsは、session作成の段階で `\"error\":\"session not created\"` と「timed out while connecting to a Safari instance」の両方を含む失敗のときだけ、1回だけSafariを止めてsession作成をやり直し、1回目の失敗をsession_retryとstderrに残す（ほかの失敗はやり直さない）。u11-acceptance.ymlのSafariのjobに暖機（失敗してもjobを落とさない）を足した。u11-browser-driver.test.mjsは4件増えて14件。安定性の確認は27d05de1のrun 39143558642で10回とも成功、やり直し0回で、やり直しの経路が本物のSafariで動いた証拠はなく、根拠は仮のsafaridriverでの単体の試験だけ（揺れが今後起きない保証ではない）。暖機はPRのSafari（u11-acceptance.yml）と安定性の確認にだけあり、夜間のSafari（u14-wasm-acceptance.yml）には無い。下の「未採用」の入口u11_candidate.py（binding-04）・u11_candidate_v2.py（binding-05）は採用されなかった履歴で、今の正式な確認コマンドはU15のentry-e3c29d1d/entry-f.py・binding-e06f.json（2026-10-19採用）。下の各Stepの記述は、それぞれの日付の時点の記録（履歴）。 Step29〜30（2026-10-17〜18、Loop-back 1）：揺れたテスト（本物のSafariのWebDriver session作成の10秒の時間切れ）を記録して直した。session作成の要求だけ待ち時間を60秒にし、guest 30秒・suite全体の期限・cleanupは変えていない。署名head 2b8723abのPR CI run 39044785452とU12 quality run 39044793102で、本物のSafariのjobが2回とも時間切れなく成功した（2回の成功であり、揺れが今後起きない保証ではない）。正式確認の新しい入口u11_candidate.py（binding-04）は未採用。詳細はcode-summary.mdの「現行Step29〜30（Loop-back 1）」節。Step31（2026-10-18）：60秒の待ち時間がsession作成の要求だけに渡ることを回帰で確かめ（driverと期限・cleanupは変えていない）、署名head 57a8c96fのPR CI run 39073492190とU12 quality run 39073501121でも本物のSafariのjobが時間切れなく成功した（合計4回の成功であり、揺れが今後起きない保証ではない）。正式確認の新しい入口u11_candidate_v2.py（binding-05、コマンド行で2つのSHA-256を要求）は未採用。詳細はcode-summary.mdの「現行Step31」節。"
     },
     {
       "id": "NFR8",
@@ -1346,10 +1345,7 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
         "Cargo.lock",
         "crates/paludarium-host/src/fs.rs",
         "crates/paludarium-host/src/lib.rs",
@@ -1401,7 +1397,8 @@
         "tests/guests/u11/settings.py",
         "tests/guests/u11/supervisor.py"
       ],
-      "target": "Cargo.lock"
+      "target": "Cargo.lock",
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つ（u11-browser-readiness.yml・u11-native-first.yml・u11-native-metadata.yml）をtargetsから外した。残るci.yml・u11-acceptance.yml・u11-fuzz.ymlで確かめる。"
     },
     {
       "id": "NFR9",
@@ -1409,10 +1406,7 @@
       "targets": [
         ".github/workflows/ci.yml",
         ".github/workflows/u11-acceptance.yml",
-        ".github/workflows/u11-browser-readiness.yml",
         ".github/workflows/u11-fuzz.yml",
-        ".github/workflows/u11-native-first.yml",
-        ".github/workflows/u11-native-metadata.yml",
         "Cargo.lock",
         "crates/paludarium-host/src/fs.rs",
         "crates/paludarium-host/src/lib.rs",
@@ -1464,7 +1458,8 @@
         "tests/guests/u11/settings.py",
         "tests/guests/u11/supervisor.py"
       ],
-      "target": "rust-toolchain.toml"
+      "target": "rust-toolchain.toml",
+      "notes": "Step32（2026-10-19、head 27d05de1）：消えたworkflow 3つ（u11-browser-readiness.yml・u11-native-first.yml・u11-native-metadata.yml）をtargetsから外した。残るci.yml・u11-acceptance.yml・u11-fuzz.ymlで確かめる。"
     }
   ],
   "reverse": [
@@ -1479,7 +1474,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": ".github/scripts/u3-current-diagnostic.py",
@@ -1492,7 +1487,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": ".github/scripts/u5-current-diagnostic.py",
@@ -1505,7 +1500,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": ".github/scripts/u6-current-diagnostic.py",
@@ -1518,7 +1513,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": ".github/scripts/u8-current-diagnostic.py",
@@ -1531,7 +1526,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": ".github/scripts/u9-safari-diagnostic.mjs",
@@ -1544,7 +1539,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": ".github/scripts/u9-source-audit.py",
@@ -1557,7 +1552,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": ".github/workflows/ci.yml",
@@ -1579,20 +1574,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/native-diagnostic.yml",
-      "path": ".github/workflows/native-diagnostic.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": ".github/workflows/nightly.yml",
@@ -1605,20 +1587,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u10-current-verification.yml",
-      "path": ".github/workflows/u10-current-verification.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": ".github/workflows/u10-native-diagnostic.yml",
@@ -1631,7 +1600,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": ".github/workflows/u11-acceptance.yml",
@@ -1655,57 +1624,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "path": ".github/workflows/u11-browser-readiness.yml",
-      "id": ".github/workflows/u11-browser-readiness.yml",
-      "status": "OK",
-      "target": "FR5.3, FR6.3, FR7.2, FR7.3, FR9.1, FR9.2, NFR1, NFR2, NFR3, NFR4, NFR7, NFR8, NFR9",
-      "upstream_ids": [
-        "FR5.3",
-        "FR6.3",
-        "FR7.2",
-        "FR7.3",
-        "FR9.1",
-        "FR9.2",
-        "NFR1",
-        "NFR2",
-        "NFR3",
-        "NFR4",
-        "NFR7",
-        "NFR8",
-        "NFR9"
-      ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u11-current-verification.yml",
-      "path": ".github/workflows/u11-current-verification.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "path": ".github/workflows/u11-firefox-diagnostic.yml",
-      "id": ".github/workflows/u11-firefox-diagnostic.yml",
-      "target": "FR9.1, FR9.2, NFR1, NFR7, NFR8, NFR9",
-      "upstream_ids": [
-        "FR9.1",
-        "FR9.2",
-        "NFR1",
-        "NFR7",
-        "NFR8",
-        "NFR9"
-      ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
-      "status": "OK"
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": ".github/workflows/u11-fuzz.yml",
@@ -1727,194 +1646,18 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
-      "path": ".github/workflows/u11-native-first.yml",
-      "id": ".github/workflows/u11-native-first.yml",
+      "path": ".github/workflows/u11-safari-stability.yml",
+      "id": ".github/workflows/u11-safari-stability.yml",
       "status": "OK",
-      "target": "FR5.3, FR6.3, FR7.2, FR7.3, FR9.1, FR9.2, NFR1, NFR2, NFR3, NFR4, NFR7, NFR8, NFR9",
+      "target": "FR5.3, NFR7",
       "upstream_ids": [
         "FR5.3",
-        "FR6.3",
-        "FR7.2",
-        "FR7.3",
-        "FR9.1",
-        "FR9.2",
-        "NFR1",
-        "NFR2",
-        "NFR3",
-        "NFR4",
-        "NFR7",
-        "NFR8",
-        "NFR9"
+        "NFR7"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "path": ".github/workflows/u11-native-metadata.yml",
-      "id": ".github/workflows/u11-native-metadata.yml",
-      "status": "OK",
-      "target": "FR5.3, FR6.3, FR7.2, FR7.3, FR9.1, FR9.2, NFR1, NFR2, NFR3, NFR4, NFR7, NFR8, NFR9",
-      "upstream_ids": [
-        "FR5.3",
-        "FR6.3",
-        "FR7.2",
-        "FR7.3",
-        "FR9.1",
-        "FR9.2",
-        "NFR1",
-        "NFR2",
-        "NFR3",
-        "NFR4",
-        "NFR7",
-        "NFR8",
-        "NFR9"
-      ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u2-production-sanitizers.yml",
-      "path": ".github/workflows/u2-production-sanitizers.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u3-current-verification.yml",
-      "path": ".github/workflows/u3-current-verification.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u5-current-verification.yml",
-      "path": ".github/workflows/u5-current-verification.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u5-native-diagnostic.yml",
-      "path": ".github/workflows/u5-native-diagnostic.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u5-quality.yml",
-      "path": ".github/workflows/u5-quality.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u6-current-verification.yml",
-      "path": ".github/workflows/u6-current-verification.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u6-native-diagnostic.yml",
-      "path": ".github/workflows/u6-native-diagnostic.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u6-quality.yml",
-      "path": ".github/workflows/u6-quality.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u8-current-verification.yml",
-      "path": ".github/workflows/u8-current-verification.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u8-native-diagnostic.yml",
-      "path": ".github/workflows/u8-native-diagnostic.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
-    },
-    {
-      "id": ".github/workflows/u9-current-verification.yml",
-      "path": ".github/workflows/u9-current-verification.yml",
-      "upstream_ids": [
-        "FR9.1",
-        "NFR1",
-        "NFR3",
-        "NFR8"
-      ],
-      "status": "OK",
-      "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "Step32（2026-10-19）：27d05de1で入った、本物のSafariを10回続けて動かしてNFR7の直しを確かめるworkflow（run 39143558642、10回とも成功、やり直し0回）。"
     },
     {
       "path": "Cargo.lock",
@@ -1936,7 +1679,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "Cargo.toml",
@@ -1949,7 +1692,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "ci/linux-dev/Dockerfile",
@@ -1962,7 +1705,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/Cargo.toml",
@@ -1975,7 +1718,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/src/alu.rs",
@@ -1988,7 +1731,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/src/cpuid.rs",
@@ -2001,7 +1744,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/src/crypto.rs",
@@ -2014,7 +1757,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/src/exec.rs",
@@ -2027,7 +1770,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/src/lib.rs",
@@ -2040,7 +1783,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/src/softfloat.rs",
@@ -2053,7 +1796,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/src/sse.rs",
@@ -2066,7 +1809,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/src/state.rs",
@@ -2079,7 +1822,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/src/u2_tests.rs",
@@ -2092,7 +1835,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/src/u3_tests.rs",
@@ -2105,7 +1848,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-cpu/src/u4_tests.rs",
@@ -2118,7 +1861,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-decoder/Cargo.toml",
@@ -2131,7 +1874,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-decoder/src/lib.rs",
@@ -2144,7 +1887,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-decoder/src/u3_native_encodings.rs",
@@ -2157,7 +1900,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-decoder/src/u3_tests.rs",
@@ -2170,7 +1913,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/Cargo.toml",
@@ -2183,7 +1926,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/src/coverage.rs",
@@ -2196,7 +1939,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/src/lib.rs",
@@ -2209,7 +1952,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u1.rs",
@@ -2222,7 +1965,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u10.rs",
@@ -2235,7 +1978,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u2.rs",
@@ -2248,7 +1991,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u3.rs",
@@ -2261,7 +2004,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u4.rs",
@@ -2274,7 +2017,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u5.rs",
@@ -2287,7 +2030,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u6.rs",
@@ -2300,7 +2043,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u7.rs",
@@ -2313,7 +2056,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u8.rs",
@@ -2326,7 +2069,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u9.rs",
@@ -2339,7 +2082,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/parallel_u2.rs",
@@ -2352,7 +2095,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/support/u10.rs",
@@ -2365,7 +2108,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/support/u2.rs",
@@ -2378,7 +2121,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/support/u3.rs",
@@ -2391,7 +2134,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/support/u3_oracle.rs",
@@ -2404,7 +2147,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/support/u4.rs",
@@ -2417,7 +2160,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/support/u4_oracles.rs",
@@ -2430,7 +2173,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/support/u7.rs",
@@ -2443,7 +2186,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/support/u8.rs",
@@ -2456,7 +2199,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-harness/tests/support/u9.rs",
@@ -2469,7 +2212,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-host/Cargo.toml",
@@ -2482,7 +2225,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-host/src/clock.rs",
@@ -2495,7 +2238,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-host/src/fs.rs",
@@ -2516,7 +2259,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-host/src/lib.rs",
@@ -2537,7 +2280,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-host/src/native_fs.rs",
@@ -2558,7 +2301,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-host/src/testing.rs",
@@ -2571,7 +2314,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-host/src/threads.rs",
@@ -2592,7 +2335,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-host/src/u4_tests.rs",
@@ -2605,7 +2348,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-host/src/u5_tests.rs",
@@ -2618,7 +2361,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-host/src/u9_tests.rs",
@@ -2631,7 +2374,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-host/src/wasm.rs",
@@ -2652,7 +2395,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-host/src/wasm_tasks.rs",
@@ -2673,7 +2416,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-host/tests/u9_public_api.rs",
@@ -2686,7 +2429,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-jit/Cargo.toml",
@@ -2699,7 +2442,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-jit/src/lib.rs",
@@ -2712,7 +2455,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/Cargo.toml",
@@ -2725,7 +2468,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/epoll.rs",
@@ -2738,7 +2481,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/events.rs",
@@ -2751,7 +2494,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-kernel/src/files.rs",
@@ -2775,7 +2518,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/futex.rs",
@@ -2788,7 +2531,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/inbox.rs",
@@ -2801,7 +2544,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-kernel/src/lib.rs",
@@ -2825,7 +2568,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/null.rs",
@@ -2838,7 +2581,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/processes.rs",
@@ -2851,7 +2594,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/signals.rs",
@@ -2864,7 +2607,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/sockets.rs",
@@ -2877,7 +2620,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/syscalls.rs",
@@ -2890,7 +2633,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/tests.rs",
@@ -2903,7 +2646,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/threads.rs",
@@ -2916,7 +2659,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-kernel/src/u11_tests.rs",
@@ -2940,7 +2683,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/u4_tests.rs",
@@ -2953,7 +2696,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/u5_tests.rs",
@@ -2966,7 +2709,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/u6_tests.rs",
@@ -2979,7 +2722,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/u8_tests.rs",
@@ -2992,7 +2735,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-kernel/src/u9_tests.rs",
@@ -3005,7 +2748,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-kernel/tests/u11_fuzz_wait.rs",
@@ -3019,7 +2762,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
       "status": "OK"
     },
     {
@@ -3033,7 +2776,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-loader/src/elf.rs",
@@ -3046,7 +2789,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-loader/src/lib.rs",
@@ -3059,7 +2802,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-loader/src/testing.rs",
@@ -3072,7 +2815,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-loader/src/tests.rs",
@@ -3085,7 +2828,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-mmu/Cargo.toml",
@@ -3098,7 +2841,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-mmu/src/lib.rs",
@@ -3111,7 +2854,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-mmu/src/tests.rs",
@@ -3124,7 +2867,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-mmu/src/u4_tests.rs",
@@ -3137,7 +2880,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-mmu/src/u5_tests.rs",
@@ -3150,7 +2893,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-mmu/src/u8_tests.rs",
@@ -3163,7 +2906,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-runtime/Cargo.toml",
@@ -3176,7 +2919,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-runtime/src/lib.rs",
@@ -3200,7 +2943,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-runtime/src/tests.rs",
@@ -3213,7 +2956,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-runtime/src/u10_tests.rs",
@@ -3226,7 +2969,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-runtime/src/u4_tests.rs",
@@ -3239,7 +2982,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-runtime/src/u5_tests.rs",
@@ -3252,7 +2995,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-runtime/src/u8_tests.rs",
@@ -3265,7 +3008,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-runtime/src/u9_tests.rs",
@@ -3278,7 +3021,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-runtime/src/workers.rs",
@@ -3291,7 +3034,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-types/Cargo.toml",
@@ -3304,7 +3047,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-types/src/lib.rs",
@@ -3317,7 +3060,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-vfs/Cargo.toml",
@@ -3330,7 +3073,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-vfs/src/lib.rs",
@@ -3354,7 +3097,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-vfs/src/mount.rs",
@@ -3367,7 +3110,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-vfs/src/open_file.rs",
@@ -3391,7 +3134,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-vfs/src/operations.rs",
@@ -3415,7 +3158,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-vfs/src/u11_tests.rs",
@@ -3439,7 +3182,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-vfs/src/u1_tests.rs",
@@ -3452,7 +3195,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium-vfs/src/u7_tests.rs",
@@ -3465,7 +3208,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-wasm/Cargo.toml",
@@ -3489,7 +3232,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-wasm/src/abi.rs",
@@ -3513,7 +3256,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-wasm/src/filesystem.rs",
@@ -3537,7 +3280,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "crates/paludarium-wasm/src/lib.rs",
@@ -3561,7 +3304,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium/Cargo.toml",
@@ -3574,7 +3317,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium/src/cli.rs",
@@ -3587,7 +3330,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium/src/lib.rs",
@@ -3600,7 +3343,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium/src/main.rs",
@@ -3613,7 +3356,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "crates/paludarium/tests/command.rs",
@@ -3626,7 +3369,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "deny.toml",
@@ -3639,7 +3382,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/Cargo.lock",
@@ -3652,7 +3395,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/Cargo.toml",
@@ -3665,7 +3408,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/fuzz_targets/cpu_u2.rs",
@@ -3678,7 +3421,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/fuzz_targets/decode.rs",
@@ -3691,7 +3434,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/fuzz_targets/kernel_events_u6.rs",
@@ -3704,7 +3447,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/fuzz_targets/kernel_futex_u5.rs",
@@ -3717,7 +3460,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/fuzz_targets/kernel_sockets_u6.rs",
@@ -3730,7 +3473,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/fuzz_targets/kernel_threads_u5.rs",
@@ -3743,7 +3486,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/fuzz_targets/load_elf.rs",
@@ -3756,7 +3499,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/fuzz_targets/mmu_ops.rs",
@@ -3769,7 +3512,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/fuzz_targets/mmu_u2.rs",
@@ -3782,7 +3525,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "fuzz/fuzz_targets/support/syscall_host.rs",
@@ -3796,7 +3539,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
       "status": "OK"
     },
     {
@@ -3811,7 +3554,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
       "status": "OK"
     },
     {
@@ -3825,7 +3568,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "fuzz/lsan.supp",
@@ -3838,7 +3581,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "mise.toml",
@@ -3851,7 +3594,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/LICENSE",
@@ -3875,7 +3618,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/README.md",
@@ -3899,7 +3642,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/coordinator.mjs",
@@ -3923,7 +3666,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/execution.mjs",
@@ -3947,7 +3690,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/filesystem-snapshot.mjs",
@@ -3960,7 +3703,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/index.d.ts",
@@ -3984,7 +3727,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/index.mjs",
@@ -4008,7 +3751,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/package.json",
@@ -4032,7 +3775,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/checks.mjs",
@@ -4057,7 +3800,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/generate-guests.py",
@@ -4070,7 +3813,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guest-hashes.json",
@@ -4083,7 +3826,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/atomic",
@@ -4096,7 +3839,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/divide_fault",
@@ -4109,7 +3852,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/hello",
@@ -4122,7 +3865,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/infinite",
@@ -4135,7 +3878,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/integer",
@@ -4148,7 +3891,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/stdin",
@@ -4161,7 +3904,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/u3-aes",
@@ -4174,7 +3917,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/u3-cpuid",
@@ -4187,7 +3930,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/u3-fault",
@@ -4200,7 +3943,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/u3-float",
@@ -4213,7 +3956,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/u3-packed",
@@ -4226,7 +3969,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/u3-pclmul",
@@ -4239,7 +3982,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/guests/u3-sha",
@@ -4252,7 +3995,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/import-check.mjs",
@@ -4265,7 +4008,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/index.html",
@@ -4278,7 +4021,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/node-check.mjs",
@@ -4291,7 +4034,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-api-check.mjs",
@@ -4316,7 +4059,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-baseline.mjs",
@@ -4341,7 +4084,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-browser-check.mjs",
@@ -4368,7 +4111,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-browser-driver.mjs",
@@ -4393,7 +4136,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-browser-driver.test.mjs",
@@ -4418,7 +4161,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-browser-ready.mjs",
@@ -4443,7 +4186,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-contract.mjs",
@@ -4468,7 +4211,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-contract.test.mjs",
@@ -4493,7 +4236,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-filesystem.mjs",
@@ -4518,7 +4261,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-filesystem.test.mjs",
@@ -4543,7 +4286,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-node-check.mjs",
@@ -4570,7 +4313,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-programs.mjs",
@@ -4595,7 +4338,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-suite.mjs",
@@ -4622,7 +4365,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/tests/u11-worker-support.test.mjs",
@@ -4647,7 +4390,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/u6-check.mjs",
@@ -4660,7 +4403,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "packages/paludarium-wasm/tests/u7-mtime-snapshot.test.mjs",
@@ -4673,7 +4416,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "packages/paludarium-wasm/worker-support.mjs",
@@ -4697,7 +4440,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "rust-toolchain.toml",
@@ -4710,7 +4453,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/aidlc-checkpoint-regression.test.ts",
@@ -4723,7 +4466,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/aidlc-jj-source-regression.test.ts",
@@ -4736,7 +4479,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/build-wasm.sh",
@@ -4749,7 +4492,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/linux-dev.sh",
@@ -4762,7 +4505,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/repair-aidlc-checkpoints.ps1",
@@ -4775,7 +4518,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/u10-build-guests.sh",
@@ -4788,7 +4531,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/u10-run.py",
@@ -4801,7 +4544,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "scripts/u11-run.py",
@@ -4823,7 +4566,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/u5-coverage-native.py",
@@ -4836,7 +4579,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/u5-coverage.py",
@@ -4849,7 +4592,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/u5-native-observe.py",
@@ -4862,7 +4605,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/u5-runner-test.py",
@@ -4875,7 +4618,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/u6-coverage.py",
@@ -4888,7 +4631,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/u6-native-observe.py",
@@ -4901,7 +4644,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/u6-runner-test.py",
@@ -4914,7 +4657,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/u6-wasm-guests.py",
@@ -4927,7 +4670,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "scripts/wasm-native-guests.py",
@@ -4940,7 +4683,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "spikes/wasm-threads/package-lock.json",
@@ -4954,7 +4697,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
       "status": "OK"
     },
     {
@@ -4969,7 +4712,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
       "status": "OK"
     },
     {
@@ -4983,7 +4726,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/hello-c/hello.c",
@@ -4996,7 +4739,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/hello-rs/Cargo.lock",
@@ -5009,7 +4752,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/hello-rs/Cargo.toml",
@@ -5022,7 +4765,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/hello-rs/src/main.rs",
@@ -5035,7 +4778,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/UNDEFINED.md",
@@ -5048,7 +4791,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/alu.c",
@@ -5061,7 +4804,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/atomic.c",
@@ -5074,7 +4817,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/bt.c",
@@ -5087,7 +4830,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/cmptest.c",
@@ -5100,7 +4843,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/cond-cmov.c",
@@ -5113,7 +4856,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/cond-jcc.c",
@@ -5126,7 +4869,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/cond-set.c",
@@ -5139,7 +4882,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/incdec.c",
@@ -5152,7 +4895,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/insn.h",
@@ -5165,7 +4908,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/mov.c",
@@ -5178,7 +4921,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/muldiv.c",
@@ -5191,7 +4934,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/shift.c",
@@ -5204,7 +4947,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/sse.c",
@@ -5217,7 +4960,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/string.c",
@@ -5230,7 +4973,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/u2-bmi.c",
@@ -5243,7 +4986,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/u2-control.c",
@@ -5256,7 +4999,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/u2-frame.c",
@@ -5269,7 +5012,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/u2-integer.c",
@@ -5282,7 +5025,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/u2-pairs.c",
@@ -5295,7 +5038,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/u2-segment-atomic.c",
@@ -5308,7 +5051,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/insn/u2-string.c",
@@ -5321,7 +5064,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/.gitignore",
@@ -5334,7 +5077,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/COMPARISON.md",
@@ -5347,7 +5090,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/build.py",
@@ -5360,7 +5103,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/cases.json",
@@ -5373,7 +5116,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/comparison.py",
@@ -5386,7 +5129,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "tests/guests/u10/comparison_args.py",
@@ -5400,7 +5143,7 @@
         "NFR1",
         "NFR7"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
       "status": "OK"
     },
     {
@@ -5415,7 +5158,7 @@
         "NFR1",
         "NFR7"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
       "status": "OK"
     },
     {
@@ -5429,7 +5172,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/fixtures/app/filedep/package.json",
@@ -5442,7 +5185,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/fixtures/app/package.json",
@@ -5455,7 +5198,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/fixtures/outside/linked/package.json",
@@ -5468,7 +5211,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/metadata.py",
@@ -5481,7 +5224,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "tests/guests/u10/native.py",
@@ -5503,7 +5246,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/probe/.gitignore",
@@ -5516,7 +5259,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/probe/Cargo.lock",
@@ -5529,7 +5272,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/probe/Cargo.toml",
@@ -5542,7 +5285,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/probe/src/main.rs",
@@ -5555,7 +5298,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/runner-tests/test_comparison.py",
@@ -5568,7 +5311,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "tests/guests/u10/runner-tests/test_comparison_args.py",
@@ -5582,7 +5325,7 @@
         "NFR1",
         "NFR7"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence.",
       "status": "OK"
     },
     {
@@ -5596,7 +5339,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/runner-tests/test_metadata.py",
@@ -5609,7 +5352,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/runner-tests/test_policy.py",
@@ -5622,7 +5365,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/runner-tests/test_ready.py",
@@ -5635,7 +5378,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/runner-tests/test_runner.py",
@@ -5648,7 +5391,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/runner.py",
@@ -5661,7 +5404,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u10/source-lock.json",
@@ -5674,7 +5417,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "tests/guests/u11/fixture_metadata.py",
@@ -5696,7 +5439,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "tests/guests/u11/runner-tests/test_metadata.py",
@@ -5718,7 +5461,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "tests/guests/u11/runner-tests/test_settings.py",
@@ -5740,7 +5483,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "tests/guests/u11/runner-tests/test_supervisor.py",
@@ -5762,7 +5505,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "tests/guests/u11/settings.py",
@@ -5784,7 +5527,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "path": "tests/guests/u11/supervisor.py",
@@ -5806,7 +5549,7 @@
         "NFR8",
         "NFR9"
       ],
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u2/build.sh",
@@ -5819,7 +5562,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u2/classify.py",
@@ -5832,7 +5575,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u2/inventory.py",
@@ -5845,7 +5588,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u2/observe.c",
@@ -5858,7 +5601,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u2/trace.py",
@@ -5871,7 +5614,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u3/build.sh",
@@ -5884,7 +5627,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u3/cpuid-observe.c",
@@ -5897,7 +5640,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u3/fault-observe.c",
@@ -5910,7 +5653,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u3/generate.py",
@@ -5923,7 +5666,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u3/native-contract.rs",
@@ -5936,7 +5679,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u3/observe.c",
@@ -5949,7 +5692,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u3/runner.S",
@@ -5962,7 +5705,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u4/build.sh",
@@ -5975,7 +5718,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u4/memory.c",
@@ -5988,7 +5731,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u4/realtime-order-oracle.c",
@@ -6001,7 +5744,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u4/signals.c",
@@ -6014,7 +5757,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u4/stop-continue-oracle.c",
@@ -6027,7 +5770,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u4/time.c",
@@ -6040,7 +5783,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u4/write-restart-oracle.c",
@@ -6053,7 +5796,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u5/COMPARISON.md",
@@ -6066,7 +5809,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u5/build.sh",
@@ -6079,7 +5822,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u5/threads.c",
@@ -6092,7 +5835,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u6/COMPARISON.md",
@@ -6105,7 +5848,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u6/build.sh",
@@ -6118,7 +5861,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u6/events.c",
@@ -6131,7 +5874,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u6/rust/.gitignore",
@@ -6144,7 +5887,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u6/rust/Cargo.lock",
@@ -6157,7 +5900,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u6/rust/Cargo.toml",
@@ -6170,7 +5913,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u6/rust/timer.rs",
@@ -6183,7 +5926,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u6/rust/unix.rs",
@@ -6196,7 +5939,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u7/build.sh",
@@ -6209,7 +5952,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u7/files.c",
@@ -6222,7 +5965,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u7/mtime.c",
@@ -6235,7 +5978,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u8/build.sh",
@@ -6248,7 +5991,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u8/cases.json",
@@ -6261,7 +6004,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u8/command.rs",
@@ -6274,7 +6017,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u8/observe.py",
@@ -6287,7 +6030,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u8/process.c",
@@ -6300,7 +6043,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u9/build.sh",
@@ -6313,7 +6056,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u9/host-pty.py",
@@ -6326,7 +6069,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u9/io.c",
@@ -6339,7 +6082,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     },
     {
       "id": "tests/guests/u9/oracle.py",
@@ -6352,7 +6095,7 @@
       ],
       "status": "OK",
       "target": "FR9.1, NFR1, NFR3, NFR8",
-      "notes": "Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
+      "notes": "a19bea35時点（2026-10-11〜14）の記録：Current signed329 input audit; bounded executions and workflow-only binding in current evidence."
     }
   ],
   "final_evidence": {
@@ -6364,19 +6107,19 @@
     "pack": "verification/current-pack-proof.json",
     "quality_ci": 38104676911,
     "old_failure": "verification/step21-dispose-ci-attempt1-failed",
-    "u9_direct_claim_change": ".github/workflows/u11-fuzz.yml; prior U9 manifest remains untouched; previous U9 completion and formal verification not yet reapproved after this change",
-    "old_stack_identity_limit": "Old binary unavailable; allocation identity remains inference.",
+    "u9_direct_claim_change": "a19bea35時点（2026-10-11〜14）の記録：.github/workflows/u11-fuzz.yml; prior U9 manifest remains untouched; previous U9 completion and formal verification not yet reapproved after this change",
+    "old_stack_identity_limit": "a19bea35時点（2026-10-11〜14）の記録：Old binary unavailable; allocation identity remains inference.",
     "concurrent_dispose": "verification/step22-concurrent-dispose-proof.json"
   },
   "current_verification": {
-    "large_filesystem_disposal": "verified: seven new Rust boundaries and actual wasm C12",
-    "guest_four_environments": "verified current same module/oracle/guest 14 exact case keys per actual environment; signed execution arrays checked separately from JSON object key order",
-    "javascript_coverage": "verified defined five files426/455=93.626%; all measured, unchanged denominator method",
-    "u5_u6_differential": "verified: U5 43/U6 84, zero failed",
-    "pack": "verified: fresh CI module, npm12.2 dry-run10files/onewasm, not published",
-    "memory_check": "limited reuse seven saved601s results with unchanged Rust/dependencies/compiler/binary/settings; not fresh fuzz",
-    "symbolized_diagnostic": "verified: diagnostic existing suppression12/552, no new suppression, same binary as quality syscall; quality run reported no suppression counts",
-    "quality_reuse": "source/compiler/lock/config unchanged quality individual jobs explicitly bound; seven fuzz results are new executions",
-    "concurrent_dispose": "verified actual wasm normal/68MiB/active rejection and retry; two-file signed bridge"
+    "large_filesystem_disposal": "a19bea35時点（2026-10-11〜14）の記録：verified: seven new Rust boundaries and actual wasm C12",
+    "guest_four_environments": "a19bea35時点（2026-10-11〜14）の記録：verified current same module/oracle/guest 14 exact case keys per actual environment; signed execution arrays checked separately from JSON object key order",
+    "javascript_coverage": "a19bea35時点（2026-10-11〜14）の記録：verified defined five files426/455=93.626%; all measured, unchanged denominator method",
+    "u5_u6_differential": "a19bea35時点（2026-10-11〜14）の記録：verified: U5 43/U6 84, zero failed",
+    "pack": "a19bea35時点（2026-10-11〜14）の記録：verified: fresh CI module, npm12.2 dry-run10files/onewasm, not published",
+    "memory_check": "a19bea35時点（2026-10-11〜14）の記録：limited reuse seven saved601s results with unchanged Rust/dependencies/compiler/binary/settings; not fresh fuzz",
+    "symbolized_diagnostic": "a19bea35時点（2026-10-11〜14）の記録：verified: diagnostic existing suppression12/552, no new suppression, same binary as quality syscall; quality run reported no suppression counts",
+    "quality_reuse": "a19bea35時点（2026-10-11〜14）の記録：source/compiler/lock/config unchanged quality individual jobs explicitly bound; seven fuzz results are new executions",
+    "concurrent_dispose": "a19bea35時点（2026-10-11〜14）の記録：verified actual wasm normal/68MiB/active rejection and retry; two-file signed bridge"
   }
 }

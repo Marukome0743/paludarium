@@ -2,17 +2,65 @@
 
 ## Summary
 
-- Builds: Step13〜15。U12が担当するファイルが、Steps11〜12の修正を含むBuild and Testの版（head e4f84768）から変わっていないことを確かめ、今の正式確認コマンドで確かめ直す。checkpointでの人のRequest Changesにより、レビューのMinor（code-summary.mdが古いまま）をStep14で直し、その再レビューの新しいMinor 2件（履歴の節の下に残る「現行」の見出し、末尾の括弧書きのかかる範囲）を、2回目のRequest ChangesによりStep15で直す。製品・workflow・source-manifest.json・traceability.jsonは変えない。
-- Touches: この計画と手順書のStep13〜15の節、code-summary.mdの冒頭の新しい節と、既存の見出し2つ・文1つへの履歴の表示だけ。
-- Tests: 新しいテスト・CIの実行はない。U12のsource-manifestの全ファイルがe4f84768と同じことを読み取りで確かめ、独立再レビューと、今の正式確認コマンド（U11の `u11_candidate_v2.py`、hash付き）でのcheckpointを行う。
+- Builds: Step 19。Step18の再レビュー（review-09、READY、R-18はFixed）の新しいMinor 2件を、U12の記録で直す：traceability.jsonの15行のnotesの末尾の注記で、同じ括弧の中に「code-summary.mdの先頭の「現在の状態」節」が2回出てくること、前回（Step18）のSummaryの「今の見出しは「Step16〜17」」が、Step18の後の今の見出しと合わないこと。あわせて、Stepを足すたびに見出しが変わって参照がずれないよう、code-summary.mdの先頭の節の見出しから「Step16〜…」を外して「現在の状態（2026-10-19 JST）」にする。製品・CIは変えない。
+- Touches: U12の記録だけ（traceability.json、code-summary.mdの先頭の節、unit-test-instructions.mdの先頭の見出しとこの計画の前回のSummary（計画のときに直した））。製品・CI・workflow・source-manifest.json・ほかのUnitの記録は変えない。
+- Tests: 新しい試験・CIの実行はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
 
-## 今回の計画：Step13〜15（Build and TestのLoop-back 1：変更がないことの再確認と、要約の更新）
+## 今回の計画：Step19（再レビューのMinor 2件を記録で直す）
+
+2026-10-19 JST。Step18の再レビュー（review-09、READY）の新しいMinor 2件について、checkpointで人がRequest Changesを選んだ（人の方針は「Minorもその場ですべて直す」）。
+
+- [x] Step 19 — **再レビューのMinor 2件を記録で直す**。(1) traceability.jsonの15行のnotesの末尾の注記「…今の正式な確認コマンドはentry-f。code-summary.mdの先頭の「現在の状態」節）」の、重なった最後の「code-summary.mdの先頭の「現在の状態」節」を消して「…今の正式な確認コマンドはentry-f）」にする。行ごとにJSONとして直し、直す前の版（27d05de1）と比べて、notesと `history_note` のほかは変わっていないことを確かめる。(2) 前回（Step18）のSummaryの「今の見出しは「Step16〜17」」に、Step18の時点の見出しである注記を足す（計画のときに直した）。(3) code-summary.mdの先頭の節の見出しを「現在の状態（2026-10-19 JST）」にし、Step19で直したことを1項目足す。手順書の先頭の見出しは「今回Step16〜19」にした（計画のときに直した）。(4) 直した後、U12の3つの記録と計画で「…」節の参照がどれも今ある見出し（または「作成時の見出しは…」にある名前）を指していることを確かめる。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む（NFR3、NFR8）。
+
+## 前回のSummary（Step18）
+
+- Builds: Step 18。Step17の再レビュー（review-08、READY、R-14〜R-17はFixed）の新しいMinor 1件を直す：traceability.jsonの `history_note` と15行のnotesが、code-summary.mdの先頭の節を古い見出し名「現在の状態（2026-10-19 JST、Step16）」で指している（今の見出しは「Step16〜17」。2026-10-19 注記：Step18を書いた時点の見出し。その後Step19で「現在の状態（2026-10-19 JST）」にした）。見出しが変わるたびにずれないよう、参照は日付とStepを含めない「現在の状態」節にする。製品・CIは変えない。
+- Touches: U12の記録だけ（traceability.json、code-summary.mdの先頭の節、unit-test-instructions.mdの先頭の見出し（計画のときに直した））。製品・CI・workflow・source-manifest.json・ほかのUnitの記録は変えない。
+- Tests: 新しい試験・CIの実行はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 前回の計画：Step18（先頭の節への参照の見出し名を直す）
+
+2026-10-19 JST。Step17の再レビュー（review-08、READY）の新しいMinor 1件について、checkpointで人がRequest Changesを選んだ（人の方針は「Minorもその場ですべて直す」）。
+
+- [x] Step 18 — **先頭の節への参照の見出し名を直す**。(1) code-summary.mdの先頭の節の見出しを「現在の状態（2026-10-19 JST、Step16〜18）」にし、Step18で直したことを1項目足す。(2) traceability.jsonの `history_note` と15行のnotesの「code-summary.mdの「現在の状態（2026-10-19 JST、Step16）」節」を、見出しの日付とStepに依らない「code-summary.mdの先頭の「現在の状態」節」に直す。traceability.jsonは行ごとにJSONとして直し、直す前の版（27d05de1）と比べて、notesと `history_note` のほかは変わっていないことを確かめる。(3) 直した後、U12の3つの記録で「現在の状態（」を含む参照を探し、どれも今の見出しか「先頭の「現在の状態」節」になっていることを確かめる。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む（NFR3、NFR8）。
+
+## 前回のSummary（Step17）
+
+- Builds: Step 17。Step16の再レビュー（review-07、READY）の新しいMinor 4件を、U12の記録で直す：code-summary.mdの `tests/guests/u12/` のmanifestのファイル数（7→6）、traceability.jsonのFR6.3のnotesで「Step10時点」の印が2026-10-17のSteps11〜12の文にまでかかって見えること、15行のnotesと1か所の「U12はその後レビューを受けて承認された」に根拠が無いこと、command SHA-256 `00f5c883…` の出どころが書かれていないこと。製品・CIは変えない。
+- Touches: U12の記録だけ（code-summary.md、traceability.json、unit-test-instructions.mdの先頭の見出し（計画のときに直した））。製品・CI・workflow・source-manifest.json・ほかのUnitの記録は変えない。
+- Tests: 新しい試験・CIの実行はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 前回の計画：Step17（再レビューの新しいMinorを記録で直す）
+
+2026-10-19 JST。Step16の再レビュー（review-07、READY、R-07〜R-13はFixed）の新しいMinor 4件について、checkpointで人がRequest Changesを選んだ（人の方針は「Minorもその場ですべて直す」）。
+
+- [x] Step 17 — **再レビューの新しいMinorを記録で直す**。(1) code-summary.mdの先頭の節の「`tests/guests/u12/` のmanifestの7ファイル」を6ファイルに直す（`host_comparison.py`・`oracle.py`・`settings.py`・`runner-tests/` の3つ。16ファイル＝製品10＋`tests/guests/u12/` 6）。(2) traceability.jsonのFR6.3のnotesで、「現行Steps11〜12（Build and Testからの差し戻し）」の文の前に「2026-10-17（Steps11〜12）の記録：」を足し、先頭の「Step10時点…の記録：」がその前の文だけにかかると分かるようにする。(3) 15行のnotesの末尾の注記と、code-summary.mdの「履歴：検証済みと残件」の注記の「U12はその後レビューを受けて承認された」を、記録で確かめられる言い方「その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり」に直す。(4) code-summary.mdの先頭の節のcommand SHA-256に、出どころ（checkpointの記録 `aidlc/spaces/default/intents/261004-rust-blink-port/.aidlc-construction-checkpoints/u12-macos-host/unit.json` の `command_sha256`。entry-fのコマンド行のSHA-256で、checkpointが検証のたびに計算して記録する）を書き、先頭の節の見出しを「Step16〜17」にし、Step17で直したことを1項目足す。traceability.jsonは行ごとにJSONとして直し、直す前の版（27d05de1）と比べて、notesと `history_note` のほかは変わっていないことを確かめる。直した後、直した文の周りと先頭の節をもう一度読む。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む（NFR3、NFR8、FR6.3）。
+
+## 前回のSummary（Step16）
+
+- Builds: Step 16。27d05de1（U15 Steps22〜28）の後のU12の確かめ直し（review-06、NOT-READY、Major 3・Minor 2、前回のMinor R-07・R-08が残る）の指摘をすべて、U12の記録で一度に直す：今の正式な確認コマンド（U15のentry-f・binding-e06f）、e4f84768から変わったmanifestのファイル（workflow 6つと両lock）、traceability.jsonの最上位の古い値、27d05de1のu12-qualityの成功、履歴の節のactionlintの行番号、計画のTouchesの書き漏れ（R-07）、Step10時点の節の見出し（R-08）。レビューの前に記録の全行を読み直す。製品・CIは変えない。
+- Touches: U12の記録だけ（code-summary.md、traceability.json、unit-test-instructions.md・この計画（計画のときに直した））。製品・CI・workflow・source-manifest.json・ほかのUnitの記録は変えない。
+- Tests: 新しい試験・CIの実行はない。U12のmanifestのファイルのうち製品（crates/・scripts/・tests/guests/など）がe4f84768と同じことを読み取りで確かめ、正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 前回の計画：Step16（27d05de1の後の確かめ直しの指摘を記録で直す）
+
+2026-10-19 JST。U15のStep22〜28（署名head 27d05de1、鎖 e3c29d1d → 8b415a7c → 8360be2e → 27d05de1、すべてVerified）で、U12のsource-manifestにある `.github/workflows/ci.yml`・`u11-acceptance.yml`・`u11-fuzz.yml`・`u12-fuzz.yml`・`u12-native-first.yml`・`u12-quality.yml` が変わった（8360be2e）。`Cargo.lock`・`fuzz/Cargo.lock` もbb197e04（paludariumのcrateの版0.0.0→0.1.0だけ）で変わった。U12の製品（`crates/paludarium-host` の `lib.rs`・`macos.rs`・`u12_tests.rs`・`Cargo.toml`、`crates/paludarium-harness/tests/diff_u12.rs`、`scripts/u12-run.py`、`tests/guests/u12/`、`tests/guests/u10/source-lock.json`、`rust-toolchain.toml`、`scripts/build-wasm.sh`）と `u10-native-diagnostic.yml` はe4f84768から変わっていない（`git diff --name-only e4f84768 27d05de1 -- <manifestの全ファイル>` を読み取りで確かめた）。27d05de1のu12-quality（run 39149189719）は、attempt 1で `u12-fuzz / fuzz (vfs_paths)` だけがapt.llvm.orgにつながらず失敗し、人の承認でそのjobだけをやり直したattempt 2で成功した。`macos-host` jobは成功した（U15の `ci-27d05de1/ci-jobs-27d05de1.json`）。正式な確認コマンドはU15の `entry-e3c29d1d/entry-f.py`・`binding-e06f.json` に替わった（2026-10-19に人が採用、intent直下の `verification-command.txt` の1行目）。確かめ直しのレビュー（review-06、NOT-READY）の後、checkpointで人がRequest Changesを選んだ。人の方針は「Minorもその場ですべて直す」。
+
+- [x] Step 16 — **確かめ直しの指摘を記録で一度に直す**。(1) R-09（Major）：code-summary.mdの先頭に「現在の状態（2026-10-19 JST、Step16）」節を足し、今の正式な確認コマンド（entry-f・binding-e06f、command SHA-256 `00f5c8832e04f7d27b30c6b445fdc30e0e5d233dfa5452e02c2c99368a08a159`。entry-fは `aidlc/` の外の作業コピーのbytesだけを比べる）を書く。「現行Step13〜15」節を「履歴：Step13〜15（2026-10-18）（作成時の見出しは「現行Step13〜15」）」にし、(c)(d)の `u11_candidate_v2.py` とそのexit 0は2026-10-18の時点の正式コマンドとその結果で、今は使わないことを注記する。(2) R-10（Major）：同じ節に、e4f84768から27d05de1までに変わったmanifestのファイル（上のworkflow 6つと両lock、変わった中身とcommit）と、変わっていないU12の製品のファイルを書き、「履歴：Step13〜15」の(a)にその時点の記述である注記を足す。(3) R-11（Major）：traceability.jsonの最上位に `history_note` を足し、`source_sha`（a275bd3d）・`ci_run`（38125760476）・`ci_status`・`current_verification`（採用されなかった `verify-current-u12-macos-host.py`、`formal_executed: false`）はStep10時点の値で、今のheadは27d05de1、今の正式な確認コマンドはentry-fであることを書く。coverageのnotesの「formal verification and independent review pending」「現行Steps11〜12」「CIでの実行は未実施」を含む文には、その時点の記述であることと、その後どうなったか（U12は2026-10-18に承認され、u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功）を先頭に足す。status・id・targetsは変えない。行ごとにJSONとして直し、直す前の版（27d05de1）と比べて変わった行を確かめる。(4) R-12（Minor）：同じ節に、27d05de1のu12-quality run 39149189719（attempt 2で成功、attempt 1の失敗はapt.llvm.orgへの接続、人の承認でそのjobだけやり直した、`macos-host` job成功）を書く。(5) R-13（Minor）：「履歴：Steps11〜12」節のactionlintの行番号と指摘は、その時点（2026-10-17）のファイルについてのもので、`u12-quality.yml` は8360be2eで変わったので今の行番号とは合わないかもしれない、と注記する（actionlintは再実行しない）。(6) R-08（Minor）：「実装」「差分検証」「検証済みと残件」「梱包と範囲」の見出しに「履歴：…（Step10時点）」を付ける。(7) R-07（Minor）：この計画のSummaryのTouchesに書き漏れが無いようにし、前回のSummaryのTouchesに注記を足した（計画のときに直した）。(8) 全行の読み直し：上の直しの後、U12のcode-summary.md・unit-test-instructions.md・traceability.jsonを最初から最後まで読み、印の無い古い言い方（「現行」「今回」「現在」「未実行」「未検証」「未実施」「pending」、古いhead・run・確認コマンドを今のものとして書く文や欄）が残っていないことを確かめ、残っていればこのStepの中で同じ形で直して先頭の節に書く。製品・CI・workflow・source-manifest.json・ほかのUnitの記録は変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む（NFR3、NFR8、FR6.3、FR7.2、FR7.3）。
+
+## 前回のSummary（Step13〜15）
+
+- Builds: Step13〜15。U12が担当するファイルが、Steps11〜12の修正を含むBuild and Testの版（head e4f84768）から変わっていないことを確かめ、今の正式確認コマンドで確かめ直す。checkpointでの人のRequest Changesにより、レビューのMinor（code-summary.mdが古いまま）をStep14で直し、その再レビューの新しいMinor 2件（履歴の節の下に残る「現行」の見出し、末尾の括弧書きのかかる範囲）を、2回目のRequest ChangesによりStep15で直す。製品・workflow・source-manifest.json・traceability.jsonは変えない。
+- Touches: この計画と手順書のStep13〜15の節、code-summary.mdの冒頭の新しい節と、既存の見出し2つ・文1つへの履歴の表示だけ。（2026-10-19 注記：Step15では、このほかに冒頭の節の見出しの改名（13〜14から13〜15）、項目(e)の追加、最後の一文の拡張も行った。Step15の本文には書いてあった。review-06のR-07）
+- Tests: 新しいテスト・CIの実行はない。U12のsource-manifestの全ファイルがe4f84768と同じことを読み取りで確かめ、独立再レビューと、今の正式確認コマンド（U11の `u11_candidate_v2.py`、hash付き）でのcheckpointを行う。（2026-10-19 注記：2026-10-18の時点の記述。今の正式な確認コマンドはentry-fで、manifestのworkflow 6つと両lockはその後変わった。上の「前回の計画：Step16」節（書いたときの見出しは「今回の計画：Step16」）のとおり）
+
+## 前回の計画：Step13〜15（Build and TestのLoop-back 1：変更がないことの再確認と、要約の更新、2026-10-18）
 
 2026-10-18。U14の整数SSEのJIT（署名12d6a2f6・1ceae86c）、U11のSafariの待ち時間の修正（2b8723ab・57a8c96f）、U1・U2・U11の正式確認の更新の途中で、記録の誤り（Code Generationの段階全体へのRequest Changes）のため、各Unitを順に確かめ直している。これらで変わったのは、U14のJIT・wasm・テスト、U11の `packages/paludarium-wasm/tests/u11-browser-driver.mjs`・`.test.mjs`、`mise.toml` で、U12のsource-manifestのファイルは含まれない。U12のmacOSの品質（u12-quality）は、1ceae86c（run 39028303336）・2b8723ab（39044793102）・57a8c96f（39073501121）でいずれも成功した。正式確認コマンドは、人の承認でU11の `verification/loopback1-next/u11_candidate_v2.py`（`--entry-sha256`・`--binding-sha256` 付き）になっている。
 
-- [ ] Step 13 — U12のsource-manifestの全ファイルについて、作業コピーが e4f84768 と同じであることを読み取りで確かめる（`git diff --quiet e4f847686c8dccb1bc899de88c63a4b3b2a8dd1d -- <paths>`）。違いがあれば止めて報告する。記録は変えない。独立再レビューのあと、今の正式確認コマンドでcheckpointを検証し、人の承認を受ける（NFR3、NFR8）。
-- [ ] Step 14 — code-summary.mdを今に合わせる（レビューのMinor、人のRequest Changes）。冒頭に「現行Step13〜14」節を足し、(a) Step13のgit diffがexit 0だったこと、(b) Steps11〜12の「未確認」はその時点の記述で、その後u12-qualityが1ceae86c（run 39028303336）・2b8723ab（39044793102）・57a8c96f（39073501121、差分テストのjobだけ再実行した2回目で成功）で成功したこと、(c) 末尾の節の `verify-current-u12-macos-host.py` は採用前の候補で、今の正式確認コマンドはU11の `u11_candidate_v2.py`（hash付き）であること、(d) 今の正式確認コマンドでのcheckpointの検証がexit 0だったこと、を書く。既存の「現行Steps11〜12」の見出しを「履歴：Steps11〜12（作成時の見出しは「現行Steps11〜12」）」に変え、末尾の最終candidateの文の前に「（履歴：採用前の候補。現行の正式コマンドは先頭の「現行Step13〜14」節を参照）」を足す。他の本文は変えない。そのあと正式sensorを実行し、独立再レビューを受け、今の正式確認コマンドでcheckpointを検証し、人の承認を受ける（NFR3、NFR8）。
-- [ ] Step 15 — Step14の再レビューの新しいMinor 2件を直す（人の2回目のRequest Changes）。(1) code-summary.mdの「## 現行検証と再実行」の見出しを「## 履歴：検証と再実行（作成時の見出しは「現行検証と再実行」）」に変える。(2) 末尾の括弧書きを「（履歴：この段落はStep10時点の記述で、次に挙げる `verify-current-u12-macos-host.py` は採用前の候補である。現行の正式コマンドは先頭の「現行Step13〜15」節を参照）」に変える。(3) 冒頭の節の見出しを「現行Step13〜15」に変え、最後の「下の節は、それぞれの時点の履歴として読む。」を「下の節は、それぞれの時点の履歴として読む。下の節の本文にある「現行」は、その節を書いた時点の現行を指す。」に変え、Step15で直したことを1項目足す。他の本文は変えない。そのあと正式sensorを実行し、独立再レビューを受け、今の正式確認コマンドでcheckpointを検証し、人の承認を受ける（NFR3、NFR8）。
+- [x] Step 13 — U12のsource-manifestの全ファイルについて、作業コピーが e4f84768 と同じであることを読み取りで確かめる（`git diff --quiet e4f847686c8dccb1bc899de88c63a4b3b2a8dd1d -- <paths>`）。違いがあれば止めて報告する。記録は変えない。独立再レビューのあと、今の正式確認コマンドでcheckpointを検証し、人の承認を受ける（NFR3、NFR8）。
+- [x] Step 14 — code-summary.mdを今に合わせる（レビューのMinor、人のRequest Changes）。冒頭に「現行Step13〜14」節を足し、(a) Step13のgit diffがexit 0だったこと、(b) Steps11〜12の「未確認」はその時点の記述で、その後u12-qualityが1ceae86c（run 39028303336）・2b8723ab（39044793102）・57a8c96f（39073501121、差分テストのjobだけ再実行した2回目で成功）で成功したこと、(c) 末尾の節の `verify-current-u12-macos-host.py` は採用前の候補で、今の正式確認コマンドはU11の `u11_candidate_v2.py`（hash付き）であること、(d) 今の正式確認コマンドでのcheckpointの検証がexit 0だったこと、を書く。既存の「現行Steps11〜12」の見出しを「履歴：Steps11〜12（作成時の見出しは「現行Steps11〜12」）」に変え、末尾の最終candidateの文の前に「（履歴：採用前の候補。現行の正式コマンドは先頭の「現行Step13〜14」節を参照）」を足す。他の本文は変えない。そのあと正式sensorを実行し、独立再レビューを受け、今の正式確認コマンドでcheckpointを検証し、人の承認を受ける（NFR3、NFR8）。
+- [x] Step 15 — Step14の再レビューの新しいMinor 2件を直す（人の2回目のRequest Changes）。(1) code-summary.mdの「## 現行検証と再実行」の見出しを「## 履歴：検証と再実行（作成時の見出しは「現行検証と再実行」）」に変える。(2) 末尾の括弧書きを「（履歴：この段落はStep10時点の記述で、次に挙げる `verify-current-u12-macos-host.py` は採用前の候補である。現行の正式コマンドは先頭の「現行Step13〜15」節を参照）」に変える。(3) 冒頭の節の見出しを「現行Step13〜15」に変え、最後の「下の節は、それぞれの時点の履歴として読む。」を「下の節は、それぞれの時点の履歴として読む。下の節の本文にある「現行」は、その節を書いた時点の現行を指す。」に変え、Step15で直したことを1項目足す。他の本文は変えない。そのあと正式sensorを実行し、独立再レビューを受け、今の正式確認コマンドでcheckpointを検証し、人の承認を受ける（NFR3、NFR8）。
 
 ## 前回のSummary（Steps11〜12）
 
@@ -20,14 +68,14 @@
 - Touches: `.github/workflows/u12-native-first.yml`（49行目）と `.github/workflows/u12-quality.yml`（workflowのenv）だけ。製品source、試験、スクリプト、source-manifest.json（2ファイルは記載済み）、他Unitの記録は変えない。push・CI起動はこの段階では行わない（Build and Testで人の承認を得てから）。
 - Tests: 新規テストなし。actionlint（shellcheck 0.11.0を明示）で2ファイルを検査する。CIでの実行はBuild and Testで承認後に行う。正式sensor、独立再レビュー、正式コマンドでのcheckpoint再検証を行う。
 
-## 今回の差し戻し対応：Steps11〜12（workflowの修正）
+## 前々回の差し戻し対応：Steps11〜12（workflowの修正、2026-10-17）
 
 Build and Testの準備中に、人が次を指示した：「fork の branch codex/u15-macos-native（commit ce0b746）で、u12-native-first.yml のゲストビルドを --advisory-policy u15-fixed-aube-zip9-name に揃えました。同じ問題は u11-acceptance.yml・u10-native-diagnostic.yml（policy の指定なし）と u12-quality.yml（PALUDARIUM_TEST_NODE なし）にもあります。…手元への反映は、影響する Unit（U9〜U12）の再レビューを含めて正規の手順で進め、push と CI の前には承認を求めてください。」根拠はU15の `verification/u12-quality-38994430947/README.md`（run 38994430947：u12-native-first.yml 49行目のゲストビルドで aube の `cargo deny` が exit 1、u12-quality.yml に `PALUDARIUM_TEST_NODE` がなくJITの実Wasm試験9件とdiff_u14がpanic、そのため `macos-host` jobはskipped）。u11-acceptance.yml・u10-native-diagnostic.yml・ci.ymlはU9（Steps77〜79）で直し、承認済み。
 
-- [ ] Step 11 — workflowの修正（FR6.3、FR7.2、FR7.3、NFR3）。(1) `.github/workflows/u12-native-first.yml` 49行目の `bash scripts/u10-build-guests.sh target/guests/u10 2>&1 | tee target/u12-native-first/build.log` を、ce0b746と同じ `python tests/guests/u10/build.py target/guests/u10 --advisory-policy u15-fixed-aube-zip9-name 2>&1 | tee target/u12-native-first/build.log` に置き換える（このjobには setup-python 3.15.0 がすでにある）。(2) `.github/workflows/u12-quality.yml` のworkflowの `env` に、`u14-quality.yml` 21行目と同じ `PALUDARIUM_TEST_NODE: node` を1行足す。他の行・閾値・SHA固定・権限は変えない。
-- [ ] Step 12 — 確認と記録。actionlintで2ファイルを検査する。code-summary.mdの冒頭に「現行Steps11〜12」節を加え、変更した2行と根拠、確認の結果、CIでの実行はまだで（Build and Testで人の承認後に行う）未確認であることを書く。traceability.jsonは分類・targetを変えず、FR6.3のnotesに今回の修正の参照を足す。正式sensorを実行した後は全書込を止め、独立再レビュー、正式コマンドでのcheckpoint再検証に進む。
+- [x] Step 11 — workflowの修正（FR6.3、FR7.2、FR7.3、NFR3）。(1) `.github/workflows/u12-native-first.yml` 49行目の `bash scripts/u10-build-guests.sh target/guests/u10 2>&1 | tee target/u12-native-first/build.log` を、ce0b746と同じ `python tests/guests/u10/build.py target/guests/u10 --advisory-policy u15-fixed-aube-zip9-name 2>&1 | tee target/u12-native-first/build.log` に置き換える（このjobには setup-python 3.15.0 がすでにある）。(2) `.github/workflows/u12-quality.yml` のworkflowの `env` に、`u14-quality.yml` 21行目と同じ `PALUDARIUM_TEST_NODE: node` を1行足す。他の行・閾値・SHA固定・権限は変えない。
+- [x] Step 12 — 確認と記録。actionlintで2ファイルを検査する。code-summary.mdの冒頭に「現行Steps11〜12」節を加え、変更した2行と根拠、確認の結果、CIでの実行はまだで（Build and Testで人の承認後に行う）未確認であることを書く。traceability.jsonは分類・targetを変えず、FR6.3のnotesに今回の修正の参照を足す。正式sensorを実行した後は全書込を止め、独立再レビュー、正式コマンドでのcheckpoint再検証に進む。
 
-## Scope and Current Evidence
+## 履歴：Scope and Current Evidence（Steps1〜10の計画時の記述。作成時の見出しは「Scope and Current Evidence」）
 
 根拠：unit-of-work.md U12、story-map FR5.1／FR6.3／FR7.2／FR7.3／FR9.1、contract-summary C2、requirements NFR1〜4・NFR7〜9。ユーザーストーリー工程は省略されているためFRを各Stepへ対応させる。
 
@@ -35,31 +83,31 @@ Build and Testの準備中に、人が次を指示した：「fork の branch co
 
 既存Host traitと公開TerminalInfo constructor、固定probe/aube・CDLA限定条件、VFSの既定隔離とC10を保持する。Windows固有機能・JIT・公開は後続Unitへ残す。不要なHost全面書換えはしない。
 
-## Implementation Steps
+## 履歴：Implementation Steps（Steps1〜7）
 
 更新後の実行順：Step1で最新tool統一、Step8のfresh Linux期待値取得をStep2の期待先へ組み込み、Steps2〜6でmacOSを実装検査する。Steps8〜9の最終source検証を完了してStep7／10の正式sensor・レビューへ進む。Step7で検証前のレビューは行わない。
 
 Step1の具体的更新：Rust製品pin・固定guest source-lockのtoolchain・scripts/build-wasm.sh・通常ci.ymlと呼び出すu11-acceptance.yml／u11-fuzz.yml／u10-native-diagnostic.yml、新U12診断CIをnightly-2026-10-11へ統一する。固定guest revision・lock・license条件は保持。公式確認済みPython3.15.0／coverage7.16.2／llvm-cov0.9.1／deny0.20.2／fuzz0.13.2と最新Actions SHAを使用し実cargo／RUSTC／RUSTDOCを保存。歴史用診断workflowと旧検証原本は更新せず保持する。
 
-- [ ] Step 1 — 現行source・両lock・Rust pin・Host/C2接続と既存U4/U5/U7/U9テストを棚卸しする。最新Rust・Python・coverage・依存監査・Actions版を公式配布情報で確認し、使用版／実体／更新理由を記録する。必要な更新はU12に必要な範囲だけ設定とlockへ反映し、広い更新が必要なら具体化して人へ提示する。（FR5.1、NFR8、NFR9）
-- [ ] Step 2 — 実行前runner readinessを既存U10 self-testとHost限定テスト入口で確認し、U12専用入口・CI土台を作る。Linux x86-64で固定guestをビルドし、ネットワーク隔離されたfresh nativeの14ケース以上を先に観測する。guest hash、fixture0644、argv／env／stdout／stderr／exit／状態／時間を保存し、macOS比較の期待結果を固定する。（FR6.3、FR7.2、FR7.3、FR9.1）
-- [ ] Step 3 — DarwinのPTY／非端末挙動を先に観測する。Linux guestが必要とする端末属性・サイズの対応を明示し、lib.rsのmacOS分岐と専用macos.rsへ最小接続を実装する。Darwin errno／termiosをそのままguestへ渡さず、host-ownedバッファのみ扱う。既存portable時計・待機・FSは保持し、再現した不足だけ最小修正する。（FR5.1、C2、NFR3、NFR4）
-- [ ] Step 4 — 実装後に内部層のU12限定テストを書く。portable時刻／thread／I/O境界7件、FS／errno／隔離境界7件、Darwin端末変換7件を最低数として、各名前・実行数・ignored0を保存する。実PTY統合7件で非端末、属性、正サイズ、ゼロサイズ、stderr別stream、エラー、資源解放を検査する。未知のflag対応は無言で捨てず根拠と範囲を示す。（FR5.1、NFR2〜4、NFR7）
-- [ ] Step 5 — 同じ未改変static-musl x86-64 guestをmacOS native emulatorで実行しfresh Linux14ケース以上と比較する。probe8項目＋all／node不在、aube4操作・#1645・元argvを保持する。default VFSとhost mountのfixture隔離、負mtime、symlink escape／flockのmacOS境界も検査する。各guest30秒・timeoutなし・cleanup・実exitを要求し、macOS上のLinux ELF直接実行やRosettaをnative oracleに代用しない。（FR6.3、FR7.2、FR7.3、NFR1、NFR4、NFR7）
-- [ ] Step 6 — macOS実機CIでU12限定実行とcoverageを取得する。測定対象はHost native実行経路 lib.rs／clock.rs／threads.rs／native_fs.rs／fs.rs／新macos.rs（テスト専用・wasm専用は対象外を事前明記）、総実行可能行の80%以上を維持する。Python U12比較部品も80%以上。3OSの既存Host／U5／U7／U9回帰・fmt／Clippy／依存4監査をCIで確認する。共有Rust変更があればproduction wasm／Node／本物Safari回帰も同じsourceで確認し、ASanは依存・compiler・設定・binary一致で限定再利用、不一致対象は600秒再検証する。（NFR2、NFR3、NFR8、NFR9）
-- [ ] Step 7 — 全入力・両lock・実compiler・署名head・CI job／attempt・原本ログ／exit／before-after sourceを結合し、source-manifest・code-summary・traceabilityを作る。未検証／失敗／旧証拠を区別し、正式sensorと独立レビューへ渡す。新最終確認scriptは既存全検査を保持してU12を追加し、正式実行前にコマンドの承認を受ける。（FR9.1、NFR1〜9）
+- [x] Step 1 — 現行source・両lock・Rust pin・Host/C2接続と既存U4/U5/U7/U9テストを棚卸しする。最新Rust・Python・coverage・依存監査・Actions版を公式配布情報で確認し、使用版／実体／更新理由を記録する。必要な更新はU12に必要な範囲だけ設定とlockへ反映し、広い更新が必要なら具体化して人へ提示する。（FR5.1、NFR8、NFR9）
+- [x] Step 2 — 実行前runner readinessを既存U10 self-testとHost限定テスト入口で確認し、U12専用入口・CI土台を作る。Linux x86-64で固定guestをビルドし、ネットワーク隔離されたfresh nativeの14ケース以上を先に観測する。guest hash、fixture0644、argv／env／stdout／stderr／exit／状態／時間を保存し、macOS比較の期待結果を固定する。（FR6.3、FR7.2、FR7.3、FR9.1）
+- [x] Step 3 — DarwinのPTY／非端末挙動を先に観測する。Linux guestが必要とする端末属性・サイズの対応を明示し、lib.rsのmacOS分岐と専用macos.rsへ最小接続を実装する。Darwin errno／termiosをそのままguestへ渡さず、host-ownedバッファのみ扱う。既存portable時計・待機・FSは保持し、再現した不足だけ最小修正する。（FR5.1、C2、NFR3、NFR4）
+- [x] Step 4 — 実装後に内部層のU12限定テストを書く。portable時刻／thread／I/O境界7件、FS／errno／隔離境界7件、Darwin端末変換7件を最低数として、各名前・実行数・ignored0を保存する。実PTY統合7件で非端末、属性、正サイズ、ゼロサイズ、stderr別stream、エラー、資源解放を検査する。未知のflag対応は無言で捨てず根拠と範囲を示す。（FR5.1、NFR2〜4、NFR7）
+- [x] Step 5 — 同じ未改変static-musl x86-64 guestをmacOS native emulatorで実行しfresh Linux14ケース以上と比較する。probe8項目＋all／node不在、aube4操作・#1645・元argvを保持する。default VFSとhost mountのfixture隔離、負mtime、symlink escape／flockのmacOS境界も検査する。各guest30秒・timeoutなし・cleanup・実exitを要求し、macOS上のLinux ELF直接実行やRosettaをnative oracleに代用しない。（FR6.3、FR7.2、FR7.3、NFR1、NFR4、NFR7）
+- [x] Step 6 — macOS実機CIでU12限定実行とcoverageを取得する。測定対象はHost native実行経路 lib.rs／clock.rs／threads.rs／native_fs.rs／fs.rs／新macos.rs（テスト専用・wasm専用は対象外を事前明記）、総実行可能行の80%以上を維持する。Python U12比較部品も80%以上。3OSの既存Host／U5／U7／U9回帰・fmt／Clippy／依存4監査をCIで確認する。共有Rust変更があればproduction wasm／Node／本物Safari回帰も同じsourceで確認し、ASanは依存・compiler・設定・binary一致で限定再利用、不一致対象は600秒再検証する。（NFR2、NFR3、NFR8、NFR9）
+- [x] Step 7 — 全入力・両lock・実compiler・署名head・CI job／attempt・原本ログ／exit／before-after sourceを結合し、source-manifest・code-summary・traceabilityを作る。未検証／失敗／旧証拠を区別し、正式sensorと独立レビューへ渡す。新最終確認scriptは既存全検査を保持してU12を追加し、正式実行前にコマンドの承認を受ける。（FR9.1、NFR1〜9）
 
-## Test Configuration and Change Boundaries
+## 履歴：Test Configuration and Change Boundaries（Steps8〜10）
 
-- [ ] Step 8 — 更新compilerでfresh Linux期待値をguest動作実装前に取得し、最終署名sourceでLinux既存差分・workspace coverage80%以上・3OS品質とproduction wasmを再検証する。同一固定guest/moduleをNode／Chromium／Firefox／本物Safari各14ケース以上でfresh Linuxと比較する。C12・既存Rust／JS coverage80%・元argv・mask・分母を維持し、失敗と再実行attemptを保存する。（FR5.1、FR5.3、FR6.3、FR7.2、FR9.1、NFR1、NFR3、NFR9）
-- [ ] Step 9 — 同じ最終署名sourceと最新compilerで11対象cpu_u2／mmu_u2／decode／load_elf／mmu_ops／syscall_args／vfs_paths／kernel_threads_u5／kernel_futex_u5／kernel_events_u6／kernel_sockets_u6を各600秒ASan／LSan実行する。cpu最大4096・mmu最大4608・入力30秒・既存抑制原本とsymbolizer条件を維持し、依存／両lock／compiler／binary／設定／原本／実exit／開始終了を保存する。旧compilerの保存結果は今回の代用にしない。（NFR2、NFR3、NFR7、NFR9）
-- [ ] Step 10 — Step8〜9を含む全入力と署名head・CI全job／attemptを結合し、旧329入力とU11 baselineの厳密bridgeで旧全検査を保持する新canonicalを作る。正式sensor・独立レビューへ引渡し、新確認コマンドを人が承認した後に正式実行する。未検証・失敗・旧履歴を区別する。（FR9.1、NFR1〜9）
+- [x] Step 8 — 更新compilerでfresh Linux期待値をguest動作実装前に取得し、最終署名sourceでLinux既存差分・workspace coverage80%以上・3OS品質とproduction wasmを再検証する。同一固定guest/moduleをNode／Chromium／Firefox／本物Safari各14ケース以上でfresh Linuxと比較する。C12・既存Rust／JS coverage80%・元argv・mask・分母を維持し、失敗と再実行attemptを保存する。（FR5.1、FR5.3、FR6.3、FR7.2、FR9.1、NFR1、NFR3、NFR9）
+- [x] Step 9 — 同じ最終署名sourceと最新compilerで11対象cpu_u2／mmu_u2／decode／load_elf／mmu_ops／syscall_args／vfs_paths／kernel_threads_u5／kernel_futex_u5／kernel_events_u6／kernel_sockets_u6を各600秒ASan／LSan実行する。cpu最大4096・mmu最大4608・入力30秒・既存抑制原本とsymbolizer条件を維持し、依存／両lock／compiler／binary／設定／原本／実exit／開始終了を保存する。旧compilerの保存結果は今回の代用にしない。（NFR2、NFR3、NFR7、NFR9）
+- [x] Step 10 — Step8〜9を含む全入力と署名head・CI全job／attemptを結合し、旧329入力とU11 baselineの厳密bridgeで旧全検査を保持する新canonicalを作る。正式sensor・独立レビューへ引渡し、新確認コマンドを人が承認した後に正式実行する。未検証・失敗・旧履歴を区別する。（FR9.1、NFR1〜9）
 
 旧承認7手順は上記Steps1〜7の履歴として保持した。人の「更新と追加検証を承認」により、toolchain統一と追加Steps8〜10が現在の検査範囲となる。Step6の旧ASan条件再利用方針よりStep9の新11対象実行を優先し、compiler不一致を例外で隠さない。
 
 追加候補：crates/paludarium-host/src/macos.rs、src/u12_tests.rs、tests/u12_public_api.rs、tests/guests/u12/、scripts/u12-run.py、.github/scripts/u12-current-diagnostic.py、.github/workflows/u12-current-verification.yml。lib.rs／Cargo.toml／Cargo.lockは接続・必要なDarwin依存だけ。テストのfilter／coverage分母／deadlineは定義して固定し、skipや0件を成功扱いしない。既存のU11完成記録と全finished Unitは保持する。
 
-## Open Validation Limits
+## 履歴：Open Validation Limits（Steps1〜10の計画時の記述）
 
 Darwin端末flagとLinux guestの対応、既存native_fsのmacOS errno境界、実機の処理時間、Host限定80%の到達、CI push権限は未検証。再現結果が計画範囲を超える場合は原因・最小差分・追加検証を具体化して人へ返す。現時点では計画だけであり製品変更・テスト実行・pushを行っていない。
 

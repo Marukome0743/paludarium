@@ -8,9 +8,6 @@
       "path": ".github/workflows/nightly.yml"
     },
     {
-      "path": ".github/workflows/u2-production-sanitizers.yml"
-    },
-    {
       "path": ".gitignore"
     },
     {

@@ -43,7 +43,7 @@ CI（正式）：`.github/workflows/ci.yml` の各 job が `rust-toolchain.toml`
 
 1. 今の作業コピー（コミットしていない変更を含む）を jj でコミットする。大きすぎて取り込めない検証用の原本（1 MiB を超えるファイル）はコミットに含めない。
 2. フォークの新しいブランチ用の bookmark を作り、`jj git push --remote origin --bookmark <branch>` で署名付きで送る。**push と CI の起動の前に、人の承認を得る**（人の指示）。
-3. 送った head で次を実行する（どれも必須）：`ci.yml`（PR ゲート一式）、`u14-quality.yml`（JIT・U9 を含む全品質）、`u1-u14-source-bound.yml`、`u12-quality.yml`（macOS の `macos-host`）、`u13-quality.yml`（Windows）、`u14-wasm-acceptance.yml`（4 環境）、`u14-fuzz.yml`（13 対象×600 秒、Q3）、`release-check.yml`。速さの判定（FR8.3、Q3）は品質が成功した後に 1 回だけ `u14-cost-diagnostic.yml` の手順で行う。
+3. 送った head で次を実行する（どれも必須）：`ci.yml`（PR ゲート一式）、`u14-quality.yml`（JIT・U9 を含む全品質）、`u1-u14-source-bound.yml`、`u12-quality.yml`（macOS の `macos-host`）、`u13-quality.yml`（Windows）、`u14-wasm-acceptance.yml`（4 環境）、`u14-fuzz.yml`（13 対象×600 秒、Q3）、`release-check.yml`、`u11-safari-stability.yml`（Safari の 10 回、NFR7）。速さの判定（FR8.3、Q3）は `u14-quality.yml` の Node の job（「Frozen paired full-probe performance」）で 1 回だけ行う。（2026-10-19 注記：以前は `u14-cost-diagnostic.yml` の手順と書いていたが、このworkflowは U15 の Step23（8360be2e）で消えた。27d05de1 の判定は `u14-quality.yml` の run 39149187727 で測った）
 4. 失敗したら原本（run・job・ログ・artifact）を保存し、再試行で上書きしない。
 
 ## よくある問題

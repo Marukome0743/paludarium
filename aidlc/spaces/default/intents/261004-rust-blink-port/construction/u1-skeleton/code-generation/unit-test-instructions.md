@@ -1,6 +1,22 @@
 # 単体テストの手順（u1-skeleton）
 
-## 今回のStep73：残しているMinor R-27・R-28を記録で閉じる
+## 今回のStep74：確かめ直しの指摘を記録で直す
+
+記録だけを直すので、新しい試験はない。project rootで正式sensor 2件を実行する。
+
+```sh
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u1-skeleton/code-generation/code-summary.md
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u1-skeleton/code-generation/traceability.json
+```
+
+期待する結果：
+- required-sections は pass になる。
+- traceability は、前と同じ結果（statusとtargetを変えていない）になる。
+- checkpoint では、今の正式な確認コマンド（`verification-command.txt` の U15 `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`、人が2026-10-19に採用）を実行する。U1 の記録は `aidlc/` の中にあり、entry-f は `aidlc/` の中の bytes を比べない（`construction/u15-release/code-generation/verification/entry-e3c29d1d/README.md` の「binding-e06f」の節と entry-f の (3)）ため、exit 0 になる想定である。結果（exit と出力のフォルダ）は checkpoint の記録が持つ。
+
+## 履歴：Step73（作成時の見出しは「今回のStep73：残しているMinor R-27・R-28を記録で閉じる」）
+
+（この節の「今の正式な確認コマンド（entry-c.py）」は2026-10-18時点のもの。2026-10-19からは上の Step74 の節のとおり entry-f・binding-e06f。）
 
 記録だけを直すので、新しい試験はない。project rootで正式sensor 2件を実行する。
 

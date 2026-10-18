@@ -1,5 +1,9 @@
 # e3c29d1d を起点にした新しい確認コマンドの入口（Step 19〜20）
 
+## 2026-10-19 の注記（Step29）
+
+今の正式な確認コマンドは、版 f の `entry-f.py`＋`binding-e06f.json`（head 27d05de1、2026-10-19 に人が採用。intent 直下の `verification-command.txt` の 1 行目）です。下の「現行は版 c」「版 d は…まだ正式な確認コマンドではない」と、版の経緯の表の f の行の「採用の前」「本番の実行はまだ」は、それぞれ書いた時点の記述です。版 f の本番の実行は、下の「binding-e06f」節のとおり exit 0 でした。下の本文と、入口・binding・回帰のファイルは変えていません。
+
 承認済みの計画 Step 19〜20 と、承認済みの案 `../entry-e3c29d1d-proposal.md` のとおりに作りました。v1〜v4 の層は重ねていません。入口は v1〜v4・旧 chain を import も実行もせず、それらの bytes が変わっていないことだけを確かめます。
 
 **2026-10-19 追記（版 f）：独立レビュー 03（`independent-review-03.md`、READY、Minor 6）のあと、人の判断で版 f（`entry-f.py`＋`binding-e05f.json`）を作りました（下の「版 f」）。** 人の判断（原文）：「版 f で Minor 1（--no-replace-objects）と Minor 3（push 前の commit id に頼る回帰）を直してください。残りの Minor は次の更新で構いません。」版 f も採用の前で、版 e（`entry-e.py`・`binding-e05.json`・`test_entry_e.py`）は変えずに履歴として残します。
@@ -21,7 +25,20 @@
 | e（使わない、履歴） | `entry-e.py`・`binding-e05.json`・`test_entry_e.py`（31 件）・`commits-e3c29d1d.json` | 本番の実行はしていない | 独立レビュー 03 は READY（Minor 6）。人の判断で Minor 1・3 を版 f で直す |
 | **f（採用の前）** | `entry-f.py`・`binding-e05f.json`・`test_entry_f.py`（34 件） | 本番の実行はまだ（push の後の新しい head で行う） | — |
 
-## 版 f（独立レビュー 03 の Minor 1・3、2026-10-19、採用の前）
+## binding-e06f（head 27d05de1、2026-10-19、人が採用）
+
+- 入口は版 f（`entry-f.py`）のままで、binding だけを新しくした。binding-e05f までは上書きせずに残している。
+- commit の並び：e3c29d1d → 8b415a7c（記録）→ 8360be2e（製品 45 件と記録 42 件）→ 27d05de1（`u11-safari-stability.yml` に push で起動する条件を足しただけ）。4 つとも Verified。記録は `commits-27d05de1.json`。
+- 変わったファイル：aidlc/ の外が 45 件、aidlc/ の中が 766 件。
+- CI：head の 8 run がすべて成功した。記録は `../ci-27d05de1/`（`build_records.py` は GitHub から読み取るだけ）。
+  - 必須の 7 workflow に、U11 Safari stability（run 39143558642、10 回とも成功、やり直しは 0 回）を足した。その 12 job は、人の判断の原文を付けた新しい集合にしている。
+  - U12 current full quality（run 39149189719）は attempt 2。attempt 1 では `u12-fuzz / fuzz (vfs_paths)`（job 117739162319）だけが、apt.llvm.org に接続できずに落ちた。fuzz は走っていない。人の判断で、その job だけをやり直した。
+  - 8360be2e で動いた 5 run は履歴（`../ci-8360be2e-history/`）で、ここでは使わない。Step 27 の「CI 一式を 1 回だけ」とは違い、5 つは 2 回目の起動になった（人の判断）。
+- FR8.3：U14 current full quality（run 39149187727）の u11-node で p=1/1024、passed: true。
+- 本番の実行：`run-1792347449027149000-39214/` で exit 0（0.66 秒）。
+- 人が採用した（2026-10-19、Approve）。正式な確認コマンドの SHA-256 は 00f5c883…。entry-c と binding-e03 は履歴になった。
+
+## 版 f（独立レビュー 03 の Minor 1・3、2026-10-19、binding-e06f で採用。作成時の見出しは「採用の前」）
 
 | ファイル | SHA-256 |
 |---|---|

@@ -52,6 +52,22 @@ X. Other (please specify)
 
 [Answer]: A
 
+
+## Q5. [リリースエンジニア] 設計どおりに入れた後に見つかった食い違い
+
+CI の設計（Q1〜Q4 の A）は、U15 の Step22〜28 で入れた（8360be2e・27d05de1）。27d05de1 で CI 一式 8 run と Safari の 10 回の確認がすべて成功し、Build and Test は承認された（FR10.1 だけが公開前で Unverified、Accept failure）。読み直すと、設計と入れたものの間に次の食い違いがある。
+
+1. 夜間の fuzz が 2 回走る：`nightly.yml` が `u14-fuzz.yml` を直接呼び（`fuzz` の job）、さらに `u14-quality.yml` の中の `u13-fuzz` の job も同じ `u14-fuzz.yml` を呼ぶ（U15 の review-09 の指摘、`pending-minor-fixes.md` に記録済み）。
+2. 設計にない workflow：NFR7 の確認のために足した `u11-safari-stability.yml`（手動と、`codex/build-and-test` へのそのファイルの push で起動）が、「残す（20）」の一覧にない。push の起動条件は、GitHub の手動起動が fork の既定のブランチにある workflow しか起動できなかったため、人の判断で足したもので、作業ブランチの名前が入っている。
+
+どう扱いますか。
+
+A. この段階では設計の記録（`ci-config.md`・`quality-gates.md`）を今の形に合わせて書き直し、1・2 の直し（夜間の fuzz を 1 回にする、`u11-safari-stability.yml` を残す一覧に足し、作業ブランチの push の起動条件を外すか main に替える）は、Q1 の A のとおり次の製品の変更でまとめて行う。workflow は今は変えず、push も CI の起動もしない（推奨）
+B. 今すぐ workflow を直す。U15 の Code Generation に戻って直し、署名 push と CI 一式、新しい head の binding と採用をやり直す
+X. Other (please specify)
+
+[Answer]: A
+
 ## Consolidated Summary Confirmation
 
 Does this all look correct before I generate the artifact?
@@ -68,6 +84,14 @@ Does this all look correct before I generate the artifact?
 - Q1〜Q4 の回答と、CI の設計（`ci-config.md`・`quality-gates.md`）はそのままにする。製品と workflow は変わっていない。
 - 書き足すこと：今の正式な確認コマンドが U15 の新しい入口 `entry-e3c29d1d/entry-c.py` になったこと。新しい入口は、必須の 7 workflow を入口の中に固定していて、binding で減らせないこと。Q3 の A で残す workflow にこの 7 つはすべて入っているので、整理はそのままできる。ただし、この 7 つのどれかを消したり名前を変えたりするときは、入口の新しい版が要ること。
 - 境界の確認（`verification/phase-check-construction.md`）の判定は「未解決あり」のまま（FR10.1・NFR7）。
+
+（U15 の Step22〜30 と Build and Test のまとめ直しの後、2026-10-19 に見直した要約）
+
+- Q1〜Q4 の回答はそのまま。CI の設計は U15 の Step22〜28（8360be2e・27d05de1）で入れ終わり、27d05de1 で CI 一式 8 run と Safari の 10 回の確認がすべて成功した。`ci-config.md`・`quality-gates.md` を「設計」から「入れた後の今の形」に書き直す（head 27d05de1、必須チェックの job の名前は PR ゲート run 39143561947 と公開物の確認 run 39143562106 のとおり）。
+- 今の正式な確認コマンドは U15 の `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`（2026-10-19 に人が採用）。entry-c は履歴。
+- Q5 の A：夜間の fuzz が 2 回走ること（`nightly.yml` の `fuzz` と `u14-quality.yml` の `u13-fuzz`）と、`u11-safari-stability.yml` が残す一覧にないこと・作業ブランチの push の起動条件を持つことは、記録に書き、次の製品の変更でまとめて直す（`pending-minor-fixes.md` にも記録済み・追記する）。workflow は変えず、push も CI の起動もしない。
+- NFR7 は Build and Test で Met（10 回の確認は暖機のある PR の Safari の経路だけ、という注記つき）。
+- 境界の確認（`verification/phase-check-construction.md`）は、FR10.1（公開前、Unverified、Accept failure）が残るので「未解決あり」のまま。NFR7 の Not Met は解消したので、その記述を直す。
 
 - Looks correct
 - Request changes

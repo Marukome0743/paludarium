@@ -2,17 +2,53 @@
 
 ## Summary
 
+- Builds: Step19。Step18の再レビュー（review-08）のMinor R-14を直す：traceability.jsonのNFR8のnotesの後半（692264fa時点の差分テスト・3OSの結果）が、供給網の検査の結果ではないことを明記する。
+- Touches: U8のtraceability.json（NFR8のnotesの1行）とcode-summary.md（1文）だけ。製品・CI・workflow・ほかのUnitの記録・source-manifest.json・unit-test-instructions.mdは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 前回のSummary（Step18）
+
+- Builds: Step18。Step17の再レビュー（review-07）のMinor 2件を直す：NFR8のtargetを `ci.yml` にした理由を、要件書の定義（供給網）に合う `cargo deny` とactionのSHA固定に直す。code-summary.mdの冒頭の一文を、R-09・R-11が保留であることが分かる形に直す。
+- Touches: U8のtraceability.json（NFR8のnotesの1行）とcode-summary.mdだけ。製品・CI・workflow・ほかのUnitの記録・source-manifest.json・unit-test-instructions.mdは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 前回のSummary（Step17）
+
+- Builds: Step17。U8の確かめ直し（review-06、NOT-READY、Critical 1・Major 3・Minor 4）のR-04〜R-11をU8の記録で直す：traceability.jsonの消えたtargetと逆引きの行、manifestの消えたworkflow、古い状態を今のものとして書いた箇所、今は測られていないU8の測定の明記。製品・CIは変えない。
+- Touches: U8の記録だけ（code-summary.md、unit-test-instructions.md、traceability.json、source-manifest.json）。製品・CI・workflow・ほかのUnitの記録は変えない。呼び元が消え、実行すると失敗する `.github/scripts/u8-current-diagnostic.py`（R-09）を消すかどうかと、測られていない測定をCIに戻すか（R-11）は、製品の変更なので、残りのUnitを見てからまとめて決める。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
+
+## 今回の計画：Step19（Step18の再レビューのMinor R-14を直す）
+
+2026-10-19 JST。Step18の再レビュー（review-08、READY、新しいMinor 1件）の後、checkpointで人がRequest Changesを選んだ（先にR-14を直す）。
+
+- [x] Step 19 — **R-14を記録で直す**。traceability.jsonのNFR8のnotesの「以下はその時点の記録。」を「以下は692264fa時点の記録で、NFR8（供給網）の検査の結果ではなく、当時の `u8-native-diagnostic.yml` が動かした差分テスト・3OSのテストの結果である（今の供給網の検査は上のとおり `ci.yml` の `cargo deny` とactionのSHA固定）。」に直す。JSONとして行ごとに直し、変わったのがNFR8の1行だけであることを直す前の版と比べて確かめる（target・status・idは変えない）。code-summary.mdの「現在の状態（Step17）」節のtraceability.jsonの箇条に、Step19でこの区別を足したことを1文で書く。unit-test-instructions.md・製品・CI・workflow・ほかのUnitの記録・source-manifest.jsonは変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR8。
+
+## 前回の計画：Step18（Step17の再レビューのMinor R-12・R-13を直す）
+
+2026-10-19 JST。Step17の再レビュー（review-07、READY、新しいMinor 2件）の後、checkpointで人がRequest Changesを選んだ（先にR-12とR-13を直す）。
+
+- [x] Step 18 — **review-07のMinor 2件を記録で直す**。(1) R-12：NFR8は要件書（`inception/requirements-analysis/requirements.md` のNFR8）で供給網（依存はcrates.ioだけ、ライセンスがApache-2.0と両立、GitHub ActionsのSHA固定）と決められている。traceability.jsonのNFR8のnotesの先頭の理由を「`ci.yml` の `dependencies` のjobの `cargo deny`（取得元・ライセンス・既知の脆弱性）と、actionのSHA固定・読み取りだけの既定の権限が、NFR8の供給網の検査を担う」に直す（JSONとして行ごとに直し、変わったのがNFR8の1行だけであることを直す前の版と比べて確かめる。targetは `ci.yml` のまま、statusとidは変えない）。code-summary.mdの「現在の状態（Step17）」節のtraceability.jsonの箇条の同じ理由も直す。(2) R-13：同じ節の冒頭の「R-04〜R-11を直した」を「R-04〜R-08とR-10を直し、R-09とR-11は記録して人の判断を待つ」に直す。unit-test-instructions.mdは変えない（Step17の節と期待結果は同じ）。製品・CI・workflow・ほかのUnitの記録・source-manifest.jsonは変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR8。
+
+## 前回の計画：Step17（確かめ直しの指摘を記録で直す）
+
+2026-10-19 JST。U15のStep22〜28（push、head 27d05de1）で、U8のmanifestにある `ci.yml` が変わり、`u8-current-verification.yml`・`u8-native-diagnostic.yml` が消え、正式な確認コマンドがU15の `entry-e3c29d1d/entry-f.py`・`binding-e06f.json` に替わった。U8の確かめ直し（review-06、NOT-READY）の後、checkpointで人がRequest Changesを選んだ（U8の記録のR-04〜R-11を直す。測られていない測定をCIに戻すかは、まとめて決める）。人の指示：「ワークフローの順で進めてください。U1 の確かめ直しから始めて、ファイルが変わった Unit を順に確かめ直し、U15 のレビューと完了確認、U11 の確かめ直しまで進めてください。」
+
+- [x] Step 17 — **確かめ直しの指摘を記録で直す**。traceability.jsonは文字列の置き換えではなく、行（idまたはpath）ごとにJSONとして直し、直す前の版（27d05de1）と比べて変わった行を確かめる。(1) R-04：traceability.jsonのcoverageのNFR8のtargetを `.github/workflows/ci.yml`（差分テストのjobが `diff_u8` を動かす）に替え、notesの先頭に「2026-10-19：27d05de1で `u8-native-diagnostic.yml` が消えたため、targetを替えた。以下はその時点の記録。」を足す。reverseから、消えた `.github/workflows/u8-native-diagnostic.yml` と `.github/workflows/u8-current-verification.yml` の2行を外す（statusとidは、ほかの行では変えない）。(2) R-05：source-manifest.jsonのwritesから、消えた2本を外す（manifestはpathだけを持ち、hashは持たない）。(3) R-06：code-summary.mdの先頭に「現在の状態（2026-10-19 JST、Step17）」節を足し、今の正式な確認コマンド（entry-f・binding-e06f、command SHA-256 `00f5c883…a159`）、今のtoolchain（`nightly-2026-10-11`）、U8に関わる製品の変更、27d05de1のCI 8 runの成功を書く。「現行」「今回」で始まる見出しは「履歴：…（作成時の見出しは「…」）」にする（本文は変えない）。(4) R-07：traceability.jsonのNFR9・NFR3のnotesの先頭に「（履歴：692264fa時点の旧pin・旧run。今のtoolchainは `rust-toolchain.toml` の nightly-2026-10-11、27d05de1のCIはU15の `verification/ci-27d05de1/ci-27d05de1.json`）」を足す。(5) R-08：unit-test-instructions.mdの古い見出しと「現在の承認済みコマンド」「計画時点では未実行」「今は計画のため全U8テストは未検証」に、その時点の記述であることの注記を付ける（計画のときに書いた）。(6) R-09：`.github/scripts/u8-current-diagnostic.py` は呼び元が無く、消えたworkflowを読むので実行すると失敗する（履歴・実行不可）ことを新しい節に書く。traceability.jsonのreverseのその行とmanifestのその行は、ファイルが残っているので残す。(7) R-10：code-summary.mdの各節の「先頭の『現行Step16〜18』節を参照」の案内は、新しい先頭の節を指すことを新しい節に書き、候補コマンド `verify-current-u1-u7-u9-u3-u5-u6-u8.py` は不採用・履歴であることを書く。(8) R-11：U8の受け入れが今どこで動くか（`diff_u8` は `ci.yml` の差分テスト、3OSのテストは `ci.yml` の `test` のjob、workspaceの80%、fmt・clippy・deny、ASanは `u11-fuzz.yml`・`u14-fuzz.yml`）と、**今は測られていないもの（U8専用のnative診断のrunの個別のログ、`u8_` の56件を名前で個別に記録する検査、324入力の前後のハッシュの照合）**、もともと未検証のもの（U8のfork/exec/waitのNode/Safari）を書く。製品・CI・workflow・ほかのUnitの記録は変えない。そのあと正式sensor 2件、独立再レビュー、checkpointの検証、人の承認に進む。NFR3、NFR8、NFR9。
+
+## 前回のSummary（Step16）
+
 - Builds: Step16。製品は変えない。計画の古くなったTesting Contractを今の内容（`sha256:7ff27a24…`、方針は同じでproject層の学びが足されただけ）に置き換え、今の正式確認コマンドでU8を確かめ直す。
 - Touches: この計画のTesting ContractとStep16の節だけ。製品・テスト・ほかの記録は変えない。
 - Tests: 新しいテストの実行はない。独立再レビューと、今の正式確認コマンド（U2の `u2_candidate.py`）でのcheckpoint。Steps13〜15の結果は履歴として保持する。
 
-## 今回の計画：Step16（Build and TestのLoop-back 1：Testing Contractの更新と再確認）
+## 前回の計画：Step16（Build and TestのLoop-back 1：Testing Contractの更新と再確認）
 
 2026-10-17。U14の整数SSEのJIT（署名head 1ceae86c）とU1・U2の正式確認の更新の途中で、記録の誤り（Code Generationの段階全体へのRequest Changes）のため、各Unitを順に確かめ直している。U8の担当のsource-manifestには、今回変わったファイル（U14のJIT・wasm・テスト、`crates/paludarium-wasm/src/abi.rs`、`mise.toml`）は含まれない。この計画の「## Testing Contract」は、memory（project.mdの学び）の更新で古くなっていたため、`aidlc engine testing-posture render` の出力に置き換えた。テストの方針（Methodology custom、Ordering、Standard、80%下限など）は変わらない。
 
-- [ ] Step 16 — 製品・テスト・記録は変えない。今の正式確認コマンドでU8のcheckpointを確かめる。独立再レビューで、U8の記録が今のsourceと合っていることを確かめる。Steps13〜15の結果は履歴として保持し、今回の新しい実行とは数えない（NFR3、NFR9）。
-- [ ] Step 17 — 再レビュー（iteration 2）のMajor・Minorへの対応（人のRequest Changes）。製品は変えない。code-summary.mdを次のように直す：(a) 見出し「## 現在の検証済み結果」を「## 履歴：署名head 692264faの検証結果」に変え、その節の数値（workspace全体coverage 93.06%／11427行、3OSのClippy・deny、CI run）は692264faの時点のもので、U14の変更（12d6a2f6・1ceae86cで `paludarium-jit` と `crates/paludarium-wasm/src/abi.rs` が変わった）の後のsourceについての数値ではないと明記する。(b) 「## 正式検査・最終確認の境界」の節の旧い未実行の候補 `verify-current-u1-u7-u9-u3-u5-u6-u8.py` を履歴とし、今の正式確認コマンドが `/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u2-integer-isa/code-generation/verification/loopback1-next/u2_candidate.py` であること、2026-10-17のU8 checkpointの検証がexit 0（`source_compatibility: PASS`、`u2_candidate: PASS`、`U15_acceptance: GAP`）だったことを書く。(c) 先頭に「現行Step16〜17（Loop-back 1）」節を足し、Testing Contractの置き換え、担当sourceが今回の変更に含まれないこと、上の (a)(b) をまとめる。traceability.jsonの分類・targetは変えない。正式sensor 2件を実行し、独立再レビューと今の正式確認コマンドでのcheckpointに進む。
-- [ ] Step 18 — 再レビュー（Step17のiteration 1、READY）のMinorへの対応（人のRequest Changes「この Minor も直す」）。製品は変えない。code-summary.mdの「履歴：署名head 692264faの検証結果」より後ろの4つの節（「実コマンド・入力と責務」「ASanの限定再利用と未検証」「失敗と歴史的証拠」「正式検査・最終確認の境界」）の見出しの直後に、それぞれ「（履歴：署名head 692264faの時点の記述。この節の「現行」「今回」はその時点を指す。今の状態は先頭の「現行Step16〜18」節を参照。）」の一行を足し、先頭節の見出しを「現行Step16〜18」に直す。本文は変えない。正式sensor 2件を実行し、独立再レビューと今の正式確認コマンドでのcheckpointに進む。
+- [x] Step 16 — 製品・テスト・記録は変えない。今の正式確認コマンドでU8のcheckpointを確かめる。独立再レビューで、U8の記録が今のsourceと合っていることを確かめる。Steps13〜15の結果は履歴として保持し、今回の新しい実行とは数えない（NFR3、NFR9）。
+- [x] Step 17 — 再レビュー（iteration 2）のMajor・Minorへの対応（人のRequest Changes）。製品は変えない。code-summary.mdを次のように直す：(a) 見出し「## 現在の検証済み結果」を「## 履歴：署名head 692264faの検証結果」に変え、その節の数値（workspace全体coverage 93.06%／11427行、3OSのClippy・deny、CI run）は692264faの時点のもので、U14の変更（12d6a2f6・1ceae86cで `paludarium-jit` と `crates/paludarium-wasm/src/abi.rs` が変わった）の後のsourceについての数値ではないと明記する。(b) 「## 正式検査・最終確認の境界」の節の旧い未実行の候補 `verify-current-u1-u7-u9-u3-u5-u6-u8.py` を履歴とし、今の正式確認コマンドが `/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u2-integer-isa/code-generation/verification/loopback1-next/u2_candidate.py` であること、2026-10-17のU8 checkpointの検証がexit 0（`source_compatibility: PASS`、`u2_candidate: PASS`、`U15_acceptance: GAP`）だったことを書く。(c) 先頭に「現行Step16〜17（Loop-back 1）」節を足し、Testing Contractの置き換え、担当sourceが今回の変更に含まれないこと、上の (a)(b) をまとめる。traceability.jsonの分類・targetは変えない。正式sensor 2件を実行し、独立再レビューと今の正式確認コマンドでのcheckpointに進む。
+- [x] Step 18 — 再レビュー（Step17のiteration 1、READY）のMinorへの対応（人のRequest Changes「この Minor も直す」）。製品は変えない。code-summary.mdの「履歴：署名head 692264faの検証結果」より後ろの4つの節（「実コマンド・入力と責務」「ASanの限定再利用と未検証」「失敗と歴史的証拠」「正式検査・最終確認の境界」）の見出しの直後に、それぞれ「（履歴：署名head 692264faの時点の記述。この節の「現行」「今回」はその時点を指す。今の状態は先頭の「現行Step16〜18」節を参照。）」の一行を足し、先頭節の見出しを「現行Step16〜18」に直す。本文は変えない。正式sensor 2件を実行し、独立再レビューと今の正式確認コマンドでのcheckpointに進む。
 
 ## 前回のSummary（Steps13〜15）
 
@@ -24,9 +60,9 @@
 
 ## 承認された現行ソース追加検証（Steps13〜15）
 
-- [ ] Step 13: 現行実装を保持し、U8専用診断CI/helperで全入力・両lock・実使用compiler・ツール版・設定を固定する。新診断ファイルも入力へ明示し、before/after/current SHAを保存する。旧06d58952の25担当path中6変更、現行322入力の旧commit投影207一致/34変更/81未存在、旧nightly10-01と現行compiler相違を歴史として記録する。最新ツールを公式確認し、追加製品設定変更が必要なら具体的最小案を示す。wait4のEFAULTでもreapするLinux動作と既存公開C10を維持する。
-- [ ] Step 14: 同一現行ソースの署名済みCIでfresh x86-64 Linux U8全29ケース＋runner1を実行する。Rust Command spawn/status/output/missing、wait-faultを含む既存ケースとmaskを保持し、stdout/stderr/exit/errnoと原本を保存する。3OSで既存 `u8_` filterによる本体42件＋既存pipe/exec回帰14件を個別確認し、関連U5 Kernel27/Runtime6の33件、U6 Kernel49件をignored0で確認する。fmt/Clippy警告エラー/依存4検査の実exitを保存する。既存workspace全体coverage経路でempty profileからfresh U3 nativeとinstrumented CLI・U8/U5/U6差分を含む測定を実行し、同じ対象規則・全体80%下限を維持する。U8専用coverageを全体と呼ばない。30秒入力制限・kill/reap・比較規則を維持し、失敗・0件・skipを合格にしない。
-- [ ] Step 15: 既存load_elf/syscall_args/mmu_ops等のASan保存証拠は対象ごとに現在依存閉包・両lock・実使用compiler・flags・設定・原本一致を証明できる範囲だけ再利用し、不一致は未検証と具体的追加案を示す。新CIの全入力・署名head/job・生ログ・実exit・coverage分母を結合して4成果物・strict source-manifestを更新し、独立した全要件割当による正式検査と独立レビューへ渡す。U8のNode/Safari fork/exec/wait成功を共有launcherの証拠で代替せず、U11境界として明記する。新最終確認候補は構文確認までとし、新承認後に実行する。strict guard、80%下限、30秒制限、先行Unitの証拠と成果物を維持する。ID競合の完全解消は未検証と区別する。
+- [x] Step 13: 現行実装を保持し、U8専用診断CI/helperで全入力・両lock・実使用compiler・ツール版・設定を固定する。新診断ファイルも入力へ明示し、before/after/current SHAを保存する。旧06d58952の25担当path中6変更、現行322入力の旧commit投影207一致/34変更/81未存在、旧nightly10-01と現行compiler相違を歴史として記録する。最新ツールを公式確認し、追加製品設定変更が必要なら具体的最小案を示す。wait4のEFAULTでもreapするLinux動作と既存公開C10を維持する。
+- [x] Step 14: 同一現行ソースの署名済みCIでfresh x86-64 Linux U8全29ケース＋runner1を実行する。Rust Command spawn/status/output/missing、wait-faultを含む既存ケースとmaskを保持し、stdout/stderr/exit/errnoと原本を保存する。3OSで既存 `u8_` filterによる本体42件＋既存pipe/exec回帰14件を個別確認し、関連U5 Kernel27/Runtime6の33件、U6 Kernel49件をignored0で確認する。fmt/Clippy警告エラー/依存4検査の実exitを保存する。既存workspace全体coverage経路でempty profileからfresh U3 nativeとinstrumented CLI・U8/U5/U6差分を含む測定を実行し、同じ対象規則・全体80%下限を維持する。U8専用coverageを全体と呼ばない。30秒入力制限・kill/reap・比較規則を維持し、失敗・0件・skipを合格にしない。
+- [x] Step 15: 既存load_elf/syscall_args/mmu_ops等のASan保存証拠は対象ごとに現在依存閉包・両lock・実使用compiler・flags・設定・原本一致を証明できる範囲だけ再利用し、不一致は未検証と具体的追加案を示す。新CIの全入力・署名head/job・生ログ・実exit・coverage分母を結合して4成果物・strict source-manifestを更新し、独立した全要件割当による正式検査と独立レビューへ渡す。U8のNode/Safari fork/exec/wait成功を共有launcherの証拠で代替せず、U11境界として明記する。新最終確認候補は構文確認までとし、新承認後に実行する。strict guard、80%下限、30秒制限、先行Unitの証拠と成果物を維持する。ID競合の完全解消は未検証と区別する。
 
 ## Sources
 
@@ -51,18 +87,18 @@ wait4 は特定 PID と -1、WNOHANG、終了 status の通常終了／シグナ
 
 ## Implementation Steps
 
-- [ ] Step 1 — U8 の実行基盤を準備する。既存 diff_u7 の bounded 実行・VFS 配置方法を確認し、tests/guests/u8/build.sh、observe.py、cases.json と harness の support/u8.rs、diff_u8.rs を作る。最初の実行可能ケースの前に runner と unit-scoped コマンドを成立させる。差分比較の基準は FR2.8・FR9.1・NFR1・NFR7。
-- [ ] Step 2 — syscall 実装の前に C の fork/clone/vfork/exec/wait と Rust std::process::Command の static-musl ゲストを作り、x86-64 Linux で native-only 実行する。16 ケース以上の stdout／stderr／status／errno、必要な syscall と clone flags を記録する。PID／時刻／usage 値は真偽条件へ正規化し、順序は同期で固定する。期待結果は毎回 native 実行で作り保存しない。FR2.8・FR4.1・FR9.1。
-- [ ] Step 3 — crates/paludarium-mmu/src/lib.rs に fork 用のアドレス空間複製を加え、その後 src/u8_tests.rs の 7 件を実装・実行する。私有領域、共有領域、protection、brk、unmap、親子間書込み、エラーを検証する。FR2.8・NFR2・NFR3。
-- [ ] Step 4 — crates/paludarium-kernel/src/processes.rs を作り、lib.rs・threads.rs と接続する。親子関係、PID/TID、プロセス固有 ThreadGroup、zombie、起床を実装し、その後 u8_tests.rs のプロセス管理 7 件を実行する。終了状態は全スレッド終了まで公開せず、exit_group は子の group のみに作用させる。FR2.8・NFR2・NFR7。
-- [ ] Step 5 — Step 2 の oracle を先に確認したうえで、process clone／fork／vfork と fd 継承を threads.rs・processes.rs・files.rs に実装する。fork の戻り値、親子の独立性、共有 fd offset、VM/VFORK の待機解除、tid stores、無効 flags を差分比較する。既存 U5 clone を分岐で維持する。FR2.8・FR2.3・NFR4。
-- [ ] Step 6 — execve 引数読出しと切替えを processes.rs、Kernel、Runtime、必要な Loader 接続部に実装する。Step 2 の成功／ENOENT／EFAULT／不正 ELF／argv-env／CLOEXEC ケースを比較する。その後境界の単体テスト 7 件を実行する。成功時のみ状態を交換し、失敗時に待機解除や fd 破棄を行わない。FR2.8・FR3.1・FR3.4・FR4.1・NFR2・NFR4。
-- [ ] Step 7 — wait4 と子終了通知を processes.rs・threads.rs・syscalls.rs に接続する。特定 PID／任意の子／WNOHANG／終了 status／二重 reap／EFAULT／ECHILD／割込みの native oracle を先に確認してから実装・比較する。rusage の配置と正規化を記録する。FR2.8・NFR1・NFR2・NFR7。
-- [ ] Step 8 — crates/paludarium-runtime/src/lib.rs・workers.rs に子プロセスの実行、メモリ切替え、親の待機、全体 cancellation を接続する。その後 src/u8_tests.rs の 7 件を実行する。子の失敗を親の終了と混ぜず、待機中のロックと取りこぼしを検証する。FR2.8・NFR2・NFR7。
-- [ ] Step 9 — Rust Command の spawn/status/output、存在しない executable、pipe による起動エラー通知を Step 2 の trace と比較する。追加 syscall が必要な場合は U8 の起動に必要な分だけ oracle を先に加えて実装する。停止／再開通知を要求する証拠があれば、そのケースを先に加える。FR2.8・FR4.1・NFR4。
-- [ ] Step 10 — U8 全単体・差分テストを実行し、U5 スレッドと U6 fd/event/socket の回帰を実行する。Linux の全体 80% 行カバレッジを既存測定経路で確認する。ローカルで Linux を利用できなければ実行可能な CI 検証を要求し、未実行を PASS にしない。NFR1・NFR3・NFR7。
-- [ ] Step 11 — 変更した Rust を整形し、関係クレートの clippy を -D warnings で実行する。依存追加が必要なときだけ Cargo.toml／Cargo.lock とライセンス検査を更新する。既存 Linux 差分 CI に U8 を接続し、ホスト専用処理を Kernel に入れない。NFR3・NFR8・NFR9。
-- [ ] Step 12 — 実装判断・検証結果・未検証事項を code-summary.md に記録し、source-manifest.json と traceability.json に変更した全 source と FR／NFR の対応を書く。README.md は U8 の対応内容だけ追記する。実装後のレビューに進む。
+- [x] Step 1 — U8 の実行基盤を準備する。既存 diff_u7 の bounded 実行・VFS 配置方法を確認し、tests/guests/u8/build.sh、observe.py、cases.json と harness の support/u8.rs、diff_u8.rs を作る。最初の実行可能ケースの前に runner と unit-scoped コマンドを成立させる。差分比較の基準は FR2.8・FR9.1・NFR1・NFR7。
+- [x] Step 2 — syscall 実装の前に C の fork/clone/vfork/exec/wait と Rust std::process::Command の static-musl ゲストを作り、x86-64 Linux で native-only 実行する。16 ケース以上の stdout／stderr／status／errno、必要な syscall と clone flags を記録する。PID／時刻／usage 値は真偽条件へ正規化し、順序は同期で固定する。期待結果は毎回 native 実行で作り保存しない。FR2.8・FR4.1・FR9.1。
+- [x] Step 3 — crates/paludarium-mmu/src/lib.rs に fork 用のアドレス空間複製を加え、その後 src/u8_tests.rs の 7 件を実装・実行する。私有領域、共有領域、protection、brk、unmap、親子間書込み、エラーを検証する。FR2.8・NFR2・NFR3。
+- [x] Step 4 — crates/paludarium-kernel/src/processes.rs を作り、lib.rs・threads.rs と接続する。親子関係、PID/TID、プロセス固有 ThreadGroup、zombie、起床を実装し、その後 u8_tests.rs のプロセス管理 7 件を実行する。終了状態は全スレッド終了まで公開せず、exit_group は子の group のみに作用させる。FR2.8・NFR2・NFR7。
+- [x] Step 5 — Step 2 の oracle を先に確認したうえで、process clone／fork／vfork と fd 継承を threads.rs・processes.rs・files.rs に実装する。fork の戻り値、親子の独立性、共有 fd offset、VM/VFORK の待機解除、tid stores、無効 flags を差分比較する。既存 U5 clone を分岐で維持する。FR2.8・FR2.3・NFR4。
+- [x] Step 6 — execve 引数読出しと切替えを processes.rs、Kernel、Runtime、必要な Loader 接続部に実装する。Step 2 の成功／ENOENT／EFAULT／不正 ELF／argv-env／CLOEXEC ケースを比較する。その後境界の単体テスト 7 件を実行する。成功時のみ状態を交換し、失敗時に待機解除や fd 破棄を行わない。FR2.8・FR3.1・FR3.4・FR4.1・NFR2・NFR4。
+- [x] Step 7 — wait4 と子終了通知を processes.rs・threads.rs・syscalls.rs に接続する。特定 PID／任意の子／WNOHANG／終了 status／二重 reap／EFAULT／ECHILD／割込みの native oracle を先に確認してから実装・比較する。rusage の配置と正規化を記録する。FR2.8・NFR1・NFR2・NFR7。
+- [x] Step 8 — crates/paludarium-runtime/src/lib.rs・workers.rs に子プロセスの実行、メモリ切替え、親の待機、全体 cancellation を接続する。その後 src/u8_tests.rs の 7 件を実行する。子の失敗を親の終了と混ぜず、待機中のロックと取りこぼしを検証する。FR2.8・NFR2・NFR7。
+- [x] Step 9 — Rust Command の spawn/status/output、存在しない executable、pipe による起動エラー通知を Step 2 の trace と比較する。追加 syscall が必要な場合は U8 の起動に必要な分だけ oracle を先に加えて実装する。停止／再開通知を要求する証拠があれば、そのケースを先に加える。FR2.8・FR4.1・NFR4。
+- [x] Step 10 — U8 全単体・差分テストを実行し、U5 スレッドと U6 fd/event/socket の回帰を実行する。Linux の全体 80% 行カバレッジを既存測定経路で確認する。ローカルで Linux を利用できなければ実行可能な CI 検証を要求し、未実行を PASS にしない。NFR1・NFR3・NFR7。
+- [x] Step 11 — 変更した Rust を整形し、関係クレートの clippy を -D warnings で実行する。依存追加が必要なときだけ Cargo.toml／Cargo.lock とライセンス検査を更新する。既存 Linux 差分 CI に U8 を接続し、ホスト専用処理を Kernel に入れない。NFR3・NFR8・NFR9。
+- [x] Step 12 — 実装判断・検証結果・未検証事項を code-summary.md に記録し、source-manifest.json と traceability.json に変更した全 source と FR／NFR の対応を書く。README.md は U8 の対応内容だけ追記する。実装後のレビューに進む。
 
 ## Test Inventory
 

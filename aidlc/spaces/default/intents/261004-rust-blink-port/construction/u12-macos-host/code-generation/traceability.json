@@ -5,6 +5,7 @@
   "source_sha": "a275bd3d6f08bf48c1a58dead339240b5364af4c",
   "ci_run": 38125760476,
   "ci_status": "success; attempt2 new macOS/Safari plus exact 27 same-head carryovers; pre-review full diagnostic exit0",
+  "history_note": "Step16（2026-10-19）：source_sha（a275bd3d）・ci_run（38125760476）・ci_status・current_verificationはStep10時点の値で、今の証拠ではない。今のheadは27d05de1（CIは8 runとも成功、U15のverification/ci-27d05de1/ci-27d05de1.json。u12-quality run 39149189719はattempt 1のu12-fuzz / fuzz (vfs_paths)だけがapt.llvm.orgへの接続で失敗し、人の承認でそのjobだけをやり直したattempt 2で成功、macos-host jobは成功）。今の正式な確認コマンドはU15のentry-e3c29d1d/entry-f.py・binding-e06f.json。U12の製品のファイルはe4f84768から変わっていない（manifestのworkflow 6つと両lockは変わった）。詳細はcode-summary.mdの先頭の「現在の状態」節。",
   "upstream_ids": [
     "C2",
     "FR5.1",
@@ -85,7 +86,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR5.1",
@@ -103,7 +104,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR6.3",
@@ -121,7 +122,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified. 現行Steps11〜12（Build and Testからの差し戻し）：u12-native-first.yml 49行目のゲストビルドを `python tests/guests/u10/build.py target/guests/u10 --advisory-policy u15-fixed-aube-zip9-name`（ce0b746と同じ形）に、u12-quality.yml のworkflow envへ `PALUDARIUM_TEST_NODE: node` を追加。根拠はU15 verification/u12-quality-38994430947/README.md。actionlintで変更行に新しい指摘なし。CIでの実行は未実施（Build and Testで人の承認後）。code-summary.md「現行Steps11〜12」参照。"
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified. 2026-10-17（Steps11〜12）の記録：現行Steps11〜12（Build and Testからの差し戻し）：u12-native-first.yml 49行目のゲストビルドを `python tests/guests/u10/build.py target/guests/u10 --advisory-policy u15-fixed-aube-zip9-name`（ce0b746と同じ形）に、u12-quality.yml のworkflow envへ `PALUDARIUM_TEST_NODE: node` を追加。根拠はU15 verification/u12-quality-38994430947/README.md。actionlintで変更行に新しい指摘なし。CIでの実行は未実施（Build and Testで人の承認後）。code-summary.md「現行Steps11〜12」参照。（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR7.2",
@@ -139,7 +140,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR7.3",
@@ -157,7 +158,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR9.1",
@@ -175,7 +176,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR1",
@@ -193,7 +194,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR2",
@@ -211,7 +212,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR3",
@@ -229,7 +230,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR4",
@@ -247,7 +248,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR5",
@@ -265,7 +266,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR6",
@@ -283,7 +284,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR7",
@@ -301,7 +302,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR8",
@@ -319,7 +320,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "NFR9",
@@ -337,7 +338,7 @@
         ".github/workflows/u12-fuzz.yml",
         ".github/workflows/u12-native-first.yml"
       ],
-      "notes": "U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified."
+      "notes": "Step10時点（a275bd3d、CI 38125760476）の記録：U12 scope only; current evidence indexed in verification/step10-acceptance-audit.md. Full pre-review diagnostic exit0; formal verification and independent review pending. First-attempt timeout cause remains unidentified.（2026-10-19 注記：その後のレビューと確かめは、code-summary.mdの「履歴：Step13〜15」節と先頭の「現在の状態」節のとおり。u12-qualityは1ceae86c・2b8723ab・57a8c96f・27d05de1で成功し、今の正式な確認コマンドはentry-f）"
     },
     {
       "id": "FR1",
@@ -915,7 +916,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
+      "notes": "Step10時点（a275bd3d）の記録：Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
     },
     {
       "id": "crates/paludarium-host/src/macos.rs",
@@ -939,7 +940,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
+      "notes": "Step10時点（a275bd3d）の記録：Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
     },
     {
       "id": "crates/paludarium-host/src/u12_tests.rs",
@@ -963,7 +964,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
+      "notes": "Step10時点（a275bd3d）の記録：Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
     },
     {
       "id": "crates/paludarium-harness/tests/diff_u12.rs",
@@ -987,7 +988,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
+      "notes": "Step10時点（a275bd3d）の記録：Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
     },
     {
       "id": "tests/guests/u12/host_comparison.py",
@@ -1011,7 +1012,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
+      "notes": "Step10時点（a275bd3d）の記録：Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
     },
     {
       "id": "tests/guests/u12/oracle.py",
@@ -1035,7 +1036,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
+      "notes": "Step10時点（a275bd3d）の記録：Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
     },
     {
       "id": "tests/guests/u12/settings.py",
@@ -1059,7 +1060,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
+      "notes": "Step10時点（a275bd3d）の記録：Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
     },
     {
       "id": ".github/workflows/u12-quality.yml",
@@ -1083,7 +1084,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
+      "notes": "Step10時点（a275bd3d）の記録：Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
     },
     {
       "id": ".github/workflows/u12-fuzz.yml",
@@ -1107,7 +1108,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
+      "notes": "Step10時点（a275bd3d）の記録：Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
     },
     {
       "id": ".github/workflows/u12-native-first.yml",
@@ -1131,7 +1132,7 @@
         "NFR9"
       ],
       "status": "OK",
-      "notes": "Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
+      "notes": "Step10時点（a275bd3d）の記録：Approved U12 integration/latest-tool validation scope; preserved historical evidence is separately bound."
     }
   ],
   "current_verification": {
@@ -1143,6 +1144,7 @@
       "exit": 0,
       "candidate_sha256": "352022ad96ccf421fdb8df3d98f551bed38ddb02635154bb3b1f55ced073ae46",
       "result": "construction/u12-macos-host/code-generation/verification/step10-full-diagnostic.json"
-    }
+    },
+    "history_note": "Step10時点の値。candidateのverify-current-u12-macos-host.pyは採用されなかった候補で、formal_executed: falseはその時点の状態。今の正式な確認コマンドはU15のentry-e3c29d1d/entry-f.py・binding-e06f.json（2026-10-19採用）。"
   }
 }

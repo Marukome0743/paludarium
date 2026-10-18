@@ -1,6 +1,22 @@
 # U3 SSE 現在ソースのコード生成記録
 
-## Steps25〜30：2026-10-11の現行確認
+## 現在の状態（2026-10-19 JST）
+
+本節は2026-10-19の確かめ直しの記録である。U15のStep22〜28で製品のファイルが変わってfork `codex/build-and-test` へ送られた（head 27d05de1、e3c29d1d→8b415a7c→8360be2e→27d05de1、4つともVerified）ので、U3を確かめ直した（`reviews/review-06.md`、READY、Major 2・Minor 4）。checkpointで人がRequest Changesを選んだので、U3の記録で直せるR-04〜R-09を直した。U3の製品のコード・CI・workflow・ほかのUnitの記録・traceability.jsonは変えていない。
+
+- **今の正式な確認コマンド（R-04・R-09）**：`aidlc/spaces/default/intents/261004-rust-blink-port/verification-command.txt` の U15 `construction/u15-release/code-generation/verification/entry-e3c29d1d/entry-f.py`・`binding-e06f.json`（head 27d05de1、人が2026-10-19に採用、command SHA-256 `00f5c883…a159`）。記録に出てくる `verification/verify-current-u1-u7-u9-aligned.py`・`verify-current-u1-u7-u9-u3.py`・U2の `u2_candidate.py` は、それぞれの時点の正式なコマンドや候補（履歴）で、下の節の「未実行」もその時点の記述である。U3のcheckpointはentry-fで確かめる。entry-fは作業コピーのbytesを `aidlc/` の外だけで比べるので、U3の記録の変更はその結果に影響しない想定である（結果はcheckpointの記録が持つ）。
+- **U3に関わる製品の変更**：U3のsource-manifestにある `ci.yml` は `push` が `main` だけになり、`u3-current-verification.yml` は消えた（U15のCIの整理、`construction/ci-pipeline/ci-config.md` の「消す」）。U3の製品のコードは変わっていない。
+- **U3の受け入れに要るものは残る**（review-06の確かめた点）：`ci.yml` の `diff_u3`、native入力の生成、CPU/Decoderの80%の下限、3OS・lint・依存・production wasm。ASanは `u14-fuzz.yml`、Safariは `u11-acceptance.yml` と `u11-safari-stability.yml` で動く。27d05de1のCI 8 runはすべて成功した（U12は人が認めた1 jobの再実行。記録はU15の `verification/ci-27d05de1/`）。
+- **toolchain（R-05）**：今は `rust-toolchain.toml` の `nightly-2026-10-11`。手順書の `+nightly-2026-10-01` と `u3_tests:: --fail-under-lines 80`（Steps19〜21で置き換え済み）はその時点のもので、手順書の先頭の節とその2つの見出しに注記した。
+- **source-manifest.json（R-06）**：writesから、消えた `.github/workflows/u3-current-verification.yml` を外した。ほかのpathは変えていない。呼び元が消えた `.github/scripts/u3-current-diagnostic.py` は製品のファイルとして残っていて、消すと正式な確認コマンドがhead 27d05de1との違いで拒否するので、次の製品の変更のpushで扱う。
+- **ASan（R-07）**：cpu_u2・mmu_u2・decodeのASanの今の裏付けは、`u14-fuzz.yml` のrun 39149194521（27d05de1、成功）である。下の節の旧い実行（消えたworkflowによるもの）は履歴である。
+- **Node/Safari（R-08）**：下の節の「20ケース」「21ケース」とmoduleのハッシュはその時点のものである。今のSafariの確認は、U15の `u11-safari-stability.yml`（run 39143558642、まっさらなmacOSで10回とも成功）と、27d05de1のCIで成功した `u11-acceptance.yml` である。
+- 古い「現行」「現在」の見出しは「履歴：…（作成時の見出しは「…」）」にした。本文は変えていない。
+- 再レビュー（`reviews/review-07.md`）の後の追記：R-10として、手順書に残っていた見出し「現行完了確認（Steps11〜13）」も履歴にし、今の正式な確認コマンドの注記を1行足した。R-11（command SHA-256の末尾 `a159` の裏付け）は、checkpointの検証の記録が `00f5c8832e04f7d27b30c6b445fdc30e0e5d233dfa5452e02c2c99368a08a159` を示しており値が正しいので、直していない。
+- 未検証：この作業ではentry-fを実行していない（checkpointで実行する）。独立再レビューはこの記録の後に行う。
+- 下の節は、それぞれの時点の履歴として読む。
+
+## 履歴：Steps25〜30（作成時の見出しは「Steps25〜30：2026-10-11の現行確認」）
 
 検証済み：製品変更なし。署名Verifiedのhead `8864d5fcd39ffc7cca0415c0d089d61fe1a386d3`、診断CI `38066719757` の4job（Linux native/matrix/coverageと3OS scoped）が成功した。318入力（U9受入れ時の316入力＋U3診断helper/workflowの2入力）と両lockは各job before/after/currentのpath/hash集合が完全一致した。Windowsの並び順は保持し、path文字列をcasefoldせずduplicate・欠落・hash変更を拒否する。
 
@@ -20,7 +36,7 @@
 
 ## 以下は旧時点の履歴
 
-## 現在の確認範囲
+## 履歴：確認範囲（作成時の見出しは「現在の確認範囲」）
 
 Step22の検証済み現在結果：署名head91ca0c4e3a090f49c6ac1ffb1e5e2e1d8d0a183d、通常CI37909227452全8job成功（3OS、lint、依存、fresh native差分、本番wasm、coverage）。同head診断37909227274でfresh native正常23576/fault1162/CPUID12を生成し、U3 matrix CPU40/Decoder12、ignored0、exit0。共有CPU/Decoder全libraryは9sourceファイル2246/2758行=81.43582306018854%、exit0。明示LCOV LF/LH、LLVM JSON、consoleが一致する。DA行数2737/2229をLF/LHと誤集計した初報は別訂正証拠へ保存し合格分母に使わない。
 

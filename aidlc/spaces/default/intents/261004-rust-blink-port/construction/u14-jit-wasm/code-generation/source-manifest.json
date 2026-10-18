@@ -7,9 +7,6 @@
       "path": ".github/workflows/u1-u14-source-bound.yml"
     },
     {
-      "path": ".github/workflows/u14-cost-diagnostic.yml"
-    },
-    {
       "path": ".github/workflows/u14-fuzz.yml"
     },
     {

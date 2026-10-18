@@ -28,13 +28,7 @@
       "path": ".github/workflows/ci.yml"
     },
     {
-      "path": ".github/workflows/native-diagnostic.yml"
-    },
-    {
       "path": ".github/workflows/nightly.yml"
-    },
-    {
-      "path": ".github/workflows/u10-current-verification.yml"
     },
     {
       "path": ".github/workflows/u10-native-diagnostic.yml"
@@ -43,55 +37,10 @@
       "path": ".github/workflows/u11-acceptance.yml"
     },
     {
-      "path": ".github/workflows/u11-browser-readiness.yml"
-    },
-    {
-      "path": ".github/workflows/u11-current-verification.yml"
-    },
-    {
-      "path": ".github/workflows/u11-firefox-diagnostic.yml"
-    },
-    {
       "path": ".github/workflows/u11-fuzz.yml"
     },
     {
-      "path": ".github/workflows/u11-native-first.yml"
-    },
-    {
-      "path": ".github/workflows/u11-native-metadata.yml"
-    },
-    {
-      "path": ".github/workflows/u2-production-sanitizers.yml"
-    },
-    {
-      "path": ".github/workflows/u3-current-verification.yml"
-    },
-    {
-      "path": ".github/workflows/u5-current-verification.yml"
-    },
-    {
-      "path": ".github/workflows/u5-native-diagnostic.yml"
-    },
-    {
-      "path": ".github/workflows/u5-quality.yml"
-    },
-    {
-      "path": ".github/workflows/u6-current-verification.yml"
-    },
-    {
-      "path": ".github/workflows/u6-native-diagnostic.yml"
-    },
-    {
-      "path": ".github/workflows/u6-quality.yml"
-    },
-    {
-      "path": ".github/workflows/u8-current-verification.yml"
-    },
-    {
-      "path": ".github/workflows/u8-native-diagnostic.yml"
-    },
-    {
-      "path": ".github/workflows/u9-current-verification.yml"
+      "path": ".github/workflows/u11-safari-stability.yml"
     },
     {
       "path": "Cargo.lock"

@@ -7,15 +7,15 @@ instead of in chat, write your answer after `[Answer]:` and tell me in chat when
 
 Approve the code plan for u5-threads-futex?
 
-- Builds: Step33。U5が担当するファイルが、Build and Testで使った版（head e4f84768）から変わっていないことを確かめ、今の正式確認コマンドで確かめ直す。製品・試験・記録は変えない。
-- Touches: この計画と手順書のStep33の節だけ。
-- Tests: 新しいテスト・CIの実行はない。U5のsource-manifestの全ファイルがe4f84768と同じことを読み取りで確かめ、独立再レビューと、今の正式確認コマンド（U2の `u2_candidate.py`）でのcheckpointを行う。
+- Builds: Step35。Step34の再レビュー（review-13）のMinor 3件（R-13 traceability.jsonを変えていないという食い違い、R-14 coverageの言い過ぎと呼ばれていないcoverageの道具、R-15 traceability.jsonの各行の時点の印）をU5の記録で直す。
+- Touches: U5のcode-summary.md、unit-test-instructions.md、traceability.json（notesの先頭の注記だけ）、traceability.md。製品・CI・workflow・ほかのUnitの記録・source-manifest.jsonは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
 
 Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u5-threads-futex/code-generation/code-generation-plan.md
 Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u5-threads-futex/code-generation/unit-test-instructions.md
 
-[Approval Fingerprint]: sha256:v3:d2b4cadb2d68641ce69b943ff7835dee342d66a54e0d0bfef63d627ccdf6b53c
-[Planned Source]: 1d007e145356f21dddcf25b720db0726f7c889de86622e95a640349d7b723024
+[Approval Fingerprint]: sha256:v3:720909893583fa639bd54da726456ad0e879ae131dd1e30a80338bb90aef74df
+[Planned Source]: 2ddcf1227d570aa365619e0528ec9ef35513970dcf88c95dc5989daa435f32d3
 
 - A. Approve Plan
 - B. Request Changes

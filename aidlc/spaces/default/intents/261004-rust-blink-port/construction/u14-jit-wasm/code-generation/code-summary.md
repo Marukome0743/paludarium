@@ -1,12 +1,21 @@
 # U14 JIT Wasm — 208fd965
 
-## 現在の状態（2026-10-18 JST、Step47）
+## 現在の状態（2026-10-19 JST）
 
-- Steps45〜46（traceability.jsonと手順書の現行・履歴の区別、新しい入口 `verification/loopback1-next/u14_candidate_v2.py` と binding-07）の記録は、同じ場所の `README.md` の「Step46」節を参照する。この節にはその内容を書き写さない。
-- 正式な確認コマンドは、2026-10-18から、U15の `entry-e3c29d1d/entry-c.py`（e3c29d1dを起点にした入口）である。U14の入口（`u14_candidate.py`・`u14_candidate_v2.py`）とそのbinding・回帰は履歴として、中身を変えずに残す。
-- U14のcheckpointは、今の正式な確認コマンド（`entry-c.py`）で確かめる。
-- Step47では、再レビュー（`reviews/review-11.md`）で残していたMinor R-14・R-15・R-16を記録で直した：traceability.jsonのFR8.2・FR6.3・FR7.2の行にU13 quality `39028305765` とU14 quality `39030957672` がattempt 2で成功したことを足し（attempt 1の失敗は下のStep38の項）、NFR2・NFR3・NFR8の行の参照先をFR8.1の行（7 run）に直し、この節を足した。statusとtargetは変えていない。製品・workflow・入口・bindingは変えず、CI・性能測定・pushはしていない。
-- 下の「履歴：」の節は、それぞれ書いた時点の記録で、本文は変えていない。その中の「今の正式確認コマンド」「採用はまだ」などは、書いた時点のことである。
+27d05de1の後のU14の確かめ直し（review-13、NOT-READY）の指摘を、Step48でU14の記録だけで直した。製品・CI・workflow・入口・binding・ほかのUnitの記録は変えていない。下の「履歴：」の節は、それぞれ書いた時点の記録である。
+
+- **head**：fork `Marukome0743/paludarium` の `codex/build-and-test` の署名head `27d05de1`（鎖 e3c29d1d → 8b415a7c → 8360be2e → 27d05de1、すべてVerified）。27d05de1のCIは8 runとも成功した（U12 current full quality（run 39149189719）はattempt 1で `u12-fuzz / fuzz (vfs_paths)` だけがapt.llvm.orgへの接続で失敗し、人の承認でそのjobだけをやり直したattempt 2で成功した）。U14 current full quality（run 39149187727）とU14 fresh thirteen target ASan and LSan（run 39149194521）も成功した（U15の `construction/u15-release/code-generation/verification/ci-27d05de1/ci-27d05de1.json`・`ci-jobs-27d05de1.json`。品質の原本は同じ場所の `u14-quality-39149187727/`）。
+- **今の正式な確認コマンド**：U15の `entry-e3c29d1d/entry-f.py --entry-sha256 185677712836e73d6a716657a24521c42581504550f9f398c5bb1ca7eaa4a46f --binding-sha256 9a7e8e396706f83bba6de41c1e032dade923b2cf953decb786a2b9450ce8acf9`（binding-e06f、command SHA-256 `00f5c8832e04f7d27b30c6b445fdc30e0e5d233dfa5452e02c2c99368a08a159`。このコマンド行のSHA-256で、checkpointが検証のたびに計算し、`aidlc/spaces/default/intents/261004-rust-blink-port/.aidlc-construction-checkpoints/u14-jit-wasm/unit.json` の `command_sha256` に記録する）。2026-10-19に人が採用した（intent直下の `aidlc/spaces/default/intents/261004-rust-blink-port/verification-command.txt` の1行目）。entry-fは `aidlc/` の外の作業コピーのbytesだけを比べるので、U14の記録の変更はこの確認に影響しない。2026-10-18の時点（Step47）は、U15の `entry-e3c29d1d/entry-c.py` が正式な確認コマンドだった。U14の入口（`u14_candidate.py`・`u14_candidate_v2.py`）とそのbinding・回帰は、どれも今の正式な確認コマンドではなく、履歴として中身を変えずに残す。
+- **1ceae86cから27d05de1までに変わったU14のmanifestのファイル**（`git diff --name-only 1ceae86c 27d05de1 -- <manifestの全ファイル>` と `git log` を読み取りで確かめた）：
+  - `.github/workflows/u1-u14-source-bound.yml`・`u14-fuzz.yml`・`u14-native-first.yml`・`u14-quality.yml`・`u14-wasm-acceptance.yml`：8360be2e（2026-10-19、U15 Step22〜28）で、主に `push:` の起動条件を消した。今の `u14-quality.yml` は呼び出し（`nightly.yml` から）と手動、`u14-fuzz.yml` も呼び出し（`nightly.yml` から）と手動、`u1-u14-source-bound.yml` は手動でだけ起動する。`u14-native-diagnostic.yml` は変わっていない。
+  - `.github/workflows/u14-cost-diagnostic.yml`：8360be2eで消えた。Step48でsource-manifest.jsonのwritesから外した（91→90件）。
+  - `Cargo.lock`・`fuzz/Cargo.lock`・`packages/paludarium-wasm/package.json`：bb197e04（2026-10-18、U15の版0.1.0）で、paludariumの版が0.0.0から0.1.0になっただけ。
+  - 変わっていないもの：U14のコード（`crates/` のJIT・CPU・MMU・Runtime・wasm、`packages/paludarium-wasm` のJS、`tests/guests/u14/`、`scripts/`、fuzzの対象）。
+- **FR8.3（JITありが有意に速い）**：根拠は今も、1ceae86cのU14 quality run `39030957672` のattempt 1での1回の測定（片側p=1/1024）である（下の「履歴：現行Steps30〜44」節の「正式性能（FR8.3）」の項）。そのあとU14のコードは変わっていない。測り直しはしていない。
+- **traceability.json**：最上位に `history_note` を足し、11行の `justification` の先頭に、27d05de1の時点の注記（U14のコードは変わっていない、27d05de1のU14 qualityとASan/LSanの成功、後ろの「現行（2026-10-18…）」はその時点の記述）を足した。status・id・targetは変えていない。
+- **`verification/loopback1-next/README.md`**：先頭に、「Step46（現行）」の「現行」「まだ採用されていません」「署名headは57a8c96f」は2026-10-18の時点の記述で、今の正式な確認コマンドはentry-fである、という節を足した。下の本文と、入口・binding・回帰のファイルは変えていない。
+- **2026-10-18の時点（Step47）の記録**：Step47では、再レビュー（`reviews/review-11.md`）で残していたMinor R-14・R-15・R-16を記録で直した（traceability.jsonのFR8.2・FR6.3・FR7.2の行にU13 quality `39028305765` とU14 quality `39030957672` がattempt 2で成功したことを足し、NFR2・NFR3・NFR8の行の参照先をFR8.1の行（7 run）に直した）。Steps45〜46の記録は `verification/loopback1-next/README.md` の「Step46」節にある。
+- **確かめていないこと**：この節を書いた時点で、新しいCI・性能測定・fuzzの実行はしていない。上のCIの結果はU15の記録の保存済みの証拠である。
 
 ## 履歴：現行Steps30〜44（Build and TestのLoop-back 1）（作成時の見出しは「現行Steps30〜44（Build and TestのLoop-back 1）」）
 
@@ -21,10 +30,10 @@
 - Step38（CIと正式性能）：2つのcommitはGitHubでVerified（`construction/u1-skeleton/code-generation/verification/loopback1-next/ci-1ceae86c.json`）。1ceae86cのCIは、CI `39028285747`（23 job）、Release package checks `39028285755`、U12 quality `39028303336`（29 job）、U13 quality `39028305765`（attempt 2。attempt 1は差分テストのjobが未観測のIntel `000606a6` で設計どおり止まり、そのjobだけ再実行して成功）、U14 fuzz `39028307842`（13対象）、U1 U14 source-bound `39028309948`（7 job）、U14 quality `39030957672`（attempt 2、34 job。attempt 1は `windows-host` のcoverage計測付きprobe-allが30秒の上限で止まり、そのjobだけ再実行して成功。遅かった原因は分かっていない）がすべて成功した。job一覧は同じ場所の `ci-jobs-1ceae86c.json`。
 - 正式性能（FR8.3）：U14 qualityのrun `39030957672` のattempt 1で1回だけ測った。原本は `verification/loopback1-next/perf-39030957672-observations.json`（SHA-256 `b827a5e1c1ece977be6acab4988d5c1d9dc8a1d54cd5877451eb6d241e402b7c`）。head 1ceae86c、AMD EPYC 9V74、Node v26.12.0、seed 5321（bd247f1eの不合格と同じ順序）、warmup各1（2件ともPASS・exit 0）、各mode10回の20標本。JITなし平均4.5277275564秒、JITあり平均3.6349344776秒（約19.72%速い）、1024通りの符号反転で片側p=1/1024=0.0009765625。20標本はすべてprobe 8項目PASS・exit 0・時間切れなし（最長約4.64秒）で、JITありの10標本はすべてJITのblockを実行した（executedBlocksの最小207,275）。この判定は原本から計算し直して一致を確かめた。測り直しはしていない。測ったmoduleは `d892ea2879dd160aa3e81f0afafef56b73d826bcfa88995b310a60e49d51faad`、probeは `f09911e4b21f52af843a13a426ad321c5a04b94cbde388bd33d738c695516e30`、oracleは `cb3372b24dd756cc0e899b84ea363640e5d28d2d158da2ca34ebb6a6bf47cc73`。moduleと同じrunのbuildとの結び付きは、U1のbinding-02（module receipt）で検査している。bd247f1eの不合格とはCPUの機種が違う（EPYC 7763と9V74）ので、両者の差をそのまま比べられる量とは言わない。ほかのCPUやブラウザでの速さの改善は主張しない。
 - 12d6a2f6のU14 quality（run `39025059974`）でも、Node jobの性能のstepが1回動いた（attempt 1、job `117375914433`、2026-10-17 10:42〜10:43 UTC。attempt 2は同じjobを引き継いでいて、動き直していない）。整数SSEのJITを入れる前のheadの測定で、その標本は読んでいない。FR8.3の根拠にしない。
-- Step39（Safariのsession作成の待ち時間）：U11を開き直して直した（U11 Steps29〜31。署名commit `2b8723ab`・`57a8c96f`。人の承認済み）。57a8c96fのPR CI（`39073492190`）とU12 quality（`39073501121`、attempt 2）で本物のSafariのjobが成功した。57a8c96fではU14 qualityを起動していない。1ceae86cから57a8c96fまでの変更はU11のWebDriverの試験の道具の2ファイルだけで、U14のファイルは変わっていない。
+- Step39（Safariのsession作成の待ち時間）：U11を開き直して直した（U11 Steps29〜31。署名commit `2b8723ab`・`57a8c96f`。人の承認済み）。57a8c96fのPR CI（`39073492190`）とU12 quality（`39073501121`、attempt 2）で本物のSafariのjobが成功した。57a8c96fではU14 qualityを起動していない。1ceae86cから57a8c96fまでの変更はU11のWebDriverの試験の道具の2ファイルだけで、U14のファイルは変わっていない。（2026-10-19 注記：1ceae86c〜57a8c96fの範囲の記述。そのあと27d05de1までに、U14のworkflowと版0.1.0の両lock・package.jsonが変わった。U14のコードは変わっていない。先頭の「現在の状態」節のとおり）
 - Step40：`mise.toml` に `"npm:npm" = "12.2.0"` を足した。U1の入口（binding-02）がこの1行だけを許している。
-- 今の正式確認コマンド（人が採用済み）は、`/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u11-wasm-launcher/code-generation/verification/loopback1-next/u11_candidate_v2.py --entry-sha256 56870072810100fa97456ced54a0732e8696489dcb297fa38aa17c0a39978ca7 --binding-sha256 a3d81077e557df7acee86878656360088880b13a75c4c100a68aa748c0450905` である。このコマンドは、この節を足したcode-summary.mdとtraceability.jsonの変更で止まる（U1がU14の記録3ファイルを固定時のbytesで照合しているため）。
-- Step43で、この記録の変更を許す新しい確認の入口 `verification/loopback1-next/u14_candidate.py`（binding-06）を作った。入口とbindingのSHA-256の値と結果は同じ場所のREADME.mdにある。この入口の採用はまだで、独立再レビューと人の承認が残っている。入口や検査のexit 0を、unitの完了や全要件の達成とは呼ばない。
+- 今の正式確認コマンド（人が採用済み）は、`/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u11-wasm-launcher/code-generation/verification/loopback1-next/u11_candidate_v2.py --entry-sha256 56870072810100fa97456ced54a0732e8696489dcb297fa38aa17c0a39978ca7 --binding-sha256 a3d81077e557df7acee86878656360088880b13a75c4c100a68aa748c0450905` である。このコマンドは、この節を足したcode-summary.mdとtraceability.jsonの変更で止まる（U1がU14の記録3ファイルを固定時のbytesで照合しているため）。（2026-10-19 注記：2026-10-18の時点の正式確認コマンド。今の正式な確認コマンドはentry-fで、先頭の「現在の状態」節のとおり）
+- Step43で、この記録の変更を許す新しい確認の入口 `verification/loopback1-next/u14_candidate.py`（binding-06）を作った。入口とbindingのSHA-256の値と結果は同じ場所のREADME.mdにある。この入口の採用はまだで、独立再レビューと人の承認が残っている。（2026-10-19 注記：その時点の記述。この入口は2026-10-18に仮に採用された後、正式な確認コマンドはU15の入口に替わった）入口や検査のexit 0を、unitの完了や全要件の達成とは呼ばない。
 - 入口の結果にある `U15_acceptance: GAP` は、全体の受入を担うU15が未完了という既知の表示で、U14の不合格を意味しない。
 
 送った2つのcommitで変えたU14のファイル（`git diff-tree` の結果。すべて `source-manifest.json` の `writes` に既にある）：
@@ -34,7 +43,7 @@
 | `12d6a2f63c205b672d30e8bcb104dc0ee75932ac` | `crates/paludarium-harness/tests/diff_u14.rs`、`tests/guests/u14/native.c`、`tests/guests/u14/test_validation.py`、`tests/guests/u14/validation.py` |
 | `1ceae86ce303a1019e97ac7d162ce0efa9fadd50` | `crates/paludarium-harness/tests/diff_u14.rs`、`crates/paludarium-jit/src/block.rs`、`crates/paludarium-jit/src/bridge.rs`、`crates/paludarium-jit/src/emit.rs`、`crates/paludarium-jit/src/lib.rs`、`crates/paludarium-jit/src/microbench.rs`、`crates/paludarium-wasm/src/abi.rs`、`packages/paludarium-wasm/jit-support.mjs`、`packages/paludarium-wasm/tests/u14-cost-profile.test.mjs`、`packages/paludarium-wasm/tests/u14-jit.test.mjs` |
 
-`source-manifest.json` は変えていない。engineが読むこのファイルは `stage`・`unit`・`version`・`writes`（各要素は `path` と `repo`）以外の項目を受け付けないので、署名headはここ（この表）に記録した。今の署名headは `57a8c96f610d6e02234354e5e4fb5cac068d5036` で、U14のファイルのbytesは1ceae86cと同じである。
+`source-manifest.json` は変えていない。engineが読むこのファイルは `stage`・`unit`・`version`・`writes`（各要素は `path` と `repo`）以外の項目を受け付けないので、署名headはここ（この表）に記録した。今の署名headは `57a8c96f610d6e02234354e5e4fb5cac068d5036` で、U14のファイルのbytesは1ceae86cと同じである。（2026-10-19 注記：2026-10-18の時点の記述。今の署名headは27d05de1で、U14のworkflowと版0.1.0の両lock・package.jsonは1ceae86cと違う。U14のコードは同じ。先頭の「現在の状態」節のとおり）
 
 主張しないこと：unitの完了、U15の受入、配布の公開、手元の診断の時間を性能の根拠にすること、有限時間のfuzzを任意入力の安全性の証明とすること。
 
@@ -76,4 +85,4 @@ module `fb2fdb513866fd86979b6b5f9127f256a5bcfcb50ba1ccba49a220fb819258e2`、fres
 
 今回の正式性能と必要coverageが条件を満たしたため、親FR8/FR8.3/NFR6とU9を含むNFR3の現在証拠をtraceabilityへ接続する。これは過去のGAPや失敗原本を書き換えるものではない。R-05は他Unitの未解決Minorとして保持する。有限600秒fuzzは任意入力の安全性証明ではなく、JITは既存subsetだけを扱う。
 
-新しい正式検証コマンドはまだ未採用である。最終source/produces固定後の旧全chain、sensor、独立レビュー、人による正式command選択と完了確認が残る。新候補は未統合や欠落を成功扱いせず拒否する。unit完了・配布公開はまだ主張しない。
+新しい正式検証コマンドはまだ未採用である（2026-10-19 注記：208fd965の時点の記述。今の正式な確認コマンドはentry-f）。最終source/produces固定後の旧全chain、sensor、独立レビュー、人による正式command選択と完了確認が残る。新候補は未統合や欠落を成功扱いせず拒否する。unit完了・配布公開はまだ主張しない。

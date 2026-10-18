@@ -1,6 +1,26 @@
 # U2 Unit Test Instructions
 
-## 今回Step71：共有のabi.rsの再確認と正式確認のbinding更新
+## 今回Step73：Step72のレビューのMinor 2件を直す
+
+記録だけを直すので、新しい試験はない。project rootで正式sensor 2件（下のStep72の節と同じコマンド）を実行する。期待する結果も同じ：required-sectionsはpass、traceabilityは前と同じ（traceability.jsonを変えていない）、checkpointでは今の正式な確認コマンド（entry-f.py・binding-e06f.json）がexit 0になる想定で、結果はcheckpointの記録が持つ。
+
+## 履歴：Step72（作成時の見出しは「今回Step72：確かめ直しの指摘を記録で直す」）
+
+記録だけを直すので、新しい試験はない。project rootで正式sensor 2件を実行する。
+
+```sh
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u2-integer-isa/code-generation/code-summary.md
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u2-integer-isa/code-generation/traceability.json
+```
+
+期待する結果：
+- required-sections は pass になる。
+- traceability は、前と同じ結果（traceability.json を変えていない）になる。
+- checkpoint では、今の正式な確認コマンド（`verification-command.txt` の U15 `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`、人が2026-10-19に採用）を実行する。U2 の記録は `aidlc/` の中にあり、entry-f は作業コピーの bytes を `aidlc/` の外だけで比べる（`entry-f.py` の `verify_working_copy`）ため、exit 0 になる想定である。結果は checkpoint の記録が持つ。
+
+## 履歴：Step71（作成時の見出しは「今回Step71：共有のabi.rsの再確認と正式確認のbinding更新」）
+
+（この節の入口 `u2_candidate.py` は2026-10-17時点の正式な確認の入口。2026-10-19からは上の Step72 の節のとおり entry-f・binding-e06f。）
 
 製品のテストは追加しない。project rootで、新しい入口と回帰、sensorを実行する（入口のファイル名は作るときに決め、README.mdに書く）。
 

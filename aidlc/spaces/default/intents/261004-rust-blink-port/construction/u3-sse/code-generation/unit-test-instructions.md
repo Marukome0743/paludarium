@@ -1,6 +1,19 @@
 # U3 単体テストと差分テスト
 
-## 追加Steps28〜30：現行ソースの実測
+## 今回：確かめ直しの指摘を記録で直す（2026-10-19）
+
+記録だけを直すので、新しい試験はない。project rootで正式sensor 2件を実行する。
+
+```sh
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u3-sse/code-generation/code-summary.md
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u3-sse/code-generation/traceability.json
+```
+
+期待する結果：required-sectionsはpass、traceabilityは前と同じ（traceability.jsonを変えていない）。checkpointでは今の正式な確認コマンド（`verification-command.txt` の U15 `entry-e3c29d1d/entry-f.py`・`binding-e06f.json`、人が2026-10-19に採用）を実行する。entry-fは作業コピーのbytesを `aidlc/` の外だけで比べる（`entry-f.py` の `verify_working_copy`）ので、exit 0になる想定で、結果はcheckpointの記録が持つ。
+
+今のtoolchainは `rust-toolchain.toml` の `nightly-2026-10-11` で、`cargo` は `+nightly-…` を付けずに `rust-toolchain.toml` に従って使う。下の節（「Runner and ordering」「Unit-scoped commands」を含む）の `+nightly-2026-10-01` と、`cargo llvm-cov … u3_tests:: --fail-under-lines 80`（Steps19〜21で、共有のCPU/Decoderの80%と独立したU3のmatrixに置き換え済み）は、それぞれの時点の記述である。下の節の「現承認済みcanonical」もその時点のもので、今の正式な確認コマンドはentry-f・binding-e06fである。
+
+## 履歴：Steps28〜30（作成時の見出しは「追加Steps28〜30：現行ソースの実測」）
 
 製品変更なし、現行ソース・両lock・公式最新確認版を固定した署名CIで実行する。fresh正常23576/fault1162/CPUID12を既存native build入口から生成し、各30秒process-group kill/reap・exit0・行数・hash・stderrを検査する。3native絶対pathとFULL_REPLAYを供給し、欠落・skip・unknown profileを拒否する。
 
@@ -10,7 +23,7 @@ ASanはcpu_u2/mmu_u2/decodeの3対象それぞれ `cargo fuzz run --fuzz-dir fuz
 
 全入力before/after/current、全raw hash、署名Verifiedと各gateの実exitを保存する。新canonical候補は人の別承認前に実行しない。失敗・権限不足・未到達を合格にしない。strict guard、80%、30秒、比較maskを維持する。
 
-## 今回Steps25〜27の再確認
+## 履歴：Steps25〜27の再確認（作成時の見出しは「今回Steps25〜27の再確認」）
 
 現在のrust-toolchain.tomlと実使用版を照合し、公式最新版を区切りで確認する。以下に残る旧nightly指定・過去コマンドは履歴であり、今回実行する版を上書きしない。製品を保持し、命令対応と保存証拠を現行ソース・両lock・compiler/設定へ照合する。U3 native matrixと共有CPU/Decoder9ファイル80%を別義務として扱う。native入力欠落・0件・skipを合格にしない。
 
@@ -19,10 +32,14 @@ ASanはcpu_u2/mmu_u2/decodeの3対象それぞれ `cargo fuzz run --fuzz-dir fuz
 不足を埋めるLinux CI・coverage・production wasm/Node/本物Safari・600秒ASanの追加実行や製品修正は、具体範囲の計画変更として先に提示する。strict guard・80%・30秒・比較mask・測定対象は維持。現承認済みcanonicalは `python3 aidlc/spaces/default/intents/261004-rust-blink-port/verification/verify-current-u1-u7-u9-aligned.py`。U3を十分検査しない境界を明記し、新候補を人の別承認前に実行しない。過去のcheckerを現在承認済みと扱わない。
 
 ## Runner and ordering
+
+（この節のtoolchainの版はその時点のもの。今は `rust-toolchain.toml` の `nightly-2026-10-11`。先頭の「今回」の節を参照。）
 nightly-2026-10-01をrust-toolchain.tomlに従い使用する。Macでは ~/.cargo/bin/cargo +nightly-2026-10-01 の実体を使う。以下の各コマンドはStep 1で追加するU3専用入口を前提とする。未作成の入口を検証済みと扱わない。
 命令のnative差分ケース/観測を先に作り、製品実装を後に行う。Decoder接続の単体テストはその実装後に行う。
 
 ## Unit-scoped commands
+
+（この節の `+nightly-2026-10-01` と最後の `u3_tests:: --fail-under-lines 80` はその時点のもの。後者はSteps19〜21で置き換え済み。先頭の「今回」の節を参照。）
 - CPU: ~/.cargo/bin/cargo +nightly-2026-10-01 test --locked -p paludarium-cpu --lib u3_tests:: -- --nocapture
 - Decoder: ~/.cargo/bin/cargo +nightly-2026-10-01 test --locked -p paludarium-decoder --lib u3_tests:: -- --nocapture
 - LinuxのU3 native収集: cargo test --locked -p paludarium-harness --test diff_u3 u3_native_observation -- --ignored --exact --nocapture
@@ -43,7 +60,9 @@ probeは人が選択した8source manifestとbinary29916d90ae1e6609a7b9019181df8
 Linuxのworkspaceおよび対象CPU/Decoder行coverage80%以上。U3filterだけでは既存整数部分のcoverage不足が予想されるため、U3専用指示は不足を隠さず報告し、CIで既存CPU/Decoder suiteを含む対象crate測定も行う。未達なら同一実装の鏡テストで数を埋めず意味のある境界テストを追加する。
 並行runner/watchdogは既存上限を維持。CPU/decodeの現行ASan+LSan各600秒以上、production wasm Node/実SafariはCI module同一hashを記録する。観測範囲を全入力や全ブラウザへ広げない。
 
-## 現行完了確認（Steps11〜13）
+## 履歴：完了確認（Steps11〜13）（作成時の見出しは「現行完了確認（Steps11〜13）」）
+
+（この節の「承認済みchecker」はその時点のもの。今の正式な確認コマンドは先頭の「今回」の節のとおり entry-f・binding-e06f。）
 
 既存上記コマンドとTesting Contractは保持する。今回の主作業は11195ad0の保存証拠とcurrent sourceの照合、U3記録完成であり、古い実装手順を反復しない。
 
