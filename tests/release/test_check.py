@@ -5,18 +5,33 @@ ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT/'scripts/rel
 import check,policy
 
 CANARY={'U15_OIDC_CRATES_IO_TOKEN':'canary-oidc-0001','U15_FIRST_CRATES_IO_TOKEN':'canary-crates-0002','U15_FIRST_NPM_TOKEN':'canary-npm-0003'}
+# (canary values are test strings, never real tokens)
 
 class Registry:
-    """In-memory crates.io/npm presence; never reaches the network."""
-    def __init__(self,present=(),status=None,unreachable=False):
+    """In-memory crates.io/npm presence and version digests; never reaches the network.
+    `versions` maps a present name to the digest of its 0.1.0 (None: an unreadable body)."""
+    def __init__(self,present=(),status=None,unreachable=False,versions=None):
         self.present,self.status,self.unreachable,self.requests=set(present),status,unreachable,[]
+        self.versions=dict(versions or {})
     def __call__(self,request,timeout):
         self.requests.append(request);url=request.full_url
         if self.unreachable:raise urllib.error.URLError('down')
         if self.status:raise urllib.error.HTTPError(url,self.status,'unavailable',{},None)
-        name='@paludarium/wasm' if url.startswith('https://registry.npmjs.org/') else url.rsplit('/',1)[1]
+        if url.startswith(check.NPM_PACKAGE_URL):name,rest=check.NPM_NAME,url[len(check.NPM_PACKAGE_URL)+1:]
+        else:name,_,rest=url[len(check.CRATES_API):].partition('/')
         if name not in self.present:raise urllib.error.HTTPError(url,404,'absent',{},None)
-        return io.BytesIO(b'{}')
+        if not rest:return io.BytesIO(b'{}')
+        if name not in self.versions:raise urllib.error.HTTPError(url,404,'absent',{},None)
+        digest=self.versions[name]
+        if digest is None:return io.BytesIO(b'{}')
+        body=dict(version=rest,dist=dict(integrity=digest)) if name==check.NPM_NAME else dict(version=dict(num=rest,checksum=digest))
+        return io.BytesIO(json.dumps(body).encode())
+
+def approved_set(order):
+    """Approved digests as approved_digests() returns them (fixture values, not real artifacts)."""
+    digests={name:'%064x'%i for i,name in enumerate(order,1)}
+    digests[check.NPM_NAME]='sha512-'+'A'*86+'=='
+    return digests
 
 class CheckTests(unittest.TestCase):
     def setUp(self):
@@ -117,5 +132,74 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(oidc.strip(),"if: steps.authorize.outputs.authentication == 'oidc'")
         for name in ('release.yml','u15-acceptance.yml','release-check.yml'):
             self.assertNotRegex((ROOT/'.github/workflows'/name).read_text(),r'(?i)echo[^\n]*(token|secret)')
+    # Step17 (R-16): resuming a stopped first publication.
+    def presence(self,registry,approved):
+        order=policy.inventory(ROOT)['order']
+        with patch.object(check.urllib.request,'urlopen',side_effect=registry):
+            return check.registries_absent(order,'0.1.0',approved)
+    def test_resume_when_present_versions_match(self):
+        order=policy.inventory(ROOT)['order'];approved=approved_set(order);done=order[:3]+[check.NPM_NAME]
+        registry=Registry(present=done,versions={n:approved[n] for n in done});result=self.presence(registry,approved)
+        self.assertEqual((result['absent'],result['resume'],result['mismatched']),(False,True,[]))
+        self.assertEqual(result['matching'],sorted(done));self.assertEqual(len(registry.requests),12+4)
+        versions=[r.full_url for r in registry.requests[12:]]
+        self.assertIn(check.CRATES_API+order[0]+'/0.1.0',versions);self.assertIn(check.NPM_PACKAGE_URL+'/0.1.0',versions)
+    def test_resume_refused_when_one_version_differs(self):
+        order=policy.inventory(ROOT)['order'];approved=approved_set(order);done=order[:3]
+        versions={n:approved[n] for n in done};versions[order[1]]='f'*64
+        result=self.presence(Registry(present=done,versions=versions),approved)
+        self.assertFalse(result['resume']);self.assertEqual([m['name'] for m in result['mismatched']],[order[1]])
+        self.assertEqual(sorted(result['matching']),sorted([order[0],order[2]]))
+    def test_resume_refused_for_npm_integrity_difference(self):
+        approved=approved_set(policy.inventory(ROOT)['order'])
+        result=self.presence(Registry(present=[check.NPM_NAME],versions={check.NPM_NAME:'sha512-other'}),approved)
+        self.assertFalse(result['resume']);self.assertIn('differs',result['mismatched'][0]['reason'])
+    def test_resume_refused_when_version_absent_or_unreadable(self):
+        order=policy.inventory(ROOT)['order'];approved=approved_set(order)
+        result=self.presence(Registry(present=[order[0],order[1]],versions={order[1]:None}),approved)
+        reasons={m['name']:m['reason'] for m in result['mismatched']}
+        self.assertFalse(result['resume']);self.assertIn('without the approved version',reasons[order[0]]);self.assertIn('unreadable',reasons[order[1]])
+    def test_resume_refused_without_approved_digest(self):
+        order=policy.inventory(ROOT)['order'];approved=approved_set(order);del approved[order[0]]
+        result=self.presence(Registry(present=[order[0]],versions={order[0]:'%064x'%1}),approved)
+        self.assertFalse(result['resume'])
+    def test_approved_digests_loaded_only_when_present(self):
+        def loader():raise AssertionError('loaded although nothing is present')
+        result=self.presence(Registry(),loader);self.assertTrue(result['absent']);self.assertFalse(result['resume'])
+        with self.assertRaisesRegex(ValueError,'artifact absent'):
+            self.presence(Registry(present=['paludarium-types']),lambda:check.approved_digests(self.root,'a'*40))
+    def test_resume_version_query_unknown_stops(self):
+        order=policy.inventory(ROOT)['order']
+        def registry(request,timeout):
+            if request.full_url.endswith('/0.1.0'):raise urllib.error.HTTPError(request.full_url,503,'unavailable',{},None)
+            return Registry(present=[order[0]])(request,timeout)
+        with self.assertRaisesRegex(ValueError,'version state unknown'):self.presence(registry,approved_set(order))
+    # Step17 (R-17): allow-listed child environments.
+    def job_environment(self):
+        return dict(PATH='/bin',HOME='/home/runner',CI='true',GITHUB_ACTIONS='true',GH_TOKEN='canary-gh-0004',GITHUB_TOKEN='canary-gh-0005',
+            ACTIONS_ID_TOKEN_REQUEST_URL='https://oidc.example.invalid',ACTIONS_ID_TOKEN_REQUEST_TOKEN='canary-oidc-request-0006',
+            GITHUB_REPOSITORY=policy.REPOSITORY,GITHUB_SHA='a'*40,GITHUB_WORKFLOW_REF=policy.REPOSITORY+'/.github/workflows/release.yml@refs/tags/v0.1.0',
+            RUNNER_ENVIRONMENT='github-hosted',NPM_CONFIG_USERCONFIG='/tmp/.npmrc',RUSTC='/toolchain/rustc',UNRELATED_SECRET='canary-other-0007',
+            PALUDARIUM_RELEASE_NPM='/npm-cli.js')
+    def test_cargo_children_get_no_github_or_oidc_request_variables(self):
+        for mode,extra in (('oidc',dict(U15_OIDC_CRATES_IO_TOKEN=CANARY['U15_OIDC_CRATES_IO_TOKEN'])),
+                           ('first-publication-token',{k:CANARY[k] for k in check.FIRST_TOKEN_NAMES})):
+            with self.subTest(mode):
+                dry,cargo,_=check.publication_environments(mode,dict(self.job_environment(),**extra))
+                for env in (dry,cargo):
+                    self.assertFalse([k for k in env if k.startswith(('GH_','GITHUB_','ACTIONS_'))]);self.assertNotIn('UNRELATED_SECRET',env)
+                    self.assertLessEqual(set(env),set(check.CARGO_ENVIRONMENT)|{'CARGO_REGISTRY_TOKEN'})
+                self.assertEqual((dry['PATH'],dry['RUSTC']),('/bin','/toolchain/rustc'));self.assertNotIn('CARGO_REGISTRY_TOKEN',dry)
+    def test_npm_child_gets_only_provenance_variables(self):
+        for mode,extra,token in (('oidc',dict(U15_OIDC_CRATES_IO_TOKEN=CANARY['U15_OIDC_CRATES_IO_TOKEN'],NODE_AUTH_TOKEN='XXXXX-XXXXX-XXXXX-XXXXX'),'XXXXX-XXXXX-XXXXX-XXXXX'),
+                           ('first-publication-token',{k:CANARY[k] for k in check.FIRST_TOKEN_NAMES},CANARY['U15_FIRST_NPM_TOKEN'])):
+            with self.subTest(mode):
+                npm=check.publication_environments(mode,dict(self.job_environment(),**extra))[2]
+                self.assertLessEqual(set(npm),set(check.NPM_ENVIRONMENT))
+                for name in ('ACTIONS_ID_TOKEN_REQUEST_URL','ACTIONS_ID_TOKEN_REQUEST_TOKEN','GITHUB_WORKFLOW_REF','GITHUB_SHA','RUNNER_ENVIRONMENT','NPM_CONFIG_USERCONFIG','CI'):
+                    self.assertIn(name,npm)
+                for name in ('GH_TOKEN','GITHUB_TOKEN','UNRELATED_SECRET','RUSTC','PALUDARIUM_RELEASE_NPM','CARGO_REGISTRY_TOKEN','U15_OIDC_CRATES_IO_TOKEN','U15_FIRST_CRATES_IO_TOKEN','U15_FIRST_NPM_TOKEN'):
+                    self.assertNotIn(name,npm)
+                self.assertEqual(npm['NODE_AUTH_TOKEN'],token)
 
 if __name__=='__main__':unittest.main()

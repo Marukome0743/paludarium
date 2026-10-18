@@ -1,5 +1,5 @@
 """Non-publishing release checks and bounded, retained command evidence."""
-import argparse,hashlib,json,os,signal,subprocess,sys,time,urllib.error,urllib.request
+import argparse,base64,hashlib,json,os,signal,subprocess,sys,time,urllib.error,urllib.request
 from pathlib import Path
 import policy
 import package
@@ -87,41 +87,119 @@ def validate(root):
     return dict(validated=True,version=inv['version'],crates=11,publish_eligible=False,outstanding=outstanding)
 
 REGISTRY_USER_AGENT='paludarium-release (https://github.com/aletheia-works/paludarium)'
+CRATES_API='https://crates.io/api/v1/crates/'
+NPM_NAME='@paludarium/wasm'
+NPM_PACKAGE_URL='https://registry.npmjs.org/%40paludarium%2Fwasm'
 CARGO_TOKEN_NAMES=('CARGO_REGISTRY_TOKEN','U15_OIDC_CRATES_IO_TOKEN')
 FIRST_TOKEN_NAMES=('U15_FIRST_CRATES_IO_TOKEN','U15_FIRST_NPM_TOKEN')
+# Step17 (R-17): each publication child gets only the variables it needs (allow-list).
+COMMON_ENVIRONMENT=('PATH','HOME','TMPDIR','LANG','LC_ALL','TZ','SSL_CERT_FILE','SSL_CERT_DIR',
+    'HTTPS_PROXY','HTTP_PROXY','NO_PROXY','https_proxy','http_proxy','no_proxy')
+# cargo never gets GH_TOKEN, GITHUB_TOKEN or ACTIONS_ID_TOKEN_REQUEST_*.
+CARGO_ENVIRONMENT=COMMON_ENVIRONMENT+('CARGO_HOME','RUSTUP_HOME','RUSTUP_TOOLCHAIN','RUSTC','RUSTDOC','RUSTFLAGS','CARGO_TERM_COLOR')
+# npm publish --provenance on GitHub Actions: ci detection, the OIDC request for
+# provenance signing and Trusted Publishing, and the GitHub context the provenance
+# statement names. NPM_CONFIG_USERCONFIG/NODE_AUTH_TOKEN are setup-node's .npmrc
+# and its placeholder (replaced by the scoped token in a first publication).
+NPM_ENVIRONMENT=COMMON_ENVIRONMENT+('CI','GITHUB_ACTIONS','ACTIONS_ID_TOKEN_REQUEST_URL','ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+    'GITHUB_SERVER_URL','GITHUB_REPOSITORY','GITHUB_REPOSITORY_ID','GITHUB_REPOSITORY_OWNER_ID','GITHUB_WORKFLOW_REF',
+    'GITHUB_EVENT_NAME','GITHUB_REF','GITHUB_SHA','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','RUNNER_ENVIRONMENT',
+    'NPM_CONFIG_USERCONFIG','NODE_AUTH_TOKEN')
+
+def registry_request(url):
+    return urllib.request.Request(url,headers={'User-Agent':REGISTRY_USER_AGENT,'Accept':'application/json'})
 
 def registry_present(url):
     """True/False for 200/404; any other answer leaves presence unknown and stops."""
-    request=urllib.request.Request(url,headers={'User-Agent':REGISTRY_USER_AGENT,'Accept':'application/json'})
     try:
-        with urllib.request.urlopen(request,timeout=30) as response:response.read(1)
+        with urllib.request.urlopen(registry_request(url),timeout=30) as response:response.read(1)
     except urllib.error.HTTPError as error:
         if error.code==404:return False
         raise ValueError('registry query failed; presence unknown: %d %s'%(error.code,url)) from error
     except urllib.error.URLError as error:raise ValueError('registry unreachable; presence unknown: '+url) from error
     return True
 
-def registries_absent(order):
-    """Live check that no public crate name and not @paludarium/wasm exists in any registry yet."""
-    urls={name:'https://crates.io/api/v1/crates/'+name for name in order}
-    urls['@paludarium/wasm']='https://registry.npmjs.org/%40paludarium%2Fwasm'
+def registry_version(url):
+    """Parsed body for 200 ({} when unparseable), None for 404; any other answer stops."""
+    try:
+        with urllib.request.urlopen(registry_request(url),timeout=30) as response:raw=response.read(16*1024*1024)
+    except urllib.error.HTTPError as error:
+        if error.code==404:return None
+        raise ValueError('registry query failed; version state unknown: %d %s'%(error.code,url)) from error
+    except urllib.error.URLError as error:raise ValueError('registry unreachable; version state unknown: '+url) from error
+    try:body=json.loads(raw)
+    except ValueError:return {}
+    return body if isinstance(body,dict) else {}
+
+def published_digest(name,version):
+    """('absent'|'unreadable'|'present', digest) of the approved version of a present name:
+    the crates.io `checksum` (.crate SHA-256) or the npm `dist.integrity`."""
+    body=registry_version((NPM_PACKAGE_URL if name==NPM_NAME else CRATES_API+name)+'/'+version)
+    if body is None:return 'absent',None
+    if name==NPM_NAME:
+        dist=body.get('dist');number=body.get('version')
+        digest=dist.get('integrity') if isinstance(dist,dict) else None
+    else:
+        row=body.get('version');row=row if isinstance(row,dict) else {}
+        number,digest=row.get('num'),row.get('checksum')
+    if number!=version or not isinstance(digest,str) or not digest:return 'unreadable',None
+    return 'present',digest
+
+def registries_absent(order,version=None,approved=None):
+    """Live check of the eleven crate names and @paludarium/wasm.
+    Step17 (R-16): when some names are present and `approved` (the approved digests, or a
+    loader called only then) is given, each present name must hold exactly the approved
+    version with the approved digest; `resume` is True only when every present one matches.
+    A mismatch, an absent approved version or an unreadable digest is listed in `mismatched`."""
+    urls={name:CRATES_API+name for name in order}
+    urls[NPM_NAME]=NPM_PACKAGE_URL
     present=sorted(name for name,url in sorted(urls.items()) if registry_present(url))
-    return dict(absent=not present,present=present,checked=sorted(urls))
+    result=dict(absent=not present,present=present,checked=sorted(urls),matching=[],mismatched=[],resume=False)
+    if not present or approved is None:return result
+    policy.require(isinstance(version,str) and bool(version),'approved version required to verify present registry versions')
+    expected=approved() if callable(approved) else approved
+    for name in present:
+        state,digest=published_digest(name,version)
+        if state=='absent':result['mismatched'].append(dict(name=name,reason='name exists without the approved version '+version))
+        elif state=='unreadable':result['mismatched'].append(dict(name=name,reason='published digest of '+version+' unreadable'))
+        elif not expected.get(name) or digest!=expected[name]:result['mismatched'].append(dict(name=name,reason='published '+version+' differs from the approved artifact'))
+        else:result['matching'].append(name)
+    result['resume']=not result['mismatched']
+    return result
+
+def npm_integrity(raw):
+    return 'sha512-'+base64.b64encode(hashlib.sha512(raw).digest()).decode()
+
+def approved_digests(root,head):
+    """Digests of the approved release-check artifact for `head`: each .crate SHA-256 and the npm integrity."""
+    directory=Path(root)/'target/u15';path=directory/'package-result.json'
+    policy.require(path.is_file(),'approved package artifact absent; present registry versions cannot be verified')
+    result=json.loads(path.read_bytes())
+    policy.require(result.get('passed') is True and result.get('head')==head and result.get('local_snapshot') is False,'package artifact wrong head/result')
+    tarballs=list(directory.glob('package-*/*.tgz'));policy.require(len(tarballs)==1,'npm artifact absent/ambiguous')
+    raw=tarballs[0].read_bytes();policy.require(package.sha(raw)==result['npm']['tar_sha256'],'npm tarball differs from the approved package result')
+    digests={name:row['sha256'] for name,row in result['crates'].items()}
+    digests[NPM_NAME]=npm_integrity(raw)
+    return digests
+
+def allowed(environ,names,**extra):
+    return dict({k:environ[k] for k in names if k in environ},**extra)
 
 def publication_environments(mode,environ):
-    """(dry-run, cargo upload, npm upload) child environments. Only the token of the
-    approved mode reaches an upload; dry runs get none. Values never enter results,
-    receipts or progress records (receipts keep only whitelisted non-secret keys)."""
-    base={k:v for k,v in environ.items() if k not in CARGO_TOKEN_NAMES+FIRST_TOKEN_NAMES}
+    """(dry-run, cargo upload, npm upload) child environments, built from allow-lists.
+    Only the token of the approved mode reaches an upload; dry runs get none. Values never
+    enter results, receipts or progress records (receipts keep only whitelisted non-secret keys)."""
     oidc=environ.get('U15_OIDC_CRATES_IO_TOKEN','');first={k:environ.get(k,'') for k in FIRST_TOKEN_NAMES}
+    dry=allowed(environ,CARGO_ENVIRONMENT)
     if mode=='oidc':
         policy.require(bool(oidc),'crates.io OIDC token absent')
         policy.require(not any(first.values()),'first-publication tokens still configured; delete them from the release environment after the first publication')
-        return base,dict(base,CARGO_REGISTRY_TOKEN=oidc),dict(base)
+        return dry,allowed(environ,CARGO_ENVIRONMENT,CARGO_REGISTRY_TOKEN=oidc),allowed(environ,NPM_ENVIRONMENT)
     policy.require(mode=='first-publication-token','unknown publication authentication')
     policy.require(not oidc,'OIDC token present during a first publication')
     policy.require(all(first.values()),'first-publication tokens absent from the release environment')
-    return base,dict(base,CARGO_REGISTRY_TOKEN=first['U15_FIRST_CRATES_IO_TOKEN']),dict(base,NODE_AUTH_TOKEN=first['U15_FIRST_NPM_TOKEN'])
+    return (dry,allowed(environ,CARGO_ENVIRONMENT,CARGO_REGISTRY_TOKEN=first['U15_FIRST_CRATES_IO_TOKEN']),
+            allowed(environ,NPM_ENVIRONMENT,NODE_AUTH_TOKEN=first['U15_FIRST_NPM_TOKEN']))
 
 def github(route):
     token=os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')
@@ -147,11 +225,16 @@ def authorize(root,evidence):
     policy.require(os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('GITHUB_REF_TYPE')=='tag','publication authorization is CI tag-only')
     pre=preflight(root);policy.require(evidence is not None and evidence.is_file(),'same-head acceptance evidence artifact missing')
     state=json.loads(evidence.read_bytes());head=pre['head']
-    # Only the live registry check below may assert absence; a document value is discarded.
-    state.pop('registries_absent',None);state.pop('registry_presence',None)
+    # Only the live registry check below may assert absence or a verified resume; document values are discarded.
+    for key in ('registries_absent','registry_presence','registry_resume_verified'):state.pop(key,None)
     if state.get('first_publication') is True and state.get('trusted_publishers_registered') is not True:
-        presence=registries_absent(policy.inventory(root)['order'])
-        state.update(registries_absent=presence['absent'],registry_presence=presence)
+        inv=policy.inventory(root)
+        # Step17 (R-16): a stopped first publication may continue only when every version
+        # already present equals the approved artifact; the remaining ones are then uploaded.
+        presence=registries_absent(inv['order'],inv['version'],lambda:approved_digests(root,head))
+        policy.require(not presence['mismatched'],'trusted publishers unregistered; first-publication resume refused: '+
+            '; '.join(m['name']+': '+m['reason'] for m in presence['mismatched']))
+        state.update(registries_absent=presence['absent'],registry_resume_verified=presence['resume'] and not presence['absent'],registry_presence=presence)
     state.update(repository=policy.REPOSITORY,tag=os.environ['GITHUB_REF_NAME'],commit=github('commits/'+head),
         main_compare=github('compare/'+head+'...main'),environment=pre['environment'])
     for row in state.get('quality',[]):
@@ -188,7 +271,7 @@ def fetch_acceptance(root):
 
 def publish_artifacts(root,evidence):
     """Reachable only in the protected CI tag job, after official approval."""
-    import base64,shutil,zipfile
+    import zipfile
     approved=authorize(root,evidence);directory=root/'target/u15'
     result=json.loads((directory/'package-result.json').read_bytes())
     policy.require(result['passed'] is True and result['head']==approved['head'] and result['local_snapshot'] is False,'package artifact wrong head/result')
@@ -232,8 +315,8 @@ def publish_artifacts(root,evidence):
             registry_state(200,dict(version=body['version']['num'],digest=body['version']['checksum']),approved['version'],actual[name]['sha256'])
             completed.append(name)
         node=Path(os.environ['PALUDARIUM_TEST_NODE']);npm=Path(os.environ['PALUDARIUM_RELEASE_NPM'])
-        integrity='sha512-'+base64.b64encode(hashlib.sha512(tarballs[0].read_bytes()).digest()).decode()
-        url='https://registry.npmjs.org/%40paludarium%2Fwasm/'+approved['version']
+        integrity=npm_integrity(tarballs[0].read_bytes())
+        url=NPM_PACKAGE_URL+'/'+approved['version']
         try:
             with urllib.request.urlopen(url,timeout=30) as response:body=json.load(response)
         except urllib.error.HTTPError as error:

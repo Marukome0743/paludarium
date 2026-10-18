@@ -67,6 +67,14 @@ class PolicyTests(unittest.TestCase):
     def test_no_declaration_rejected(self):
         self.s['trusted_publishers_registered']=False;self.s['registries_absent']=True
         with self.assertRaisesRegex(ValueError,'trusted publishers'):policy.release_gate(self.s,self.i)
+    # Step17 (R-16): only the live-verified resume flag lets a stopped first publication continue.
+    def test_first_publication_verified_resume_allowed(self):
+        self.first(registries_absent=False,registry_resume_verified=True)
+        self.assertEqual(policy.release_gate(self.s,self.i)['authentication'],'first-publication-token')
+    def test_resume_flag_needs_declaration_and_exact_true(self):
+        self.first(registries_absent=False,registry_resume_verified='true');self.reject()
+        self.s.update(first_publication=False,registry_resume_verified=True)
+        with self.assertRaisesRegex(ValueError,'trusted publishers unregistered'):policy.release_gate(self.s,self.i)
     def test_conflicting_declarations_rejected(self):
         self.s.update(first_publication=True,registries_absent=True)
         with self.assertRaisesRegex(ValueError,'conflicting'):policy.release_gate(self.s,self.i)

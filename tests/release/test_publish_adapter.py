@@ -92,6 +92,44 @@ class PublishAdapterTests(unittest.TestCase):
         self.env['U15_FIRST_CRATES_IO_TOKEN']=CANARY['U15_FIRST_CRATES_IO_TOKEN']
         with self.assertRaisesRegex(ValueError,'still configured'):self.execute()
         self.assertEqual(self.uploaded,set());self.assertEqual(self.envs,[])
+    # Step17 (R-16): resuming a stopped first publication uploads only what is missing.
+    def first_mode(self):
+        self.mode='first-publication-token';del self.env['U15_OIDC_CRATES_IO_TOKEN']
+        self.env.update(U15_FIRST_CRATES_IO_TOKEN=CANARY['U15_FIRST_CRATES_IO_TOKEN'],U15_FIRST_NPM_TOKEN=CANARY['U15_FIRST_NPM_TOKEN'])
+    def test_resume_uploads_only_remaining(self):
+        self.first_mode();done=self.inv['order'][:3];self.uploaded=set(done)
+        result=self.execute();self.assertEqual(result['published'],self.inv['order']+['@paludarium/wasm'])
+        names=[n for n,_ in self.envs]
+        self.assertFalse([n for n in names if any(n.endswith('-'+d) for d in done)])
+        self.assertEqual(len([n for n in names if n.startswith('publish-') and n!='publish-npm']),8);self.assertIn('publish-npm',names)
+        progress=json.loads((self.out/'publication-progress.json').read_text())
+        self.assertEqual(progress['attempted'],self.inv['order'][3:]+['@paludarium/wasm']);self.assertFalse(progress['automatic_retry'])
+    def test_resume_stops_on_different_present_digest(self):
+        self.first_mode();first=self.inv['order'][0];self.uploaded={first}
+        request=self.request
+        def tampered(url,timeout):
+            body=request(url,timeout)
+            if url.endswith('/'+first+'/0.1.0'):return io.BytesIO(json.dumps(dict(version=dict(num='0.1.0',checksum='0'*64))).encode())
+            return body
+        self.request=tampered
+        with self.assertRaises(ValueError):self.execute()
+        self.assertEqual(self.uploaded,{first});self.assertEqual(self.envs,[])
+    def test_approved_digests_from_package_artifact(self):
+        digests=check.approved_digests(self.root,self.head)
+        self.assertEqual(set(digests),set(self.inv['order'])|{'@paludarium/wasm'})
+        self.assertEqual(digests['paludarium-types'],self.result['crates']['paludarium-types']['sha256'])
+        self.assertEqual(digests['@paludarium/wasm'],'sha512-'+base64.b64encode(hashlib.sha512(self.npm.read_bytes()).digest()).decode())
+        with self.assertRaisesRegex(ValueError,'wrong head'):check.approved_digests(self.root,'b'*40)
+        self.npm.write_bytes(self.npm.read_bytes()+b'changed')
+        with self.assertRaisesRegex(ValueError,'tarball differs'):check.approved_digests(self.root,self.head)
+    # Step17 (R-17): the job's GitHub token and OIDC request variables never reach cargo.
+    def test_cargo_uploads_never_see_github_or_oidc_request_variables(self):
+        self.env.update(GH_TOKEN='canary-gh-0004',ACTIONS_ID_TOKEN_REQUEST_URL='https://oidc.example.invalid',ACTIONS_ID_TOKEN_REQUEST_TOKEN='canary-oidc-request-0006',GITHUB_ACTIONS='true')
+        self.execute()
+        cargo=[e for n,e in self.envs if n!='publish-npm'];npm=[e for n,e in self.envs if n=='publish-npm'][0]
+        self.assertEqual(len(cargo),22)
+        self.assertTrue(all(not {'GH_TOKEN','ACTIONS_ID_TOKEN_REQUEST_URL','ACTIONS_ID_TOKEN_REQUEST_TOKEN','GITHUB_ACTIONS'}&set(e) for e in cargo))
+        self.assertEqual((npm['ACTIONS_ID_TOKEN_REQUEST_URL'],npm['GITHUB_ACTIONS']),('https://oidc.example.invalid','true'));self.assertNotIn('GH_TOKEN',npm)
     def test_oidc_mode_uses_oidc_token(self):
         self.execute()
         self.assertTrue(all(e['CARGO_REGISTRY_TOKEN']==CANARY['U15_OIDC_CRATES_IO_TOKEN'] for n,e in self.envs if n.startswith('publish-') and n!='publish-npm'))

@@ -71,7 +71,10 @@ def authentication(state):
     registered=state.get('trusted_publishers_registered') is True;first=state.get('first_publication') is True
     require(not(registered and first),'conflicting declarations: trusted publishers registered and first publication')
     if registered:return 'oidc'
-    require(first and state.get('registries_absent') is True,'trusted publishers unregistered and no verified first publication (all eleven crates and @paludarium/wasm absent from every registry)')
+    # Step17 (R-16): a stopped first publication continues only when the live check found every
+    # present crate/npm version equal to the approved artifact (registry_resume_verified).
+    verified=state.get('registries_absent') is True or state.get('registry_resume_verified') is True
+    require(first and verified,'trusted publishers unregistered and no verified first publication (all eleven crates and @paludarium/wasm absent from every registry, or every present one at the approved version and digest)')
     return 'first-publication-token'
 
 def release_gate(state, manifests):

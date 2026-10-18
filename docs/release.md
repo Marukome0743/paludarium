@@ -137,9 +137,12 @@ the one-time first publication with scoped tokens (steps 3 and 4b below).
 `release_gate` accepts exactly one of the two: `trusted_publishers_registered:
 true` (OIDC), or `first_publication: true` when the protected publish job's
 own live query finds all eleven crate names on crates.io and
-`@paludarium/wasm` on npm absent (any `registries_absent` value in the
-document is discarded; any registry answer other than 200/404 stops). Both
-`false`, or both `true`, is refused. Unit and integration tests
+`@paludarium/wasm` on npm absent, or, to resume a first publication that
+stopped partway, finds every name that is present holding exactly the
+release version with the approved digest (step 3). Any `registries_absent`,
+`registry_presence` or `registry_resume_verified` value in the document is
+discarded, and any registry answer other than 200/404 stops. Both `false`,
+or both `true`, is refused. Unit and integration tests
 replace the GitHub adapter with in-memory data: they do not prove that any
 real run, artifact or registration exists.
 
@@ -178,9 +181,12 @@ and its registry checks are complete.
    person creates (Step14b, Q4); it never creates a token itself:
    - crates.io: on crates.io, Account Settings, API Tokens, create a new
      token with an expiration date as short as the release needs (for
-     example 1 to 7 days), the endpoint scope `publish-new` only, and crate
-     scopes limited to the eleven names (or the pattern `paludarium*`,
-     which covers exactly `paludarium` and the `paludarium-*` names).
+     example 1 to 7 days, long enough to cover a resumed run below), the
+     endpoint scope `publish-new` only, and crate scopes listing the eleven
+     names one by one (recommended). A pattern such as `paludarium*` is a
+     prefix match: it covers `paludarium` and the `paludarium-*` names, but
+     also any other crate name that starts with `paludarium`, so it is
+     broader than the eleven crates.
    - npm: create a granular access token with the shortest expiration the
      release needs, "Read and write" permission limited to the
      `@paludarium` scope (organization), and no other packages; it must be
@@ -192,15 +198,46 @@ and its registry checks are complete.
      publish job, after the deployment approval. `release.yml` passes them
      only to the `cargo publish` and `npm publish` child processes (dry
      runs get no token), never prints them, and receipts and
-     `publication-progress.json` record no token value.
+     `publication-progress.json` record no token value. Each child gets
+     only an allow-list of variables (`CARGO_ENVIRONMENT` and
+     `NPM_ENVIRONMENT` in `scripts/release/check.py`): `cargo` never
+     receives `GH_TOKEN`, `GITHUB_TOKEN` or `ACTIONS_ID_TOKEN_REQUEST_*`,
+     and `npm` receives only what `npm publish --provenance` needs (CI
+     detection, the OIDC request variables, the GitHub context named in
+     the provenance statement, setup-node's `.npmrc` and its token).
+   - **crates.io new-crate rate limit.** crates.io limits how many new
+     crates one account can create in a short time, and all eleven crates
+     are new in the first publication. Before step 6, check the current
+     limit on crates.io (its documentation or help@crates.io); if it is
+     lower than eleven within the publish job's 30 minutes, ask crates.io
+     (help@crates.io) to raise it for this account first. If it is not
+     raised, expect the run to stop at the limit and resume as below.
+   - **Resuming a first publication that stopped partway** (rate limit,
+     timeout, network error). Do not delete, yank or re-upload anything,
+     and do not move the tag. Keep `publication-progress.json` and the
+     logs of the stopped run. After the cause is gone (for the rate limit,
+     after the waiting time crates.io names), re-run the publish job of the
+     same `release.yml` run (same tag and head; it needs the `release`
+     approval again; the tokens must not have expired). The publish job's
+     live check then accepts `first_publication: true` only when every
+     crate name and `@paludarium/wasm` that is already present holds
+     exactly `0.1.0` with the approved digest: the crates.io `checksum`
+     equals the SHA-256 of that crate's approved `.crate`, and the npm
+     `dist.integrity` equals the approved tarball's SHA-512 integrity
+     (both taken from the `u15-package` artifact for the release head).
+     Those versions are only verified; the remaining ones are uploaded in
+     dependency order. If even one present name has another version, a
+     different digest, or a digest that cannot be read, the job refuses
+     before uploading anything. Then the owner decides the recovery
+     outside `release.yml` (for example a new version), never by
+     overwriting a published version.
    The first publication is accepted only when the acceptance document
    declares `first_publication: true` (step 5) and the publish job's live
    query finds none of the eleven crates nor `@paludarium/wasm` on any
-   registry; if any exists (for example after a partial upload), the gate
-   refuses and the owner decides the recovery. If a crate's `0.1.0` is
-   uploaded outside `release.yml`, `release.yml` later only verifies it,
-   and stops unless the registry checksum equals the `.crate` digest
-   built by `release-check.yml` for the release head.
+   registry, or only matching versions as in the resume above. If a
+   crate's `0.1.0` is uploaded outside `release.yml`, `release.yml` later
+   only verifies it, and stops unless the registry checksum equals the
+   `.crate` digest built by `release-check.yml` for the release head.
    Confirm: before step 5, `https://crates.io/api/v1/crates/<name>` returns
    404 for each of the eleven names and
    `https://registry.npmjs.org/%40paludarium%2Fwasm` returns 404, and the
@@ -298,7 +335,13 @@ uploaded. Registry checksums/integrity are checked after each upload.
 On partial failure, preserve `publication-progress.json`, attempted uploads,
 unverified uploads and all logs. Do not delete, replace, move a tag or retry
 publication automatically. An owner must inspect registry state and propose
-the remaining recovery. A successful workflow alone does not establish
+the remaining recovery. For a first publication, the owner may re-run the
+publish job as described in step 3 ("Resuming a first publication"): it
+continues only when every version already present equals the approved
+artifact, and uploads only the remaining ones. The cargo and npm children
+get allow-listed environments only (step 3); the allow-list for
+`npm publish --provenance` follows npm's provenance generator for GitHub
+Actions and is proven only by the real publication. A successful workflow alone does not establish
 FR10.1: registry retrieval/source/provenance verification is required.
 
 ## Official references

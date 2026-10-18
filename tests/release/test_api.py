@@ -58,10 +58,13 @@ class ApiTests(unittest.TestCase):
         with patch.dict(os.environ,self.env),patch.object(check,'github',return_value=dict(total_count=0,workflow_runs=[])):
             with self.assertRaises(ValueError):check.fetch_acceptance(ROOT)
     # Step14b (Q4): the first-publication declaration needs a live absence check.
-    def authorize_first(self,registry,**fields):
+    def authorize_first(self,registry,approved=None,**fields):
         self.s.update(dict(trusted_publishers_registered=False,first_publication=True),**fields);self.path.write_text(json.dumps(self.s))
+        from test_check import approved_set
+        self.approved=approved or approved_set(self.inv['order']);self.loaded=[]
+        def digests(root,head):self.loaded.append(head);return self.approved
         with patch.dict(os.environ,self.env),patch.object(check,'github',side_effect=self.github),patch.object(policy,'inventory',return_value=self.inv),\
-             patch.object(check.urllib.request,'urlopen',side_effect=registry):
+             patch.object(check.urllib.request,'urlopen',side_effect=registry),patch.object(check,'approved_digests',side_effect=digests):
             return check.authorize(ROOT,self.path)
     def test_first_publication_authorized_when_absent(self):
         from test_check import Registry
@@ -74,6 +77,28 @@ class ApiTests(unittest.TestCase):
         from test_check import Registry
         with self.assertRaisesRegex(ValueError,'trusted publishers unregistered'):
             self.authorize_first(Registry(present=['@paludarium/wasm']),registries_absent=True)
+    # Step17 (R-16): a stopped first publication continues only over matching present versions.
+    def test_first_publication_resumes_when_present_versions_match(self):
+        from test_check import Registry,approved_set
+        approved=approved_set(self.inv['order']);done=self.inv['order'][:4]
+        registry=Registry(present=done,versions={n:approved[n] for n in done})
+        self.assertEqual(self.authorize_first(registry,approved)['authentication'],'first-publication-token')
+        self.assertEqual(self.loaded,['a'*40]);self.assertEqual(len(registry.requests),12+4)
+    def test_first_publication_resume_refused_on_one_difference(self):
+        from test_check import Registry,approved_set
+        approved=approved_set(self.inv['order']);done=self.inv['order'][:4]+['@paludarium/wasm']
+        versions={n:approved[n] for n in done};versions['@paludarium/wasm']='sha512-other'
+        with self.assertRaisesRegex(ValueError,'resume refused: @paludarium/wasm'):self.authorize_first(Registry(present=done,versions=versions),approved)
+    def test_document_cannot_assert_resume(self):
+        from test_check import Registry
+        with self.assertRaisesRegex(ValueError,'resume refused'):
+            self.authorize_first(Registry(present=['paludarium-types'],versions={'paludarium-types':'0'*64}),registry_resume_verified=True)
+    def test_resume_without_first_publication_declaration_refused(self):
+        from test_check import Registry,approved_set
+        approved=approved_set(self.inv['order']);done=self.inv['order'][:2]
+        with self.assertRaisesRegex(ValueError,'trusted publishers unregistered'):
+            self.authorize_first(Registry(present=done,versions={n:approved[n] for n in done}),approved,first_publication=False)
+        self.assertEqual(self.loaded,[])
     def test_registered_publishers_skip_registry_check(self):
         with patch.dict(os.environ,self.env),patch.object(check,'github',side_effect=self.github),patch.object(policy,'inventory',return_value=self.inv),\
              patch.object(check,'registries_absent',side_effect=AssertionError('not consulted')):
