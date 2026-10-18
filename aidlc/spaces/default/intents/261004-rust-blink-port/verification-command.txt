@@ -1,1 +1,1 @@
-python3 aidlc/spaces/default/intents/261004-rust-blink-port/verification/verify-native-ci.py
+/Users/mutoakio/.local/share/mise/installs/python/3.15.0/bin/python3 -B aidlc/spaces/default/intents/261004-rust-blink-port/construction/u15-release/code-generation/verification/entry-e3c29d1d/entry-c.py --entry-sha256 44a8d9d0388db18fb5730dd54e5bb40f178a309536f39b48dde90d1f5eaf1a5a --binding-sha256 fd55262c37b6a50f71c58a677786a8af9aa7469defb3910853da64eadcbbf316

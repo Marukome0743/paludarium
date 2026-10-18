@@ -1,17 +1,24 @@
-# U7 実装前の確認
+# Code Generation Plan Approval
 
-## 対象
-
-現在の再開に対する`code-generation-plan.md`（Steps 15–17）、そのTesting Contract、`unit-test-instructions.md`を承認対象とする。既存の実装と過去の記録を保持し、今回のソース照合・証拠修復は承認後に行う。
+AI-DLC writes this file when it asks you to approve the plan. To answer here
+instead of in chat, write your answer after `[Answer]:` and tell me in chat when you are done.
 
 ## Plan Approval
 
-Approve this exact Code Generation plan?
+Approve the code plan for u7-vfs?
 
-[Approval Fingerprint]: sha256:v3:e467a1047aaf4e508844669f5493d9e484524f40dd0f8d7f2a6de2789945c9f7
-[Planned Source]: 4231b78470ca2bf497cc11a4da080afe7a4cac7b02b98b2cc1d42a844056f9eb
+- Builds: Step48。U14の整数SSEのJIT（署名head 1ceae86c）で変わった、U7が担当する `crates/paludarium-wasm/src/abi.rs`（JITの状態144 byte→`STATE_BYTES`の400 byte、SAFETYのコメント）を再確認する。U7の記録の主張が今のsourceでも正しいかを確かめ、正しくない記述があればcode-s...
+- Touches: U7の計画・手順書・code-summary.md（必要な場合だけ）。製品・既存試験・旧証拠・ほかのUnitの記録は変えない。
+- Tests: 新しいテストの実行はない。正式sensor 2件、独立再レビュー、今の正式確認コマンド（U2の `u2_candidate.py`）でのcheckpoint。
 
-- Approve Plan — この計画とテスト手順で実装を開始する。
-- Request Changes — 内容を修正する。
+Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u7-vfs/code-generation/code-generation-plan.md
+Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u7-vfs/code-generation/unit-test-instructions.md
 
-[Answer]: Approve Plan
+[Approval Fingerprint]: sha256:v3:25d640db30ca51847aaadf596af82b78b0c3cf1cbe479c19d9325c6c1efa899b
+[Planned Source]: 1d007e145356f21dddcf25b720db0726f7c889de86622e95a640349d7b723024
+
+- A. Approve Plan
+- B. Request Changes
+- C. I'll edit the files
+
+[Answer]: A. Approve Plan

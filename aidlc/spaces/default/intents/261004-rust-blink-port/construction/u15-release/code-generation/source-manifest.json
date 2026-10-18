@@ -1,0 +1,106 @@
+{
+  "stage": "code-generation",
+  "unit": "u15-release",
+  "version": 1,
+  "writes": [
+    {
+      "path": ".github/workflows/release-check.yml"
+    },
+    {
+      "path": ".github/workflows/release.yml"
+    },
+    {
+      "path": ".github/workflows/u15-acceptance.yml"
+    },
+    {
+      "path": "Cargo.lock"
+    },
+    {
+      "path": "Cargo.toml"
+    },
+    {
+      "path": "README.md"
+    },
+    {
+      "path": "crates/paludarium-cpu/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-decoder/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-host/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-jit/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-kernel/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-loader/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-mmu/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-runtime/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-types/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-vfs/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-wasm/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium/Cargo.toml"
+    },
+    {
+      "path": "docs/release.md"
+    },
+    {
+      "path": "fuzz/Cargo.lock"
+    },
+    {
+      "path": "packages/paludarium-wasm/package.json"
+    },
+    {
+      "path": "scripts/release/acceptance.py"
+    },
+    {
+      "path": "scripts/release/check.py"
+    },
+    {
+      "path": "scripts/release/package.py"
+    },
+    {
+      "path": "scripts/release/policy.py"
+    },
+    {
+      "path": "tests/release/__init__.py"
+    },
+    {
+      "path": "tests/release/test_acceptance.py"
+    },
+    {
+      "path": "tests/release/test_api.py"
+    },
+    {
+      "path": "tests/release/test_check.py"
+    },
+    {
+      "path": "tests/release/test_integration.py"
+    },
+    {
+      "path": "tests/release/test_package.py"
+    },
+    {
+      "path": "tests/release/test_policy.py"
+    },
+    {
+      "path": "tests/release/test_publish_adapter.py"
+    }
+  ]
+}

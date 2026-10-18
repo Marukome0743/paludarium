@@ -3,6 +3,17 @@
   "unit": "u1-skeleton",
   "version": 1,
   "writes": [
+    { "path": "packages/paludarium-wasm/tests/u14-check.mjs" },
+    { "path": "packages/paludarium-wasm/tests/u14-http.mjs" },
+    { "path": "packages/paludarium-wasm/tests/u14-http.test.mjs" },
+    { "path": ".github/workflows/u14-quality.yml" },
+    { "path": "tests/guests/insn/u2-frame.c" },
+    { "path": "tests/guests/insn/u2-frame-boundary.c" },
+    { "path": "scripts/u1-frame-regression.py" },
+    { "path": "tests/test_u1_frame_regression.py" },
+    { "path": "scripts/u1-frame-diagnostic.py" },
+    { "path": "tests/test_u1_frame_diagnostic.py" },
+    { "path": ".github/workflows/u1-frame-diagnostic.yml" },
     {
       "path": "Cargo.toml"
     },
@@ -311,6 +322,12 @@
     },
     {
       "path": "crates/paludarium-vfs/src/mount.rs"
+    },
+    {
+      "path": ".github/workflows/u1-source-bound-verification.yml"
+    },
+    {
+      "path": ".github/workflows/u1-u14-source-bound.yml"
     }
   ]
 }
