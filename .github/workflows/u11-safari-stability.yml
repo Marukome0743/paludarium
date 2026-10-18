@@ -2,8 +2,15 @@ name: U11 Safari stability
 # Manual check of the NFR7 Safari fix (U15 plan Step 22): the same Safari differential as u11-acceptance.yml,
 # ten times on fresh macOS runners, with the warm-up step and the single safaridriver retry. Each run uploads
 # whether a retry happened; the summary job counts failures and retries. It never publishes anything.
+# workflow_dispatch works only once this file is on the default branch, so a push to the review branch that
+# changes this file also starts it.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/build-and-test
+    paths:
+      - .github/workflows/u11-safari-stability.yml
 permissions:
   contents: read
 jobs:
