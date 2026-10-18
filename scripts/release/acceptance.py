@@ -9,7 +9,10 @@ it with ValueError; no partial document is written.
 
 trusted_publishers_registered is the human's declaration (workflow_dispatch
 input), not a registry check: registry ownership and Trusted Publisher
-registration can only be proven by the real publication.
+registration can only be proven by the real publication. first_publication
+(also a declaration, default false) asks for the one-time scoped-token path;
+release_gate accepts it only after the protected publish job has found every
+public crate and @paludarium/wasm absent from the registries.
 """
 import argparse
 import hashlib
@@ -406,8 +409,11 @@ def acceptance_rows(checked, head):
     return rows
 
 
-def produce(api, head, trusted_publishers_registered):
+def produce(api, head, trusted_publishers_registered, first_publication=False):
     policy.require(type(trusted_publishers_registered) is bool, 'trusted publisher declaration must be boolean')
+    policy.require(type(first_publication) is bool, 'first publication declaration must be boolean')
+    policy.require(not (trusted_publishers_registered and first_publication),
+                   'conflicting declarations: trusted publishers registered and first publication')
     collector = Collector(api, head)
     quality = quality_rows(collector)
     checked = checked_sources(collector)
@@ -416,11 +422,14 @@ def produce(api, head, trusted_publishers_registered):
                 artifact_sha256_definition=DIGEST_DEFINITION,
                 trusted_publishers_registered=trusted_publishers_registered,
                 trusted_publishers_basis='human declaration through the workflow_dispatch input; not verified against registries',
+                first_publication=first_publication,
+                first_publication_basis=('human declaration through the workflow_dispatch input; the protected publish job '
+                                         'must still find all eleven crates and @paludarium/wasm absent from every registry'),
                 published=False)
 
 
-def declaration(value):
-    policy.require(value in ('true', 'false'), 'U15_TRUSTED_PUBLISHERS_REGISTERED must be exactly true or false')
+def declaration(value, name='U15_TRUSTED_PUBLISHERS_REGISTERED'):
+    policy.require(value in ('true', 'false'), name + ' must be exactly true or false')
     return value == 'true'
 
 
@@ -433,13 +442,14 @@ def main(argv=None, environ=None, api=None):
     policy.require(env.get('GITHUB_REF') == 'refs/heads/main', 'acceptance evidence is produced only for main')
     head = env.get('GITHUB_SHA', '')
     trusted = declaration(env.get('U15_TRUSTED_PUBLISHERS_REGISTERED', 'false'))
+    first = declaration(env.get('U15_FIRST_PUBLICATION', 'false'), 'U15_FIRST_PUBLICATION')
     api = api or GitHubApi(env.get('GH_TOKEN') or env.get('GITHUB_TOKEN'))
-    document = produce(api, head, trusted)
+    document = produce(api, head, trusted, first)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open('x') as f:
         json.dump(document, f, indent=2, sort_keys=True)
     summary = dict(head=head, quality=len(document['quality']), acceptance=[a['id'] for a in document['acceptance']],
-                   trusted_publishers_registered=trusted, output=str(args.output))
+                   trusted_publishers_registered=trusted, first_publication=first, output=str(args.output))
     print(json.dumps(summary))
     return summary
 

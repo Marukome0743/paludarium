@@ -307,6 +307,24 @@ class AcceptanceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'must be boolean'):
             A.produce(self.world.api(), HEAD, 'true')
 
+    # Step14b (Q4): the first-publication declaration, default false.
+    def test_first_publication_declaration(self):
+        base = dict(GITHUB_REPOSITORY=policy.REPOSITORY, GITHUB_REF='refs/heads/main', GITHUB_SHA=HEAD)
+        with tempfile.TemporaryDirectory(dir=ROOT / 'target/u15') as directory:
+            output = Path(directory) / 'release-evidence.json'
+            with patch('builtins.print'):
+                summary = A.main(['--output', str(output)], dict(base, U15_FIRST_PUBLICATION='true'), self.world.api())
+            document = json.loads(output.read_bytes())
+        self.assertIs(summary['first_publication'], True);self.assertIs(document['first_publication'], True)
+        self.assertIs(document['trusted_publishers_registered'], False);self.assertNotIn('registries_absent', document)
+        self.assertIs(self.produce()['first_publication'], False)
+        with self.assertRaisesRegex(ValueError, 'U15_FIRST_PUBLICATION must be exactly'):
+            A.main(['--output', 'unused.json'], dict(base, U15_FIRST_PUBLICATION='1'), self.world.api())
+        with self.assertRaisesRegex(ValueError, 'conflicting'):
+            A.produce(self.world.api(), HEAD, True, True)
+        with self.assertRaisesRegex(ValueError, 'must be boolean'):
+            A.produce(self.world.api(), HEAD, False, 'true')
+
 
 class AdapterTests(unittest.TestCase):
     class Opener:
@@ -370,8 +388,8 @@ class AdapterTests(unittest.TestCase):
 class AcceptanceIntegrationTests(unittest.TestCase):
     """Produced document -> check.fetch_acceptance -> policy.release_gate (mocked GitHub only)."""
 
-    def gate_state(self, trusted):
-        document = A.produce(World().api(), HEAD, trusted)
+    def gate_state(self, trusted, first=False):
+        document = A.produce(World().api(), HEAD, trusted, first)
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w') as archive:
             archive.writestr('release-evidence.json', json.dumps(document))
@@ -401,6 +419,13 @@ class AcceptanceIntegrationTests(unittest.TestCase):
         state, inventory = self.gate_state(False)
         with self.assertRaisesRegex(ValueError, 'trusted publishers'):
             policy.release_gate(state, inventory)
+
+    def test_first_publication_document_needs_live_absence(self):
+        state, inventory = self.gate_state(False, True)
+        with self.assertRaisesRegex(ValueError, 'no verified first publication'):
+            policy.release_gate(state, inventory)
+        state['registries_absent'] = True  # set only by check.authorize after its live registry check
+        self.assertEqual(policy.release_gate(state, inventory)['authentication'], 'first-publication-token')
 
 
 if __name__ == '__main__':

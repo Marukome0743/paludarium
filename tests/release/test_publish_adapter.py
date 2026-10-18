@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 from test_package import tar
 from test_policy import ROOT
+from test_check import CANARY
 import check,package,policy
 
 class PublishAdapterTests(unittest.TestCase):
@@ -36,7 +37,8 @@ class PublishAdapterTests(unittest.TestCase):
         self.result=dict(passed=True,head=self.head,local_snapshot=False,source_sha256=sourcehash,
             crates=package.inspect_crates(self.crates,self.inv),npm=package.inspect_npm(self.npm,expected))
         (self.out/'package-result.json').write_text(json.dumps(self.result));self.uploaded=set()
-        self.env=dict(PALUDARIUM_TEST_NODE=sys.executable,PALUDARIUM_RELEASE_NPM=__file__)
+        self.env=dict(PALUDARIUM_TEST_NODE=sys.executable,PALUDARIUM_RELEASE_NPM=__file__,U15_OIDC_CRATES_IO_TOKEN=CANARY['U15_OIDC_CRATES_IO_TOKEN'])
+        self.mode='oidc';self.envs=[]
     def request(self,url,timeout):
         if 'crates.io/' in url:
             name=url.split('/')[-2]
@@ -45,7 +47,8 @@ class PublishAdapterTests(unittest.TestCase):
         if 'npm' not in self.uploaded:raise check.urllib.error.HTTPError(url,404,'absent',{},None)
         digest='sha512-'+base64.b64encode(hashlib.sha512(self.npm.read_bytes()).digest()).decode()
         return io.BytesIO(json.dumps(dict(version='0.1.0',dist=dict(integrity=digest))).encode())
-    def command(self,argv,cwd,output,paths=None,*args,**kwargs):
+    def command(self,argv,cwd,output,*args,**kwargs):
+        self.envs.append((Path(output).name,args[-1]))  # both adapters receive env last
         if '-p' in argv:
             name=argv[argv.index('-p')+1]
             if '--dry-run' in argv:
@@ -55,7 +58,7 @@ class PublishAdapterTests(unittest.TestCase):
         else:self.uploaded.add('npm')
         return dict(exit=0,timeout=False,error=None,reaped=True)
     def execute(self):
-        approved=dict(head=self.head,version='0.1.0',order=self.inv['order'])
+        approved=dict(head=self.head,version='0.1.0',order=self.inv['order'],authentication=self.mode)
         with patch.dict(os.environ,self.env),patch.object(check,'authorize',return_value=approved),patch.object(check,'checked_command',side_effect=self.command),patch.object(check,'run_command',side_effect=self.command),patch.object(check.urllib.request,'urlopen',side_effect=self.request):
             return check.publish_artifacts(self.root,None)
     def test_mocked_upload_transport(self):
@@ -71,5 +74,27 @@ class PublishAdapterTests(unittest.TestCase):
         self.npm.write_bytes(self.npm.read_bytes()+b'changed')
         with self.assertRaises(ValueError):self.execute()
         self.assertEqual(self.uploaded,set())
+    # Step14b (Q4): the first publication uses the scoped tokens, only for uploads, never recorded.
+    def test_first_publication_tokens_reach_uploads_only(self):
+        self.mode='first-publication-token';del self.env['U15_OIDC_CRATES_IO_TOKEN']
+        self.env.update(U15_FIRST_CRATES_IO_TOKEN=CANARY['U15_FIRST_CRATES_IO_TOKEN'],U15_FIRST_NPM_TOKEN=CANARY['U15_FIRST_NPM_TOKEN'])
+        result=self.execute();self.assertEqual(result['authentication'],'first-publication-token')
+        crates,npm=CANARY['U15_FIRST_CRATES_IO_TOKEN'],CANARY['U15_FIRST_NPM_TOKEN']
+        dry=[e for n,e in self.envs if n.startswith('dry-')];uploads=[e for n,e in self.envs if n.startswith('publish-') and n!='publish-npm']
+        npm_env=[e for n,e in self.envs if n=='publish-npm']
+        self.assertEqual((len(dry),len(uploads),len(npm_env)),(11,11,1))
+        self.assertTrue(all(not set(CANARY.values())&set(e.values()) for e in dry))
+        self.assertTrue(all(e['CARGO_REGISTRY_TOKEN']==crates and npm not in e.values() for e in uploads))
+        self.assertEqual(npm_env[0]['NODE_AUTH_TOKEN'],npm);self.assertNotIn(crates,npm_env[0].values())
+        recorded=json.dumps(result)+(self.out/'publication-progress.json').read_text()
+        self.assertFalse([v for v in CANARY.values() if v in recorded])
+    def test_oidc_mode_refuses_leftover_first_token(self):
+        self.env['U15_FIRST_CRATES_IO_TOKEN']=CANARY['U15_FIRST_CRATES_IO_TOKEN']
+        with self.assertRaisesRegex(ValueError,'still configured'):self.execute()
+        self.assertEqual(self.uploaded,set());self.assertEqual(self.envs,[])
+    def test_oidc_mode_uses_oidc_token(self):
+        self.execute()
+        self.assertTrue(all(e['CARGO_REGISTRY_TOKEN']==CANARY['U15_OIDC_CRATES_IO_TOKEN'] for n,e in self.envs if n.startswith('publish-') and n!='publish-npm'))
+        self.assertTrue(all('CARGO_REGISTRY_TOKEN' not in e for n,e in self.envs if n.startswith('dry-') or n=='publish-npm'))
 
 if __name__=='__main__':unittest.main()

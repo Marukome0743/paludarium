@@ -1,7 +1,22 @@
-import json,sys,tempfile,unittest,os
+import copy,io,json,re,sys,tempfile,unittest,os,urllib.error
 from pathlib import Path
+from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT/'scripts/release'))
-import check
+import check,policy
+
+CANARY={'U15_OIDC_CRATES_IO_TOKEN':'canary-oidc-0001','U15_FIRST_CRATES_IO_TOKEN':'canary-crates-0002','U15_FIRST_NPM_TOKEN':'canary-npm-0003'}
+
+class Registry:
+    """In-memory crates.io/npm presence; never reaches the network."""
+    def __init__(self,present=(),status=None,unreachable=False):
+        self.present,self.status,self.unreachable,self.requests=set(present),status,unreachable,[]
+    def __call__(self,request,timeout):
+        self.requests.append(request);url=request.full_url
+        if self.unreachable:raise urllib.error.URLError('down')
+        if self.status:raise urllib.error.HTTPError(url,self.status,'unavailable',{},None)
+        name='@paludarium/wasm' if url.startswith('https://registry.npmjs.org/') else url.rsplit('/',1)[1]
+        if name not in self.present:raise urllib.error.HTTPError(url,404,'absent',{},None)
+        return io.BytesIO(b'{}')
 
 class CheckTests(unittest.TestCase):
     def setUp(self):
@@ -47,5 +62,60 @@ class CheckTests(unittest.TestCase):
         receipt=check.run_command([sys.executable,'-c','pass'],self.root,self.root/'receipt',env=env)
         self.assertEqual(receipt['tool_environment']['RUSTFLAGS'],'')
         self.assertNotIn('never-log-this',(self.root/'receipt/receipt.json').read_text())
+    # Step14b (Q2): a decided version is no longer reported as outstanding.
+    def test_validate_outstanding_follows_version(self):
+        decided=check.validate(ROOT)
+        self.assertEqual(decided['version'],'0.1.0');self.assertNotIn('release version',decided['outstanding'])
+        self.assertIn('initial registry ownership/publishers',decided['outstanding'])
+        undecided=copy.deepcopy(policy.inventory(ROOT));undecided['version']='0.0.0'
+        with patch.object(policy,'inventory',return_value=undecided):
+            self.assertEqual(check.validate(ROOT)['outstanding'][0],'release version')
+    # Step14b (Q4): live absence check for the one-time first publication.
+    def absence(self,registry):
+        with patch.object(check.urllib.request,'urlopen',side_effect=registry):
+            return check.registries_absent(policy.inventory(ROOT)['order'])
+    def test_registries_absent(self):
+        registry=Registry();result=self.absence(registry)
+        self.assertTrue(result['absent']);self.assertEqual(len(result['checked']),12);self.assertEqual(len(registry.requests),12)
+        self.assertTrue(all(r.get_method()=='GET' and r.get_header('User-agent')==check.REGISTRY_USER_AGENT for r in registry.requests))
+    def test_registry_name_present(self):
+        for name in ('paludarium-types','@paludarium/wasm'):
+            with self.subTest(name):
+                result=self.absence(Registry(present=[name]))
+                self.assertFalse(result['absent']);self.assertEqual(result['present'],[name])
+    def test_registry_presence_unknown(self):
+        with self.assertRaisesRegex(ValueError,'503'):self.absence(Registry(status=503))
+        with self.assertRaisesRegex(ValueError,'unreachable'):self.absence(Registry(unreachable=True))
+    def test_oidc_environments(self):
+        env=dict(PATH='/bin',U15_OIDC_CRATES_IO_TOKEN=CANARY['U15_OIDC_CRATES_IO_TOKEN'],CARGO_REGISTRY_TOKEN='stale')
+        dry,cargo,npm=check.publication_environments('oidc',env)
+        self.assertEqual(cargo['CARGO_REGISTRY_TOKEN'],CANARY['U15_OIDC_CRATES_IO_TOKEN'])
+        for e in (dry,npm):self.assertFalse(set(e)&{'CARGO_REGISTRY_TOKEN','U15_OIDC_CRATES_IO_TOKEN'})
+        with self.assertRaisesRegex(ValueError,'still configured'):
+            check.publication_environments('oidc',dict(env,U15_FIRST_NPM_TOKEN=CANARY['U15_FIRST_NPM_TOKEN']))
+        with self.assertRaisesRegex(ValueError,'OIDC token absent'):check.publication_environments('oidc',dict(PATH='/bin'))
+    def test_first_publication_environments(self):
+        env=dict(PATH='/bin',U15_FIRST_CRATES_IO_TOKEN=CANARY['U15_FIRST_CRATES_IO_TOKEN'],U15_FIRST_NPM_TOKEN=CANARY['U15_FIRST_NPM_TOKEN'])
+        dry,cargo,npm=check.publication_environments('first-publication-token',env)
+        self.assertEqual(cargo['CARGO_REGISTRY_TOKEN'],CANARY['U15_FIRST_CRATES_IO_TOKEN']);self.assertEqual(npm['NODE_AUTH_TOKEN'],CANARY['U15_FIRST_NPM_TOKEN'])
+        self.assertFalse(set(CANARY.values())&set(dry.values()));self.assertNotIn(CANARY['U15_FIRST_NPM_TOKEN'],cargo.values())
+        self.assertNotIn(CANARY['U15_FIRST_CRATES_IO_TOKEN'],npm.values())
+        with self.assertRaisesRegex(ValueError,'tokens absent'):check.publication_environments('first-publication-token',dict(env,U15_FIRST_NPM_TOKEN=''))
+        with self.assertRaisesRegex(ValueError,'OIDC token present'):check.publication_environments('first-publication-token',dict(env,U15_OIDC_CRATES_IO_TOKEN='x'))
+        with self.assertRaisesRegex(ValueError,'unknown'):check.publication_environments('long-lived',env)
+    def test_upload_tokens_not_in_receipt(self):
+        env=dict(os.environ,CARGO_REGISTRY_TOKEN=CANARY['U15_FIRST_CRATES_IO_TOKEN'],NODE_AUTH_TOKEN=CANARY['U15_FIRST_NPM_TOKEN'])
+        check.run_command([sys.executable,'-c','pass'],self.root,self.root/'receipt',env=env)
+        text=(self.root/'receipt/receipt.json').read_text()
+        self.assertFalse([v for v in CANARY.values() if v in text])
+    def test_release_workflow_secret_scope(self):
+        text=(ROOT/'.github/workflows/release.yml').read_text();publish=text.split('\n  publish:\n',1)[1]
+        self.assertEqual(sorted(re.findall(r'secrets\.(\w+)',text)),['U15_FIRST_CRATES_IO_TOKEN','U15_FIRST_NPM_TOKEN'])
+        self.assertEqual(len(re.findall(r'secrets\.',publish)),2);self.assertIn('    environment: release\n',publish)
+        self.assertFalse([l for l in text.splitlines() if 'secrets.' in l and not re.fullmatch(r'\s+U15_FIRST_\w+: \$\{\{ secrets\.U15_FIRST_\w+ \}\}',l)])
+        oidc=publish.split('id: crates\n',1)[1].split('\n',1)[0]
+        self.assertEqual(oidc.strip(),"if: steps.authorize.outputs.authentication == 'oidc'")
+        for name in ('release.yml','u15-acceptance.yml','release-check.yml'):
+            self.assertNotRegex((ROOT/'.github/workflows'/name).read_text(),r'(?i)echo[^\n]*(token|secret)')
 
 if __name__=='__main__':unittest.main()

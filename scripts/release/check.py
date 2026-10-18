@@ -82,8 +82,46 @@ def validate(root):
         import re
         actions=re.findall(r'uses:\s+([^\s#]+)',text)
         policy.require(bool(actions) and all(a.startswith('./') or re.fullmatch(r'[^@]+@[0-9a-f]{40}',a) for a in actions),'unpinned workflow action')
-    return dict(validated=True,version=inv['version'],crates=11,publish_eligible=False,
-       outstanding=['release version','initial registry ownership/publishers','protected environment','same-head acceptance and explicit publication approval'])
+    outstanding=['initial registry ownership/publishers','protected environment','same-head acceptance and explicit publication approval']
+    if inv['version']=='0.0.0':outstanding.insert(0,'release version')
+    return dict(validated=True,version=inv['version'],crates=11,publish_eligible=False,outstanding=outstanding)
+
+REGISTRY_USER_AGENT='paludarium-release (https://github.com/aletheia-works/paludarium)'
+CARGO_TOKEN_NAMES=('CARGO_REGISTRY_TOKEN','U15_OIDC_CRATES_IO_TOKEN')
+FIRST_TOKEN_NAMES=('U15_FIRST_CRATES_IO_TOKEN','U15_FIRST_NPM_TOKEN')
+
+def registry_present(url):
+    """True/False for 200/404; any other answer leaves presence unknown and stops."""
+    request=urllib.request.Request(url,headers={'User-Agent':REGISTRY_USER_AGENT,'Accept':'application/json'})
+    try:
+        with urllib.request.urlopen(request,timeout=30) as response:response.read(1)
+    except urllib.error.HTTPError as error:
+        if error.code==404:return False
+        raise ValueError('registry query failed; presence unknown: %d %s'%(error.code,url)) from error
+    except urllib.error.URLError as error:raise ValueError('registry unreachable; presence unknown: '+url) from error
+    return True
+
+def registries_absent(order):
+    """Live check that no public crate name and not @paludarium/wasm exists in any registry yet."""
+    urls={name:'https://crates.io/api/v1/crates/'+name for name in order}
+    urls['@paludarium/wasm']='https://registry.npmjs.org/%40paludarium%2Fwasm'
+    present=sorted(name for name,url in sorted(urls.items()) if registry_present(url))
+    return dict(absent=not present,present=present,checked=sorted(urls))
+
+def publication_environments(mode,environ):
+    """(dry-run, cargo upload, npm upload) child environments. Only the token of the
+    approved mode reaches an upload; dry runs get none. Values never enter results,
+    receipts or progress records (receipts keep only whitelisted non-secret keys)."""
+    base={k:v for k,v in environ.items() if k not in CARGO_TOKEN_NAMES+FIRST_TOKEN_NAMES}
+    oidc=environ.get('U15_OIDC_CRATES_IO_TOKEN','');first={k:environ.get(k,'') for k in FIRST_TOKEN_NAMES}
+    if mode=='oidc':
+        policy.require(bool(oidc),'crates.io OIDC token absent')
+        policy.require(not any(first.values()),'first-publication tokens still configured; delete them from the release environment after the first publication')
+        return base,dict(base,CARGO_REGISTRY_TOKEN=oidc),dict(base)
+    policy.require(mode=='first-publication-token','unknown publication authentication')
+    policy.require(not oidc,'OIDC token present during a first publication')
+    policy.require(all(first.values()),'first-publication tokens absent from the release environment')
+    return base,dict(base,CARGO_REGISTRY_TOKEN=first['U15_FIRST_CRATES_IO_TOKEN']),dict(base,NODE_AUTH_TOKEN=first['U15_FIRST_NPM_TOKEN'])
 
 def github(route):
     token=os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')
@@ -109,6 +147,11 @@ def authorize(root,evidence):
     policy.require(os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('GITHUB_REF_TYPE')=='tag','publication authorization is CI tag-only')
     pre=preflight(root);policy.require(evidence is not None and evidence.is_file(),'same-head acceptance evidence artifact missing')
     state=json.loads(evidence.read_bytes());head=pre['head']
+    # Only the live registry check below may assert absence; a document value is discarded.
+    state.pop('registries_absent',None);state.pop('registry_presence',None)
+    if state.get('first_publication') is True and state.get('trusted_publishers_registered') is not True:
+        presence=registries_absent(policy.inventory(root)['order'])
+        state.update(registries_absent=presence['absent'],registry_presence=presence)
     state.update(repository=policy.REPOSITORY,tag=os.environ['GITHUB_REF_NAME'],commit=github('commits/'+head),
         main_compare=github('compare/'+head+'...main'),environment=pre['environment'])
     for row in state.get('quality',[]):
@@ -167,6 +210,7 @@ def publish_artifacts(root,evidence):
     toolchain=__import__('tomllib').loads((source/'rust-toolchain.toml').read_text())['toolchain']['channel']
     cargos=list((Path.home()/'.rustup/toolchains').glob(toolchain+'-*/bin/cargo'));policy.require(len(cargos)==1,'actual pinned Cargo absent')
     cargo=cargos[0];env=dict(os.environ,RUSTC=str(cargo.with_name('rustc')),RUSTDOC=str(cargo.with_name('rustdoc')),PATH=str(cargo.parent)+os.pathsep+os.environ['PATH'])
+    dry_env,cargo_env,npm_env=publication_environments(approved['authentication'],env)
     completed=[];attempted=[];uploaded=[]
     try:
         for name in approved['order']:
@@ -178,11 +222,11 @@ def publish_artifacts(root,evidence):
                 registry_state(200,dict(version=existing['version']['num'],digest=existing['version']['checksum']),approved['version'],actual[name]['sha256'])
                 completed.append(name);continue
             # Dry-run reassembly must match the previously checked artifact.
-            checked_command([str(cargo),'publish','--locked','--dry-run','--no-verify','--manifest-path',str(source/'Cargo.toml'),'-p',name],source,directory/('dry-'+name),[Path(n) for n in names],900,env)
+            checked_command([str(cargo),'publish','--locked','--dry-run','--no-verify','--manifest-path',str(source/'Cargo.toml'),'-p',name],source,directory/('dry-'+name),[Path(n) for n in names],900,dry_env)
             candidate=source/'target/package'/(name+'-'+approved['version']+'.crate')
             policy.require(package.sha(candidate.read_bytes())==actual[name]['sha256'],'publish reassembly changed; no upload allowed')
             attempted.append(name)
-            checked_command([str(cargo),'publish','--locked','--no-verify','--manifest-path',str(source/'Cargo.toml'),'-p',name],source,directory/('publish-'+name),[Path(n) for n in names],900,env)
+            checked_command([str(cargo),'publish','--locked','--no-verify','--manifest-path',str(source/'Cargo.toml'),'-p',name],source,directory/('publish-'+name),[Path(n) for n in names],900,cargo_env)
             uploaded.append(name)
             with urllib.request.urlopen('https://crates.io/api/v1/crates/'+name+'/'+approved['version'],timeout=30) as response:body=json.load(response)
             registry_state(200,dict(version=body['version']['num'],digest=body['version']['checksum']),approved['version'],actual[name]['sha256'])
@@ -195,12 +239,12 @@ def publish_artifacts(root,evidence):
         except urllib.error.HTTPError as error:
             if error.code!=404:raise
             attempted.append('@paludarium/wasm')
-            require_success(run_command([str(node),str(npm),'publish',str(tarballs[0]),'--access','public','--provenance','--ignore-scripts'],root,directory/'publish-npm',120,dict(os.environ)))
+            require_success(run_command([str(node),str(npm),'publish',str(tarballs[0]),'--access','public','--provenance','--ignore-scripts'],root,directory/'publish-npm',120,npm_env))
             uploaded.append('@paludarium/wasm')
             with urllib.request.urlopen(url,timeout=30) as response:body=json.load(response)
         registry_state(200,dict(version=body['version'],digest=body['dist']['integrity']),approved['version'],integrity)
         completed.append('@paludarium/wasm')
-        return dict(published=completed,head=approved['head'],version=approved['version'])
+        return dict(published=completed,head=approved['head'],version=approved['version'],authentication=approved['authentication'])
     finally:
         with (directory/'publication-progress.json').open('x') as f:json.dump(dict(completed=completed,attempted=attempted,uploaded_but_possibly_unverified=uploaded,automatic_retry=False),f,indent=2)
 
@@ -213,7 +257,11 @@ def main():
         from package import package_check
         result=package_check(ROOT)
     elif args.mode=='preflight':result=preflight(ROOT)
-    elif args.mode=='authorize':result=authorize(ROOT,args.evidence)
+    elif args.mode=='authorize':
+        result=authorize(ROOT,args.evidence)
+        if os.environ.get('GITHUB_OUTPUT'):
+            # A fixed enum value selects the release.yml credential step; no secret is written.
+            with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('authentication='+result['authentication']+'\n')
     elif args.mode=='fetch-acceptance':result=fetch_acceptance(ROOT)
     else:result=publish_artifacts(ROOT,args.evidence)
     if args.output:

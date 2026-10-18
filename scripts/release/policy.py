@@ -60,9 +60,19 @@ def protected_environment(environment):
     rules=environment.get('protection_rules',[])
     reviews=[r for r in rules if r.get('type')=='required_reviewers']
     require(len(reviews)==1 and bool(reviews[0].get('reviewers')),'required reviewers not configured')
-    require(reviews[0].get('prevent_self_review') is True,'self approval not prevented')
+    # Step14b (Q3): a sole maintainer approves their own deployment, so
+    # prevent_self_review is recorded but not required. Reviewers and no
+    # administrator bypass stay mandatory.
     require(environment.get('can_admins_bypass') is False,'admin protection bypass is enabled/unknown')
     return True
+
+def authentication(state):
+    """OIDC once Trusted Publishers are registered; a scoped token only for a verified first publication."""
+    registered=state.get('trusted_publishers_registered') is True;first=state.get('first_publication') is True
+    require(not(registered and first),'conflicting declarations: trusted publishers registered and first publication')
+    if registered:return 'oidc'
+    require(first and state.get('registries_absent') is True,'trusted publishers unregistered and no verified first publication (all eleven crates and @paludarium/wasm absent from every registry)')
+    return 'first-publication-token'
 
 def release_gate(state, manifests):
     require(state.get('repository')==REPOSITORY,'repository is not authorized')
@@ -83,6 +93,6 @@ def release_gate(state, manifests):
     require({e['id'] for e in evidence}==ACCEPTANCE and len(evidence)==len(ACCEPTANCE),'missing acceptance condition')
     for e in evidence:require(e['head']==head and e['passed'] is True and re.fullmatch('[0-9a-f]{64}',e['artifact_sha256']),'acceptance unverified')
     protected_environment(state.get('environment',{}))
-    require(state.get('trusted_publishers_registered') is True,'trusted publishers/initial ownership unconfigured')
+    mode=authentication(state)
     require(state.get('human_approved_head')==head,'human release approval missing')
-    return dict(eligible=True,head=head,version=version,order=manifests['order'])
+    return dict(eligible=True,head=head,version=version,order=manifests['order'],authentication=mode)

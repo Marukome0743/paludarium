@@ -43,13 +43,12 @@ checks, including real Wasm hello, invalid guest cleanup, missing JS and a
 corrupt Wasm. A mock upload test is not a registry or OIDC test.
 
 `release-check.yml` is PR/manual/reusable and has no publication credentials.
-It measures the fixed policy/package/check file population, each at least
-80%, including the actual package path. Existing Rust/JS/workspace/U9 floors
-remain unchanged. A branch-only workflow may need a PR and owner Actions
-approval before GitHub allows it to run; dispatch registration is not assumed.
-`scripts/release/acceptance.py` is measured locally with the same command
-(the fixed set plus `acceptance.py`, each at least 80%); `release-check.yml`
-does not yet include it in its CI coverage set.
+It measures the fixed policy/package/check/acceptance file population (four
+files), each at least 80%, including the actual package path (validate and
+package-check are appended to the unit-test coverage data). Existing
+Rust/JS/workspace/U9 floors remain unchanged. A branch-only workflow may need
+a PR and owner Actions approval before GitHub allows it to run; dispatch
+registration is not assumed.
 
 ## Same-head evidence map
 
@@ -133,7 +132,14 @@ and uploads one artifact `u15-acceptance` whose only member is
 refuses to run outside upstream or for a ref other than `refs/heads/main`.
 Its input `trusted_publishers_registered` (default `false`) is the person's
 declaration that step 4 below is done; it is not checked against the
-registries, and `release_gate` refuses `false`. Unit and integration tests
+registries. Its second input `first_publication` (default `false`) declares
+the one-time first publication with scoped tokens (steps 3 and 4b below).
+`release_gate` accepts exactly one of the two: `trusted_publishers_registered:
+true` (OIDC), or `first_publication: true` when the protected publish job's
+own live query finds all eleven crate names on crates.io and
+`@paludarium/wasm` on npm absent (any `registries_absent` value in the
+document is discarded; any registry answer other than 200/404 stops). Both
+`false`, or both `true`, is refused. Unit and integration tests
 replace the GitHub adapter with in-memory data: they do not prove that any
 real run, artifact or registration exists.
 
@@ -153,31 +159,60 @@ and its registry checks are complete.
 2. **Create the protected `release` environment.** When: before any tag
    is pushed (release preflight rejects a missing or unprotected
    environment). An upstream administrator creates environment `release`
-   with required reviewers, "Prevent self-review" on and administrator
-   bypass off; limiting deployments to `v*.*.*` tags is recommended.
+   with required reviewers (at least one) and administrator bypass off;
+   limiting deployments to `v*.*.*` tags is recommended. "Prevent
+   self-review" is optional (Step14b, Q3): the project has one maintainer,
+   who both pushes the tag and approves the deployment, so `release_gate`
+   no longer requires it. Turning it on is stricter and still accepted,
+   but then a second reviewer is needed.
    Confirm: `gh api repos/aletheia-works/paludarium/environments/release`
-   shows a `required_reviewers` rule with reviewers and
-   `prevent_self_review: true`, and `can_admins_bypass: false`. With
-   self-review prevented, the person who pushes the tag cannot approve
-   the deployment, so a second reviewer is needed.
+   shows a `required_reviewers` rule with at least one reviewer and
+   `can_admins_bypass: false` (preflight refuses a missing rule, an empty
+   reviewer list, or bypass `true` or unknown).
 3. **Decide name ownership and the first publication.** When: before
    step 4. Confirm that all eleven crate names and `@paludarium/wasm` are
-   free or owned by the project. crates.io lets a Trusted Publisher be
-   registered only for a crate that already exists, so the first
-   publication of each crate needs a separate decision and explicit
-   approval (for example an owner-run first upload with a short-lived,
-   crate-scoped token, in dependency order). `release.yml` never creates
-   a token and does not perform that first upload. If a crate's `0.1.0` is
+   free (not yet on crates.io or npm) or owned by the project. crates.io
+   lets a Trusted Publisher be registered only for a crate that already
+   exists, so the first publication cannot use OIDC. For that one release
+   only, `release.yml` can publish with short-lived, scoped tokens that the
+   person creates (Step14b, Q4); it never creates a token itself:
+   - crates.io: on crates.io, Account Settings, API Tokens, create a new
+     token with an expiration date as short as the release needs (for
+     example 1 to 7 days), the endpoint scope `publish-new` only, and crate
+     scopes limited to the eleven names (or the pattern `paludarium*`,
+     which covers exactly `paludarium` and the `paludarium-*` names).
+   - npm: create a granular access token with the shortest expiration the
+     release needs, "Read and write" permission limited to the
+     `@paludarium` scope (organization), and no other packages; it must be
+     usable from CI for publishing (check npm's current settings for
+     two-factor bypass when creating it).
+   - Store them as **environment secrets of `release`** (not repository or
+     organization secrets): `U15_FIRST_CRATES_IO_TOKEN` and
+     `U15_FIRST_NPM_TOKEN`. Environment secrets reach only the protected
+     publish job, after the deployment approval. `release.yml` passes them
+     only to the `cargo publish` and `npm publish` child processes (dry
+     runs get no token), never prints them, and receipts and
+     `publication-progress.json` record no token value.
+   The first publication is accepted only when the acceptance document
+   declares `first_publication: true` (step 5) and the publish job's live
+   query finds none of the eleven crates nor `@paludarium/wasm` on any
+   registry; if any exists (for example after a partial upload), the gate
+   refuses and the owner decides the recovery. If a crate's `0.1.0` is
    uploaded outside `release.yml`, `release.yml` later only verifies it,
    and stops unless the registry checksum equals the `.crate` digest
-   built by `release-check.yml` for the release head; upload those exact
-   bytes or decide another approach first. Check npm's current
-   requirement for the package's first publication the same way.
-   Confirm: `https://crates.io/api/v1/crates/<name>/owners` lists the
-   project owners for each crate, and `npm owner ls @paludarium/wasm`
-   lists the project's npm owners.
-4. **Register the Trusted Publishers.** When: after step 3 and before
-   step 5. For each of the eleven crates on crates.io and for
+   built by `release-check.yml` for the release head.
+   Confirm: before step 5, `https://crates.io/api/v1/crates/<name>` returns
+   404 for each of the eleven names and
+   `https://registry.npmjs.org/%40paludarium%2Fwasm` returns 404, and the
+   `release` environment lists both secrets (names only).
+4. **Register the Trusted Publishers.** When: for the first release,
+   right after its publication (step 6) succeeded; for a later release,
+   before step 5. After the first publication, also (4b) revoke both
+   tokens on crates.io and npm and delete `U15_FIRST_CRATES_IO_TOKEN` and
+   `U15_FIRST_NPM_TOKEN` from the `release` environment: from the second
+   release on, only OIDC (Trusted Publishing) is used, and the publish job
+   refuses to run in OIDC mode while either secret is still set. For each
+   of the eleven crates on crates.io and for
    `@paludarium/wasm` on npm, register repository
    `aletheia-works/paludarium`, workflow `release.yml` and environment
    `release`. npm also requires `repository.url` in `package.json` to
@@ -186,25 +221,31 @@ and its registry checks are complete.
    Publishing settings show exactly that repository, workflow and
    environment.
 5. **Produce same-head quality and acceptance evidence.** When: on the
-   main head from step 1, after steps 2 to 4. The `ci.yml` push run
+   main head from step 1, after steps 2 and 3 (first release) or 2 to 4
+   (later releases). The `ci.yml` push run
    starts by itself; dispatch each of the others once:
    `gh workflow run u12-quality.yml --repo aletheia-works/paludarium --ref main`,
    the same for `u14-quality.yml` and `release-check.yml`. When all four
    have succeeded (do not dispatch `u14-quality.yml` again to wait for a
    passing FR8.3; if FR8.3 fails, record it and stop), dispatch, within 7
    days:
+   for the first release
+   `gh workflow run u15-acceptance.yml --repo aletheia-works/paludarium --ref main -f first_publication=true`,
+   and for later releases
    `gh workflow run u15-acceptance.yml --repo aletheia-works/paludarium --ref main -f trusted_publishers_registered=true`
-   (`true` only when step 4 is complete). Confirm: the run succeeded and
-   its artifact `u15-acceptance` holds only `release-evidence.json`, with
-   that head, eight `quality` rows, the five `acceptance` IDs all
-   `passed: true` and `trusted_publishers_registered: true`.
+   (`true` only when step 4 is complete). Never set both. Confirm: the run
+   succeeded and its artifact `u15-acceptance` holds only
+   `release-evidence.json`, with that head, eight `quality` rows, the five
+   `acceptance` IDs all `passed: true`, and exactly one of
+   `first_publication: true` or `trusted_publishers_registered: true`.
 6. **Push the tag and approve the environment.** When: after step 5,
    with the person's explicit approval of the exact version, tag, head,
    registries, artifact digests, authentication and environment settings.
    Create `v0.1.0` on exactly that main head and push it. `release.yml`
    then runs preflight and the package check and waits at the `release`
-   environment; a reviewer other than the tag pusher checks the head,
-   version and digests and approves the deployment. Confirm: the run
+   environment; a required reviewer (the maintainer, unless self-review is
+   prevented) checks the head, version and digests and approves the
+   deployment. Confirm: the run
    succeeded and `target/u15/publication-progress.json` lists all eleven
    crates and `@paludarium/wasm`; then, independently, each crate's
    `https://crates.io/api/v1/crates/<name>/0.1.0` `checksum` equals the
@@ -212,11 +253,14 @@ and its registry checks are complete.
    @paludarium/wasm@0.1.0 dist.integrity` equals the tarball's SHA-512
    integrity, and the npm provenance attestation names the upstream
    repository, `release.yml` and that head. Only then FR10.1 becomes OK.
+   After the first release, do step 4 (Trusted Publishers) and 4b
+   (revoke and delete both tokens) before any later tag.
 
 The evidence document follows `policy.release_gate`: exact head/tag/repository,
 official completed successful quality run identities for every required
-purpose, each acceptance ID with its verified artifact digest, and confirmed
-Trusted Publisher registration. The authorization step re-fetches GitHub
+purpose, each acceptance ID with its verified artifact digest, and either the
+Trusted Publisher declaration or the first-publication declaration confirmed
+by the live registry-absence check. The authorization step re-fetches GitHub
 commit, reachability, environment, run and actual environment-review history.
 Evidence from old U14 measurements is historical unless the declared source
 and build closure are independently proven equivalent. No same-binary
@@ -232,9 +276,16 @@ or publication by itself. `release.yml` accepts only an exact
 reachability and actual environment protection before builds, then requires
 the protected human approval.
 
-Only the publish job receives `id-token: write`. crates-io-auth-action obtains
-a short-lived token and revokes it in its post step; npm uses Trusted
-Publishing and automatic provenance. All third-party actions are pinned to
+Only the publish job receives `id-token: write`. The authorize step writes the
+fixed value `authentication=oidc` or `authentication=first-publication-token`
+to its step output. With `oidc`, crates-io-auth-action obtains a short-lived
+token and revokes it in its post step, and npm uses Trusted Publishing; the
+job refuses if a first-publication secret is still set. With
+`first-publication-token` (the first release only), the OIDC step is skipped
+and the person's scoped, expiring tokens from the `release` environment
+secrets are used; the job refuses if an OIDC token is present or either
+secret is missing. npm provenance is requested in both modes. All
+third-party actions are pinned to
 officially resolved commit SHAs. The fork is never substituted for upstream.
 
 The publish job checks the previously tested eleven crate artifacts and npm

@@ -1,5 +1,5 @@
 """Official API adapter/control tests; no real approval, OIDC or upload."""
-import copy,io,json,os,tempfile,unittest,zipfile
+import copy,io,json,os,sys,tempfile,unittest,zipfile
 from pathlib import Path
 from unittest.mock import patch
 from test_policy import valid,ROOT
@@ -57,6 +57,33 @@ class ApiTests(unittest.TestCase):
     def test_acceptance_missing(self):
         with patch.dict(os.environ,self.env),patch.object(check,'github',return_value=dict(total_count=0,workflow_runs=[])):
             with self.assertRaises(ValueError):check.fetch_acceptance(ROOT)
+    # Step14b (Q4): the first-publication declaration needs a live absence check.
+    def authorize_first(self,registry,**fields):
+        self.s.update(dict(trusted_publishers_registered=False,first_publication=True),**fields);self.path.write_text(json.dumps(self.s))
+        with patch.dict(os.environ,self.env),patch.object(check,'github',side_effect=self.github),patch.object(policy,'inventory',return_value=self.inv),\
+             patch.object(check.urllib.request,'urlopen',side_effect=registry):
+            return check.authorize(ROOT,self.path)
+    def test_first_publication_authorized_when_absent(self):
+        from test_check import Registry
+        registry=Registry();self.assertEqual(self.authorize_first(registry)['authentication'],'first-publication-token')
+        self.assertEqual(len(registry.requests),12)
+    def test_first_publication_refused_when_present(self):
+        from test_check import Registry
+        with self.assertRaisesRegex(ValueError,'trusted publishers unregistered'):self.authorize_first(Registry(present=['paludarium-cpu']))
+    def test_document_cannot_assert_absence(self):
+        from test_check import Registry
+        with self.assertRaisesRegex(ValueError,'trusted publishers unregistered'):
+            self.authorize_first(Registry(present=['@paludarium/wasm']),registries_absent=True)
+    def test_registered_publishers_skip_registry_check(self):
+        with patch.dict(os.environ,self.env),patch.object(check,'github',side_effect=self.github),patch.object(policy,'inventory',return_value=self.inv),\
+             patch.object(check,'registries_absent',side_effect=AssertionError('not consulted')):
+            self.assertEqual(check.authorize(ROOT,self.path)['authentication'],'oidc')
+    def test_authorize_writes_only_mode_to_step_output(self):
+        output=Path(self.temp.name)/'github-output'
+        with patch.dict(os.environ,dict(self.env,GITHUB_OUTPUT=str(output))),patch.object(check,'authorize',return_value=dict(authentication='oidc',head='a'*40)),\
+             patch.object(sys,'argv',['check.py','--mode','authorize','--evidence',str(self.path)]),patch('builtins.print'):
+            check.main()
+        self.assertEqual(output.read_text(),'authentication=oidc\n')
     def test_acceptance_pagination_refused(self):
         with patch.dict(os.environ,self.env),patch.object(check,'github',return_value=dict(total_count=101,workflow_runs=[])):
             with self.assertRaises(ValueError):check.fetch_acceptance(ROOT)

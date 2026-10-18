@@ -30,7 +30,7 @@ jobs:
           rustup toolchain install nightly-2026-10-11 --profile minimal --component rust-src --target wasm32-unknown-unknown
           rustup toolchain install 1.99.1 --profile minimal
       - name: Release unit and mock integration tests
-        run: .venv-u15/bin/python -B -m coverage run --data-file=target/u15/python.coverage --include='*/scripts/release/policy.py,*/scripts/release/package.py,*/scripts/release/check.py' -m unittest discover -s tests/release -p 'test_*.py' -v
+        run: .venv-u15/bin/python -B -m coverage run --data-file=target/u15/python.coverage --include='*/scripts/release/policy.py,*/scripts/release/package.py,*/scripts/release/check.py,*/scripts/release/acceptance.py' -m unittest discover -s tests/release -p 'test_*.py' -v
       - name: Static configuration
         run: .venv-u15/bin/python -B -m coverage run --append --data-file=target/u15/python.coverage scripts/release/check.py --mode validate
       - name: Actual eleven crates, isolated registry and same npm tarball
@@ -40,7 +40,7 @@ jobs:
         run: |
           .venv-u15/bin/python -m coverage json --data-file=target/u15/python.coverage -o target/u15/python-coverage.json
           .venv-u15/bin/python -m coverage report --data-file=target/u15/python.coverage --fail-under=80
-          .venv-u15/bin/python -c 'import json; d=json.load(open("target/u15/python-coverage.json")); rows={k:v for k,v in d["files"].items() if k in ("scripts/release/policy.py","scripts/release/package.py","scripts/release/check.py")}; assert len(rows)==3; assert all(r["summary"]["percent_covered"]>=80 for r in rows.values())'
+          .venv-u15/bin/python -c 'import json; d=json.load(open("target/u15/python-coverage.json")); rows={k:v for k,v in d["files"].items() if k in ("scripts/release/policy.py","scripts/release/package.py","scripts/release/check.py","scripts/release/acceptance.py")}; assert len(rows)==4; assert all(r["summary"]["percent_covered"]>=80 for r in rows.values())'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

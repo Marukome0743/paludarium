@@ -41,6 +41,35 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):policy.dependency_order({'a':dict(dependencies={'missing':'1'})})
     def test_main_unreachable(self):self.s['main_compare']['status']='diverged';self.reject()
     def test_acceptance_missing(self):self.s['acceptance'].pop();self.reject()
+    # Step14b (Q3): self-review prevention is no longer required.
+    def test_self_review_allowed(self):
+        rule=self.s['environment']['protection_rules'][0]
+        for value in (False,None):
+            with self.subTest(value):
+                rule['prevent_self_review']=value;self.assertTrue(policy.release_gate(self.s,self.i)['eligible'])
+        del rule['prevent_self_review'];self.assertTrue(policy.protected_environment(self.s['environment']))
+    def test_required_reviewers_still_required(self):
+        self.s['environment']['protection_rules'][0]['reviewers']=[];self.reject()
+        self.s['environment']['protection_rules']=[dict(type='wait_timer',wait_timer=5)];self.reject()
+    def test_admin_bypass_unknown(self):del self.s['environment']['can_admins_bypass'];self.reject()
+    # Step14b (Q4): OIDC normally; the scoped token only for a verified first publication.
+    def test_oidc_mode(self):self.assertEqual(policy.release_gate(self.s,self.i)['authentication'],'oidc')
+    def first(self,**fields):self.s.update(dict(trusted_publishers_registered=False,first_publication=True),**fields)
+    def test_first_publication_absent_allowed(self):
+        self.first(registries_absent=True)
+        self.assertEqual(policy.release_gate(self.s,self.i)['authentication'],'first-publication-token')
+    def test_first_publication_existing_rejected(self):
+        self.first(registries_absent=False)
+        with self.assertRaisesRegex(ValueError,'trusted publishers unregistered'):policy.release_gate(self.s,self.i)
+    def test_first_publication_unchecked_rejected(self):
+        self.first();self.reject()
+        self.first(registries_absent='true');self.reject()
+    def test_no_declaration_rejected(self):
+        self.s['trusted_publishers_registered']=False;self.s['registries_absent']=True
+        with self.assertRaisesRegex(ValueError,'trusted publishers'):policy.release_gate(self.s,self.i)
+    def test_conflicting_declarations_rejected(self):
+        self.s.update(first_publication=True,registries_absent=True)
+        with self.assertRaisesRegex(ValueError,'conflicting'):policy.release_gate(self.s,self.i)
     def inherited_dependency(self,field):
         with tempfile.TemporaryDirectory(dir=ROOT/'target/u15') as directory:
             root=Path(directory);workspace=(ROOT/'Cargo.toml').read_text()
