@@ -46,3 +46,18 @@ updates:
         patterns:
           - "*"
     open-pull-requests-limit: 5
+
+  - package-ecosystem: "terraform"
+    directory: "/infra/github"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:00"
+      timezone: "Asia/Tokyo"
+    commit-message:
+      prefix: "chore(infra)"
+    groups:
+      terraform-providers:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
