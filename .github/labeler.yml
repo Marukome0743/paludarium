@@ -2,6 +2,10 @@ ci:
   - changed-files:
       - any-glob-to-any-file:
           - ".github/**"
+infra:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "infra/**"
 dependencies:
   - changed-files:
       - any-glob-to-any-file:
