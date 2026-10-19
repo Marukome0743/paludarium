@@ -8,7 +8,16 @@
       "path": ".github/workflows/nightly.yml"
     },
     {
+      "path": ".gitignore"
+    },
+    {
       "path": "Cargo.lock"
+    },
+    {
+      "path": "Cargo.toml"
+    },
+    {
+      "path": "README.md"
     },
     {
       "path": "crates/paludarium-cpu/src/exec.rs"
@@ -38,6 +47,18 @@
       "path": "crates/paludarium-harness/tests/support/u2.rs"
     },
     {
+      "path": "crates/paludarium-host/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-host/src/clock.rs"
+    },
+    {
+      "path": "crates/paludarium-host/src/lib.rs"
+    },
+    {
+      "path": "crates/paludarium-host/src/wasm.rs"
+    },
+    {
       "path": "crates/paludarium-kernel/src/lib.rs"
     },
     {
@@ -51,6 +72,15 @@
     },
     {
       "path": "crates/paludarium-types/src/lib.rs"
+    },
+    {
+      "path": "crates/paludarium-wasm/Cargo.toml"
+    },
+    {
+      "path": "crates/paludarium-wasm/src/abi.rs"
+    },
+    {
+      "path": "crates/paludarium-wasm/src/lib.rs"
     },
     {
       "path": "docs/u2/differential-coverage.md"
@@ -248,7 +278,61 @@
       "path": "fuzz/fuzz_targets/mmu_u2.rs"
     },
     {
-      "path": "README.md"
+      "path": "packages/paludarium-wasm/coordinator.mjs"
+    },
+    {
+      "path": "packages/paludarium-wasm/execution.mjs"
+    },
+    {
+      "path": "packages/paludarium-wasm/index.mjs"
+    },
+    {
+      "path": "packages/paludarium-wasm/package.json"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/checks.mjs"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/generate-guests.py"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guest-hashes.json"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/atomic"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/divide_fault"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/hello"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/infinite"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/integer"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/guests/stdin"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/import-check.mjs"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/index.html"
+    },
+    {
+      "path": "packages/paludarium-wasm/tests/node-check.mjs"
+    },
+    {
+      "path": "packages/paludarium-wasm/worker-support.mjs"
+    },
+    {
+      "path": "scripts/build-wasm.sh"
+    },
+    {
+      "path": "scripts/wasm-native-guests.py"
     },
     {
       "path": "tests/guests/insn/u2-bmi.c"

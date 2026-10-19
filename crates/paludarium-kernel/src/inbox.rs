@@ -1,47 +1,129 @@
 //! Synchronized runtime-to-Kernel signal transport; it never holds an MMU lock.
-use crate::{Process, signals};
+use crate::{ThreadState, signals};
 use paludarium_types::Errno;
 use std::sync::{
-    Arc, Mutex, PoisonError,
+    Arc, Mutex, PoisonError, Weak,
     atomic::{AtomicBool, Ordering},
 };
 
 #[derive(Default)]
 pub struct SignalInbox {
-    queue: Mutex<Vec<i32>>,
+    queue: Mutex<Vec<signals::PendingSignal>>,
     wake: Arc<AtomicBool>,
+    control_wake: AtomicBool,
+    timer_wake: AtomicBool,
+    listeners: Mutex<Vec<Weak<AtomicBool>>>,
+}
+#[derive(Default)]
+pub(crate) struct WakeReceipt {
+    pub signals: bool,
+    pub timer_changed: bool,
+    pub interrupted: bool,
 }
 impl SignalInbox {
     /// Queues a signal for the single guest process (U4).
     pub fn send(&self, number: i32) -> Result<(), Errno> {
+        self.send_pending(signals::PendingSignal::user(number, 0))
+    }
+    pub(crate) fn send_thread(&self, number: i32) -> Result<(), Errno> {
+        self.send_pending(signals::PendingSignal::thread(number, -6))
+    }
+    fn send_pending(&self, signal: signals::PendingSignal) -> Result<(), Errno> {
+        let number = signal.number;
         if !(1..=64).contains(&number) {
             return Err(Errno::EINVAL);
         }
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
-        if number < 32 && queue.contains(&number) {
+        if number < 32
+            && queue
+                .iter()
+                .any(|s| s.number == number && s.target == signal.target)
+        {
             return Ok(());
         }
-        queue.push(number);
+        queue.push(signal);
         self.wake.store(true, Ordering::SeqCst);
+        self.notify_listeners();
         Ok(())
+    }
+    pub(crate) fn subscribe(&self, wake: &Arc<AtomicBool>) {
+        let mut listeners = self
+            .listeners
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        listeners.retain(|listener| listener.strong_count() != 0);
+        let listener = Arc::downgrade(wake);
+        if !listeners.iter().any(|existing| existing.ptr_eq(&listener)) {
+            listeners.push(listener);
+        }
+    }
+    fn notify_listeners(&self) {
+        let mut listeners = self
+            .listeners
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        listeners.retain(|listener| {
+            if let Some(wake) = listener.upgrade() {
+                wake.store(true, Ordering::SeqCst);
+                true
+            } else {
+                false
+            }
+        });
     }
     /// Interrupts a native wait without modifying CPU or guest memory.
     pub fn interrupt(&self) {
-        self.wake.store(true, Ordering::SeqCst)
+        let _queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        // Only the owning worker may acknowledge a control notification.
+        // A different worker draining process signals must not erase it.
+        self.control_wake.store(true, Ordering::SeqCst);
+        self.wake.store(true, Ordering::SeqCst);
+        self.notify_listeners();
+    }
+    /// Deadline metadata wakes an owner without requesting guest interruption.
+    pub(crate) fn timer_changed(&self) {
+        let _queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        self.timer_wake.store(true, Ordering::SeqCst);
+        self.wake.store(true, Ordering::SeqCst);
+    }
+    pub(crate) fn owns_wake(&self, token: &AtomicBool) -> bool {
+        std::ptr::eq(&*self.wake, token)
     }
     #[must_use]
     pub fn wake_token(&self) -> Arc<AtomicBool> {
         self.wake.clone()
     }
-    pub(crate) fn drain(&self, process: &mut Process) -> bool {
+    pub(crate) fn drain(&self, process: &mut ThreadState) -> WakeReceipt {
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
-        let received = !queue.is_empty();
-        for number in queue.drain(..) {
-            signals::queue(process, signals::PendingSignal::user(number, 0));
+        let received = WakeReceipt {
+            signals: !queue.is_empty(),
+            timer_changed: self.timer_wake.swap(false, Ordering::SeqCst),
+            interrupted: self.control_wake.swap(false, Ordering::SeqCst),
+        };
+        for signal in queue.drain(..) {
+            signals::queue(process, signal);
         }
         // Sender stores while holding this same mutex, preventing a lost wake.
         self.wake.store(false, Ordering::SeqCst);
         received
+    }
+    /// Process dispatch must leave directed signals in their owning thread inbox.
+    pub(crate) fn drain_process(&self, process: &mut ThreadState) {
+        let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        queue.retain(|signal| {
+            if signal.target == signals::PendingTarget::Process {
+                signals::queue(process, *signal);
+                false
+            } else {
+                true
+            }
+        });
+        self.wake.store(
+            !queue.is_empty()
+                || self.control_wake.load(Ordering::SeqCst)
+                || self.timer_wake.load(Ordering::SeqCst),
+            Ordering::SeqCst,
+        );
     }
 }
 
@@ -57,7 +139,7 @@ mod u4_tests {
         inbox.send(19).unwrap();
         inbox.send(18).unwrap();
         inbox.send(9).unwrap();
-        let mut process = Process::default();
+        let mut process = ThreadState::default();
         inbox.drain(&mut process);
         assert!(process.pending.iter().any(|s| s.number == 9));
         assert!(!process.stopped);
@@ -76,7 +158,7 @@ mod u4_tests {
             }
         });
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-        let mut process = Process::default();
+        let mut process = ThreadState::default();
         let mut count = 0;
         while count < 1000 {
             assert!(

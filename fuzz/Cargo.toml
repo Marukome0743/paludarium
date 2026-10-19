@@ -20,6 +20,7 @@ paludarium-cpu = { path = "../crates/paludarium-cpu" }
 paludarium-loader = { path = "../crates/paludarium-loader" }
 paludarium-kernel = { path = "../crates/paludarium-kernel" }
 paludarium-host = { path = "../crates/paludarium-host" }
+paludarium-jit = { path = "../crates/paludarium-jit", features = ["fuzzing"] }
 
 # Not part of the main workspace (needs nightly sanitizer flags).
 [workspace]
@@ -28,6 +29,20 @@ members = ["."]
 [[bin]]
 name = "cpu_u2"
 path = "fuzz_targets/cpu_u2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jit_compile"
+path = "fuzz_targets/jit_compile.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jit_cache"
+path = "fuzz_targets/jit_cache.rs"
 test = false
 doc = false
 bench = false
@@ -70,6 +85,34 @@ bench = false
 [[bin]]
 name = "vfs_paths"
 path = "fuzz_targets/vfs_paths.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kernel_threads_u5"
+path = "fuzz_targets/kernel_threads_u5.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kernel_futex_u5"
+path = "fuzz_targets/kernel_futex_u5.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kernel_events_u6"
+path = "fuzz_targets/kernel_events_u6.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kernel_sockets_u6"
+path = "fuzz_targets/kernel_sockets_u6.rs"
 test = false
 doc = false
 bench = false

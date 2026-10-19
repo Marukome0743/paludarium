@@ -5,18 +5,147 @@
 //! translated code; U14 provides the wasm implementation (ADR-005).
 #![forbid(unsafe_code)]
 
+mod block;
+mod bridge;
+mod cache;
+mod emit;
+#[cfg(feature = "u14-cost-profile")]
+pub mod microbench;
+pub use bridge::{
+    ExecutionBridge, JitState, JitStatistics, STATE_BYTES, STATE_WORDS, WasmCodeCache,
+};
+#[cfg(feature = "u14-cost-profile")]
+pub use paludarium_cpu::jit_cost;
+
+/// Bounded native sanitizer entry points; absent from production builds.
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing {
+    /// Exercises actual extraction and wasm emission on untrusted code bytes.
+    #[must_use]
+    pub fn translate(bytes: &[u8], rip: u64) -> Option<Vec<u8>> {
+        let block = super::block::extract(&bytes[..bytes.len().min(960)], rip)?;
+        super::emit::emit(&block)
+    }
+
+    /// Exercises cache insert/hit/stale/invalidation with bounded keys.
+    pub fn cache(bytes: &[u8]) {
+        let cache = super::cache::EpochCache::new();
+        let mut expected = std::collections::BTreeMap::new();
+        for row in bytes.as_chunks::<4>().0.iter().take(512) {
+            let space = u64::from(row[1] & 3);
+            let rip = u64::from(row[2]) * 4096;
+            let generation = u64::from(row[3]);
+            match row[0] % 3 {
+                0 => {
+                    assert!(cache.insert(space, rip, generation, 1, generation));
+                    expected.insert((space, rip), generation);
+                }
+                1 => {
+                    let actual = cache.get(space, rip, generation);
+                    let wanted = expected
+                        .get(&(space, rip))
+                        .copied()
+                        .filter(|value| *value == generation);
+                    assert_eq!(actual, wanted);
+                    if wanted.is_none() {
+                        expected.remove(&(space, rip));
+                    }
+                }
+                _ => {
+                    cache.invalidate(rip);
+                    expected.retain(|&(_, address), _| address != rip);
+                }
+            }
+        }
+    }
+}
+
 use paludarium_cpu::CpuState;
 use paludarium_mmu::AddressSpace;
 use paludarium_types::{ExitReason, GuestAddr};
 
 /// A cache of translated guest code.
 pub trait CodeCache: Send + Sync {
+    /// Whether a rejected boundary may remain interpreted until code changes.
+    fn cache_rejections(&self) -> bool {
+        false
+    }
+    /// Optional decoded-boundary filter. Existing caches see every boundary.
+    fn eligible(&self, _instruction: &paludarium_decoder::Instruction) -> bool {
+        true
+    }
     /// Runs translated code for `state.rip` if there is any and returns why it
     /// stopped; `None` means "not translated, use the interpreter".
     fn try_run(&self, state: &mut CpuState, mem: &AddressSpace) -> Option<ExitReason>;
+    /// Exact accounting when supported; existing implementations retain the
+    /// historical conservative 64-instruction charge without API changes.
+    fn try_run_counted(
+        &self,
+        state: &mut CpuState,
+        mem: &AddressSpace,
+    ) -> Option<(ExitReason, u64)> {
+        self.try_run(state, mem).map(|reason| (reason, 64))
+    }
+    /// Negative hints are allowed only for deterministic unsupported/short code.
+    fn try_run_with_hint(
+        &self,
+        state: &mut CpuState,
+        mem: &AddressSpace,
+    ) -> (Option<(ExitReason, u64)>, bool) {
+        (self.try_run_counted(state, mem), false)
+    }
     /// Discards translations of the page containing `page` (guest code was
     /// written).
     fn invalidate(&self, page: GuestAddr);
+}
+
+/// Cheap selection using the interpreter's already-decoded instruction. This
+/// only rejects unsupported first instructions; translation still validates
+/// every instruction and MMU epoch before any execution.
+pub fn eligible_instruction(instruction: &paludarium_decoder::Instruction) -> bool {
+    block::operation(instruction).is_some()
+}
+
+#[cfg(test)]
+mod eligibility_tests {
+    use super::*;
+    fn check(bytes: &[u8], expected: bool) {
+        let instruction = paludarium_decoder::decode(bytes, GuestAddr(4096)).unwrap();
+        assert_eq!(eligible_instruction(&instruction), expected);
+        assert_eq!(crate::block::extract(bytes, 4096).is_some(), expected);
+    }
+    #[test]
+    fn u14_eligible_mov_immediate() {
+        check(&[0xb8, 42, 0, 0, 0], true);
+    }
+    #[test]
+    fn u14_eligible_arithmetic_immediate() {
+        check(&[0x48, 0x83, 0xc0, 1], true);
+    }
+    #[test]
+    fn u14_eligible_je_and_jne() {
+        check(&[0x74, 0], true);
+        check(&[0x75, 0], true);
+    }
+    #[test]
+    fn u14_eligible_rejects_memory() {
+        check(&[0x48, 0x8b, 7], false);
+    }
+    #[test]
+    fn u14_eligible_rejects_syscall() {
+        check(&[0x0f, 5], false);
+    }
+    #[test]
+    fn u14_eligible_sse_register_only_and_rejects_return() {
+        check(&[0x66, 0x0f, 0xef, 0x07], false);
+        check(&[0x66, 0x0f, 0xef, 0xc0], true);
+        check(&[0xc3], false);
+    }
+    #[test]
+    fn u14_eligible_rejects_wrong_width_or_condition() {
+        check(&[0x83, 0xc0, 1], false);
+        check(&[0x77, 0], false);
+    }
 }
 
 /// The code cache used when there is no JIT (always native in U1).

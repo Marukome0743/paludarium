@@ -8,7 +8,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Same pinned nightly as rust-toolchain.toml (NFR9.1).
-ARG TOOLCHAIN=nightly-2026-10-01
+ARG TOOLCHAIN=nightly-2026-10-10
 RUN rustup toolchain install "$TOOLCHAIN" --profile minimal \
       --component rustfmt,clippy,llvm-tools,rust-src \
       --target x86_64-unknown-linux-musl,wasm32-unknown-unknown \

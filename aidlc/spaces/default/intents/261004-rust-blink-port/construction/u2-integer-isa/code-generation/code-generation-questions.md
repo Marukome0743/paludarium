@@ -1,41 +1,24 @@
-# U2 Code Generation Questions
+# Code Generation Plan Approval
 
-## Sources
-
-既存機能回答・設計・実装・READYと保存済み検証は先行履歴として保持する。今回は現在sourceと証拠の対応確認の計画で、既存実装を作り直さない。
+AI-DLC writes this file when it asks you to approve the plan. To answer here
+instead of in chat, write your answer after `[Answer]:` and tell me in chat when you are done.
 
 ## Plan Approval
 
-現在sourceの確認計画Step17〜19、完全Testing Contract、unit-test-instructionsを承認しますか？
+Approve the code plan for u2-integer-isa?
 
-[Approval Fingerprint]: sha256:v3:ef2868e25366518eaa7680c6d287807f69ef7c787e3b547615ea959ec867f052
-[Planned Source]: 913dfff06792d127763b0f06edde983a331c1fa3f89c87f803ed6b6ba778aeb3
+- Builds: Step73。Step72の再レビュー（review-39）のMinor 2件をU2の記録で直す：古いtoolchainの版の注記を10-01と10-10の両方に広げ、日付のない末尾の3節に時点の注記を付ける。fuzzの裏付けのrunが今のtoolchainで動いたことを1文足す。
+- Touches: U2のcode-summary.mdとunit-test-instructions.mdだけ。製品・CI・workflow・ほかのUnitの記録・traceability.json・source-manifest.jsonは変えない。
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
 
-- Approve Plan
-- Request Changes
+Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u2-integer-isa/code-generation/code-generation-plan.md
+Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u2-integer-isa/code-generation/unit-test-instructions.md
 
-[Answer]: Approve Plan
+[Approval Fingerprint]: sha256:v3:9bfbd00d0bda36d29ae64b8cabc80c2b7b17cdbe89615f432f78cad0ea2b53ab
+[Planned Source]: 2ddcf1227d570aa365619e0528ec9ef35513970dcf88c95dc5989daa435f32d3
 
-## 過去attemptの質問と回答（履歴）
+- A. Approve Plan
+- B. Request Changes
+- C. I'll edit the files
 
-以下は旧内容の保存で、今回の承認を表さない。
-> # U2 Code Generation Questions
-> 
-> ## Sources
-> 
-> Functional Design / NFR Requirements の READY artifacts、inception contracts と unit-of-work、requirements、compiled rules を入力とする。probe/aube の immutable revision、artifact hash、完全 forms inventory は承認後に取得・固定する。既存 formicarium sources と aube canonical repository/ref が観測できたため、追加の人の選択を現段階で要求しない。
-> 
-> ## Plan Approval
-> 
-> 上記の計画と Testing Contract、テスト手順を承認しますか？
-> 
-> - Approve Plan — この計画と Testing Contract、テスト手順に従い実装を開始する
-> - Request Changes — 計画とテスト手順を修正する
-> 
-> [Planned Source]: 735a9abcb22e2d5e229718c789222a11a61730f390b7b5100c69dcbccb3ecd76
-> [Approval Fingerprint]: sha256:v3:2da081d712c7a94a0e8fe4157374478d4ab4e2c5e9f23a3de09c8a5656c6029f
-> [Answer]: Approve Plan
-> 
-> この欄は conductor が現行計画の fingerprint を提示した後、人が回答する。未回答を承認として扱わない。
-> 
-
+[Answer]: A. Approve Plan

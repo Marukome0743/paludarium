@@ -1,5 +1,62 @@
 # U4 単体・差分テスト手順
 
+## 今回Steps34〜37：現行ASan/LSan
+
+現行ソース全体を隔離jj workspaceへ固定し、診断専用fork CIの実機x86-64 Linuxで2対象を各600秒実行する。製品・fuzz・lock・suppressionのbefore/after hashと現在checkoutの一致を必須にする。ツールは実行前に最新リリースを公式情報で確認し、診断workflowへ具体版を固定して環境ログへ保存する。製品設定・lockは変更しない。
+
+```sh
+cargo +<確認済み最新nightly> fuzz run --fuzz-dir fuzz --sanitizer address syscall_args -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048
+cargo +<確認済み最新nightly> fuzz run --fuzz-dir fuzz --sanitizer address mmu_ops -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048
+```
+
+このテンプレートは直接実行せず、具体版を固定した診断workflowの実行コマンドを証拠に保存する。ASAN_OPTIONS=detect_leaks=1、既存fuzz/lsan.suppの絶対パスをLSAN_OPTIONSへ指定しsuppressionを増やさない。seed1、入力30秒、rss2048、既存max_len既定、fail-fast:falseを維持する。最小ASan終了診断と各targetの600秒以上・非ゼロruns・exit0・source一致を確認する。ログ、版、binary hash/symbols、corpus/crash、開始終了、全exitを常時保存する。
+
+成果物の独立確認後、正式sensor・独立レビューと既存承認済みcanonical checkpointを再実行する。80%下限・strict guardは維持する。過去178da99eの完走を今回の成功へ転用しない。任意入力と並行セッションID競合の完全解消は未検証として保持する。
+
+## 履歴Steps31〜33：現行ソースと承認経路の再確認
+
+新しい計画承認と内容確認後に、U4 manifestの担当ファイルと検証対象コミット7eb1819f52acede33e83775374dd4ee93edf643bのbytesを照合する。既存製品・検査設定は保持し、旧CI/ASanの成功を今回の新実行として扱わない。過去の証拠の再利用条件と現行sourceの未検証を区別する。
+
+正式検査は以下の既存sensorコマンドをU4成果物へ実行する。独立レビュー後の最終確認は、既に承認された `python3 aidlc/spaces/default/intents/261004-rust-blink-port/verification/verify-current-u10-probe-aube-native.py` を標準checkpointで実行する。有限な照合範囲を明記し、U4全入力・全環境の保証へ拡張しない。
+
+不一致がある場合だけ具体的不足と限定修正・検査案を提示する。新しい最終確認コマンドが必要なら実行前に人の選択を取得する。strict guard、80%下限、30秒watchdog、各600秒fuzz、比較maskとTesting Contractの順序を維持し、レビュー開始後は成果物・manifest・担当ソースの書き込みを止める。
+
+## 履歴Steps25〜30：証拠表記の修正と実機ASan/LSan
+
+追加指示に基づき、syscall_args/mmu_opsを実機x86-64 Linuxのfork CIで各600秒検証する。isolated jj workspaceの診断workflowだけを変更し、署名済み178da99eと製品source bytesが一致することを証明する。既存U2 sanitizer runnerに合わせてnightly-2026-10-01とcargo-fuzz0.13.2、既存suppression、ASAN_OPTIONS=detect_leaks=1を維持する。LSAN_OPTIONSはrunnerの既存fuzz/lsan.supp絶対パスを使用する。
+
+```bash
+cargo +nightly-2026-10-01 fuzz run --fuzz-dir fuzz --sanitizer address syscall_args -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048
+cargo +nightly-2026-10-01 fuzz run --fuzz-dir fuzz --sanitizer address mmu_ops -- -seed=1 -max_total_time=600 -timeout=30 -rss_limit_mb=2048
+```
+
+各targetの既存max_len既定、最小ASan終了診断、全source before/after、tool version、binary symbols/hash、seed/corpus/crash、raw logs、開始終了・exit・runsを常時保存する。両targetを同じCI headの独立jobで実行し、600秒未完走・0件・LSan異常・source不一致は成功にしない。新たな製品不具合は再現根拠を提示し、品質下限やsuppressionを緩めない。成功した実測範囲だけGAPを解消し、任意入力・全UB保証へ拡張しない。
+
+製品を変更せず、U4 manifest107claimsと署名済み178da99eの実測証拠を照合する。旧4d52 snapshot一致は旧Steps22〜24の履歴、af9bは中間時点と区別する。旧内部76件・差分44件を現在件数と推定せず、最新のログの非ゼロ件数を確認する。
+
+```bash
+aidlc engine sensor-traceability --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/traceability.json
+aidlc engine sensor-required-sections --stage code-generation --output-path aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-summary.md
+```
+
+人が承認したcanonical完了検査はUnit checkpointで実行する。canonicalは保存証拠の照合であり、上記の新ASan/LSan実行とは区別する。syscall_args/mmu_ops各600秒ASanのGAPは新実測成功と現在source一致の確認後にのみ更新する。U2の4対象ASanやproduction wasm14ケースをU4全体の合格へ転用しない。下記の過去手順・runner未作成等は各計画当時の状態とし、現在のreadinessは実在するtestと最新CIから確認する。品質下限・設定を維持する。
+
+## redo新attempt Steps22〜24
+
+今回の内容確認後に本書を保存し、同じ製品bytesの既存証拠再利用と限定commandsを確定した。新test実行なし、現在ASan GAPを保持。plan/本書/summary/traceabilityとmanifestの全保存後、レビュー中freezeへ渡す。
+
+対象3手順。新承認と別の内容確認後に107claims/CIと内部76/差分44を再照合し、実4produces plan/instructions/summary/traceabilityとmanifestを全保存する。同一製品の重い再試験は追加せず、既存exact commandsは不足回収用として保持。FR9.3/NFR2/NFR3のASan GAP・wasm未検証・品質下限を維持する。親diaryをレビュー前に確定し、依頼からterminalまで全書込とjj snapshotを停止する。以下Steps19〜21は履歴。
+
+## 新attempt Steps19〜21の実行方針
+
+今回の3手順は現在107claims/snapshotと保存CIの再照合、記録最小整合、レビュー前固定。内部76件・差分44件の既存rawとsourceが一致する範囲で証拠を再利用し、重い再試験を追加しない。現在FR9.3/NFR2/NFR3のASan GAPを維持する。親diaryの読取なしheading anchored追記をレビュー依頼前に完了し、依頼からterminal記録までsource/成果物書込とjj snapshot操作を停止する。以下の正確なcommandsは不足回収用として保持する。新attemptの承認・別の内容確認前は実行しない。
+
+下記の準備・成功値は過去実装の履歴であり、今回の現在 source の証明として自動採用しない。現在 runner と専用 test files を先に確認し、署名済み CI 4d52be0a の該当ログと現在 bytes の一致で結果を再利用する。再利用できない範囲だけ下記 exact U4 commands を実行する。新規 product defect の syscall/guest ケースは native-first、内部層は test-after。
+
+手元は macOS arm64。mise の Rust/cargo 実体を glob で解決し、nightly-2026-10-01 と --locked を維持する。差分の合否は実機 x86-64 Linux の GitHub Actions で確認する。Docker Desktop は Docker VMM を維持し、scripts/linux-dev.sh の QEMU 結果と実機の結果を混同しない。手元の失敗があれば原因と該当ケースを記録する。
+
+今回は現在 source と各 CI case を対応させる記録復旧が中心。現在ソースでの ASan syscall_args/mmu_ops 各600秒は証拠が結び付かなければ未検証/GAP として Build and Test に渡す。履歴の完走値を現在成功と記さない。件数、比較mask、30秒watchdog、coverage80%、各600秒、依存・toolchainは維持する。
+
 ## 現在の観測と準備
 
 Rust cargo test が既存 runner。直前 U2 の workspace success は保存済みの引継ぎ証拠で、U4 target/filter はまだ存在しない。今回 Part 1 では tests を実行していない。以下は承認後に bootstrap し、件数を検査して初めて runnable とする。方法は native-first syscall/guest と内部 layer test-after の custom、Standard（各 component 5〜8 件以上）。

@@ -233,6 +233,8 @@ pub enum ExitReason {
     GeneralProtection { rip: GuestAddr },
     /// A divide error: division by zero or quotient overflow (SIGFPE).
     ArithmeticFault { rip: GuestAddr },
+    /// An unmasked SIMD floating-point exception (Linux SIGFPE, trap 19).
+    FloatingPointFault { rip: GuestAddr, code: u8 },
     /// The instruction budget was used up; the loop may resume.
     BudgetExhausted { rip: GuestAddr },
 }
@@ -248,6 +250,7 @@ impl ExitReason {
             | ExitReason::Halt { rip }
             | ExitReason::GeneralProtection { rip }
             | ExitReason::ArithmeticFault { rip }
+            | ExitReason::FloatingPointFault { rip, .. }
             | ExitReason::BudgetExhausted { rip } => rip,
         }
     }

@@ -1,14 +1,24 @@
-# U4 コード生成の質問
+# Code Generation Plan Approval
+
+AI-DLC writes this file when it asks you to approve the plan. To answer here
+instead of in chat, write your answer after `[Answer]:` and tell me in chat when you are done.
 
 ## Plan Approval
 
-`code-generation-plan.md` の全実装手順・Testing Contract と `unit-test-instructions.md` の件数/比較/有限実行/品質を承認しますか。承認後は U4 の memory、時刻・待機、signal 配送と return を実装し、native-first と内部 test-after の順序で確認します。
+Approve the code plan for u4-memory-signals?
 
-[Approval Fingerprint]: sha256:v3:9fb44dc6b4dfa060e165e6267547b6c79032a4bb689e645b7f59dae3b8f94a9f
-[Planned Source]: 433f47fc70d6ef8834507f8df9eacd6907245b3c1e05f48d2368a7f7354bd88b
+- Builds: Step38。製品は変えない。計画の古くなったTesting Contractを今の内容（`sha256:7ff27a24…`、方針は同じでproject層の学びが足されただけ）に置き換え、今の正式確認コマンドでU4を確かめ直す。
+- Touches: この計画のTesting ContractとStep38の節だけ。製品・テスト・ほかの記録は変えない。
+- Tests: 新しいテストの実行はない。独立再レビューと、今の正式確認コマンド（U2の `u2_candidate.py`）でのcheckpoint。Steps34〜37の結果は履歴として保持する。
 
-- Approve Plan
-- Request Changes
+Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/code-generation-plan.md
+Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u4-memory-signals/code-generation/unit-test-instructions.md
 
-[Answer]: Approve Plan
+[Approval Fingerprint]: sha256:v3:cff483842a684cebc4bd03cc1511af45a4c8df5019b3d8492175b5d83bcbc976
+[Planned Source]: 1d007e145356f21dddcf25b720db0726f7c889de86622e95a640349d7b723024
 
+- A. Approve Plan
+- B. Request Changes
+- C. I'll edit the files
+
+[Answer]: A. Approve Plan

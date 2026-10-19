@@ -24,6 +24,18 @@ Background research is in
 検証済み：整数命令・REP restart・typed atomics と全MMUアクセス共通同期を追加しました。最新Linux `RUST_TEST_THREADS=1 cargo llvm-cov --locked --workspace --fail-under-lines 80` は197件通過（U1差分16/U2差分38/並行10を含む）、行coverage94.00%でexit0です。各差分/並行ケースの30秒watchdogを維持しています。[命令と取得根拠](docs/u2/inventory.md)、[nativeケース対応](docs/u2/differential-coverage.md)、[flags比較](docs/u2/flag-masks.md)を参照してください。
 
 未検証：bounded native traceは全probe/aube経路の対応を保証しません。全ゲスト統合、syscall/thread、SSE拡充、wasm、JITは後続unitです。nightly CPU/MMU fuzz各600秒を追加し、既存依存/pinと80%gateを維持しています。
+## 状態（U8：別のプログラムの起動）
+
+VFS 内の static-musl ELF を fork／vfork 相当の clone と execve で起動し、親が wait4 で終了を回収する経路を追加しています。私有メモリは fork 時に複製し、MAP_SHARED と開いた fd の実体は親子で共有します。Rust `Command::spawn`／`status`／`output` のために匿名 pipe、CLOEXEC、writev、FIONBIO、Kernel 所有の `/dev/null` を接続しています。
+
+差分検証は x86-64 Linux で `cargo test --locked -p paludarium-harness --test diff_u8 u8_ -- --nocapture` を実行します。各実行で新しい native 結果を取得し、stdout・stderr・終了状態を比較します。PID と rusage の変動値は真偽条件に正規化し、各ケースには時間上限を付けています。全体の Linux 行カバレッジ下限は 80% です。
+
+未対応：clone3、独立したプロセス間の CLONE_SIGHAND、停止／再開の wait 通知、プロセスグループの wait 選択。native trace で必要性を確認した場合に対象ケースを先に追加します。
+
+## U10：probe と固定 aube の差分検証
+
+Linux x86-64 の専用 CI で、独自 probe の標準 8 項目と aube v2.6.1 の 4 操作を、同じ ELF の新しい native 実行結果と比較します。各操作の制限時間は 30 秒です。検証済み：実装コミットの CI run 38009664758 は全11ジョブが成功し、native14 / emulator16 の全操作が一致しました。範囲、実行方法、既知の制限は [U10 検証資料](docs/u10/README.md) を参照してください。
+
 ## 必要なもの
 
 - Rust：`rust-toolchain.toml` の nightly（rustup が自動で入れます）
@@ -132,6 +144,15 @@ action はコミットの SHA で固定し、既定の権限は読み取りだ�
 ## License
 
 Apache License 2.0
+
+## 配布と公開（U15）
+
+公開用検査と手順は [docs/release.md](docs/release.md) にあります。
+最初の公開版は0.1.0に決めました（11 crateとnpm配布物の版を0.1.0にそろえています）。
+registryへの公開はまだ行っていません。
+11 crateとnpm配布物を隔離環境で検査し、公開には別の明示承認と実際の
+registry設定・保護environment・同headの受理証拠が必要です。
+Rust利用者は固定nightlyを使用してください。stable対応は主張していません。
 
 
 

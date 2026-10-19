@@ -44,7 +44,7 @@ fn setup(host: Arc<dyn Host>) -> (Kernel, Thread, AddressSpace) {
             MappingKind::Anonymous,
         )
         .unwrap();
-    (kernel, Thread { tid: 1, cpu }, memory)
+    (kernel, Thread::new(1, cpu), memory)
 }
 fn call(k: &mut Kernel, t: &mut Thread, m: &mut AddressSpace, number: u64, args: &[u64]) -> Next {
     t.cpu.gpr[reg::RAX] = number;
@@ -84,7 +84,7 @@ fn u4_write_restart_native_oracle() {
                 call(&mut k, &mut t, &mut m, nr::RT_SIGACTION, &[10, DATA, 0, 8]),
                 Next::Resume
             );
-            k.queue_signal(10).unwrap();
+            k.queue_signal(&mut t, 10).unwrap();
             assert_eq!(
                 call(&mut k, &mut t, &mut m, nr::WRITE, &[1, DATA + 64, 1]),
                 Next::Resume
@@ -135,7 +135,7 @@ fn u4_stop_continue_native_oracle() {
             }
             let before = t.cpu.clone();
             let stop = if mode == 1 || mode == 4 { 20 } else { 19 };
-            k.queue_signal(stop).unwrap();
+            k.queue_signal(&mut t, stop).unwrap();
             let decision = k.checkpoint(&mut t, &m);
             assert_eq!(t.cpu, before);
             let stopped = if decision == Next::Stopped {
@@ -147,19 +147,19 @@ fn u4_stop_continue_native_oracle() {
             let (exit, signal) = if mode == 3 || mode >= 5 {
                 if mode >= 5 {
                     for _ in 0..2048 {
-                        k.queue_signal(34).unwrap();
+                        k.queue_signal(&mut t, 34).unwrap();
                     }
                 }
-                k.queue_signal(9).unwrap();
+                k.queue_signal(&mut t, 9).unwrap();
                 if mode == 6 {
-                    k.queue_signal(18).unwrap();
+                    k.queue_signal(&mut t, 18).unwrap();
                 }
                 match k.checkpoint(&mut t, &m) {
                     Next::Exit(ExitStatus::Signaled(s)) => (-1, s),
                     other => panic!("kill decision {other:?}"),
                 }
             } else {
-                k.queue_signal(18).unwrap();
+                k.queue_signal(&mut t, 18).unwrap();
                 assert_eq!(k.checkpoint(&mut t, &m), Next::Resume);
                 assert_eq!(t.cpu, before);
                 match call(&mut k, &mut t, &mut m, nr::EXIT_GROUP, &[7]) {
@@ -221,12 +221,12 @@ fn u4_realtime_order_native_oracle() {
             );
             match mode {
                 0 | 1 => {
-                    k.queue_signal(36).unwrap();
-                    k.queue_signal(35).unwrap();
+                    k.queue_signal(&mut t, 36).unwrap();
+                    k.queue_signal(&mut t, 35).unwrap();
                 }
                 3 => {
-                    k.queue_signal(35).unwrap();
-                    k.queue_signal(10).unwrap();
+                    k.queue_signal(&mut t, 35).unwrap();
+                    k.queue_signal(&mut t, 10).unwrap();
                 }
                 4..=7 => {
                     let process_number = if mode == 7 { 10 } else { 35 };

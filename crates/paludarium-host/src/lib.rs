@@ -8,21 +8,169 @@
 //! This is the only crate where `unsafe` is permitted (NFR3.1). The U1
 //! implementation does not need any.
 
-use std::io::{self, Read, Write};
+#![cfg_attr(windows, feature(windows_by_handle))]
+#![cfg_attr(target_arch = "wasm32", feature(stdarch_wasm_atomic_wait))]
+
+use std::io;
+#[cfg(not(target_arch = "wasm32"))]
+use std::io::{Read, Write};
 use std::path::Path;
 
 use paludarium_types::{Errno, Error, ErrorKind};
 
 mod clock;
+#[cfg(target_os = "macos")]
+mod macos;
+mod threads;
+#[cfg(any(target_arch = "wasm32", test))]
+mod wasm_tasks;
+#[cfg(windows)]
+mod windows;
+pub use threads::{ThreadHandle, WaitToken};
+#[cfg(target_arch = "wasm32")]
+pub use wasm_tasks::run_task;
 pub mod fs;
+#[cfg(not(target_arch = "wasm32"))]
 mod native_fs;
 pub use fs::{DirectoryEntry, FileHandle, FileStat, HostFs};
+#[cfg(not(target_arch = "wasm32"))]
 pub use native_fs::NativeFs;
+#[cfg(target_arch = "wasm32")]
+mod wasm;
+#[cfg(target_arch = "wasm32")]
+pub use wasm::WasmHost;
 pub mod testing;
 pub use clock::{ClockId, WaitOutcome};
 
+/// Standard stream identity remains attached to duplicated guest descriptors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StreamId {
+    Stdin,
+    Stdout,
+    Stderr,
+}
+impl StreamId {
+    #[must_use]
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Stdin => 0,
+            Self::Stdout => 1,
+            Self::Stderr => 2,
+        }
+    }
+}
+/// Linux guest terminal attributes, independent of the host's libc layout.
+///
+/// External callers construct this extensible type with [`Self::new`].
+/// ```compile_fail
+/// use paludarium_host::TerminalAttributes;
+/// let _ = TerminalAttributes { input_flags: 0, output_flags: 0,
+///     control_flags: 0, local_flags: 0, line: 0, control_chars: [0; 19] };
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct TerminalAttributes {
+    pub input_flags: u32,
+    pub output_flags: u32,
+    pub control_flags: u32,
+    pub local_flags: u32,
+    pub line: u8,
+    pub control_chars: [u8; 19],
+}
+impl TerminalAttributes {
+    /// Preserves every Linux guest attribute exactly as supplied.
+    #[must_use]
+    pub const fn new(
+        input_flags: u32,
+        output_flags: u32,
+        control_flags: u32,
+        local_flags: u32,
+        line: u8,
+        control_chars: [u8; 19],
+    ) -> Self {
+        Self {
+            input_flags,
+            output_flags,
+            control_flags,
+            local_flags,
+            line,
+            control_chars,
+        }
+    }
+}
+impl Default for TerminalAttributes {
+    fn default() -> Self {
+        Self {
+            input_flags: 0x500,
+            output_flags: 5,
+            control_flags: 0xbf,
+            local_flags: 0x8a3b,
+            line: 0,
+            control_chars: [
+                3, 28, 127, 21, 4, 0, 1, 0, 17, 19, 26, 0, 18, 15, 23, 22, 0, 0, 0,
+            ],
+        }
+    }
+}
+/// `None` from Host means a non-terminal; a zero size is still a terminal.
+/// ```compile_fail
+/// use paludarium_host::{TerminalAttributes, TerminalInfo};
+/// let _ = TerminalInfo { attributes: TerminalAttributes::default(),
+///     columns: 0, rows: 0, x_pixels: 0, y_pixels: 0 };
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct TerminalInfo {
+    pub attributes: TerminalAttributes,
+    pub columns: u16,
+    pub rows: u16,
+    pub x_pixels: u16,
+    pub y_pixels: u16,
+}
+impl TerminalInfo {
+    /// Creates terminal information without changing zero sizes or attributes.
+    #[must_use]
+    pub const fn new(
+        attributes: TerminalAttributes,
+        columns: u16,
+        rows: u16,
+        x_pixels: u16,
+        y_pixels: u16,
+    ) -> Self {
+        Self {
+            attributes,
+            columns,
+            rows,
+            x_pixels,
+            y_pixels,
+        }
+    }
+}
+
 /// Facilities the emulator needs from its host.
 pub trait Host: Send + Sync {
+    /// Starts one native execution worker; wasm guest Workers are connected in U11.
+    fn spawn_thread(&self, task: Box<dyn FnOnce() + Send>) -> Result<Box<dyn ThreadHandle>, Errno> {
+        threads::spawn(task)
+    }
+    /// Compare-and-wait on a ticket, never on guest memory. Wake-before-wait is retained.
+    fn wait_on(
+        &self,
+        token: &WaitToken,
+        expected: u32,
+        deadline: Option<(ClockId, u64)>,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<WaitOutcome, Errno> {
+        threads::wait(self, token, expected, deadline, cancel)
+    }
+    fn wake(&self, token: &WaitToken) {
+        token.notify();
+    }
+    /// Queries one standard stream; guest ioctl numbers never cross this boundary.
+    fn terminal_info(&self, _stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+        Ok(None)
+    }
+
     fn mount_fs(&self, _root: &Path) -> Result<std::sync::Arc<dyn HostFs>, Errno> {
         Err(Errno::ENOSYS)
     }
@@ -60,6 +208,7 @@ pub fn errno_from_io(err: &io::Error) -> Errno {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn write_through(out: &mut dyn Write, buf: &[u8]) -> Result<usize, Errno> {
     out.write_all(buf).map_err(|e| errno_from_io(&e))?;
     out.flush().map_err(|e| errno_from_io(&e))?;
@@ -80,7 +229,12 @@ impl NativeHost {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Host for NativeHost {
+    fn terminal_info(&self, stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+        native_terminal_info(stream)
+    }
+
     fn mount_fs(&self, root: &Path) -> Result<std::sync::Arc<dyn HostFs>, Errno> {
         Ok(std::sync::Arc::new(NativeFs::new(root)?))
     }
@@ -194,3 +348,85 @@ mod tests {
 
 #[cfg(test)]
 mod u4_tests;
+
+// Linux x86-64 kernel ABI, not libc's larger `struct termios`.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn native_terminal_info(stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+    unsafe extern "C" {
+        fn ioctl(fd: i32, request: usize, ...) -> i32;
+    }
+    let fd = stream.index() as i32;
+    let mut attributes = [0u8; 36];
+    // SAFETY: TCGETS writes exactly the 36-byte Linux x86-64 kernel termios
+    // into this live buffer. fd is one of the host's standard descriptors;
+    // no guest pointer or request number is forwarded.
+    let result = unsafe { ioctl(fd, 0x5401, attributes.as_mut_ptr()) };
+    if result < 0 {
+        let error = io::Error::last_os_error();
+        if error.raw_os_error() == Some(25) {
+            return Ok(None);
+        }
+        return Err(Errno(error.raw_os_error().unwrap_or(5)));
+    }
+    let mut size = [0u8; 8];
+    // SAFETY: TIOCGWINSZ writes the 8-byte Linux winsize into this live buffer.
+    let result = unsafe { ioctl(fd, 0x5413, size.as_mut_ptr()) };
+    if result < 0 {
+        return Err(Errno(
+            io::Error::last_os_error().raw_os_error().unwrap_or(5),
+        ));
+    }
+    let flag = |i| {
+        u32::from_ne_bytes([
+            attributes[i],
+            attributes[i + 1],
+            attributes[i + 2],
+            attributes[i + 3],
+        ])
+    };
+    let mut control_chars = [0; 19];
+    control_chars.copy_from_slice(&attributes[17..36]);
+    Ok(Some(TerminalInfo {
+        attributes: TerminalAttributes {
+            input_flags: flag(0),
+            output_flags: flag(4),
+            control_flags: flag(8),
+            local_flags: flag(12),
+            line: attributes[16],
+            control_chars,
+        },
+        rows: u16::from_ne_bytes([size[0], size[1]]),
+        columns: u16::from_ne_bytes([size[2], size[3]]),
+        x_pixels: u16::from_ne_bytes([size[4], size[5]]),
+        y_pixels: u16::from_ne_bytes([size[6], size[7]]),
+    }))
+}
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    not(target_os = "macos"),
+    not(windows),
+    not(all(target_os = "linux", target_arch = "x86_64"))
+))]
+fn native_terminal_info(_stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+    Ok(None)
+}
+
+#[cfg(target_os = "macos")]
+fn native_terminal_info(stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+    macos::terminal_info(stream.index() as i32)
+}
+
+#[cfg(windows)]
+fn native_terminal_info(stream: StreamId) -> Result<Option<TerminalInfo>, Errno> {
+    windows::terminal_info(stream)
+}
+
+#[cfg(test)]
+mod u9_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod u12_tests;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod u13_tests;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod u5_tests;

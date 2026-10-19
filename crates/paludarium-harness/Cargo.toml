@@ -16,6 +16,7 @@ paludarium-kernel.workspace = true
 paludarium-cpu.workspace = true
 paludarium-mmu.workspace = true
 paludarium-types.workspace = true
+paludarium-jit.workspace = true
 
 [lints]
 workspace = true

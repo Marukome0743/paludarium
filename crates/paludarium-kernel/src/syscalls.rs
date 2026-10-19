@@ -11,7 +11,7 @@ use paludarium_host::{ClockId, Host, WaitOutcome};
 use paludarium_mmu::{AddressSpace, MappingKind, Prot};
 use paludarium_types::{Errno, GuestAddr, USER_ADDRESS_LIMIT};
 
-use crate::{AltStack, Process, SS_DISABLE, SignalAction, signals};
+use crate::{AltStack, SS_DISABLE, SignalAction, ThreadState, signals};
 
 /// Linux x86-64 system-call numbers used by U1.
 pub mod nr {
@@ -45,11 +45,12 @@ pub mod nr {
 pub(crate) struct Context<'a> {
     pub files: &'a mut crate::files::Files,
     pub host: &'a dyn Host,
-    pub process: &'a mut Process,
+    pub process: &'a mut ThreadState,
     pub cpu: &'a mut CpuState,
-    pub mem: &'a mut AddressSpace,
+    pub mem: &'a AddressSpace,
     pub cancellation: &'a std::sync::atomic::AtomicBool,
     pub inbox: &'a crate::SignalInbox,
+    pub group: &'a crate::ThreadGroup,
 }
 
 pub(crate) enum Outcome {
@@ -101,6 +102,16 @@ impl SyscallTable {
         for number in crate::files::NUMBERS {
             handlers.insert(*number, crate::files::dispatch);
         }
+        handlers.insert(290, crate::events::dispatch);
+        // Tokio's current Linux std uses GRND_INSECURE to seed its scheduler;
+        // the Host random boundary supplies secure bytes without OS passthrough.
+        handlers.insert(318, sys_getrandom);
+        for number in [213, 233, 232, 281, 291] {
+            handlers.insert(number, crate::epoll::dispatch);
+        }
+        for number in [41, 44, 45, 48, 53] {
+            handlers.insert(number, crate::sockets::dispatch);
+        }
         SyscallTable { handlers }
     }
 
@@ -122,6 +133,35 @@ impl SyscallTable {
 
 fn ok(value: u64) -> Outcome {
     Outcome::Return(value)
+}
+
+fn sys_getrandom(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let result = (|| {
+        if a[2] & !7 != 0 {
+            return Err(Errno::EINVAL);
+        }
+        let len = usize::try_from(a[1].min(0x7fff_f000)).map_err(|_| Errno::EINVAL)?;
+        c.mem
+            .check_write(GuestAddr(a[0]), len)
+            .map_err(|_| Errno::EFAULT)?;
+        let mut bytes = [0u8; 256];
+        let mut done = 0;
+        while done < len {
+            let count = bytes.len().min(len - done);
+            c.host
+                .random_bytes(&mut bytes[..count])
+                .map_err(|_| Errno::EIO)?;
+            c.mem
+                .write(
+                    GuestAddr(a[0].checked_add(done as u64).ok_or(Errno::EFAULT)?),
+                    &bytes[..count],
+                )
+                .map_err(|_| Errno::EFAULT)?;
+            done += count;
+        }
+        Ok(done as u64)
+    })();
+    Outcome::Return(result.unwrap_or_else(Errno::to_syscall_return))
 }
 
 fn err(e: Errno) -> Outcome {
@@ -178,6 +218,7 @@ fn sleep(c: &mut Context<'_>, clock: ClockId, absolute: bool, req: u64, rem: u64
         now.saturating_add(request).min(i64::MAX as u64)
     };
     loop {
+        let timer_generation = c.group.timer_generation();
         let clock_now = match c.host.clock(clock) {
             Ok(t) => t,
             Err(e) => return err(e),
@@ -186,7 +227,7 @@ fn sleep(c: &mut Context<'_>, clock: ClockId, absolute: bool, req: u64, rem: u64
             Ok(t) => t,
             Err(e) => return err(e),
         };
-        signals::expire_timer(c.process, mono_now);
+        c.group.expire_timer(c.process, mono_now);
         let timer_deadline = c
             .process
             .timer
@@ -195,8 +236,11 @@ fn sleep(c: &mut Context<'_>, clock: ClockId, absolute: bool, req: u64, rem: u64
         let next = timer_deadline.map_or(deadline, |t| deadline.min(t));
         let result = c.host.wait_until(clock, next, c.cancellation);
         let received = c.inbox.drain(c.process);
+        let interrupted = received.interrupted
+            || (!c.inbox.owns_wake(c.cancellation)
+                && c.cancellation.load(std::sync::atomic::Ordering::SeqCst));
         if let Ok(now) = c.host.clock(ClockId::Monotonic) {
-            signals::expire_timer(c.process, now);
+            c.group.expire_timer(c.process, now);
         }
         let pending = c.process.pending.iter().any(|s| {
             c.process.signal_mask & (1u64 << (s.number - 1)) == 0
@@ -207,8 +251,21 @@ fn sleep(c: &mut Context<'_>, clock: ClockId, absolute: bool, req: u64, rem: u64
                     || !matches!(s.number, 17 | 18 | 23 | 28))
         });
         match result {
-            Ok(WaitOutcome::Interrupted) if received && !pending => continue,
-            Ok(WaitOutcome::Complete) if !pending => {
+            Ok(_)
+                if !pending
+                    && c.group.status().is_none()
+                    && !interrupted
+                    && (received.timer_changed
+                        || c.group.timer_generation() != timer_generation) =>
+            {
+                continue;
+            }
+            Ok(WaitOutcome::Interrupted)
+                if received.signals && !pending && !interrupted && c.group.status().is_none() =>
+            {
+                continue;
+            }
+            Ok(WaitOutcome::Complete) if !pending && !interrupted && c.group.status().is_none() => {
                 if c.host.clock(clock).is_ok_and(|now| now < deadline) {
                     continue;
                 }
@@ -417,7 +474,19 @@ fn sys_poll(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
             fd if fd < 0 => 0,
             0 => events & POLLIN,
             1 | 2 => events & POLLOUT,
-            _ => POLLNVAL,
+            _ => match c.files.descriptor(fd as u64) {
+                Ok(d) => match d.file.readiness() {
+                    Ok((mask, _, _)) => (mask as u16) & (events | 0x18),
+                    Err(_) => d.file.stat().map_or(POLLNVAL, |stat| {
+                        if stat.mode & 0o170000 == 0o100000 {
+                            events & (POLLIN | POLLOUT)
+                        } else {
+                            0
+                        }
+                    }),
+                },
+                Err(_) => POLLNVAL,
+            },
         };
         if c.mem
             .write(at.wrapping_add(6), &revents.to_le_bytes())
@@ -463,28 +532,36 @@ fn sys_mmap(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
             return err(Errno::EINVAL);
         }
         if flags & MAP_FIXED_NOREPLACE == 0
-            && let Err(e) = c.mem.unmap(at, len)
+            && let Err(e) = c.mem.unmap_shared(at, len)
         {
             return err(e);
         }
-        c.mem.map(Some(at), len, prot, MappingKind::Anonymous)
+        c.mem
+            .map_shared(Some(at), len, prot, MappingKind::Anonymous)
     } else {
         // Linux rounds a non-fixed hint down to its page boundary.
         let hint = GuestAddr(addr & !4095);
         let hinted = (hint.0 != 0)
             .then(|| {
                 c.mem
-                    .map(Some(hint), len, prot, MappingKind::Anonymous)
+                    .map_shared(Some(hint), len, prot, MappingKind::Anonymous)
                     .ok()
             })
             .flatten();
         match hinted {
             Some(a) => Ok(a),
-            None => c.mem.map(None, len, prot, MappingKind::Anonymous),
+            None => c.mem.map_shared(None, len, prot, MappingKind::Anonymous),
         }
     };
     match result {
-        Ok(a) => ok(a.0),
+        Ok(a) => {
+            if flags & MAP_SHARED != 0
+                && let Err(error) = c.mem.mark_shared(a, len)
+            {
+                return err(error);
+            }
+            ok(a.0)
+        }
         Err(e) => err(e),
     }
 }
@@ -501,14 +578,14 @@ fn sys_mprotect(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
             err(Errno::EINVAL)
         };
     }
-    match c.mem.protect(GuestAddr(a[0]), a[1], prot) {
+    match c.mem.protect_shared(GuestAddr(a[0]), a[1], prot) {
         Ok(()) => ok(0),
         Err(e) => err(e),
     }
 }
 
 fn sys_munmap(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
-    match c.mem.unmap(GuestAddr(a[0]), a[1]) {
+    match c.mem.unmap_shared(GuestAddr(a[0]), a[1]) {
         Ok(()) => ok(0),
         Err(e) => err(e),
     }
@@ -516,7 +593,7 @@ fn sys_munmap(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
 
 fn sys_brk(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
     // brk(0) and invalid requests return the current break (BR2.3).
-    ok(c.mem.set_break(GuestAddr(a[0])).0)
+    ok(c.mem.set_break_shared(GuestAddr(a[0])).0)
 }
 
 const SIGKILL: u64 = 9;
@@ -620,13 +697,73 @@ fn sys_rt_sigprocmask(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
     ok(0)
 }
 
-/// `ioctl`: U1 has no terminal support, so every request on descriptors
-/// 0-2 (including `TIOCGWINSZ`, 0x5413) is `-ENOTTY` (BR3.3).
-fn sys_ioctl(_: &mut Context<'_>, a: [u64; 6]) -> Outcome {
-    if a[0] > 2 {
-        return err(Errno::EBADF);
+/// Only known terminal queries are interpreted, never forwarded to Host.
+fn sys_ioctl(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
+    let run = || -> Result<u64, Errno> {
+        if a[1] == 0x5421 {
+            let descriptor = c.files.descriptor(a[0])?;
+            let mut bytes = [0; 4];
+            c.mem
+                .read(GuestAddr(a[2]), &mut bytes)
+                .map_err(|_| Errno::EFAULT)?;
+            let enabled = i32::from_le_bytes(bytes) != 0;
+            let flags = (descriptor.file.flags() & !crate::events::NONBLOCK)
+                | if enabled { crate::events::NONBLOCK } else { 0 };
+            descriptor.file.set_flags(flags)?;
+            return Ok(0);
+        }
+        let stream = match c.files.stdio_channel(a[0])? {
+            Some(0) => paludarium_host::StreamId::Stdin,
+            Some(1) => paludarium_host::StreamId::Stdout,
+            Some(2) => paludarium_host::StreamId::Stderr,
+            _ => return Err(Errno::ENOTTY),
+        };
+        if !matches!(a[1], 0x5401 | 0x5413) {
+            return Err(Errno::ENOTTY);
+        }
+        let host_info = c.host.terminal_info(stream)?;
+        let info = if let Some((columns, rows)) = c.files.terminal_size {
+            let mut info = host_info.unwrap_or_default();
+            info.columns = columns;
+            info.rows = rows;
+            info
+        } else {
+            host_info.ok_or(Errno::ENOTTY)?
+        };
+        let mut bytes = [0u8; 36];
+        let len = if a[1] == 0x5401 {
+            for (i, flag) in [
+                info.attributes.input_flags,
+                info.attributes.output_flags,
+                info.attributes.control_flags,
+                info.attributes.local_flags,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                bytes[i * 4..i * 4 + 4].copy_from_slice(&flag.to_le_bytes());
+            }
+            bytes[16] = info.attributes.line;
+            bytes[17..36].copy_from_slice(&info.attributes.control_chars);
+            36
+        } else {
+            for (i, value) in [info.rows, info.columns, info.x_pixels, info.y_pixels]
+                .into_iter()
+                .enumerate()
+            {
+                bytes[i * 2..i * 2 + 2].copy_from_slice(&value.to_le_bytes());
+            }
+            8
+        };
+        c.mem
+            .write(GuestAddr(a[2]), &bytes[..len])
+            .map_err(|_| Errno::EFAULT)?;
+        Ok(0)
+    };
+    match run() {
+        Ok(v) => ok(v),
+        Err(e) => err(e),
     }
-    err(Errno::ENOTTY)
 }
 
 fn exit_code(value: u64) -> i32 {

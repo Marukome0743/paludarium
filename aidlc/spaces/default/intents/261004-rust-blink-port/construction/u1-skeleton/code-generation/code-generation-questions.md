@@ -1,26 +1,24 @@
-# コード生成（u1-skeleton）：質問
+# Code Generation Plan Approval
+
+AI-DLC writes this file when it asks you to approve the plan. To answer here
+instead of in chat, write your answer after `[Answer]:` and tell me in chat when you are done.
 
 ## Plan Approval
 
-`code-generation-plan.md`（埋め込みの Testing Contract を含む）と `unit-test-instructions.md` の内容で、コード生成を始めてよいですか？
+Approve the code plan for u1-skeleton?
 
-[Approval Fingerprint]: sha256:v3:c4461205e33b87f251821cc24e4f58a7d681d0eb0a231f2146861db76977c6c8
-[Planned Source]: bd582cc5c455c386e7b6be6d01536a8cfcde5b7fe96074223843f1847e86b65c
+- Builds: 今回の実行対象はStep74。U15のStep22〜28（push、head 27d05de1）でU1のmanifestにあるworkflowが変わり、正式な確認コマンドがentry-f・binding-e06fに替わったので、U1の確かめ直し（review-48、READY）の指摘のうちU1の記録で直せるもの（R-34のMajor、R-35、R-31〜R-33）を直す。人は...
+- Touches: U1の記録だけ（code-summary.md、unit-test-instructions.md、source-manifest.json、`verification/loopback1-next/README.md`）。製品・CI・workflow・ほかのUnitの記録・traceability.jsonのstatusとtargetは変えない。R-36（ルートの `RE...
+- Tests: 新しい試験はない。正式sensor 2件と、今の正式な確認コマンド（entry-f.py・binding-e06f.json）でのcheckpointがexit 0になることで確かめる。
 
-- Approve Plan
-- Request Changes
+Full plan: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u1-skeleton/code-generation/code-generation-plan.md
+Test instructions: aidlc/spaces/default/intents/261004-rust-blink-port/construction/u1-skeleton/code-generation/unit-test-instructions.md
 
-[Answer]: Approve Plan
+[Approval Fingerprint]: sha256:v3:b4a5e5f73a0de0608537f48df1fa9ed30c6485336eaed99f8814425542696c64
+[Planned Source]: 2ddcf1227d570aa365619e0528ec9ef35513970dcf88c95dc5989daa435f32d3
 
-## Consolidated Summary Confirmation
+- A. Approve Plan
+- B. Request Changes
+- C. I'll edit the files
 
-- 新attemptの Plan Approval は Approve Plan として記録済み。既存U1実装と検証記録を保持して現在のsourceとの整合を確認する。
-- U1計画・Testing Contract・単位限定テスト手順を適用し、不足する証拠だけを回収する。過去の成功を新実行として扱わない。
-- 未検証のwasm環境、U1固有fuzz、decoder比較を他unitの成功で代替しない。不要な再実装・全体テストの反復はしない。
-
-Does this all look correct before I generate the artifact?
-
-- Looks correct
-- Request changes
-
-[Answer]: Looks correct
+[Answer]: A. Approve Plan

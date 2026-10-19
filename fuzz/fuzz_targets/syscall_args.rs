@@ -7,51 +7,16 @@ use std::sync::Arc;
 
 use libfuzzer_sys::fuzz_target;
 use paludarium_cpu::{CpuState, reg};
-use paludarium_host::{ClockId, Host, WaitOutcome, testing::RecordingHost};
+#[path = "support/syscall_host.rs"]
+mod syscall_host;
 use paludarium_kernel::{Kernel, SyscallTable, Thread};
 use paludarium_mmu::{AddressSpace, MappingKind, Prot};
 use paludarium_types::{ExitReason, GuestAddr};
 use paludarium_vfs::{GuestFile, MemFs};
+use syscall_host::BoundedHost;
 
 const AREA: u64 = 0x10_0000;
 const AREA_LEN: u64 = 0x4000;
-
-struct BoundedHost {
-    inner: RecordingHost,
-    waits: std::sync::atomic::AtomicUsize,
-}
-impl Host for BoundedHost {
-    fn read_stdin(&self, b: &mut [u8]) -> Result<usize, paludarium_types::Errno> {
-        self.inner.read_stdin(b)
-    }
-    fn write_stdout(&self, b: &[u8]) -> Result<usize, paludarium_types::Errno> {
-        self.inner.write_stdout(b)
-    }
-    fn write_stderr(&self, b: &[u8]) -> Result<usize, paludarium_types::Errno> {
-        self.inner.write_stderr(b)
-    }
-    fn random_bytes(&self, b: &mut [u8]) -> Result<(), paludarium_types::Error> {
-        self.inner.random_bytes(b)
-    }
-    fn clock(&self, c: ClockId) -> Result<u64, paludarium_types::Errno> {
-        self.inner.clock(c)
-    }
-    fn wait_until(
-        &self,
-        c: ClockId,
-        d: u64,
-        a: &std::sync::atomic::AtomicBool,
-    ) -> Result<WaitOutcome, paludarium_types::Errno> {
-        if self
-            .waits
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            >= 64
-        {
-            return Ok(WaitOutcome::Interrupted);
-        }
-        self.inner.wait_until(c, d, a)
-    }
-}
 
 fuzz_target!(|data: &[u8]| {
     let numbers: Vec<u64> = SyscallTable::u1().numbers().collect();
@@ -73,15 +38,8 @@ fuzz_target!(|data: &[u8]| {
     let _ = mem.write(GuestAddr(AREA), &data[..data.len().min(AREA_LEN as usize)]);
     let mut fs = MemFs::new();
     let _ = fs.add_file(GuestFile::new(b"/u7".to_vec(), b"data".to_vec()));
-    let mut kernel = Kernel::new(Arc::new(BoundedHost {
-        inner: RecordingHost::new(),
-        waits: std::sync::atomic::AtomicUsize::new(0),
-    }))
-    .with_file_system(Arc::new(fs));
-    let mut thread = Thread {
-        tid: 1,
-        cpu: CpuState::default(),
-    };
+    let mut kernel = Kernel::new(Arc::new(BoundedHost::new())).with_file_system(Arc::new(fs));
+    let mut thread = Thread::new(1, CpuState::default());
     thread.cpu.gpr[reg::RSP] = AREA + AREA_LEN;
     // Keep one valid file description reachable by the subsequent sequence.
     let _ = mem.write(GuestAddr(AREA + 0x3000), b"/u7\0");
@@ -90,7 +48,7 @@ fuzz_target!(|data: &[u8]| {
     thread.cpu.gpr[reg::RSI] = 2;
     let _ = kernel.handle(
         &mut thread,
-        &mut mem,
+        &mem,
         ExitReason::Syscall {
             rip: GuestAddr(0x1000),
         },
@@ -129,7 +87,7 @@ fuzz_target!(|data: &[u8]| {
         thread.cpu.gpr[reg::RAX] = number;
         let _ = kernel.handle(
             &mut thread,
-            &mut mem,
+            &mem,
             ExitReason::Syscall {
                 rip: GuestAddr(0x1000),
             },
@@ -138,7 +96,7 @@ fuzz_target!(|data: &[u8]| {
     // A syscall/handler context is also finite when fuzzed bytes decode as
     // loops or repeated strings. No host wait occurs inside CPU execution.
     thread.cpu.rip = GuestAddr(AREA);
-    if !kernel.process().stopped && kernel.process().exit_status.is_none() {
+    if !thread.state.stopped && thread.state.exit_status.is_none() {
         let _ = paludarium_cpu::run(&mut thread.cpu, &mem, 64);
     }
 });

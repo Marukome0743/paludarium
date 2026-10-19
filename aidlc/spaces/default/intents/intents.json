@@ -4,6 +4,14 @@
     "slug": "rust-blink-port",
     "dirName": "261004-rust-blink-port",
     "scope": "rust-blink-port",
-    "status": "in-flight"
+    "status": "complete"
+  },
+  {
+    "uuid": "01a12170-e232-702a-b732-58da286fb8d1",
+    "slug": "aidlc-config-update",
+    "dirName": "261009-aidlc-config-update",
+    "scope": "classic",
+    "status": "in-flight",
+    "request": "09cff7e6"
   }
 ]
