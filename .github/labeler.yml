@@ -1,0 +1,44 @@
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Cargo.lock"
+          - "fuzz/Cargo.lock"
+          - "**/package.json"
+          - "**/package-lock.json"
+emulator:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "crates/**"
+          - "fuzz/fuzz_targets/**"
+wasm:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "crates/paludarium-wasm/**"
+          - "crates/paludarium-jit/**"
+          - "packages/**"
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/**"
+          - "crates/paludarium-harness/**"
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "*.md"
+          - "docs/**"
+tooling:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "scripts/**"
+          - "mise.toml"
+          - "rust-toolchain.toml"
+          - "deny.toml"
+          - "clippy.toml"
+records:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "aidlc/**"
