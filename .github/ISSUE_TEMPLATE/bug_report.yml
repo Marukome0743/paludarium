@@ -1,0 +1,41 @@
+name: Bug report
+description: Report an observed problem with reproducible evidence
+title: "fix: "
+body:
+  - type: markdown
+    attributes:
+      value: "For security vulnerabilities, follow SECURITY.md instead of opening a public issue."
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed and expected behavior
+      description: Compare with the same static x86-64 Linux program run natively on x86-64 Linux when you can.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps and input
+      description: Include exact commands, a minimal guest program (or how to build it), and actual stdout, stderr and exit status.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Host OS and CPU, native or wasm (Node.js or browser and version), `--no-jit` or not, and the Rust toolchain if you built it yourself.
+    validations:
+      required: true
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Verification
+      options:
+        - label: I reproduced this problem and included the observed evidence.
+          required: true
