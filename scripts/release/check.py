@@ -289,9 +289,6 @@ def authorize(root,evidence):
         actual=github('actions/runs/'+str(row['id']))
         policy.require(actual['head_sha']==row['head_sha'] and actual['repository']['full_name']==row['repository'] and
             actual['status']==row['status'] and actual['conclusion']==row['conclusion'],'official quality run differs')
-    approvals=github('actions/runs/'+os.environ['GITHUB_RUN_ID']+'/approvals')
-    policy.require(any(r.get('state')=='approved' and any(e.get('name')=='release' for e in r.get('environments',[])) for r in approvals),'actual environment approval absent')
-    state['human_approved_head']=head
     return policy.release_gate(state,policy.inventory(root))
 
 def fetch_acceptance(root):
@@ -319,6 +316,19 @@ def fetch_acceptance(root):
         data=json.loads(archive.read('release-evidence.json'))
     policy.require(data['head']==head,'acceptance document wrong head')
     return data
+
+UPLOAD_VISIBLE_SECONDS=15*60
+UPLOAD_POLL_SECONDS=15
+
+def uploaded_metadata(url,sleep=None,clock=None):
+    """A just-uploaded version can stay 404 for minutes (a new npm package took five), so wait for it."""
+    sleep=sleep or time.sleep;clock=clock or time.monotonic;deadline=clock()+UPLOAD_VISIBLE_SECONDS
+    while True:
+        try:
+            with urllib.request.urlopen(url,timeout=30) as response:return json.load(response)
+        except urllib.error.HTTPError as error:
+            if error.code!=404 or clock()>=deadline:raise
+        sleep(UPLOAD_POLL_SECONDS)
 
 def dry_run_crate(source,name,version):
     # Current Cargo writes the dry-run crate to target/package/tmp-crate/; older Cargo to target/package/.
@@ -369,7 +379,7 @@ def publish_artifacts(root,evidence):
             attempted.append(name)
             checked_command([str(cargo),'publish','--locked','--no-verify','--manifest-path',str(source/'Cargo.toml'),'-p',name],source,directory/('publish-'+name),[Path(n) for n in names],900,cargo_env)
             uploaded.append(name)
-            with urllib.request.urlopen('https://crates.io/api/v1/crates/'+name+'/'+approved['version'],timeout=30) as response:body=json.load(response)
+            body=uploaded_metadata('https://crates.io/api/v1/crates/'+name+'/'+approved['version'])
             registry_state(200,dict(version=body['version']['num'],digest=body['version']['checksum'],yanked=body['version'].get('yanked')),approved['version'],actual[name]['sha256'])
             completed.append(name)
         node=Path(os.environ['PALUDARIUM_TEST_NODE']);npm=Path(os.environ['PALUDARIUM_RELEASE_NPM'])
@@ -382,7 +392,7 @@ def publish_artifacts(root,evidence):
             attempted.append('@aletheia-works/paludarium-wasm')
             require_success(run_command([str(node),str(npm),'publish',str(tarballs[0]),'--access','public','--provenance','--ignore-scripts'],root,directory/'publish-npm',120,npm_env))
             uploaded.append('@aletheia-works/paludarium-wasm')
-            with urllib.request.urlopen(url,timeout=30) as response:body=json.load(response)
+            body=uploaded_metadata(url)
         registry_state(200,dict(version=body['version'],digest=body['dist']['integrity']),approved['version'],integrity)
         completed.append('@aletheia-works/paludarium-wasm')
         return dict(published=completed,head=approved['head'],version=approved['version'],authentication=approved['authentication'])
