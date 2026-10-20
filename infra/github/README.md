@@ -14,7 +14,7 @@ Organization settings, including the allowed GitHub Actions, live in
 | Vulnerability alerts | `main.tf` |
 | Branch ruleset for `main`, with the required status checks | `main.tf` |
 | Issue/PR labels | `main.tf` |
-| `release` environment, its `v*.*.*` tag policy and its variables, and `RELEASE_AUTOMATION_ENABLED` | `release.tf` |
+| `release` environment and its `v*.*.*` tag policy | `release.tf` |
 
 The repository and GitHub's default labels existed before this module and are
 adopted by `import` blocks in `main.tf`, so the first apply starts from an
@@ -27,11 +27,9 @@ Keep `local.required_checks` equal to the job check names whenever a job in
 The `release` environment is the one `docs/release.md` (step 2) and release
 preflight require: administrator bypass off and deployments limited to
 `v*.*.*` tags. It has no required reviewer: publication waits for no
-approval, because the same-head evidence gate decides it. It also holds the environment
-variables `U15_CRATES_IO_OWNERS` and `U15_NPM_MAINTAINERS` (step 3). The
-first-publication tokens `U15_FIRST_CRATES_IO_TOKEN` and `U15_FIRST_NPM_TOKEN`
-are environment secrets the maintainer sets by hand; they are never in this
-configuration or its state.
+approval, because the same-head evidence gate decides it. Publication is by
+Trusted Publishing (OIDC) only, so it holds no registry token; the Trusted
+Publisher of every crate and of the npm package names this environment.
 
 ## CI workflows
 
