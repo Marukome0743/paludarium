@@ -1,38 +1,24 @@
-"""Comparison rejects incomplete or failed #1645 reproductions."""
+"""Comparison rejects failed, timed-out or mismatched guest output."""
 import copy
 import pathlib
 import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from comparison import compare, normalized, probe_pass, reproduced
+from comparison import compare, normalized, probe_pass
 
 
 class ComparisonTests(unittest.TestCase):
     def rows(self):
-        return {'frozen': {'stdout': '', 'stderr': '+ filedep@0.0.0\n+ linked@0.0.0\n',
+        return {'frozen': {'stdout': '', 'stderr': '+ filedep@1.0.0\n+ linked@2.0.0\n',
                            'exit': 0, 'timed_out': False},
-                'list': {'stdout': '├── filedep 0.0.0\n└── linked 0.0.0\n', 'stderr': '',
+                'list': {'stdout': '├── filedep 1.0.0\n└── linked 2.0.0\n', 'stderr': '',
                          'exit': 0, 'timed_out': False}}
 
-    def test_correct_streams_reproduce(self):
-        reproduced(self.rows())
-
-    def test_missing_dependency_rejected(self):
-        for name, stream in [('frozen', 'stderr'), ('list', 'stdout')]:
-            rows = self.rows()
-            rows[name][stream] = rows[name][stream].splitlines()[0] + '\n'
-            with self.assertRaises(ValueError):
-                reproduced(rows)
+    def test_probe_missing_failed_or_duplicate_rejected(self):
         for stdout in ('', 'FAIL fs-basic\n', 'PASS fs-basic\nPASS fs-basic\n'):
             with self.assertRaises(ValueError):
                 probe_pass({'stdout': stdout, 'exit': 0, 'timed_out': False}, ['fs-basic'])
-
-    def test_actual_versions_rejected(self):
-        rows = self.rows()
-        rows['frozen']['stderr'] = '+ filedep@1.0.0\n+ linked@2.0.0\n'
-        with self.assertRaises(ValueError):
-            reproduced(rows)
 
     def test_failure_or_timeout_rejected(self):
         for name in ('frozen', 'list'):
@@ -40,14 +26,7 @@ class ComparisonTests(unittest.TestCase):
                 rows = self.rows()
                 rows[name][field] = value
                 with self.assertRaises(ValueError):
-                    reproduced(rows)
-                with self.assertRaises(ValueError):
                     compare(self.rows()[name], rows[name], '/native', '/guest')
-
-    def test_ansi_report_reproduces(self):
-        rows = self.rows()
-        rows['frozen']['stderr'] = '\x1b[32m' + rows['frozen']['stderr'] + '\x1b[0m'
-        reproduced(rows)
 
     def test_normalization_is_narrow(self):
         self.assertEqual(normalized('\x1b[32m/tmp/root in 12ms\x1b[0m FAIL\n', '/tmp/root'),
@@ -56,7 +35,7 @@ class ComparisonTests(unittest.TestCase):
     def test_stdout_mismatch_remains_failure(self):
         expected = self.rows()['list']
         actual = copy.deepcopy(expected)
-        actual['stdout'] = actual['stdout'].replace('0.0.0', '1.0.0')
+        actual['stdout'] = actual['stdout'].replace('2.0.0', '0.0.0')
         with self.assertRaises(ValueError):
             compare(expected, actual, '/native', '/guest')
         actual = copy.deepcopy(expected)
