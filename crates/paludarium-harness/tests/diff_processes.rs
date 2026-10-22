@@ -119,6 +119,7 @@ mod linux {
         processes_thread_name => ("thread-name","process"),
         processes_timer_thread => ("timer-thread","process"),
         processes_seqpacket => ("seqpacket","process"),
+        processes_dgram => ("dgram","process"),
         command_pre_exec => ("pre-exec","command"),
         command_pre_exec_missing => ("pre-exec-missing","command"),
         processes_private => ("private","process"),

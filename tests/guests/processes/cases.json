@@ -22,6 +22,7 @@
     {"name":"thread-name","binary":"process"},
     {"name":"timer-thread","binary":"process"},
     {"name":"seqpacket","binary":"process"},
+    {"name":"dgram","binary":"process"},
     {"name":"pre-exec","binary":"command"},
     {"name":"pre-exec-missing","binary":"command"},
     {"name":"clone-vm","binary":"process"},
