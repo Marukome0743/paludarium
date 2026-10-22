@@ -21,6 +21,7 @@
     {"name":"pdeathsig","binary":"process"},
     {"name":"thread-name","binary":"process"},
     {"name":"timer-thread","binary":"process"},
+    {"name":"clone3","binary":"process"},
     {"name":"seqpacket","binary":"process"},
     {"name":"dgram","binary":"process"},
     {"name":"pre-exec","binary":"command"},

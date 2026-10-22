@@ -118,6 +118,7 @@ mod linux {
         processes_pdeathsig => ("pdeathsig","process"),
         processes_thread_name => ("thread-name","process"),
         processes_timer_thread => ("timer-thread","process"),
+        processes_clone3 => ("clone3","process"),
         processes_seqpacket => ("seqpacket","process"),
         processes_dgram => ("dgram","process"),
         command_pre_exec => ("pre-exec","command"),
