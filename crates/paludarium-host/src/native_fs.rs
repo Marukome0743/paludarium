@@ -37,6 +37,77 @@ fn lock_err(e: std::io::Error) -> Errno {
         err(e)
     }
 }
+/// A guest time (nanoseconds since the Unix epoch) as a host time.
+fn system_time(ns: i128) -> Result<std::time::SystemTime, Errno> {
+    let magnitude = u64::try_from(ns.unsigned_abs() / 1_000_000_000).map_err(|_| Errno::EINVAL)?;
+    let nanos = u32::try_from(ns.unsigned_abs() % 1_000_000_000).map_err(|_| Errno::EINVAL)?;
+    let offset = std::time::Duration::new(magnitude, nanos);
+    if ns >= 0 {
+        std::time::UNIX_EPOCH.checked_add(offset)
+    } else {
+        std::time::UNIX_EPOCH.checked_sub(offset)
+    }
+    .ok_or(Errno::EINVAL)
+}
+/// Windows keeps only a read-only attribute, which is set when the guest mode
+/// has no write bit. std's `File::set_permissions` cannot clear it when it is
+/// the only attribute: it writes the attributes through `FILE_BASIC_INFO`,
+/// where 0 means "unchanged". This writes `FILE_ATTRIBUTE_NORMAL` instead.
+#[cfg(windows)]
+mod read_only {
+    use std::os::windows::{fs::MetadataExt, io::AsRawHandle};
+    const READONLY: u32 = 0x1;
+    const NORMAL: u32 = 0x80;
+    const FILE_BASIC_INFO_CLASS: i32 = 0;
+    /// `FILE_BASIC_INFO`; zero times are left unchanged.
+    #[repr(C)]
+    struct BasicInfo {
+        creation: i64,
+        access: i64,
+        write: i64,
+        change: i64,
+        attributes: u32,
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn SetFileInformationByHandle(
+            handle: *mut core::ffi::c_void,
+            class: i32,
+            info: *const core::ffi::c_void,
+            size: u32,
+        ) -> i32;
+    }
+    pub(super) fn set(file: &std::fs::File, mode: u32) -> std::io::Result<()> {
+        let current = file.metadata()?.file_attributes();
+        let attributes = match (current & !READONLY, mode & 0o222 == 0) {
+            (rest, true) => rest | READONLY,
+            (0, false) => NORMAL,
+            (rest, false) => rest,
+        };
+        let info = BasicInfo {
+            creation: 0,
+            access: 0,
+            write: 0,
+            change: 0,
+            attributes,
+        };
+        // SAFETY: `file` owns a live handle for the call, and `info` is a
+        // FILE_BASIC_INFO that outlives it; the size passed is its own.
+        let done = unsafe {
+            SetFileInformationByHandle(
+                file.as_raw_handle(),
+                FILE_BASIC_INFO_CLASS,
+                std::ptr::from_ref(&info).cast(),
+                u32::try_from(size_of::<BasicInfo>()).unwrap_or(u32::MAX),
+            )
+        };
+        if done == 0 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+}
 fn path(b: &[u8]) -> Result<PathBuf, Errno> {
     if b.contains(&0) {
         return Err(Errno::EINVAL);
@@ -191,6 +262,36 @@ impl FileHandle for NativeFile {
     fn flags(&self) -> u32 {
         *self.flags.lock().unwrap_or_else(PoisonError::into_inner)
     }
+    fn set_mode(&self, mode: u32) -> Result<(), Errno> {
+        let file = self.file.lock().unwrap_or_else(PoisonError::into_inner);
+        #[cfg(unix)]
+        return file
+            .set_permissions(std::os::unix::fs::PermissionsExt::from_mode(mode & 0o7777))
+            .map_err(err);
+        #[cfg(windows)]
+        return read_only::set(&file, mode).map_err(err);
+    }
+    fn set_times(&self, atime: Option<i128>, mtime: Option<i128>) -> Result<(), Errno> {
+        let mut times = std::fs::FileTimes::new();
+        if let Some(atime) = atime {
+            times = times.set_accessed(system_time(atime)?);
+        }
+        if let Some(mtime) = mtime {
+            times = times.set_modified(system_time(mtime)?);
+        }
+        self.file
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .set_times(times)
+            .map_err(err)
+    }
+    fn sync(&self) -> Result<(), Errno> {
+        self.file
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .sync_all()
+            .map_err(err)
+    }
     fn set_flags(&self, f: u32) -> Result<(), Errno> {
         #[cfg(unix)]
         {
@@ -277,6 +378,112 @@ impl HostFs for NativeFs {
         }
         .map_err(err)?;
         cap_stat(m)
+    }
+    fn set_mode(&self, p: &[u8], mode: u32) -> Result<(), Errno> {
+        let p = path(p)?;
+        #[cfg(unix)]
+        return self
+            .root
+            .set_permissions(
+                p,
+                <cap_std::fs::Permissions as cap_std::fs::PermissionsExt>::from_mode(mode & 0o7777),
+            )
+            .map_err(err);
+        #[cfg(windows)]
+        {
+            // The explicit access mode, FILE_READ_ATTRIBUTES |
+            // FILE_WRITE_ATTRIBUTES, replaces read(true) and is allowed on a
+            // read-only file; the open goes through the retained capability.
+            use cap_std::fs::OpenOptionsExt;
+            let mut options = OpenOptions::new();
+            options.read(true).access_mode(0x80 | 0x100).maybe_dir(true);
+            let file = self.root.open_with(p, &options).map_err(err)?.into_std();
+            read_only::set(&file, mode).map_err(err)
+        }
+    }
+    fn set_times(
+        &self,
+        p: &[u8],
+        follow: bool,
+        atime: Option<i128>,
+        mtime: Option<i128>,
+    ) -> Result<(), Errno> {
+        use cap_fs_ext::{DirExt, SystemTimeSpec};
+        // cap-primitives 4.0.3 panics on a time before the Unix epoch
+        // (duration_since(UNIX_EPOCH).unwrap()). std's File::set_times takes
+        // such times, so set them through an opened file. A symbolic link
+        // itself cannot be opened: on Unix its parent directory is opened
+        // within the mount and the final name changed with
+        // AT_SYMLINK_NOFOLLOW, which cannot lead outside; elsewhere it is
+        // refused.
+        if atime.is_some_and(|t| t < 0) || mtime.is_some_and(|t| t < 0) {
+            if !follow {
+                #[cfg(unix)]
+                {
+                    let (parent, name) = match p.iter().rposition(|b| *b == b'/') {
+                        Some(i) => (&p[..i], &p[i + 1..]),
+                        None => (&b""[..], p),
+                    };
+                    let parent = if parent.is_empty() {
+                        self.root.try_clone().map_err(err)?
+                    } else {
+                        self.root.open_dir(path(parent)?).map_err(err)?
+                    };
+                    let spec = |ns: Option<i128>| -> Result<rustix::fs::Timespec, Errno> {
+                        Ok(match ns {
+                            None => rustix::fs::Timespec {
+                                tv_sec: 0,
+                                tv_nsec: rustix::fs::UTIME_OMIT,
+                            },
+                            Some(ns) => rustix::fs::Timespec {
+                                tv_sec: i64::try_from(ns.div_euclid(1_000_000_000))
+                                    .map_err(|_| Errno::EINVAL)?,
+                                tv_nsec: i64::try_from(ns.rem_euclid(1_000_000_000))
+                                    .map_err(|_| Errno::EINVAL)?,
+                            },
+                        })
+                    };
+                    let times = rustix::fs::Timestamps {
+                        last_access: spec(atime)?,
+                        last_modification: spec(mtime)?,
+                    };
+                    return rustix::fs::utimensat(
+                        &parent,
+                        path(name)?,
+                        &times,
+                        rustix::fs::AtFlags::SYMLINK_NOFOLLOW,
+                    )
+                    .map_err(|e| err(e.into()));
+                }
+                #[cfg(not(unix))]
+                return Err(Errno::EINVAL);
+            }
+            let file = self
+                .root
+                .open_with(path(p)?, OpenOptions::new().read(true))
+                .map_err(err)?
+                .into_std();
+            let handle = NativeFile {
+                file: Mutex::new(file),
+                flags: Mutex::new(0),
+            };
+            return FileHandle::set_times(&handle, atime, mtime);
+        }
+        let spec = |ns: Option<i128>| -> Result<Option<SystemTimeSpec>, Errno> {
+            ns.map(|ns| {
+                system_time(ns)
+                    .map(|t| SystemTimeSpec::Absolute(cap_std::time::SystemTime::from_std(t)))
+            })
+            .transpose()
+        };
+        let (atime, mtime) = (spec(atime)?, spec(mtime)?);
+        let p = path(p)?;
+        if follow {
+            self.root.set_times(p, atime, mtime)
+        } else {
+            self.root.set_symlink_times(p, atime, mtime)
+        }
+        .map_err(err)
     }
     fn mkdir(&self, p: &[u8], m: u32) -> Result<(), Errno> {
         let builder = cap_std::fs::DirBuilder::new();
