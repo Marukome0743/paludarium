@@ -22,7 +22,13 @@ verified.
   code) keeps its contents. It differs only if `mprotect` made it writable
   and it was changed, where Linux reads it from the executable again.
 - **Some system calls**: unimplemented system calls return `ENOSYS`, so some
-  programs can carry on without the feature.
+  programs can carry on without the feature. Among them are `sendmsg` and
+  `recvmsg`, so descriptors cannot be passed over a socket (`SCM_RIGHTS`),
+  and `chown`, `fchown`, `lchown` and `fchownat`: every file belongs to root
+  (user and group 0).
+- **Sparse files**: a file of the in-memory filesystem has no holes, so
+  growing it with `ftruncate` or `fallocate` takes as much host memory as its
+  new size.
 - **Some signal details**: no core file is written, so a child killed by `SIGSEGV`,
   `SIGABRT` or another core-dumping signal is reported as `CLD_KILLED`,
   without the core flag in its `wait` status, where Linux may report
