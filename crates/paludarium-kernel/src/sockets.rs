@@ -241,36 +241,8 @@ pub(crate) fn dispatch(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
             socket.shutdown(a[1])?;
             Ok(0)
         }
-        45 => {
-            let d = c.files.descriptor(a[0])?;
-            if !d.file.as_any().is_some_and(|v| v.is::<SocketPairEnd>()) {
-                return Err(Errno(88));
-            }
-            if a[3] != 0 {
-                return Err(Errno(95));
-            }
-            crate::files::run(c, 0, a)
-        }
-        44 => {
-            let d = c.files.descriptor(a[0])?;
-            if !d.file.as_any().is_some_and(|v| v.is::<SocketPairEnd>()) {
-                return Err(Errno(88));
-            }
-            if a[3] & !0x4000 != 0 || a[4] != 0 || a[5] != 0 {
-                return Err(Errno(95));
-            }
-            let len = usize::try_from(a[2].min(0x7fff_f000)).map_err(|_| Errno::EINVAL)?;
-            c.mem
-                .check_read(GuestAddr(a[1]), len)
-                .map_err(|_| Errno::EFAULT)?;
-            let mut bytes = Vec::new();
-            bytes.try_reserve(len).map_err(|_| Errno::ENOMEM)?;
-            bytes.resize(len, 0);
-            c.mem
-                .read(GuestAddr(a[1]), &mut bytes)
-                .map_err(|_| Errno::EFAULT)?;
-            crate::files::write_io(c, &d.file, &bytes, a[3] & 0x4000 != 0)
-        }
+        44 => send_to(c, a),
+        45 => receive_from(c, a),
         46 => send_message(c, a),
         47 => receive_message(c, a),
         _ => Err(Errno::ENOSYS),
@@ -321,7 +293,14 @@ fn message_header(c: &Context<'_>, at: u64, write: bool) -> Result<MessageHeader
     if word(24) > 1024 {
         return Err(Errno(90)); // EMSGSIZE
     }
-    let iov = crate::files::iovecs(c, word(16), word(24), write)?;
+    // recvmsg sees that its buffers can be written before it takes the data,
+    // which a failed copy would leave in place. sendmsg's are only checked as
+    // access_ok does, as they are copied after the address is checked.
+    let iov = if write {
+        crate::files::iovecs(c, word(16), word(24), true)?
+    } else {
+        crate::files::iovecs_checked(c, word(16), word(24), access_ok)?
+    };
     Ok(MessageHeader {
         name: (name != 0 && name_len != 0).then_some((name, name_len)),
         has_name: name != 0,
@@ -378,16 +357,11 @@ fn passed_descriptors(c: &Context<'_>, control: &[u8]) -> Result<Passed, Errno> 
     }
     Ok(passed)
 }
-/// The error of a datagram sent to `address`, as Linux's `unix_dgram_sendmsg`
-/// finds it: an address that is not `AF_UNIX` with a path is EINVAL, and as
-/// no socket can be bound, any other names no socket: ECONNREFUSED, or the
-/// error of looking up a path that is not there.
+/// The error of a datagram sent to a valid `address`, as Linux's
+/// `unix_find_other` finds it after the data is copied: as no socket can be
+/// bound, every address names none, so ECONNREFUSED, or the error of looking
+/// up a path that is not there.
 fn unreachable_address(c: &Context<'_>, address: &[u8]) -> Errno {
-    // unix_validate_addr: more than the family, at most sockaddr_un's 110
-    // bytes, and AF_UNIX.
-    if address.len() <= 2 || address.len() > 110 || address[..2] != [1, 0] {
-        return Errno::EINVAL;
-    }
     let path = &address[2..];
     // An abstract name starts with a NUL byte.
     if path[0] == 0 {
@@ -402,9 +376,134 @@ fn unreachable_address(c: &Context<'_>, address: &[u8]) -> Errno {
         Err(e) => e,
     }
 }
-/// `sendmsg(fd, msg, flags)` on a socket pair, with `SCM_RIGHTS`. As
-/// sendto, of the flags only `MSG_NOSIGNAL` and `MSG_DONTWAIT` are taken
-/// (EOPNOTSUPP otherwise).
+/// What a send of `len` bytes to `address` checks before the data is copied:
+/// a connected stream socket takes no address (EISCONN) and
+/// `unix_seqpacket_sendmsg` ignores it, while `unix_dgram_sendmsg` checks it
+/// with `unix_validate_addr` (EINVAL) and then the size (EMSGSIZE). Returns
+/// whether the address is still to be looked up, after the copy.
+fn check_address(socket: &SocketPairEnd, address: &[u8], len: usize) -> Result<bool, Errno> {
+    match socket.pair.kind {
+        SOCK_STREAM => Err(Errno(106)), // EISCONN
+        SOCK_SEQPACKET => Ok(false),
+        _ => {
+            // More than the family, at most sockaddr_un's 110 bytes, and
+            // AF_UNIX.
+            if address.len() <= 2 || address.len() > 110 || address[..2] != [1, 0] {
+                return Err(Errno::EINVAL);
+            }
+            if len > MAX_MESSAGE {
+                return Err(Errno(90)); // EMSGSIZE
+            }
+            Ok(true)
+        }
+    }
+}
+/// `TASK_SIZE_MAX` on x86-64: the end of the user half, less a guard page.
+const TASK_SIZE_MAX: u64 = 0x7fff_ffff_f000;
+/// The length of the buffer of sendto or recvfrom, as `import_ubuf` takes it
+/// before the descriptor is looked up: at most `MAX_RW_COUNT`, and EFAULT
+/// when it reaches past the user half (`access_ok`). A buffer there that is
+/// not mapped is EFAULT only when it is copied.
+fn user_buffer(at: u64, len: u64) -> Result<usize, Errno> {
+    let len = usize::try_from(len.min(0x7fff_f000)).map_err(|_| Errno::EFAULT)?;
+    access_ok(at, len)?;
+    Ok(len)
+}
+/// Linux's `access_ok`: EFAULT for `len` bytes at `at` that reach past the
+/// user half.
+fn access_ok(at: u64, len: usize) -> Result<(), Errno> {
+    if at > TASK_SIZE_MAX.saturating_sub(len as u64) {
+        return Err(Errno::EFAULT);
+    }
+    Ok(())
+}
+/// `sendto(fd, buf, len, flags, addr, addrlen)` on a socket pair: sendmsg
+/// with one buffer and no control messages. As `move_addr_to_kernel`, an
+/// address longer than `sockaddr_storage`'s 128 bytes, or negative, is EINVAL
+/// and one of no bytes is none.
+fn send_to(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
+    let len = user_buffer(a[1], a[2])?;
+    let file = socket(c, a[0])?;
+    if a[3] & !(MSG_NOSIGNAL | MSG_DONTWAIT) != 0 {
+        return Err(Errno(95));
+    }
+    let mut address = Vec::new();
+    if a[4] != 0 {
+        let len = usize::try_from(a[5] as u32 as i32)
+            .ok()
+            .filter(|&len| len <= 128)
+            .ok_or(Errno::EINVAL)?;
+        address.resize(len, 0);
+        c.mem
+            .read(GuestAddr(a[4]), &mut address)
+            .map_err(|_| Errno::EFAULT)?;
+    }
+    let socket = as_socket(&file)?;
+    let lookup = !address.is_empty() && check_address(socket, &address, len)?;
+    c.mem
+        .check_read(GuestAddr(a[1]), len)
+        .map_err(|_| Errno::EFAULT)?;
+    let mut bytes = Vec::new();
+    bytes.try_reserve(len).map_err(|_| Errno::ENOMEM)?;
+    bytes.resize(len, 0);
+    c.mem
+        .read(GuestAddr(a[1]), &mut bytes)
+        .map_err(|_| Errno::EFAULT)?;
+    if lookup {
+        return Err(unreachable_address(c, &address));
+    }
+    crate::files::write_with(
+        c,
+        &file,
+        &bytes,
+        a[3] & MSG_NOSIGNAL != 0,
+        a[3] & MSG_DONTWAIT != 0,
+        |b| socket.send(b, &mut Passed::new()),
+    )
+}
+/// `recvfrom(fd, buf, len, flags, addr, addrlen)` on a socket pair: recvmsg
+/// with one buffer and no control buffer, so the descriptors a message passes
+/// close. With `addr`, the peer's address length, 0, goes to `addrlen` as
+/// `move_addr_to_user` writes it: EFAULT when it cannot be read, and a
+/// negative one is EINVAL, after the data is taken.
+fn receive_from(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
+    let len = user_buffer(a[1], a[2])?;
+    let file = socket(c, a[0])?;
+    if a[3] & !(MSG_DONTWAIT | MSG_CMSG_CLOEXEC) != 0 {
+        return Err(Errno(95));
+    }
+    c.mem
+        .check_write(GuestAddr(a[1]), len)
+        .map_err(|_| Errno::EFAULT)?;
+    let mut bytes = Vec::new();
+    bytes.try_reserve(len).map_err(|_| Errno::ENOMEM)?;
+    bytes.resize(len, 0);
+    let socket = as_socket(&file)?;
+    let received = crate::files::wait_for_read(c, &file, a[3] & MSG_DONTWAIT != 0, || {
+        socket.receive(&mut bytes, true)
+    })?;
+    c.mem
+        .write(GuestAddr(a[1]), &bytes[..received.count])
+        .map_err(|_| Errno::EFAULT)?;
+    // Closed here, outside the socket's lock.
+    drop(received.passed);
+    if a[4] != 0 {
+        let mut raw = [0; 4];
+        c.mem
+            .read(GuestAddr(a[5]), &mut raw)
+            .map_err(|_| Errno::EFAULT)?;
+        if i32::from_le_bytes(raw) < 0 {
+            return Err(Errno::EINVAL);
+        }
+        c.mem
+            .write(GuestAddr(a[5]), &0u32.to_le_bytes())
+            .map_err(|_| Errno::EFAULT)?;
+    }
+    Ok(received.count as u64)
+}
+/// `sendmsg(fd, msg, flags)` on a socket pair, with `SCM_RIGHTS`. Of the
+/// flags only `MSG_NOSIGNAL` and `MSG_DONTWAIT` are taken (EOPNOTSUPP
+/// otherwise).
 fn send_message(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
     let file = socket(c, a[0])?;
     if a[2] & !(MSG_NOSIGNAL | MSG_DONTWAIT) != 0 {
@@ -418,16 +517,6 @@ fn send_message(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
             .read(GuestAddr(name), &mut address)
             .map_err(|_| Errno::EFAULT)?;
     }
-    let total = header.iov.iter().map(|(_, len)| len).sum::<usize>();
-    let mut bytes = Vec::new();
-    bytes.try_reserve(total).map_err(|_| Errno::ENOMEM)?;
-    for &(base, len) in &header.iov {
-        let start = bytes.len();
-        bytes.resize(start + len, 0);
-        c.mem
-            .read(GuestAddr(base), &mut bytes[start..])
-            .map_err(|_| Errno::EFAULT)?;
-    }
     // ____sys_sendmsg: a control buffer past INT_MAX, or one that
     // sock_kmalloc refuses, is ENOBUFS.
     if header.control_len >= MAX_CONTROL {
@@ -439,14 +528,21 @@ fn send_message(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
         .map_err(|_| Errno::EFAULT)?;
     let mut passed = passed_descriptors(c, &control)?;
     let socket = as_socket(&file)?;
-    if header.name.is_some() {
-        match socket.pair.kind {
-            // A connected stream socket takes no address.
-            SOCK_STREAM => return Err(Errno(106)), // EISCONN
-            // unix_seqpacket_sendmsg ignores it.
-            SOCK_SEQPACKET => {}
-            _ => return Err(unreachable_address(c, &address)),
-        }
+    let total = header.iov.iter().map(|(_, len)| len).sum::<usize>();
+    // The address is checked, and the data then copied, in the protocol's
+    // sendmsg after __scm_send.
+    let lookup = header.name.is_some() && check_address(socket, &address, total)?;
+    let mut bytes = Vec::new();
+    bytes.try_reserve(total).map_err(|_| Errno::ENOMEM)?;
+    for &(base, len) in &header.iov {
+        let start = bytes.len();
+        bytes.resize(start + len, 0);
+        c.mem
+            .read(GuestAddr(base), &mut bytes[start..])
+            .map_err(|_| Errno::EFAULT)?;
+    }
+    if lookup {
+        return Err(unreachable_address(c, &address));
     }
     let result = crate::files::write_with(
         c,
@@ -462,7 +558,7 @@ fn send_message(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
 }
 /// `recvmsg(fd, msg, flags)` on a socket pair, with `SCM_RIGHTS`. Of the
 /// flags only `MSG_DONTWAIT` and `MSG_CMSG_CLOEXEC` are taken (EOPNOTSUPP
-/// otherwise), as recvfrom takes none.
+/// otherwise).
 fn receive_message(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
     let file = socket(c, a[0])?;
     if a[2] & !(MSG_DONTWAIT | MSG_CMSG_CLOEXEC) != 0 {
@@ -673,8 +769,9 @@ impl SocketPairEnd {
     }
 }
 impl SocketPairEnd {
-    /// Reads into `buf`; `message` is recvmsg's form, which an empty buffer
-    /// does not end at once as read's does (Linux's `sock_read_iter`).
+    /// Reads into `buf`; `message` is the form of recvmsg and recvfrom
+    /// (`sock_recvmsg`), which an empty buffer does not end at once as read's
+    /// does (Linux's `sock_read_iter`).
     pub(crate) fn receive(&self, buf: &mut [u8], message: bool) -> Result<Received, Errno> {
         if buf.is_empty() && !message {
             return Ok(Received::default());
@@ -687,7 +784,7 @@ impl SocketPairEnd {
     }
     /// SOCK_SEQPACKET and SOCK_DGRAM read: the next whole message,
     /// truncated to `buf`, with its descriptors. An empty buffer reaches
-    /// here only from recvmsg, and discards the message.
+    /// here only from recvmsg or recvfrom, and discards the message.
     fn read_message(&self, buf: &mut [u8]) -> Result<Received, Errno> {
         let nonblocking = self.flags() & NONBLOCK != 0;
         let mut sides = self
