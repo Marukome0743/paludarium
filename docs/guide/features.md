@@ -42,7 +42,7 @@ kernel.
 | Files | `open`/`openat`/`creat`, `read`, `write`, `readv`/`writev`, `pread64`/`pwrite64`, `preadv`/`pwritev`, `copy_file_range`, `sendfile`, `close`, `close_range`, `lseek`, `stat`/`fstat`/`lstat`/`newfstatat`, `statx`, `getdents64`, `mkdir`/`mkdirat`, `rmdir`, `unlink`/`unlinkat`, `rename`/`renameat`, `link`/`linkat`, `symlink`/`symlinkat`, `readlink`/`readlinkat`, `truncate`/`ftruncate`, `fallocate`, `memfd_create`, `flock`, `fcntl`, `dup`/`dup2`/`dup3`, `pipe`/`pipe2`, `chdir`/`fchdir`, `getcwd`, `umask`, `chmod`/`fchmod`/`fchmodat`, `utimensat`, `fsync`/`fdatasync`, `sync`, `fadvise64`, `access`/`faccessat`/`faccessat2`, `statfs`/`fstatfs` |
 | I/O | `poll`, `ppoll`, `select`, `pselect6`, `ioctl` (`TCGETS`, `TIOCGWINSZ`) |
 | Events | `eventfd2`, `timerfd_create`/`timerfd_settime`/`timerfd_gettime`, `epoll_create`/`epoll_create1`, `epoll_ctl`, `epoll_wait`, `epoll_pwait` |
-| Sockets | `socket` (always `EAFNOSUPPORT`), `socketpair` (AF_UNIX, `SOCK_STREAM`, `SOCK_SEQPACKET` and `SOCK_DGRAM`), `sendto`, `recvfrom`, `shutdown` |
+| Sockets | `socket` (always `EAFNOSUPPORT`), `socketpair` (AF_UNIX, `SOCK_STREAM`, `SOCK_SEQPACKET` and `SOCK_DGRAM`), `sendto`, `recvfrom`, `sendmsg` and `recvmsg` (passing descriptors with `SCM_RIGHTS`), `shutdown` |
 | Randomness | `getrandom` |
 
 - `pread64`, `pwrite64`, `preadv` and `pwritev` leave the file position
@@ -366,10 +366,11 @@ kernel.
   after the continue, as Linux restarts it when no handler runs: `read`,
   `write`, `readv`, `writev`, `pread64`, `pwrite64`, `preadv`, `pwritev`,
   `wait4`, `waitid`, `pause`, `rt_sigsuspend`, `flock`, `sendto`, `recvfrom`,
-  `ppoll`, `select`, `pselect6`, `poll` with no timeout and a `futex` wait with
-  none. `nanosleep`, a relative `clock_nanosleep`, `poll` with a timeout and a
-  timed `futex` wait resume through `restart_syscall` with the deadline they had
-  (the `futex` wait checks its word again first, `EAGAIN` once it changed), and
+  `sendmsg`, `recvmsg`, `ppoll`, `select`, `pselect6`, `poll` with no timeout
+  and a `futex` wait with none. `nanosleep`, a relative `clock_nanosleep`,
+  `poll` with a timeout and a timed `futex` wait resume through
+  `restart_syscall` with the deadline they had (the `futex` wait checks its word
+  again first, `EAGAIN` once it changed), and
   an absolute `clock_nanosleep` runs again; a handler ends the restart, so they
   give `EINTR` then. `epoll_wait` and `rt_sigtimedwait` give `EINTR`, as on
   Linux. `rt_sigsuspend` waits with its mask in place of the signal mask until a
