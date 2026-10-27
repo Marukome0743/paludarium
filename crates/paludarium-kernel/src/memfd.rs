@@ -6,8 +6,8 @@
 use crate::syscalls::Context;
 use paludarium_host::{FileHandle, FileStat, HostFs};
 use paludarium_types::{Errno, GuestAddr};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 const MFD_CLOEXEC: u32 = 0x01;
 const MFD_ALLOW_SEALING: u32 = 0x02;
@@ -37,6 +37,10 @@ pub(crate) struct Memfd {
     fs: Arc<paludarium_vfs::MemFs>,
     inode: u64,
     seals: Arc<AtomicU32>,
+    /// Held while seals are added and while a shared mapping is made, so
+    /// that a mapping that may write and `F_SEAL_WRITE` cannot pass each
+    /// other, as Linux's inode lock and `i_mmap_writable` keep them apart.
+    sealing: Arc<Mutex<()>>,
     name: Arc<[u8]>,
 }
 impl Memfd {
@@ -58,25 +62,46 @@ impl Memfd {
             fs: Arc::clone(&self.fs),
             inode: self.inode,
             seals: Arc::clone(&self.seals),
+            sealing: Arc::clone(&self.sealing),
             name: Arc::clone(&self.name),
         }))
     }
     pub(crate) fn seals(&self) -> u32 {
         self.seals.load(Ordering::SeqCst)
     }
+    /// Keeps seals from being added while a shared mapping is made.
+    pub(crate) fn lock_seals(&self) -> MutexGuard<'_, ()> {
+        self.sealing.lock().unwrap_or_else(PoisonError::into_inner)
+    }
     /// `F_ADD_SEALS` through a descriptor open for writing or not, in the
     /// order of Linux's memfd_add_seals. `F_SEAL_EXEC` on a file with an
     /// execute bit also seals writes and the size, so that it stays W^X.
-    pub(crate) fn add_seals(&self, writable: bool, seals: u32) -> Result<(), Errno> {
+    /// Then sealing writes is refused (`EBUSY`) while a shared mapping that
+    /// may write shows the file, which `mapped_writable` tells with no
+    /// mapping being made meanwhile.
+    pub(crate) fn add_seals(
+        &self,
+        writable: bool,
+        seals: u32,
+        mapped_writable: impl FnOnce() -> bool,
+    ) -> Result<(), Errno> {
         if !writable {
             return Err(Errno::EPERM);
         }
         if seals & !0x3f != 0 {
             return Err(Errno::EINVAL);
         }
+        let _sealing = self.lock_seals();
+        let current = self.seals();
+        if current & F_SEAL_SEAL != 0 {
+            return Err(Errno::EPERM);
+        }
         let mut seals = seals;
         if seals & F_SEAL_EXEC != 0 && self.file.stat()?.mode & 0o111 != 0 {
             seals |= F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE | F_SEAL_FUTURE_WRITE;
+        }
+        if seals & F_SEAL_WRITE != 0 && current & F_SEAL_WRITE == 0 && mapped_writable() {
+            return Err(Errno(16)); // EBUSY
         }
         self.seals
             .try_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
@@ -193,6 +218,11 @@ impl FileHandle for Memfd {
     fn allocate(&self, offset: u64, len: u64) -> Result<(), Errno> {
         self.file.allocate(offset, len)
     }
+    /// A shared mapping's pages reach the file whatever the seals, as the
+    /// mapping existed before them or was made read-only by them.
+    fn write_back(&self, offset: u64, buf: &[u8]) -> Result<(), Errno> {
+        self.file.write_back(offset, buf)
+    }
     fn zero_range(&self, offset: u64, len: u64) -> Result<(), Errno> {
         if self.seals() & (F_SEAL_WRITE | F_SEAL_FUTURE_WRITE) != 0 {
             return Err(Errno::EPERM);
@@ -255,10 +285,13 @@ pub(crate) fn memfd_create(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errn
         fs,
         inode: crate::files::anonymous_inode(),
         seals: Arc::new(AtomicU32::new(seals)),
+        sealing: Arc::default(),
         name: name.into(),
     });
+    let file =
+        crate::page_cache::CoherentFile::with_device(memfd, Arc::clone(&c.files.caches), DEVICE);
     let fd = c
         .files
-        .install(memfd, flags & MFD_CLOEXEC != 0, c.group.nofile())?;
+        .install(Arc::new(file), flags & MFD_CLOEXEC != 0, c.group.nofile())?;
     Ok(u64::from(fd))
 }
