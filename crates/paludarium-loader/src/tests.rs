@@ -124,11 +124,34 @@ fn madv_dontneed_reads_the_data_segment_again_and_zeroes_its_bss() {
         mem.check_private_anonymous(GuestAddr(0x403000), 0x1000),
         Err(Errno::EINVAL)
     );
-    // A read-only segment keeps what is in it.
+    // A read-only segment that mprotect made writable and that was written
+    // reads the executable again too.
+    mem.protect_shared(
+        GuestAddr(0x401000),
+        0x1000,
+        Prot::READ_WRITE.union(Prot::EXEC),
+    )
+    .unwrap();
+    mem.write(GuestAddr(0x401000), &[0x90, 0x90]).unwrap();
     mem.discard_shared(GuestAddr(0x401000), 0x1000).unwrap();
     let mut code = [0u8; 2];
     mem.fetch(GuestAddr(0x401000), &mut code).unwrap();
     assert_eq!(code, [0xf4; 2]);
+}
+
+#[test]
+fn segments_keep_only_the_part_of_the_executable_they_load() {
+    let mut file = crate::testing::tiny_exec(&[0x90; 32], b"data");
+    let loaded = file.len();
+    // Sections that no segment loads, such as debug information, follow.
+    file.extend(std::iter::repeat_n(0xdb, 3 * PAGE_SIZE as usize));
+    let info = elf::parse(&file).unwrap();
+    let (span, at) = loaded_span(&file, &info);
+    // The span ends with the page that the last data ends in, as the file
+    // pages of a mapping do: the pages after it are left out.
+    assert!(!span.is_empty());
+    assert_eq!(at + span.len(), loaded.next_multiple_of(PAGE_SIZE as usize));
+    assert!(at + span.len() < file.len());
 }
 
 #[test]
