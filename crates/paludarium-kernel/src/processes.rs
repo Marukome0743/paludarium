@@ -1,7 +1,7 @@
 //! Emulated process registry; no lock spans Host waits or guest execution.
 use crate::{Kernel, Next, SignalInbox, Thread, ThreadGroup, ThreadState, signals};
 use paludarium_cpu::{CpuState, reg};
-use paludarium_host::ClockId;
+use paludarium_host::{ClockId, WaitToken};
 use paludarium_loader::{LoadError, StartInfo};
 use paludarium_mmu::AddressSpace;
 use paludarium_types::{Errno, ExitStatus, GuestAddr};
@@ -101,6 +101,11 @@ pub struct Processes {
     tasks: Arc<TaskCount>,
     /// The highest RLIMIT_NOFILE hard limit a process may set, as fs.nr_open.
     nr_open: AtomicU64,
+    /// Notified whenever a process exits, stops or continues, lets its vfork
+    /// parent go, or is sent a signal by a process (`kill`, a queued signal),
+    /// so that a wait for a child wakes at once for these; another signal (a
+    /// timer's, a thread's own) reaches it through the 10 ms poll.
+    changed: WaitToken,
 }
 impl Processes {
     pub(crate) fn new(group: Arc<ThreadGroup>) -> Self {
@@ -111,6 +116,7 @@ impl Processes {
         Self {
             next: AtomicU32::new(2),
             nr_open: AtomicU64::new(NR_OPEN),
+            changed: WaitToken::default(),
             entries: Mutex::new(BTreeMap::from([(
                 1,
                 Entry {
@@ -399,6 +405,10 @@ impl Processes {
             .get(&pid)
             .map_or(0, |entry| entry.parent)
     }
+    /// The token a wait for a child sleeps on ([`Self::changed`]'s field).
+    pub(crate) fn changed(&self) -> &WaitToken {
+        &self.changed
+    }
     pub(crate) fn remove(&self, pid: u32) {
         self.entries
             .lock()
@@ -467,6 +477,7 @@ impl Processes {
         if Self::notify_parent(&entries, pid) {
             entries.remove(&pid);
         }
+        self.changed.notify();
     }
     /// As Linux's kill_orphaned_pgrp, after `exiting` has exited: if `pid`
     /// (`exiting` itself or one of its children) was in a group that `exiting`
@@ -662,6 +673,7 @@ impl Processes {
         };
         entry.stop_report = Some(signal);
         entry.continue_report = false;
+        self.changed.notify();
         let parent = entry.parent;
         let child = signals::ChildSignal {
             pid,
@@ -771,7 +783,7 @@ impl Processes {
         }
         let (mut last, mut delivered) = (Ok(()), false);
         for pid in pids {
-            last = Self::deliver(&mut entries, pid, None, Self::from_process(number, caller));
+            last = self.send(&mut entries, pid, None, Self::from_process(number, caller));
             delivered |= last.is_ok();
         }
         if delivered && target != -1 {
@@ -782,7 +794,7 @@ impl Processes {
     }
     fn signal(&self, sender: u32, pid: u32, number: i32) -> Result<(), Errno> {
         let mut entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
-        Self::deliver(&mut entries, pid, None, Self::from_process(number, sender))
+        self.send(&mut entries, pid, None, Self::from_process(number, sender))
     }
     /// `rt_sigqueueinfo` of `signal` to `pid`, which a thread's ID also
     /// names, as `kill` finds it.
@@ -795,7 +807,7 @@ impl Processes {
             })
             .map(|(&key, _)| key)
             .ok_or(Errno(3))?;
-        Self::deliver(&mut entries, found, None, signal)
+        self.send(&mut entries, found, None, signal)
     }
     /// `rt_tgsigqueueinfo` of `signal` to thread `tid` of process `tgid`.
     fn queue_thread(
@@ -811,7 +823,21 @@ impl Processes {
         {
             return Err(Errno(3));
         }
-        Self::deliver(&mut entries, tgid, Some(tid), signal)
+        self.send(&mut entries, tgid, Some(tid), signal)
+    }
+    /// [`Self::deliver`] for a process's `kill` or queued signal, which wakes
+    /// the waits for a child: the signal may interrupt one, or, a SIGCONT,
+    /// resume a stopped child.
+    fn send(
+        &self,
+        entries: &mut BTreeMap<u32, Entry>,
+        pid: u32,
+        thread: Option<u32>,
+        signal: signals::PendingSignal,
+    ) -> Result<(), Errno> {
+        let result = Self::deliver(entries, pid, thread, signal);
+        self.changed.notify();
+        result
     }
     /// A signal the kernel sends itself (`SI_KERNEL`).
     fn from_kernel(number: i32) -> signals::PendingSignal {
@@ -971,6 +997,7 @@ impl Kernel {
     fn release_vfork(&self) {
         if let Some(release) = &self.vfork_release {
             release.store(true, Ordering::SeqCst);
+            self.processes.changed().notify();
         }
     }
     pub fn abandon_child(&mut self, pid: u32, tid: u32) {
@@ -981,25 +1008,47 @@ impl Kernel {
         }
         if let Some(release) = self.vfork_wait.take() {
             release.store(true, Ordering::SeqCst);
+            self.processes.changed().notify();
         }
     }
     pub fn wait_vfork(&mut self, kill: &AtomicBool) -> Result<(), Errno> {
         let Some(release) = self.vfork_wait.take() else {
             return Ok(());
         };
-        while !release.load(Ordering::SeqCst) && self.group.status().is_none() {
+        loop {
+            let ticket = self.processes.changed().value();
+            if release.load(Ordering::SeqCst) || self.group.status().is_some() {
+                return Ok(());
+            }
             if kill.load(Ordering::SeqCst) {
                 self.processes.stop_all(ExitStatus::Signaled(9));
                 return Err(Errno(4));
             }
-            let now = self.host.clock(ClockId::Monotonic)?;
-            self.host.wait_until(
-                ClockId::Monotonic,
-                now.saturating_add(10_000_000),
-                &self.cancellation,
-            )?;
+            self.wait_for_children(ticket)?;
         }
-        Ok(())
+    }
+    /// Sleeps until a process changes or is sent a signal after `ticket`
+    /// was taken from [`Processes::changed`], or at most 10 ms pass, as the
+    /// thread's wake token (any other signal) is polled; a host without
+    /// tickets waits out the time.
+    fn wait_for_children(&self, ticket: u32) -> Result<(), Errno> {
+        let end = self
+            .host
+            .clock(ClockId::Monotonic)?
+            .saturating_add(10_000_000);
+        let deadline = Some((ClockId::Monotonic, end));
+        match self.host.wait_on(
+            self.processes.changed(),
+            ticket,
+            deadline,
+            &self.cancellation,
+        ) {
+            Err(error) if error == Errno::ENOSYS => self
+                .host
+                .wait_until(ClockId::Monotonic, end, &self.cancellation)
+                .map(drop),
+            result => result.map(drop),
+        }
     }
     pub(crate) fn process_syscall(
         &mut self,
@@ -1325,6 +1374,7 @@ impl Kernel {
             ..WaitFor::default()
         };
         loop {
+            let ticket = self.processes.changed().value();
             if let Some((pid, event, cpu)) = self.processes.reap(self.process.pid, wanted, wait)? {
                 let raw = match event {
                     ChildEvent::Exited(ExitStatus::Exited(code)) => (code & 255) << 8,
@@ -1357,12 +1407,7 @@ impl Kernel {
             {
                 return Err(Errno(4));
             }
-            let now = self.host.clock(ClockId::Monotonic)?;
-            self.host.wait_until(
-                ClockId::Monotonic,
-                now.saturating_add(10_000_000),
-                &self.cancellation,
-            )?;
+            self.wait_for_children(ticket)?;
         }
     }
     /// `waitid(idtype, id, infop, options, rusage)` with Linux's checks and
@@ -1433,6 +1478,7 @@ impl Kernel {
             _ => return Err(Errno::EINVAL),
         };
         loop {
+            let ticket = self.processes.changed().value();
             let found = self.processes.reap(
                 self.process.pid,
                 wanted,
@@ -1457,12 +1503,7 @@ impl Kernel {
             {
                 return Err(Errno(4));
             }
-            let now = self.host.clock(ClockId::Monotonic)?;
-            self.host.wait_until(
-                ClockId::Monotonic,
-                now.saturating_add(10_000_000),
-                &self.cancellation,
-            )?;
+            self.wait_for_children(ticket)?;
         }
     }
     /// `pidfd_open(pid, flags)`: a close-on-exec pidfd for a process.
