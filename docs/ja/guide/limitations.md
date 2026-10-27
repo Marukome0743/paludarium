@@ -26,17 +26,23 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   ファイルの持ち主やグループになります。
 - **ソケットのメッセージ**：`sendmsg` と `recvmsg` は、Linux と同じように
   `SCM_RIGHTS` でディスクリプタを受け渡します。違いは次のとおりです。
-  - ストリームの帯域外のバイトを、ふつうのデータとして読むことはできません。
-    `setsockopt` がないので、`SO_OOBINLINE` を設定できないためです。`fcntl` に
-    `F_SETOWN` がないので、`SIGURG` も送られません。
-  - `SCM_CREDENTIALS` は `EINVAL` を返します。`SO_PASSCRED` を有効にする方法も
-    ありません。
+  - `SCM_CREDENTIALS` は `EINVAL` を返します。
   - Linux は、およそ 32 KiB を超えるストリームへの書き込みをいくつかに分け、
     ディスクリプタを最初の部分と一緒に渡すので、読み込みはその部分の終わりで
     止まります。paludarium では書き込み全体の終わりで止まります。
   - 読まれていないディスクリプタが、そのディスクリプタしか開いたままにしていない
     ソケット（たとえば自分自身）の中で待っていると、そのソケットは閉じられません。
     Linux ではガベージコレクタが両方を閉じます。
+- **ソケットのオプション**：`setsockopt` は、効き目を再現していないオプションを
+  `ENOPROTOOPT` で断ります。Linux は受け付けます。`SO_PASSCRED`、`SO_PASSSEC`、
+  `SO_RCVLOWAT`、`SO_RCVTIMEO`、`SO_SNDTIMEO`、`SO_TIMESTAMP`、`SO_PEEK_OFF` と、
+  フィルターなど Linux にあるほかのオプションです。`SO_SNDBUF` と `SO_RCVBUF` は値を
+  返しますが、組のバッファは変わりません。ゲストは root なので、`CAP_NET_ADMIN` の
+  要るオプション（`SO_DEBUG`、`SO_SNDBUFFORCE` など）も設定でき、`SO_PEERCRED` の
+  uid と gid は 0 です。`fcntl` の `F_SETOWN` と `F_GETOWN` はソケットでだけ使え
+  （ほかのファイルでは `EINVAL`）、`SIGURG` を送るのは帯域外のバイトだけです
+  （`O_ASYNC` や `SIGIO` はありません）。`F_SETOWN_EX`、`F_GETOWN_EX`、`F_SETSIG` は
+  `EINVAL` です。
 - **名前空間**：名前空間のフラグ（`CLONE_NEWNS`、`CLONE_NEWUTS`、`CLONE_NEWIPC`、
   `CLONE_NEWUSER`、`CLONE_NEWPID`、`CLONE_NEWNET`、`CLONE_NEWCGROUP`、`clone3` では
   `CLONE_NEWTIME` も）を付けた `clone` と `clone3` は、子を作らずに `EINVAL` で失敗します。
