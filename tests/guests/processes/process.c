@@ -428,6 +428,12 @@ static const char *io_owner(int fd) {
     int owner = fcntl(fd, F_GETOWN);
     return owner == 0 ? "none" : owner == getpid() ? "self" : owner == -getpgrp() ? "group" : "other";
 }
+/* Waits a while, in a way that a test host's clock, which a sleep moves
+   at once, cannot skip: the sleep for Linux, the loop for the emulator. */
+static void io_pause(void) {
+    usleep(100000);
+    for (volatile long k = 0; k < 500000; k++) {}
+}
 static void io_async(int fd, int number) {
     fcntl(fd, F_SETOWN, getpid());
     fcntl(fd, F_SETSIG, number);
@@ -2115,6 +2121,160 @@ int main(int argc, char **argv) {
         io_async(null, IO_RT);
         if (write(null, "a", 1) != 1) return 75;
         io_taken("null");
+        return 0;
+    }
+    if (!strcmp(mode, "signal-io-wait")) {
+        /* The O_ASYNC signals around waits. A stream whose reader waits
+           gets none for the data, end or hang-up that ends the wait (Linux's
+           SOCKWQ_ASYNC_WAITDATA), where a datagram or packet socket still
+           signals. A send that found the buffer full signals POLL_OUT only
+           once three quarters of it is free. A pipe write signals its
+           reader before each wait. A reader's child acts after a while
+           (io_pause). */
+        sigset_t set;
+        sigemptyset(&set);
+        sigaddset(&set, SIGIO);
+        sigaddset(&set, SIGURG);
+        sigaddset(&set, IO_RT);
+        sigprocmask(SIG_BLOCK, &set, NULL);
+        int sv[2], p[2], go[2], status;
+        char buf[64];
+        pid_t forked;
+        struct timeval limit = {5, 0};
+        puts("waiting-reader");
+        int types[] = {SOCK_STREAM, SOCK_DGRAM, SOCK_SEQPACKET};
+        const char *type_names[] = {"stream", "dgram", "seqpacket"};
+        const char *actions[] = {"send", "shut-wr", "close"};
+        for (int t = 0; t < 3; t++) {
+            /* A datagram socket neither ends nor hangs up, so its reader
+               would wait for good. */
+            for (int a = 0, tries = 0; a < (types[t] == SOCK_DGRAM ? 1 : 3); a++) {
+                /* The child keeps its end open until the signals are
+                   taken, so that only the close case hangs up. */
+                if (socketpair(AF_UNIX, types[t], 0, sv) || pipe(go)) return 74;
+                setsockopt(sv[1], SOL_SOCKET, SO_RCVTIMEO, &limit, sizeof limit);
+                io_async(sv[1], IO_RT);
+                fflush(stdout);
+                forked = child();
+                if (forked < 0) return 76;
+                if (!forked) {
+                    io_pause();
+                    int done = a == 0 ? send(sv[0], "a", 1, 0) != 1 : a == 1 ? shutdown(sv[0], SHUT_WR) : 0;
+                    if (a != 2 && read(go[0], buf, 1) != 1) _exit(2);
+                    _exit(done);
+                }
+                if (a == 2) close(sv[0]);
+                /* A busy host can keep the reader from reaching recv
+                   before the child acts. Then the reader does not wait
+                   and the signal is due, so the attempt is taken again. */
+                struct pollfd ready = {sv[1], POLLIN | POLLRDHUP, 0};
+                int early = poll(&ready, 1, 0) != 0;
+                long r = recv(sv[1], buf, sizeof buf, 0);
+                char name[32];
+                snprintf(name, sizeof name, "%s-%s=%ld", type_names[t], actions[a], r);
+                if (early && ++tries < 10) io_count(0);
+                else io_taken(name);
+                close(sv[1]);
+                if (write(go[1], "g", 1) != 1) return 78;
+                waitpid(forked, &status, 0);
+                if (status) return 73;
+                if (a != 2) close(sv[0]);
+                close(go[0]); close(go[1]);
+                if (early && tries < 10) a--;
+                else tries = 0;
+            }
+        }
+        /* A reader that does not wait gets the signal. */
+        socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
+        io_async(sv[1], IO_RT);
+        send(sv[0], "a", 1, 0);
+        io_taken("not-waiting");
+        close(sv[0]); close(sv[1]);
+        puts("full");
+        static char chunk[8192];
+        socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
+        io_async(sv[0], IO_RT);
+        fcntl(sv[0], F_SETFL, O_NONBLOCK | O_ASYNC);
+        long total = 0, r;
+        while ((r = send(sv[0], chunk, 4096, 0)) > 0) total += r;
+        while ((r = send(sv[0], chunk, 1, 0)) > 0) total += r;
+        printf("  filled=%d\n", total > 0);
+        if (recv(sv[1], chunk, 1, 0) != 1) return 77;
+        printf("  one out=%d\n", io_count(POLL_OUT));
+        long taken = 1;
+        while (taken < total / 2 && (r = recv(sv[1], chunk, total / 2 - taken < 4096 ? total / 2 - taken : 4096, 0)) > 0)
+            taken += r;
+        printf("  half out=%d\n", io_count(POLL_OUT));
+        while (taken < total && (r = recv(sv[1], chunk, 4096, 0)) > 0) taken += r;
+        printf("  all=%d out=%d\n", taken == total, io_count(POLL_OUT));
+        close(sv[0]); close(sv[1]);
+        /* A full datagram or packet socket that a poll, select or
+           epoll_ctl asks to write signals POLL_OUT once read, as one whose
+           send failed does; filled with no failed send and no such
+           question, or failed before O_ASYNC, it signals nothing. */
+        puts("polled-full");
+        const char *ways[] = {"poll", "select", "epoll", "sent", "no-async"};
+        for (int t = 1; t < 3; t++) {
+            int fit = 0;
+            if (socketpair(AF_UNIX, types[t], 0, sv)) return 74;
+            fcntl(sv[0], F_SETFL, O_NONBLOCK);
+            while (send(sv[0], chunk, 256, 0) == 256) fit++;
+            close(sv[0]); close(sv[1]);
+            for (int w = 0; w < 5; w++) {
+                if (socketpair(AF_UNIX, types[t], 0, sv)) return 74;
+                if (w != 4) io_async(sv[0], IO_RT);
+                fcntl(sv[0], F_SETFL, fcntl(sv[0], F_GETFL) | O_NONBLOCK);
+                int sent = 0;
+                while (sent < fit && send(sv[0], chunk, 256, 0) == 256) sent++;
+                struct pollfd out = {sv[0], POLLOUT, 0};
+                fd_set writes;
+                FD_ZERO(&writes);
+                FD_SET(sv[0], &writes);
+                struct timespec zero = {0, 0};
+                struct epoll_event event = {.events = EPOLLOUT};
+                int e;
+                if (w == 0) poll(&out, 1, 0);
+                if (w == 1) pselect(sv[0] + 1, NULL, &writes, NULL, &zero, NULL);
+                if (w == 2 && (e = epoll_create1(0)) >= 0) {
+                    epoll_ctl(e, EPOLL_CTL_ADD, sv[0], &event);
+                    close(e);
+                }
+                if (w == 4) {
+                    send(sv[0], chunk, 256, 0);
+                    io_async(sv[0], IO_RT);
+                }
+                io_count(POLL_OUT);
+                while (recv(sv[1], chunk, 256, MSG_DONTWAIT) > 0) {}
+                printf("  %s-%s filled=%d out=%d\n", type_names[t], ways[w], sent == fit,
+                       io_count(POLL_OUT));
+                close(sv[0]); close(sv[1]);
+            }
+        }
+        puts("pipe");
+        /* The write fills the pipe three times, as the child reads only
+           a full pipe, so its count does not hang on which runs first. */
+        if (pipe(p)) return 79;
+        io_async(p[0], IO_RT);
+        int size = fcntl(p[0], F_GETPIPE_SZ);
+        char *big = calloc(1, size + 8192);
+        if (size <= 0 || !big) return 75;
+        fflush(stdout);
+        forked = child();
+        if (forked < 0) return 76;
+        if (!forked) {
+            for (int k = 0; k < 2; k++) {
+                struct pollfd full = {p[1], POLLOUT, 0};
+                while (poll(&full, 1, 0) != 0)
+                    if (full.revents != POLLOUT) _exit(2);
+                if (read(p[0], chunk, 4096) != 4096) _exit(1);
+            }
+            _exit(0);
+        }
+        r = write(p[1], big, size + 8192);
+        free(big);
+        waitpid(forked, &status, 0);
+        printf("  write=%d in=%d child=%d\n", r == size + 8192, io_count(POLL_IN), status);
+        close(p[0]); close(p[1]);
         return 0;
     }
     if (!strcmp(mode, "signal-restart")) {

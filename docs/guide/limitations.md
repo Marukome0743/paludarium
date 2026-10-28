@@ -39,20 +39,16 @@ verified.
   `SO_TIMESTAMPING`, as well as filters and the other options Linux has. `SO_RCVTIMEO` and `SO_SNDTIMEO`
   round to a 1000 Hz tick, where Linux rounds to its own `CONFIG_HZ`.
   `SO_SNDBUF` and `SO_RCVBUF` are reported but leave the pair's buffer as it
-  is. The guest is root, so the options that need `CAP_NET_ADMIN`
+  is. The buffer counts only the bytes in it, where Linux also counts each
+  message's or part's overhead, so more small messages fit before a send
+  finds it full. The guest is root, so the options that need `CAP_NET_ADMIN`
   (`SO_DEBUG`, `SO_SNDBUFFORCE`, …) are set, and `SO_PEERCRED` names uid and
   gid 0.
 - **Signal-driven I/O**: `O_ASYNC` works on pipes and sockets only, so
-  standard input and terminals never send `SIGIO`, where Linux's do. The
-  signals differ from Linux's in these cases:
-  - **Waiting reader.** A socket that a reader is waiting on still signals
-    when data comes; Linux holds the signal back then.
-  - **Full socket.** A socket whose send found the buffer full signals as
-    soon as a read makes any room; Linux waits until three quarters of the
-    buffer is free.
-  - **Pipe write that waits.** A pipe write that waits more than once
-    signals the reader before the first wait only; Linux signals before each
-    wait.
+  standard input and terminals never send `SIGIO`, where Linux's do. A
+  full datagram or packet socket that `epoll_wait` finds unwritable does not
+  signal `POLL_OUT` once read, where Linux's does when it checks a socket
+  on its ready list again (`poll`, `select` and `epoll_ctl` do as Linux).
 - **Namespaces**: `clone` and `clone3` with a namespace flag
   (`CLONE_NEWNS`, `CLONE_NEWUTS`, `CLONE_NEWIPC`, `CLONE_NEWUSER`,
   `CLONE_NEWPID`, `CLONE_NEWNET`, `CLONE_NEWCGROUP`, or `CLONE_NEWTIME` for
