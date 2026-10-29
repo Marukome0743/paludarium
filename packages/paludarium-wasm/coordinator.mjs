@@ -1,5 +1,6 @@
 import { channel, imports, spawnWorker, listen, stopWorker, putBuffer, takeBuffer } from "./worker-support.mjs";
 import { costSnapshot } from "./jit-support.mjs";
+import { VERSION, WINDOW, ENETUNREACH, ECONNRESET, canonicalIp, errnoOf, joinAddress, splitAddress } from "./relay-protocol.mjs";
 const port = await channel();
 const encoder = new TextEncoder(), decoder = new TextDecoder();
 let module, memory, e;
@@ -19,12 +20,104 @@ function jitDiagnostics(job) {
     fallbacks: String(e.session_jit_stat(job.handle, 3)),
   };
 }
-// The guest's network (Node.js): a net.Socket per stream handle, each fed
-// into and drained from its Rust stream through the net_* exports.
+// The guest's network: a socket per stream handle, each fed into and drained
+// from its Rust stream through the net_* exports. On Node.js it is a
+// net.Socket unless the run names a relay; through a relay (a browser's only
+// way) it is a WebSocket to it (docs/guide/relay.md).
 const sockets = new Map();
-const ERRNO = { ECONNREFUSED: 111, ECONNRESET: 104, ECONNABORTED: 103, ETIMEDOUT: 110, EHOSTUNREACH: 113, ENETUNREACH: 101, ENETDOWN: 100, EPIPE: 32, EADDRNOTAVAIL: 99, EACCES: 13, EPERM: 1 };
-const errnoOf = cause => ERRNO[cause?.code] ?? 5;
-function address(host, port) { return `${host.includes(":") ? `[${host}]` : host}:${port}`; }
+const concat = (a, b) => { const joined = new Uint8Array(a.length + b.length); joined.set(a); joined.set(b, a.length); return joined; };
+/** A WebSocket to the relay that sends `request` once open, its first message. */
+function relayWebSocket(relay, request) {
+  const ws = new WebSocket(relay.url, [...(relay.protocols ?? [])]);
+  ws.binaryType = "arraybuffer";
+  ws.addEventListener("open", () => ws.send(JSON.stringify({ v: VERSION, ...request })));
+  return ws;
+}
+/** The addresses the relay resolved `name` to; each one's ticket is kept for the job's connections to it. */
+function relayLookup(job, name) {
+  return new Promise((resolve, reject) => {
+    const ws = relayWebSocket(job.relay, { op: "resolve", name });
+    const timer = setTimeout(() => { ws.close(); reject({ paludariumErrno: 110 }); }, 30000);
+    ws.addEventListener("message", event => {
+      let message;
+      try { message = typeof event.data === "string" ? JSON.parse(event.data) : undefined; } catch { message = undefined; }
+      clearTimeout(timer);
+      if (message?.op === "resolved" && Array.isArray(message.addresses)) {
+        const addresses = [];
+        for (const item of message.addresses) {
+          const ip = canonicalIp(item?.address);
+          if (!ip || typeof item.ticket !== "string") continue;
+          addresses.push(ip);
+          const tickets = job.tickets.get(ip) ?? new Map();
+          job.tickets.set(ip, tickets.set(name.toLowerCase().replace(/\.$/, ""), item.ticket));
+        }
+        resolve(addresses);
+      } else reject({ paludariumErrno: message?.op === "failed" ? message.errno : 5 });
+      ws.close();
+    });
+    ws.addEventListener("close", () => { clearTimeout(timer); reject({ paludariumErrno: ENETUNREACH }); });
+  });
+}
+/** A connection through the relay, with the part of net.Socket's interface the coordinator uses. */
+function relaySocket(job, target) {
+  const listeners = new Map(), tickets = [...(job.tickets.get(target.ip) ?? [])].map(([name, ticket]) => ({ name, ticket }));
+  const ws = relayWebSocket(job.relay, { op: "open", address: joinAddress(target.ip, target.port), tickets });
+  let state = "connecting", failed = false, ended = false, sentEnd = false, paused = false, held = 0, unreported = 0, unacked = 0, noDelay = false, draining = false;
+  const emit = (event, value) => { for (const listener of [...(listeners.get(event) ?? [])]) { if (listener.once) listeners.get(event).delete(listener); listener.callback(value); } };
+  const add = (event, callback, once) => { if (!listeners.has(event)) listeners.set(event, new Set()); listeners.get(event).add({ callback, once }); return socket; };
+  const send = value => { if (ws.readyState === WebSocket.OPEN) ws.send(value); };
+  // The relay sends up to WINDOW bytes ahead of what the guest took: credit them back in quarters, and at once when a pause ends.
+  const credit = force => { if (unreported && (force || unreported >= WINDOW / 4)) { send(JSON.stringify({ op: "credit", bytes: unreported })); unreported = 0; } };
+  const fail = errno => { if (!failed) { failed = true; emit("error", { paludariumErrno: errno }); } };
+  // The client closes the WebSocket, once both sides ended or the relay reported an error: the relay leaves it to the client.
+  const finish = () => { if (state === "closed") return; state = "closed"; if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) ws.close(1000); emit("close"); };
+  ws.addEventListener("message", event => {
+    if (typeof event.data !== "string") {
+      if (state !== "open") return;
+      const bytes = new Uint8Array(event.data);
+      if (paused) held += bytes.length; else { unreported += bytes.length; credit(false); }
+      emit("data", bytes);
+      return;
+    }
+    let message;
+    try { message = JSON.parse(event.data); } catch { message = undefined; }
+    if (message?.op === "connected" && state === "connecting") {
+      const local = splitAddress(message.local);
+      state = "open"; socket.localAddress = local?.ip ?? "0.0.0.0"; socket.localPort = local?.port ?? 0;
+      if (noDelay) send(JSON.stringify({ op: "nodelay", on: true }));
+      emit("connect");
+    } else if (message?.op === "credit" && Number.isSafeInteger(message.bytes) && message.bytes >= 0) {
+      unacked = Math.max(0, unacked - message.bytes);
+      if (draining && unacked < WINDOW) { draining = false; emit("drain"); }
+    } else if (message?.op === "end") { ended = true; emit("end"); if (sentEnd) finish(); }
+    else if (message?.op === "failed") { fail(message.errno); finish(); }
+  });
+  // A WebSocket that closed before the client closed it is lost: unreachable before connecting, a reset after.
+  ws.addEventListener("close", () => {
+    if (state === "closed") return;
+    if (state !== "open") fail(ENETUNREACH);
+    else if (!ended) fail(ECONNRESET);
+    finish();
+  });
+  const socket = {
+    localAddress: undefined, localPort: undefined,
+    on: (event, callback) => add(event, callback, false),
+    once: (event, callback) => add(event, callback, true),
+    // The relay credits what it wrote to the peer: no more than WINDOW goes ahead of that.
+    write(bytes) {
+      send(bytes); unacked += bytes.length;
+      if (unacked < WINDOW) return true;
+      draining = true;
+      return false;
+    },
+    end() { if (sentEnd) return; sentEnd = true; send(JSON.stringify({ op: "end" })); if (ended) finish(); },
+    destroy() { finish(); },
+    pause() { paused = true; },
+    resume() { if (!paused) return; paused = false; unreported += held; held = 0; credit(true); },
+    setNoDelay(on) { noDelay = on; if (state === "open") send(JSON.stringify({ op: "nodelay", on })); },
+  };
+  return socket;
+}
 /** Passes received bytes on as the stream takes them; the peer's end follows the last of them. */
 function deliver(entry) {
   if (!entry.pending) return;
@@ -68,34 +161,34 @@ async function netRequest(job, request) {
     if (!job?.network) { e.net_unresolved(request.id, 101); return; }
     // A lookup still pending when its job ends is released then (closeSockets), and its answer dropped.
     job.lookups.add(request.id);
-    const { lookup } = await import("node:dns/promises");
     let found, failed;
-    try { found = await lookup(request.name, { all: true, verbatim: true }); } catch (cause) { failed = cause; }
+    try {
+      if (job.relay) found = await relayLookup(job, request.name);
+      else found = (await (await import("node:dns/promises")).lookup(request.name, { all: true, verbatim: true })).map(item => item.address);
+    } catch (cause) { if (cause?.code === "ENOTFOUND" || cause?.code === "ENODATA") found = []; else failed = cause; }
     if (abandoned || !job.lookups.delete(request.id)) return;
-    if (found) withBytes(encoder.encode(found.map(item => item.address).join("\n")), id => e.net_resolved(request.id, id));
-    else if (failed?.code === "ENOTFOUND" || failed?.code === "ENODATA") withBytes(new Uint8Array(), id => e.net_resolved(request.id, id));
+    if (found) withBytes(encoder.encode(found.join("\n")), id => e.net_resolved(request.id, id));
     else e.net_unresolved(request.id, errnoOf(failed));
     return;
   }
   if (request.op !== "open") return;
   if (!job?.network) { e.net_failed(request.id, 101); e.net_release(request.id); return; }
-  const { connect } = await import("node:net");
-  const split = request.address.match(/^\[?([^\]]*)\]?:(\d+)$/);
-  if (abandoned) return;
-  if (!split) { e.net_failed(request.id, 22); e.net_release(request.id); return; }
+  const target = splitAddress(request.address);
+  if (!target) { e.net_failed(request.id, 22); e.net_release(request.id); return; }
   // Half-open, as TCP: the peer's end leaves this side able to send.
-  const socket = connect({ host: split[1], port: Number(split[2]), allowHalfOpen: true });
+  const socket = job.relay ? relaySocket(job, target) : (await import("node:net")).connect({ host: target.ip, port: target.port, allowHalfOpen: true });
+  if (abandoned) { socket.destroy(); return; }
   const entry = { id: request.id, job, socket, pending: null, open: false, closed: false, blocked: false, ended: false, peerEnded: false, guestClosed: false, released: false };
   sockets.set(entry.id, entry); job.sockets.add(entry);
   socket.on("connect", () => {
     if (abandoned || entry.released) return;
     entry.open = true;
-    withBytes(encoder.encode(address(socket.localAddress, socket.localPort)), id => e.net_connected(entry.id, id));
+    withBytes(encoder.encode(joinAddress(socket.localAddress, socket.localPort)), id => e.net_connected(entry.id, id));
     pump(entry);
   });
   socket.on("data", chunk => {
     if (abandoned || entry.released) return;
-    entry.pending = entry.pending ? Buffer.concat([entry.pending, chunk]) : chunk;
+    entry.pending = entry.pending ? concat(entry.pending, chunk) : chunk;
     deliver(entry);
   });
   socket.on("end", () => { if (abandoned || entry.released) return; entry.peerEnded = true; if (!entry.pending) e.net_end(entry.id); });
@@ -261,7 +354,7 @@ async function launch(message) {
     const tlsPointer = Math.ceil(pointer / tlsAlign) * tlsAlign;
     const stackTop = Math.ceil((tlsPointer + tlsSize) / 16) * 16 + 2 * 1024 * 1024;
     const token = putBuffer(e, new Uint8Array([73]), memory);
-    const job = { id: message.id, handle, region, token, offsets: { stdout: 0, stderr: 0 }, finished: false, diagnostics: null, tasks: new Map(), network: message.options.network !== undefined, sockets: new Set(), lookups: new Set() };
+    const job = { id: message.id, handle, region, token, offsets: { stdout: 0, stderr: 0 }, finished: false, diagnostics: null, tasks: new Map(), network: message.options.network !== undefined, relay: message.options.network?.relay, tickets: new Map(), sockets: new Set(), lookups: new Set() };
     jobs.set(message.id, job);
     port.send({ type: "accepted", id: message.id });
     job.worker = await spawnWorker(new URL("execution.mjs", import.meta.url));
