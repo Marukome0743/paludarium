@@ -500,7 +500,8 @@ IPv4 address or an IPv6 one (`[::1]`), each with a port or for every port
     then `EISCONN`; a failed one gives its error, or `ECONNABORTED` once
     `SO_ERROR` took it. An IPv6 socket reaches IPv4 addresses as
     `::ffff:a.b.c.d`.
-  - **A destination the policy does not allow** is `ENETUNREACH`.
+  - **A destination the policy does not allow** is `ENETUNREACH`, except
+    port 53, which is the DNS stub (see below).
   - **Data**: `read`, `write`, `send`/`recv`, `sendto`/`recvfrom` and
     `sendmsg`/`recvmsg`, with `MSG_PEEK`, `MSG_WAITALL`, `MSG_DONTWAIT` and
     `MSG_NOSIGNAL`. A write goes on until all is sent. A connection the peer
@@ -528,7 +529,11 @@ IPv4 address or an IPv6 one (`[::1]`), each with a port or for every port
   for an allowed name with the addresses the host resolves (for 60
   seconds), and `NXDOMAIN` for any other name. A connection to an address
   the stub gave for an allowed name is allowed as that name is, for 10
-  minutes after it last gave it.
+  minutes after it last gave it. A datagram answer holds at most 512
+  bytes; one that cannot hold every address is marked truncated (`TC`),
+  and the stub answers the query again over TCP: a TCP connection to port
+  53, at any address, reaches the stub too, which takes queries framed
+  with their two-byte lengths and answers each in turn, in full.
 - **Only global addresses for names**: the stub leaves out, and a name
   rule does not reach, the loopback, private (RFC 1918 and unique local),
   link-local, shared (RFC 6598), multicast and reserved addresses (also as

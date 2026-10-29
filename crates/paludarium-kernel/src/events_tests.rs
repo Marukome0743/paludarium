@@ -1020,6 +1020,140 @@ fn dns_query(f: &Fixture, at: u64, name: &str, kind: u16) -> u64 {
     bytes.len() as u64
 }
 #[test]
+fn the_dns_stub_answers_over_tcp_too() {
+    let mut f = network_fixture(&["example.com:443"]);
+    let tcp = f.ret(41, [2, 1 | 0x800, 0, 0, 0, 0]);
+    // Port 53 is the stub at any address, whatever the policy allows.
+    inet_address(&f, DATA + 0x100, [10, 0, 0, 1], 53);
+    assert_eq!(f.ret(42, [tcp, DATA + 0x100, 16, 0, 0, 0]), 0);
+    assert!(f.host.streams.lock().unwrap().is_empty());
+    // A query framed with its length, split across two writes.
+    let len = dns_query(&f, DATA + 2, "example.com", 1);
+    f.mem
+        .write(GuestAddr(DATA), &(len as u16).to_be_bytes())
+        .unwrap();
+    assert_eq!(f.ret(1, [tcp, DATA, 5, 0, 0, 0]), 5);
+    assert_eq!(f.ret(1, [tcp, DATA + 5, len - 3, 0, 0, 0]), len - 3);
+    assert_eq!(
+        f.ret(0, [tcp, DATA + 0x400, 512, 0, 0, 0]),
+        Errno::EAGAIN.to_syscall_return()
+    );
+    let (name, lookup) = f.host.lookups.lock().unwrap()[0].clone();
+    assert_eq!(name, "example.com");
+    lookup.finish(Ok(vec!["192.0.2.5".parse().unwrap()]));
+    let n = f.ret(0, [tcp, DATA + 0x400, 512, 0, 0, 0]);
+    let mut answer = vec![0; n as usize];
+    f.mem.read(GuestAddr(DATA + 0x400), &mut answer).unwrap();
+    assert_eq!(
+        usize::from(u16::from_be_bytes([answer[0], answer[1]])),
+        answer.len() - 2
+    );
+    assert_eq!(&answer[2..6], &[0xab, 0xcd, 0x81, 0x80]);
+    assert_eq!(&answer[answer.len() - 4..], &[192, 0, 2, 5]);
+    // Another name, answered at once; then the end once this side shuts down.
+    let len = dns_query(&f, DATA + 2, "other.org", 1);
+    f.mem
+        .write(GuestAddr(DATA), &(len as u16).to_be_bytes())
+        .unwrap();
+    assert_eq!(f.ret(1, [tcp, DATA, len + 2, 0, 0, 0]), len + 2);
+    assert_eq!(f.ret(48, [tcp, 1, 0, 0, 0, 0]), 0);
+    let n = f.ret(0, [tcp, DATA + 0x400, 512, 0, 0, 0]);
+    let mut answer = vec![0; n as usize];
+    f.mem.read(GuestAddr(DATA + 0x400), &mut answer).unwrap();
+    assert_eq!(answer[5] & 0xf, 3, "NXDOMAIN");
+    assert_eq!(f.ret(0, [tcp, DATA + 0x400, 512, 0, 0, 0]), 0);
+}
+#[test]
+fn a_long_tcp_answer_comes_whole_in_small_reads() {
+    let mut f = network_fixture(&["example.com"]);
+    let tcp = f.ret(41, [2, 1 | 0x800, 0, 0, 0, 0]);
+    inet_address(&f, DATA + 0x100, [127, 0, 0, 53], 53);
+    assert_eq!(f.ret(42, [tcp, DATA + 0x100, 16, 0, 0, 0]), 0);
+    // Two queries, the first answered after the second is queued, so that
+    // their answers go out together.
+    let mut framed = Vec::new();
+    for _ in 0..2 {
+        let len = dns_query(&f, DATA + 2, "example.com", 1);
+        let mut query = vec![0; len as usize];
+        f.mem.read(GuestAddr(DATA + 2), &mut query).unwrap();
+        framed.extend_from_slice(&(len as u16).to_be_bytes());
+        framed.extend_from_slice(&query);
+    }
+    f.mem.write(GuestAddr(DATA), &framed).unwrap();
+    assert_eq!(
+        f.ret(1, [tcp, DATA, framed.len() as u64, 0, 0, 0]),
+        framed.len() as u64
+    );
+    let many: Vec<core::net::IpAddr> = (0..200u8)
+        .map(|i| core::net::IpAddr::V4(core::net::Ipv4Addr::new(8, 8, i, 1)))
+        .collect();
+    let (_, lookup) = f.host.lookups.lock().unwrap()[0].clone();
+    lookup.finish(Ok(many));
+    assert_eq!(f.ret(48, [tcp, 1, 0, 0, 0, 0]), 0);
+    let mut got = Vec::new();
+    loop {
+        let n = f.ret(0, [tcp, DATA + 0x400, 7, 0, 0, 0]);
+        assert!((n as i64) >= 0, "{}", n as i64);
+        if n == 0 {
+            break;
+        }
+        let mut piece = vec![0; n as usize];
+        f.mem.read(GuestAddr(DATA + 0x400), &mut piece).unwrap();
+        got.extend(piece);
+    }
+    // Each answer holds all 200 records, each 16 bytes, after the 12-byte
+    // header and the 17-byte question.
+    let one = 2 + 12 + 17 + 200 * 16;
+    assert_eq!(got.len(), 2 * one);
+    for answer in got.chunks(one) {
+        assert_eq!(
+            usize::from(u16::from_be_bytes([answer[0], answer[1]])),
+            one - 2
+        );
+        assert_eq!(&answer[8..10], &200u16.to_be_bytes());
+    }
+}
+#[test]
+fn tcp_answers_past_the_stream_buffer_come_as_reads_free_it() {
+    let mut f = network_fixture(&["example.com"]);
+    let tcp = f.ret(41, [2, 1 | 0x800, 0, 0, 0, 0]);
+    inet_address(&f, DATA + 0x100, [127, 0, 0, 53], 53);
+    assert_eq!(f.ret(42, [tcp, DATA + 0x100, 16, 0, 0, 0]), 0);
+    // Five queries whose answers of 4000 records, about 64 KiB each, pass
+    // the stream's 256 KiB: the rest waits until reads free room.
+    let mut framed = Vec::new();
+    for _ in 0..5 {
+        let len = dns_query(&f, DATA + 2, "example.com", 1);
+        let mut query = vec![0; len as usize];
+        f.mem.read(GuestAddr(DATA + 2), &mut query).unwrap();
+        framed.extend_from_slice(&(len as u16).to_be_bytes());
+        framed.extend_from_slice(&query);
+    }
+    f.mem.write(GuestAddr(DATA), &framed).unwrap();
+    assert_eq!(
+        f.ret(1, [tcp, DATA, framed.len() as u64, 0, 0, 0]),
+        framed.len() as u64
+    );
+    let many: Vec<core::net::IpAddr> = (0..4000u32)
+        .map(|i| core::net::IpAddr::V4(core::net::Ipv4Addr::from(0x0808_0000 + i)))
+        .collect();
+    f.host.lookups.lock().unwrap()[0].1.finish(Ok(many));
+    let full = crate::sockets::queued(&f.kernel.files.descriptor(tcp).unwrap().file, false);
+    assert_eq!(full, Some(Ok(paludarium_host::net::BUFFER)));
+    assert_eq!(f.ret(48, [tcp, 1, 0, 0, 0, 0]), 0);
+    let mut total = 0u64;
+    loop {
+        let n = f.ret(0, [tcp, DATA + 0x400, 4096, 0, 0, 0]);
+        assert!((n as i64) >= 0, "{}", n as i64);
+        if n == 0 {
+            break;
+        }
+        total += n;
+    }
+    // 2 + 12 + 17 + 4000 * 16 bytes each.
+    assert_eq!(total, 5 * (2 + 12 + 17 + 4000 * 16));
+}
+#[test]
 fn the_dns_stub_answers_allowed_names_from_the_host() {
     let mut f = network_fixture(&["example.com:443"]);
     let udp = f.ret(41, [2, 2 | 0x800, 0, 0, 0, 0]);
