@@ -924,6 +924,9 @@ int main(int argc, char **argv) {
         printf("  closed source=%#x port-ok=%d\n", ntohl(bn.sin_addr.s_addr), ntohs(bn.sin_port) != 0);
         call("send-closed", send(d, "x", 1, 0));
         ready("refused", d, POLLIN | POLLOUT);
+        /* A send too big fails before it would take the error. */
+        static char huge[65508];
+        call("send-too-big-refused", send(d, huge, sizeof huge, 0));
         call("send-refused", send(d, "x", 1, 0));
         call("send-again", send(d, "x", 1, 0));
         call("recv-refused", recv(d, buf, sizeof buf, MSG_DONTWAIT));
@@ -981,6 +984,63 @@ int main(int argc, char **argv) {
         n = recvfrom(s6, buf, sizeof buf, 0, (void *)&f6, &len);
         printf("  v6 recv=%ld family=%d len=%u mapped=%d\n", n, f6.sin6_family, (unsigned)len,
                IN6_IS_ADDR_V4MAPPED(&f6.sin6_addr));
+        return 0;
+    }
+    if (!strcmp(mode, "udp-shutdown")) {
+        /* shutdown of a UDP socket: ENOTCONN unless it is connected, but
+           shut all the same. A receive that would wait then ends with 0,
+           datagrams still come, a send is EPIPE with no SIGPIPE, and poll
+           shows the ends. Another process's shutdown ends a waiting
+           receive. */
+        signal(SIGPIPE, on_pipe);
+        int a = socket(AF_INET, SOCK_DGRAM, 0);
+        struct sockaddr_in addr = to(0);
+        bind(a, (void *)&addr, sizeof addr);
+        int port = port_of(a);
+        call("shutdown-rd", shutdown(a, SHUT_RD));
+        ready("read-shut", a, POLLIN | POLLOUT | POLLRDHUP);
+        call("recv", recv(a, buf, sizeof buf, 0));
+        call("recv-dontwait", recv(a, buf, sizeof buf, MSG_DONTWAIT));
+        struct sockaddr_in from;
+        memset(&from, 0x55, sizeof from);
+        socklen_t len = sizeof from;
+        call("recvfrom", recvfrom(a, buf, sizeof buf, 0, (void *)&from, &len));
+        printf("  len=%u\n", (unsigned)len);
+        int b = socket(AF_INET, SOCK_DGRAM, 0);
+        struct sockaddr_in dst = to(port);
+        call("sendto", sendto(b, "still", 5, 0, (void *)&dst, sizeof dst));
+        n = recv(a, buf, sizeof buf, 0);
+        print_bytes("arrived", buf, n);
+        call("read", read(a, buf, sizeof buf));
+        call("shutdown-wr", shutdown(a, SHUT_WR));
+        ready("both-shut", a, POLLIN | POLLOUT | POLLRDHUP);
+        struct sockaddr_in to_b = to(port_of(b));
+        static char big[65508];
+        call("send-shut", sendto(a, "x", 1, 0, (void *)&to_b, sizeof to_b));
+        call("send-empty-shut", sendto(a, "", 0, 0, (void *)&to_b, sizeof to_b));
+        call("send-too-big-shut", sendto(a, big, sizeof big, 0, (void *)&to_b, sizeof to_b));
+        call("send-nosignal", sendto(a, "x", 1, MSG_NOSIGNAL, (void *)&to_b, sizeof to_b));
+        call("write-unconnected", write(a, "x", 1));
+        printf("  sigpipes=%d\n", (int)pipes);
+        call("recv-b", recv(b, buf, sizeof buf, MSG_DONTWAIT));
+        int c = socket(AF_INET, SOCK_DGRAM, 0);
+        call("connect", connect(c, (void *)&to_b, sizeof to_b));
+        call("connected-shutdown", shutdown(c, SHUT_WR));
+        call("connected-send", send(c, "x", 1, 0));
+        ready("connected", c, POLLIN | POLLOUT | POLLRDHUP);
+        call("shutdown-bad", shutdown(c, 3));
+        printf("  sigpipes=%d\n", (int)pipes);
+        int w = socket(AF_INET, SOCK_DGRAM, 0);
+        bind(w, (void *)&addr, sizeof addr);
+        pid_t child = fork();
+        if (child == 0) {
+            usleep(200000);
+            shutdown(w, SHUT_RD);
+            _exit(0);
+        }
+        call("woken", recv(w, buf, sizeof buf, 0));
+        int status;
+        waitpid(child, &status, 0);
         return 0;
     }
     if (!strcmp(mode, "resolve")) {
