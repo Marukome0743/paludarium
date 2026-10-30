@@ -182,7 +182,10 @@ kernel.
   `poll` shows as `POLLERR` until then. A socket that passes credentials is
   autobound as it connects or sends. `listen` and `accept` are
   `EOPNOTSUPP`, and `SO_PEERCRED` names no process (process 0, IDs -1),
-  `SO_PEERPIDFD` `ENODATA`. A socket pair's datagram end sends to names too.
+  connected or not, as `unix_dgram_connect` records none, and
+  `SO_PEERPIDFD` is `ENODATA`; a datagram socket pair's ends name their
+  maker, as every pair's do. A socket pair's datagram end sends to names
+  too.
 - `recvmsg` and `recvfrom` take their flags as Linux's AF_UNIX sockets do:
   `MSG_PEEK` leaves the data, and gives copies of the descriptors it passes;
   `MSG_WAITALL` fills a stream's buffer, unless the stream ends, descriptors
@@ -263,8 +266,8 @@ kernel.
   `int` value of fewer than 4 bytes is `EINVAL`, a value read back is cut to
   the given length, another level is `EOPNOTSUPP`, and an unknown option is
   `ENOPROTOOPT`. `SO_TYPE`, `SO_DOMAIN`, `SO_PROTOCOL`, `SO_ERROR`,
-  `SO_ACCEPTCONN`, `SO_PEERCRED` and `SO_PEERPIDFD` (the process that made
-  the pair) can only be read. `SO_SNDBUF` and `SO_RCVBUF` are doubled and kept at Linux's
+  `SO_ACCEPTCONN`, `SO_PEERCRED` and `SO_PEERPIDFD` (the peer process,
+  below) can only be read. `SO_SNDBUF` and `SO_RCVBUF` are doubled and kept at Linux's
   floors and ceiling, and `SO_LINGER` takes a `struct linger`.
 - `SO_PASSCRED` makes messages carry credentials, as Linux's AF_UNIX does.
   A message sent while either end has it carries the sender's process ID,
@@ -281,9 +284,15 @@ kernel.
   them. The pidfd is installed only when that whole message fits in the
   control buffer; otherwise the message is lost (`MSG_CTRUNC`) and no
   descriptor is taken. A message sent while neither end passed credentials
-  carries none. `SO_PEERPIDFD` reads a new pidfd of the process that made
-  the pair, installed even when the length given holds only part of its
-  number; it can only be read (`setsockopt` is `ENOPROTOOPT`).
+  carries none. `SO_PEERCRED` and `SO_PEERPIDFD` name the peer process as
+  Linux records it: for a pair, the process that made it, on both ends;
+  for a socket from `socket()`, none (process 0, IDs -1, and
+  `SO_PEERPIDFD` `ENODATA`) until it listens or connects; on a listener,
+  the process that called `listen` (`init_peercred`); on an accepted
+  socket, the connecting process; and on the client, the listener's
+  (`copy_peercred`). `SO_PEERPIDFD` reads a new pidfd of that process,
+  installed even when the length given holds only part of its number; it
+  can only be read (`setsockopt` is `ENOPROTOOPT`).
 - `SO_RCVTIMEO` and `SO_SNDTIMEO` (and their `_NEW` forms) limit how long a
   blocking `recv`, `read`, `send` or `write` on the socket waits, as on
   Linux: past the limit it gives `EAGAIN`, or what it moved, and

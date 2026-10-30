@@ -165,9 +165,10 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   前の相手は `ECONNRESET` を受けます。それは次の読み込み（キューにあるものより先）か
   送信か `SO_ERROR` が 1 度だけ返し、それまでは `poll` に `POLLERR` として見えます。資格情報を
   受け渡すソケットは、接続するときか送るときに自動で `bind` されます。`listen` と
-  `accept` は `EOPNOTSUPP` で、`SO_PEERCRED` はどのプロセスも示さず（プロセス 0、ID は
-  -1）、`SO_PEERPIDFD` は `ENODATA` です。ソケットのペアのデータグラムの端も名前へ
-  送れます。
+  `accept` は `EOPNOTSUPP` で、`unix_dgram_connect` は何も記録しないので、接続していても
+  いなくても `SO_PEERCRED` はどのプロセスも示さず（プロセス 0、ID は -1）、`SO_PEERPIDFD`
+  は `ENODATA` です。データグラムのソケットのペアの端は、ほかのペアと同じく組を作った
+  プロセスを示します。ソケットのペアのデータグラムの端も名前へ送れます。
 - `recvmsg` と `recvfrom` は、Linux の AF_UNIX のソケットと同じくフラグを扱います。
   `MSG_PEEK` はデータを残し、受け渡すディスクリプタの写しを渡します。`MSG_WAITALL` は、
   ストリームの終わりやディスクリプタが来るまで、またはデータを受け取ったあとにシグナルが
@@ -245,7 +246,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   既定の値やチェックも含めて `SOL_SOCKET` のオプションを扱います。4 バイトに満たない
   `int` の値は `EINVAL`、読み出す値は渡された長さで切り、ほかのレベルは `EOPNOTSUPP`、
   知らないオプションは `ENOPROTOOPT` です。`SO_TYPE`、`SO_DOMAIN`、`SO_PROTOCOL`、
-  `SO_ERROR`、`SO_ACCEPTCONN`、`SO_PEERCRED` と `SO_PEERPIDFD`（その組を作ったプロセス）は
+  `SO_ERROR`、`SO_ACCEPTCONN`、`SO_PEERCRED` と `SO_PEERPIDFD`（相手のプロセス。下を参照）は
   読むだけです。
   `SO_SNDBUF` と `SO_RCVBUF` は 2 倍にして、Linux の下限と上限に収め、`SO_LINGER` は
   `struct linger` を受け取ります。
@@ -263,8 +264,13 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   メッセージで受け取ります。Linux 7.0 と同じく、ディスクリプタのあとに来ます。pidfd を
   作るのは、そのメッセージ全体が制御のバッファに入るときだけです。入らないときは
   メッセージを失い（`MSG_CTRUNC`）、ディスクリプタも作りません。どちらの端も資格情報を
-  渡していないときに送ったメッセージは、何も運びません。`SO_PEERPIDFD` は、ペアを
-  作ったプロセスの新しい pidfd を読み出します。渡した長さに番号の一部しか入らなくても、
+  渡していないときに送ったメッセージは、何も運びません。`SO_PEERCRED` と
+  `SO_PEERPIDFD` は、Linux が記録するのと同じく相手のプロセスを示します。ペアでは、
+  両方の端で組を作ったプロセスです。`socket()` で作ったソケットでは、待ち受けるか接続する
+  までは何も示しません（プロセス 0、ID は -1、`SO_PEERPIDFD` は `ENODATA`）。待ち受けでは
+  `listen` を呼んだプロセス（`init_peercred`）、受け付けたソケットでは接続したプロセス、
+  クライアントでは待ち受けのプロセス（`copy_peercred`）です。`SO_PEERPIDFD` は、その
+  プロセスの新しい pidfd を読み出します。渡した長さに番号の一部しか入らなくても、
   pidfd は作ります。読み出すだけのオプションで、`setsockopt` は `ENOPROTOOPT` です。
 - `SO_RCVTIMEO` と `SO_SNDTIMEO`（と `_NEW` の形）は、Linux と同じく、そのソケットでの
   `recv`、`read`、`send`、`write` が待つ時間を限ります。限りを過ぎると `EAGAIN`、または
