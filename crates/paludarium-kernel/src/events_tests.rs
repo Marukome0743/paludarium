@@ -1151,9 +1151,114 @@ fn loopback_closes_reset_what_is_left() {
         f.ret(49, [again, DATA + 0x100, 16, 0, 0, 0]),
         Errno(98).to_syscall_return()
     );
+    // Closed first, that connection keeps it in `TIME_WAIT` for 60 seconds.
     assert_eq!(f.ret(3, [kept, 0, 0, 0, 0, 0]), 0);
+    assert_eq!(
+        f.ret(49, [again, DATA + 0x100, 16, 0, 0, 0]),
+        Errno(98).to_syscall_return()
+    );
+    f.host
+        .now
+        .store(crate::loopback::TIME_WAIT, Ordering::SeqCst);
     assert_eq!(f.ret(49, [again, DATA + 0x100, 16, 0, 0, 0]), 0);
     assert_eq!(f.ret(3, [client, 0, 0, 0, 0, 0]), 0);
+}
+#[test]
+fn loopback_time_wait_holds_the_port_closed_first() {
+    let mut f = network_fixture(&[]);
+    let bind_on = |f: &mut Fixture, port: u16, reuse: bool| {
+        let fd = f.ret(41, [2, 1, 0, 0, 0, 0]);
+        if reuse {
+            f.mem
+                .write(GuestAddr(DATA + 0x200), &1u32.to_le_bytes())
+                .unwrap();
+            assert_eq!(f.ret(54, [fd, 1, 2, DATA + 0x200, 4, 0]), 0);
+        }
+        inet_address(f, DATA + 0x100, [127, 0, 0, 1], port);
+        let r = f.ret(49, [fd, DATA + 0x100, 16, 0, 0, 0]);
+        assert_eq!(f.ret(3, [fd, 0, 0, 0, 0, 0]), 0);
+        r
+    };
+    let port_of = |f: &mut Fixture, fd: u64| {
+        let name = name_of(f, 51, fd);
+        u16::from_be_bytes([name[2], name[3]])
+    };
+    let in_use = Errno(98).to_syscall_return();
+    let (listener, port) = loopback_listener(&mut f, 8);
+    // The client closes first: its port is held, even for SO_REUSEADDR, as
+    // the closed socket had none; the server's, which closed second, is not.
+    let client = loopback_client(&mut f, port);
+    let server = f.ret(43, [listener, 0, 0, 0, 0, 0]);
+    let client_port = port_of(&mut f, client);
+    assert_eq!(f.ret(3, [client, 0, 0, 0, 0, 0]), 0);
+    assert_eq!(f.ret(0, [server, DATA + 8, 16, 0, 0, 0]), 0);
+    assert_eq!(f.ret(3, [server, 0, 0, 0, 0, 0]), 0);
+    assert_eq!(bind_on(&mut f, client_port, false), in_use);
+    assert_eq!(bind_on(&mut f, client_port, true), in_use);
+    // Until 60 seconds have passed.
+    f.host
+        .now
+        .store(crate::loopback::TIME_WAIT - 1, Ordering::SeqCst);
+    assert_eq!(bind_on(&mut f, client_port, false), in_use);
+    f.host
+        .now
+        .store(crate::loopback::TIME_WAIT, Ordering::SeqCst);
+    assert_eq!(bind_on(&mut f, client_port, false), 0);
+    // Held while its peer stays open too; a send to the closed side is
+    // answered with a reset, which ends it.
+    let client = loopback_client(&mut f, port);
+    let server = f.ret(43, [listener, 0, 0, 0, 0, 0]);
+    let open_port = port_of(&mut f, client);
+    assert_eq!(f.ret(3, [client, 0, 0, 0, 0, 0]), 0);
+    assert_eq!(bind_on(&mut f, open_port, false), in_use);
+    f.mem.write(GuestAddr(DATA), b"x").unwrap();
+    assert_eq!(f.ret(1, [server, DATA, 1, 0, 0, 0]), 1);
+    assert_eq!(bind_on(&mut f, open_port, false), 0);
+    assert_eq!(f.ret(3, [server, 0, 0, 0, 0, 0]), 0);
+    // Closed with bytes the peer has no room for yet: held while they go
+    // (Linux's `FIN_WAIT1`), then in `TIME_WAIT` once its end has reached
+    // the peer first; a reset, as the peer closes with them unread, ends it.
+    for drained in [true, false] {
+        let client = loopback_client(&mut f, port);
+        let server = f.ret(43, [listener, 0, 0, 0, 0, 0]);
+        let full_port = port_of(&mut f, client);
+        while f.ret(44, [client, DATA + 0x400, 0x1000, 0x40, 0, 0]) == 0x1000 {}
+        assert_eq!(f.ret(3, [client, 0, 0, 0, 0, 0]), 0);
+        assert_eq!(bind_on(&mut f, full_port, false), in_use);
+        if drained {
+            while f.ret(0, [server, DATA + 0x400, 0x1000, 0, 0, 0]) > 0 {}
+        }
+        assert_eq!(f.ret(3, [server, 0, 0, 0, 0, 0]), 0);
+        let expected = if drained { in_use } else { 0 };
+        assert_eq!(bind_on(&mut f, full_port, false), expected);
+    }
+    // A close with unread input resets: nothing is held.
+    let client = loopback_client(&mut f, port);
+    let server = f.ret(43, [listener, 0, 0, 0, 0, 0]);
+    let reset_port = port_of(&mut f, client);
+    assert_eq!(f.ret(1, [server, DATA, 1, 0, 0, 0]), 1);
+    assert_eq!(f.ret(3, [client, 0, 0, 0, 0, 0]), 0);
+    assert_eq!(f.ret(3, [server, 0, 0, 0, 0, 0]), 0);
+    assert_eq!(bind_on(&mut f, reset_port, false), 0);
+    assert_eq!(f.ret(3, [listener, 0, 0, 0, 0, 0]), 0);
+    // A server that closes first holds the listener's port, which a new
+    // socket with SO_REUSEADDR shares when the closed one had it too.
+    let reusing = f.ret(41, [2, 1, 0, 0, 0, 0]);
+    f.mem
+        .write(GuestAddr(DATA + 0x200), &1u32.to_le_bytes())
+        .unwrap();
+    assert_eq!(f.ret(54, [reusing, 1, 2, DATA + 0x200, 4, 0]), 0);
+    inet_address(&f, DATA + 0x100, [127, 0, 0, 1], 0);
+    assert_eq!(f.ret(49, [reusing, DATA + 0x100, 16, 0, 0, 0]), 0);
+    assert_eq!(f.ret(50, [reusing, 8, 0, 0, 0, 0]), 0);
+    let shared = port_of(&mut f, reusing);
+    let client = loopback_client(&mut f, shared);
+    let server = f.ret(43, [reusing, 0, 0, 0, 0, 0]);
+    assert_eq!(f.ret(3, [server, 0, 0, 0, 0, 0]), 0);
+    assert_eq!(f.ret(3, [client, 0, 0, 0, 0, 0]), 0);
+    assert_eq!(f.ret(3, [reusing, 0, 0, 0, 0, 0]), 0);
+    assert_eq!(bind_on(&mut f, shared, false), in_use);
+    assert_eq!(bind_on(&mut f, shared, true), 0);
 }
 #[test]
 fn a_udp_shutdown_ends_reads_and_refuses_sends() {

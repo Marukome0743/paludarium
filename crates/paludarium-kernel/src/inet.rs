@@ -745,9 +745,18 @@ impl InetSocket {
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
-    /// The ports of this socket's protocol.
+    /// The ports of this socket's protocol, without the holds in
+    /// `TIME_WAIT` that have ended.
     fn ports(&self) -> MutexGuard<'_, Ports> {
-        self.network.ports(self.datagram)
+        let mut ports = self.network.ports(self.datagram);
+        if let Some(now) = self.now() {
+            ports.expire(now);
+        }
+        ports
+    }
+    /// The host's monotonic time; without it, no hold in `TIME_WAIT` begins.
+    fn now(&self) -> Option<u64> {
+        self.host.clock(paludarium_host::ClockId::Monotonic).ok()
     }
     fn options(&self) -> MutexGuard<'_, Options> {
         self.options.lock().unwrap_or_else(PoisonError::into_inner)
@@ -1280,6 +1289,7 @@ impl InetSocket {
             listening: false,
             peer: None,
             owner: Weak::clone(&self.this),
+            time_wait: None,
         }
     }
     /// `bind` of a TCP or UDP socket, with Linux's checks in its order
@@ -1638,7 +1648,14 @@ fn closed(stream: &Stream) -> bool {
 /// Ends the guest's use of `stream`, as Linux's `tcp_close`: on the
 /// loopback a connection with unread input, or closed with `abort` (a zero
 /// linger time, a disconnect), is reset; any other ends after what it sent.
-fn finish(stream: &Stream, link: Option<&(Arc<OnceLock<Arc<Link>>>, usize)>, abort: bool) {
+/// Returns the loopback connection and this side when it ends the connection
+/// first and was not reset, so that the socket holds its port in
+/// `TIME_WAIT`.
+fn finish(
+    stream: &Stream,
+    link: Option<&(Arc<OnceLock<Arc<Link>>>, usize)>,
+    abort: bool,
+) -> Option<(Arc<Link>, usize)> {
     let joined = link.and_then(|(slot, side)| Some((slot.get()?, *side)));
     if let Some((link, side)) = joined
         && (abort || stream.queued().0 > 0)
@@ -1646,6 +1663,9 @@ fn finish(stream: &Stream, link: Option<&(Arc<OnceLock<Arc<Link>>>, usize)>, abo
         link.reset(side);
     }
     stream.close();
+    joined
+        .filter(|(link, side)| link.closes_first(*side))
+        .map(|(link, side)| (Arc::clone(link), side))
 }
 
 impl Drop for InetSocket {
@@ -1655,8 +1675,14 @@ impl Drop for InetSocket {
         if let Some(listen) = s.listen {
             listen.stop();
         }
-        if let Some(stream) = s.stream {
-            finish(&stream, s.link.as_ref(), abort);
+        // The side that ends the connection first keeps its port in
+        // `TIME_WAIT`.
+        if let Some(stream) = s.stream
+            && let Some((link, side)) = finish(&stream, s.link.as_ref(), abort)
+            && let Some(now) = self.now()
+        {
+            let until = now.saturating_add(crate::loopback::TIME_WAIT);
+            self.ports().linger(&self.this, (&link, side), until);
         }
     }
 }
