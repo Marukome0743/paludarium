@@ -103,6 +103,16 @@ mod linux {
                 );
             }
         }
+        // The datagram case fills a queue to the kernel's default length,
+        // which the emulator keeps; systemd raises it.
+        if mode == "unix-datagram" {
+            let value =
+                std::fs::read_to_string("/proc/sys/net/unix/max_dgram_qlen").unwrap_or_default();
+            assert_eq!(
+                value, "10\n",
+                "the unix-datagram case needs `sysctl net.unix.max_dgram_qlen=10`"
+            );
+        }
         support::bounded(test, || {
             let program = dir.join(binary);
             let self_path = program.to_str().unwrap().to_owned();
@@ -200,6 +210,7 @@ mod linux {
         processes_scm_rights => ("scm-rights","process"),
         processes_scm_garbage => ("scm-garbage","process"),
         processes_unix_abstract => ("unix-abstract","process"),
+        processes_unix_datagram => ("unix-datagram","process"),
         processes_socket_flags => ("socket-flags","process"),
         processes_socket_oob => ("socket-oob","process"),
         processes_socket_options => ("socket-options","process"),
