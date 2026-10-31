@@ -489,9 +489,11 @@ pub(crate) fn polled_full(file: &Arc<dyn FileHandle>) {
 /// `file`, or `None` for a file that is neither a pipe nor a socket. A pipe
 /// counts its unread bytes at either end (Linux's `pipe_ioctl`) and has no
 /// `SIOCOUTQ` (ENOTTY). A socket counts its unread bytes, out-of-band byte
-/// included, a datagram socket its first datagram's (`unix_inq_len`), and
-/// `SIOCOUTQ` what the peer has not read, where Linux's `unix_outq_len`
-/// also counts each message's overhead.
+/// included, a datagram socket its first datagram's (`unix_inq_len`).
+/// `SIOCOUTQ` gives what a datagram socket's datagrams that wait take of
+/// its send buffer (`unix_outq_len`), and for a stream or packet socket
+/// what the peer has not read, where Linux also counts each message's
+/// overhead.
 pub(crate) fn queued(file: &Arc<dyn FileHandle>, outgoing: bool) -> Option<Result<usize, Errno>> {
     if let Some(socket) = crate::inet::of(file) {
         return Some(socket.queued(outgoing));
@@ -508,6 +510,9 @@ pub(crate) fn queued(file: &Arc<dyn FileHandle>, outgoing: bool) -> Option<Resul
     }
     let socket = any.downcast_ref::<SocketPairEnd>()?;
     let sides = socket.lock_sides();
+    if outgoing && socket.pair.kind == SOCK_DGRAM {
+        return Some(Ok(socket.sent.load(Ordering::SeqCst)));
+    }
     if outgoing {
         return Some(Ok(sides[1 - socket.side].bytes.len()));
     }
@@ -626,7 +631,7 @@ fn check_address(socket: &SocketPairEnd, address: &[u8], len: usize) -> Result<b
         SOCK_SEQPACKET => Ok(false),
         _ => {
             crate::unix::validate(address)?;
-            if len > MAX_MESSAGE {
+            if len > socket.max_datagram() {
                 return Err(Errno(90)); // EMSGSIZE
             }
             Ok(true)
@@ -1394,6 +1399,8 @@ fn set_option(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
         SO_BSDCOMPAT => {}
         SO_SNDBUF | SO_SNDBUFFORCE => {
             options.send_buffer = buffer_size(value, name == SO_SNDBUFFORCE, MIN_SEND_BUFFER);
+            // A sender waiting for room may now find it (`sk_write_space`).
+            socket.pair.hub.changed();
         }
         SO_RCVBUF | SO_RCVBUFFORCE => {
             options.receive_buffer = buffer_size(value, name == SO_RCVBUFFORCE, MIN_RECEIVE_BUFFER);
@@ -1555,6 +1562,44 @@ struct Write {
     /// The name of the AF_UNIX socket that sent it, as Linux's `skb->sk`
     /// gives it to recvmsg's `msg_name`; none from a socket pair's end.
     from: Option<crate::unix::Address>,
+    /// What a datagram takes of its sender's send buffer while it waits.
+    charge: Option<Charge>,
+}
+/// What a datagram takes of its sender's send buffer, as Linux's
+/// `skb_set_owner_w` charges `sk_wmem_alloc`, until the datagram goes:
+/// read, dropped, or freed with its receiver.
+struct Charge {
+    sent: Arc<AtomicUsize>,
+    size: usize,
+    hub: Arc<ReadinessHub>,
+}
+impl Drop for Charge {
+    /// The sender may send again (`sock_wfree`).
+    fn drop(&mut self) {
+        self.sent.fetch_sub(self.size, Ordering::SeqCst);
+        self.hub.changed();
+    }
+}
+/// What a datagram of `len` bytes takes of its sender's send buffer, as
+/// x86-64 Linux 7.0 counts the `skb->truesize` `unix_dgram_sendmsg`
+/// allocates: the `sk_buff` (256 bytes) and its head, the smallest power
+/// of two that holds the bytes and the `skb_shared_info` (an AF_UNIX
+/// socket allocates with `GFP_KERNEL_ACCOUNT`, which the small head cache
+/// does not serve); past `SKB_MAX_ALLOC` the head keeps what that leaves,
+/// and the rest, in whole pages and at most `MAX_SKB_FRAGS` (17) of them,
+/// goes in page fragments.
+fn truesize(len: usize) -> usize {
+    const SKB: usize = 256;
+    const SHARED_INFO: usize = 320;
+    const PAGE: usize = 4096;
+    const MAX_ALLOC: usize = 4 * PAGE - SHARED_INFO;
+    let pages = if len > MAX_ALLOC {
+        (len - MAX_ALLOC).min(17 * PAGE).next_multiple_of(PAGE)
+    } else {
+        0
+    };
+    let head = (len - pages).next_multiple_of(64) + SHARED_INFO;
+    SKB + pages + head.next_power_of_two()
 }
 /// The credentials a write carries, as Linux's `UNIXCB` keeps them for
 /// `SCM_CREDENTIALS`: its sender's process ID, user and group when either
@@ -1799,8 +1844,42 @@ pub(crate) struct SocketPairEnd {
     /// That socket has not connected yet: it sends nothing and reads
     /// nothing.
     unconnected: AtomicBool,
+    /// What the datagrams this end sent and that wait take of its send
+    /// buffer ([`Charge`]), as Linux's `sk_wmem_alloc`.
+    sent: Arc<AtomicUsize>,
 }
 impl SocketPairEnd {
+    /// `SO_SNDBUF` on this end, as Linux keeps it, doubled.
+    fn send_buffer(&self) -> usize {
+        let send_buffer = self
+            .options
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .send_buffer;
+        usize::try_from(send_buffer).unwrap_or(0)
+    }
+    /// What a datagram of `len` bytes this end sends takes of its send
+    /// buffer until it goes.
+    fn charge(&self, len: usize) -> Charge {
+        let size = truesize(len);
+        self.sent.fetch_add(size, Ordering::SeqCst);
+        Charge {
+            sent: Arc::clone(&self.sent),
+            size,
+            hub: Arc::clone(&self.pair.hub),
+        }
+    }
+    /// Whether this datagram end may send as `poll` sees it, as Linux's
+    /// `unix_writable`: a quarter of its send buffer holds what it has sent
+    /// and that waits, and one more.
+    fn writable(&self) -> bool {
+        (self.sent.load(Ordering::SeqCst) + 1) * 4 <= self.send_buffer()
+    }
+    /// The longest datagram this end sends: its send buffer less 32 bytes,
+    /// as `unix_dgram_sendmsg` checks it (`EMSGSIZE` past it).
+    fn max_datagram(&self) -> usize {
+        self.send_buffer().saturating_sub(32)
+    }
     /// The AF_UNIX socket `socket` made, whose end this is.
     pub(crate) fn unix(&self) -> Option<Arc<crate::unix::UnixSocket>> {
         self.unix.get().and_then(Weak::upgrade)
@@ -1930,6 +2009,7 @@ impl SocketPairEnd {
                 options: Mutex::default(),
                 unix: std::sync::OnceLock::new(),
                 unconnected: AtomicBool::new(false),
+                sent: Arc::default(),
             })
         }))
     }
@@ -2578,12 +2658,20 @@ impl Drop for SocketPairEnd {
             .iter_mut()
             .map(|write| std::mem::take(&mut write.passed))
             .collect();
+        // What its senders sent and it never read stops taking their send
+        // buffers.
+        let charges: Vec<Charge> = sides[self.side]
+            .writes
+            .iter_mut()
+            .filter_map(|write| write.charge.take())
+            .collect();
         drop(sides);
         self.pair.hub.changed();
         if let Some(notice) = notice {
             notice.send();
         }
         drop(passed);
+        drop(charges);
         // Linux looks for garbage as a socket goes (`unix_release_sock`).
         if !self.is_pipe() {
             collect_garbage();
@@ -2600,6 +2688,21 @@ static COLLECTION: Mutex<()> = Mutex::new(());
 thread_local! {
     /// This thread is collecting: the sockets it closes start none.
     static COLLECTING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// This thread's last datagram found no room in its sender's send
+    /// buffer: the send's own answer, which no other thread's send on the
+    /// socket changes.
+    static NO_ROOM: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+/// Whether this thread's datagram send on `file` just found no room in its
+/// send buffer, rather than a full queue at the receiver.
+pub(crate) fn out_of_room(file: &Arc<dyn FileHandle>) -> bool {
+    NO_ROOM.replace(false) && socket_end(file).is_some_and(|end| end.pair.kind == SOCK_DGRAM)
+}
+/// Whether a datagram socket `file` still has too little room to wake a
+/// sender that found none: Linux's `unix_write_space` wakes a sender in
+/// `sock_alloc_send_pskb` only once it is writable.
+pub(crate) fn sleeps_for_room(file: &Arc<dyn FileHandle>) -> bool {
+    socket_end(file).is_some_and(|end| !end.writable())
 }
 /// `file` as a socket's end, not a pipe's.
 fn socket_end(file: &Arc<dyn FileHandle>) -> Option<&SocketPairEnd> {
@@ -2782,7 +2885,7 @@ impl FileHandle for SocketPairEnd {
             // Only this side's own shutdowns show; a closed peer does not.
             let shut = (u32::from(own.read_shutdown) * (IN | 0x2000))
                 | (u32::from(own.read_shutdown && own.write_shutdown) * 0x10);
-            let writable = peer.bytes.len() < self.pair.window() || peer.closed;
+            let writable = self.writable();
             let mask = (u32::from(writable) * OUT)
                 | (u32::from(readable) * IN)
                 | (u32::from(own.error.is_some()) * 0x8)
@@ -2917,6 +3020,15 @@ impl SocketPairEnd {
         sender: Sender,
     ) -> Result<usize, Errno> {
         self.check_datagram_send(buf.len())?;
+        // sock_alloc_send_pskb: no room while what this end has sent and
+        // that waits takes the whole send buffer, which a blocking send
+        // waits for. Linux looks for room before it looks for the peer,
+        // so an unconnected socket with none is EAGAIN, not ENOTCONN.
+        let full = self.sent.load(Ordering::SeqCst) >= self.send_buffer();
+        NO_ROOM.set(full);
+        if full {
+            return Err(Errno::EAGAIN);
+        }
         let to = match (to, self.unix()) {
             (Some(to), _) => Arc::clone(to),
             (None, Some(own)) => own.peer()?,
@@ -2937,7 +3049,7 @@ impl SocketPairEnd {
         {
             own.autobind()?;
         }
-        if len > MAX_MESSAGE {
+        if len > self.max_datagram() {
             return Err(Errno(90)); // EMSGSIZE
         }
         if let Some(error) = self.take_error() {
@@ -3009,9 +3121,9 @@ impl SocketPairEnd {
         if own.read_shutdown {
             return Err(Errno(32));
         }
-        if limit.is_some_and(|limit| own.writes.len() > limit)
-            || self.pair.window().saturating_sub(own.bytes.len()) < buf.len()
-        {
+        // Only the queue's length bounds it, not its bytes: the sender's
+        // send buffer does (`check_datagram_send`).
+        if limit.is_some_and(|limit| own.writes.len() > limit) {
             return Err(Errno::EAGAIN);
         }
         let credentials = from.credentials(sender_passes || passes(own));
@@ -3029,6 +3141,7 @@ impl SocketPairEnd {
             peeked: false,
             sent: self.pair.sent_at(own),
             from: address,
+            charge: Some(sender.charge(buf.len())),
         });
         drop(sides);
         if sockets {
@@ -3073,6 +3186,9 @@ impl SocketPairEnd {
             .unwrap_or_else(PoisonError::into_inner);
         // As Linux's unix_maybe_add_creds, as the write is sent.
         let credentials = sender.credentials(passes(&sides[0]) || passes(&sides[1]));
+        // Every guest datagram socket is an AF_UNIX socket's, which sends
+        // through `send_datagram`: only the bare pairs of unit tests come
+        // here with a datagram.
         if self.pair.kind == SOCK_DGRAM {
             // unix_dgram_sendmsg's order: the size, this side's shutdown and
             // send buffer, then the peer.
@@ -3123,6 +3239,7 @@ impl SocketPairEnd {
                 peeked: false,
                 sent: self.pair.sent_at(peer),
                 from: from.clone(),
+                charge: None,
             });
             self.pair.hub.changed();
             return Ok((buf.len(), false));
@@ -3157,6 +3274,7 @@ impl SocketPairEnd {
                 peeked: false,
                 sent: self.pair.sent_at(peer),
                 from: from.clone(),
+                charge: None,
             });
             self.pair.hub.changed();
             return Ok((buf.len(), false));
@@ -3183,6 +3301,7 @@ impl SocketPairEnd {
                 peeked: false,
                 sent: None,
                 from: from.clone(),
+                charge: None,
             });
         }
         let waited = std::mem::take(&mut peer.waiting_data);
@@ -3251,6 +3370,7 @@ impl SocketPairEnd {
             peeked: false,
             sent: None,
             from,
+            charge: None,
         });
         let waited = std::mem::take(&mut peer.waiting_data);
         self.pair.hub.changed();
@@ -3378,6 +3498,29 @@ mod events_tests {
     /// Another socket goes, which looks for garbage.
     fn release_another() {
         drop(pair());
+    }
+    #[test]
+    fn datagrams_take_what_linux_counts() {
+        // The head's power of two, and past SKB_MAX_ALLOC page
+        // fragments, at most 17 pages of them, as native Linux counts them.
+        let expected = [
+            (0, 768),
+            (192, 768),
+            (193, 1280),
+            (1000, 2304),
+            (3776, 4352),
+            (3777, 8448),
+            (7872, 8448),
+            (7873, 16640),
+            (16064, 16640),
+            (16065, 20736),
+            (85696, 86272),
+            (85697, 102656),
+            (212_960, 332_032),
+        ];
+        for (len, size) in expected {
+            assert_eq!(truesize(len), size, "{len} bytes");
+        }
     }
     #[test]
     fn sockets_only_their_own_messages_hold_are_closed() {

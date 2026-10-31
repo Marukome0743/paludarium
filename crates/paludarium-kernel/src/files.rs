@@ -2002,6 +2002,9 @@ pub(crate) fn write_with(
                 }
             }
             Err(e) if e == Errno::EAGAIN && file.readiness().is_ok() && !nonblocking => {
+                // Read at once, as another thread's send on the socket may
+                // change it while this one waits.
+                let out_of_room = crate::sockets::out_of_room(file);
                 let deadline = match wait.deadline(c)? {
                     Some(deadline) => deadline,
                     None if done != 0 => return Ok(done as u64),
@@ -2012,6 +2015,26 @@ pub(crate) fn write_with(
                         c.process.restart = None;
                     }
                     return if done != 0 { Ok(done as u64) } else { Err(e) };
+                }
+                // A datagram sender with no room sleeps on until a quarter
+                // of its send buffer is free, or its time is up, when it
+                // looks once more, as Linux's `sock_alloc_send_pskb` does.
+                if out_of_room {
+                    loop {
+                        let ticket = c.files.readiness.token.value();
+                        if !crate::sockets::sleeps_for_room(file) {
+                            break;
+                        }
+                        let Some(deadline) = wait.deadline(c)? else {
+                            break;
+                        };
+                        if let Err(e) = crate::events::wait(c, ticket, deadline) {
+                            if !wait.forever() {
+                                c.process.restart = None;
+                            }
+                            return Err(e);
+                        }
+                    }
                 }
             }
             Err(e) => {
