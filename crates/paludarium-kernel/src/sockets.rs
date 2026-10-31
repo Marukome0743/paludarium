@@ -490,10 +490,9 @@ pub(crate) fn polled_full(file: &Arc<dyn FileHandle>) {
 /// counts its unread bytes at either end (Linux's `pipe_ioctl`) and has no
 /// `SIOCOUTQ` (ENOTTY). A socket counts its unread bytes, out-of-band byte
 /// included, a datagram socket its first datagram's (`unix_inq_len`).
-/// `SIOCOUTQ` gives what a datagram socket's datagrams that wait take of
-/// its send buffer (`unix_outq_len`), and for a stream or packet socket
-/// what the peer has not read, where Linux also counts each message's
-/// overhead.
+/// `SIOCOUTQ` gives what a datagram or packet socket's messages that wait
+/// take of its send buffer (`unix_outq_len`), and for a stream what the
+/// peer has not read, where Linux also counts each part's overhead.
 pub(crate) fn queued(file: &Arc<dyn FileHandle>, outgoing: bool) -> Option<Result<usize, Errno>> {
     if let Some(socket) = crate::inet::of(file) {
         return Some(socket.queued(outgoing));
@@ -510,7 +509,7 @@ pub(crate) fn queued(file: &Arc<dyn FileHandle>, outgoing: bool) -> Option<Resul
     }
     let socket = any.downcast_ref::<SocketPairEnd>()?;
     let sides = socket.lock_sides();
-    if outgoing && socket.pair.kind == SOCK_DGRAM {
+    if outgoing && socket.pair.messages() {
         return Some(Ok(socket.sent.load(Ordering::SeqCst)));
     }
     if outgoing {
@@ -1562,11 +1561,12 @@ struct Write {
     /// The name of the AF_UNIX socket that sent it, as Linux's `skb->sk`
     /// gives it to recvmsg's `msg_name`; none from a socket pair's end.
     from: Option<crate::unix::Address>,
-    /// What a datagram takes of its sender's send buffer while it waits.
+    /// What a datagram or packet takes of its sender's send buffer while
+    /// it waits.
     charge: Option<Charge>,
 }
-/// What a datagram takes of its sender's send buffer, as Linux's
-/// `skb_set_owner_w` charges `sk_wmem_alloc`, until the datagram goes:
+/// What a datagram or packet takes of its sender's send buffer, as Linux's
+/// `skb_set_owner_w` charges `sk_wmem_alloc`, until the message goes:
 /// read, dropped, or freed with its receiver.
 struct Charge {
     sent: Arc<AtomicUsize>,
@@ -1844,8 +1844,8 @@ pub(crate) struct SocketPairEnd {
     /// That socket has not connected yet: it sends nothing and reads
     /// nothing.
     unconnected: AtomicBool,
-    /// What the datagrams this end sent and that wait take of its send
-    /// buffer ([`Charge`]), as Linux's `sk_wmem_alloc`.
+    /// What the datagrams or packets this end sent and that wait take of
+    /// its send buffer ([`Charge`]), as Linux's `sk_wmem_alloc`.
     sent: Arc<AtomicUsize>,
 }
 impl SocketPairEnd {
@@ -1858,8 +1858,8 @@ impl SocketPairEnd {
             .send_buffer;
         usize::try_from(send_buffer).unwrap_or(0)
     }
-    /// What a datagram of `len` bytes this end sends takes of its send
-    /// buffer until it goes.
+    /// What a datagram or packet of `len` bytes this end sends takes of its
+    /// send buffer until it goes.
     fn charge(&self, len: usize) -> Charge {
         let size = truesize(len);
         self.sent.fetch_add(size, Ordering::SeqCst);
@@ -1869,14 +1869,14 @@ impl SocketPairEnd {
             hub: Arc::clone(&self.pair.hub),
         }
     }
-    /// Whether this datagram end may send as `poll` sees it, as Linux's
-    /// `unix_writable`: a quarter of its send buffer holds what it has sent
-    /// and that waits, and one more.
+    /// Whether this datagram or packet end may send as `poll` sees it, as
+    /// Linux's `unix_writable`: a quarter of its send buffer holds what it
+    /// has sent and that waits, and one more.
     fn writable(&self) -> bool {
         (self.sent.load(Ordering::SeqCst) + 1) * 4 <= self.send_buffer()
     }
-    /// The longest datagram this end sends: its send buffer less 32 bytes,
-    /// as `unix_dgram_sendmsg` checks it (`EMSGSIZE` past it).
+    /// The longest datagram or packet this end sends: its send buffer less
+    /// 32 bytes, as `unix_dgram_sendmsg` checks it (`EMSGSIZE` past it).
     fn max_datagram(&self) -> usize {
         self.send_buffer().saturating_sub(32)
     }
@@ -2693,14 +2693,14 @@ thread_local! {
     /// socket changes.
     static NO_ROOM: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
-/// Whether this thread's datagram send on `file` just found no room in its
-/// send buffer, rather than a full queue at the receiver.
+/// Whether this thread's datagram or packet send on `file` just found no
+/// room in its send buffer, rather than a full queue at the receiver.
 pub(crate) fn out_of_room(file: &Arc<dyn FileHandle>) -> bool {
-    NO_ROOM.replace(false) && socket_end(file).is_some_and(|end| end.pair.kind == SOCK_DGRAM)
+    NO_ROOM.replace(false) && socket_end(file).is_some_and(|end| end.pair.messages())
 }
-/// Whether a datagram socket `file` still has too little room to wake a
-/// sender that found none: Linux's `unix_write_space` wakes a sender in
-/// `sock_alloc_send_pskb` only once it is writable.
+/// Whether a datagram or packet socket `file` still has too little room
+/// to wake a sender that found none: Linux's `unix_write_space` wakes a
+/// sender in `sock_alloc_send_pskb` only once it is writable.
 pub(crate) fn sleeps_for_room(file: &Arc<dyn FileHandle>) -> bool {
     socket_end(file).is_some_and(|end| !end.writable())
 }
@@ -2893,8 +2893,14 @@ impl FileHandle for SocketPairEnd {
             return Ok((mask, own.input_epoch, own.output_epoch));
         }
         let eof = own.read_shutdown || peer.closed || peer.write_shutdown;
+        // A packet socket is writable as a datagram one is (unix_writable).
+        let writable = if self.pair.messages() {
+            self.writable()
+        } else {
+            peer.bytes.len() < self.pair.window() || peer.closed
+        };
         let mask = (u32::from(own.reset) * 0x8)
-            | (u32::from(peer.bytes.len() < self.pair.window() || peer.closed) * OUT)
+            | (u32::from(writable) * OUT)
             | (u32::from(readable || eof) * IN)
             | (u32::from(urgent) * PRI)
             | if peer.closed {
@@ -3244,6 +3250,12 @@ impl SocketPairEnd {
             self.pair.hub.changed();
             return Ok((buf.len(), false));
         }
+        // A packet socket sends as Linux's unix_dgram_sendmsg does for
+        // unix_seqpacket_sendmsg: first the size, against its own send
+        // buffer less 32 bytes (EMSGSIZE).
+        if self.pair.messages() && buf.len() > self.max_datagram() {
+            return Err(Errno(90));
+        }
         if sides[self.side].write_shutdown
             || sides[1 - self.side].closed
             || sides[1 - self.side].read_shutdown
@@ -3252,12 +3264,12 @@ impl SocketPairEnd {
         }
         let peer = &mut sides[1 - self.side];
         if self.pair.messages() {
-            // A message goes whole or not at all; one that can never fit is
-            // EMSGSIZE, and an empty one is a message too.
-            if buf.len() > MAX_MESSAGE {
-                return Err(Errno(90));
-            }
-            if self.pair.window().saturating_sub(peer.bytes.len()) < buf.len() {
+            // A message goes whole or not at all, and an empty one is a
+            // message too. It takes of the sender's send buffer what a
+            // datagram does, which bounds it, not the peer's unread bytes.
+            let full = self.sent.load(Ordering::SeqCst) >= self.send_buffer();
+            NO_ROOM.set(full);
+            if full {
                 return Err(Errno::EAGAIN);
             }
             peer.bytes
@@ -3274,7 +3286,7 @@ impl SocketPairEnd {
                 peeked: false,
                 sent: self.pair.sent_at(peer),
                 from: from.clone(),
-                charge: None,
+                charge: Some(self.charge(buf.len())),
             });
             self.pair.hub.changed();
             return Ok((buf.len(), false));
@@ -3684,10 +3696,14 @@ mod events_tests {
     fn seqpacket_writes_whole_messages_or_none() {
         let [a, b] = seqpacket();
         assert_eq!(a.write(&vec![0; MAX_MESSAGE + 1]), Err(Errno(90)));
+        // The longest message takes more than the whole send buffer, which
+        // then has no room, even for an empty one, until it is read.
         assert_eq!(a.write(&vec![1; MAX_MESSAGE]), Ok(MAX_MESSAGE));
-        assert_eq!(a.write(&[2; 33]), Err(Errno::EAGAIN));
-        assert_eq!(a.write(&[2; 32]), Ok(32));
+        assert_eq!(a.sent.load(Ordering::SeqCst), truesize(MAX_MESSAGE));
+        assert_eq!(a.write(&[]), Err(Errno::EAGAIN));
         assert_eq!(b.read(&mut [0; 1]), Ok(1));
+        assert_eq!(a.sent.load(Ordering::SeqCst), 0);
+        assert_eq!(a.write(&[2; 32]), Ok(32));
         assert_eq!(a.write(&[3; 3]), Ok(3));
         let mut bytes = [0; 40];
         assert_eq!(b.read(&mut bytes), Ok(32));
