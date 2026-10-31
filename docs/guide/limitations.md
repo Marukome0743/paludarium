@@ -17,8 +17,6 @@ verified.
     another machine can connect to it, and `bind` takes only the loopback's
     addresses and the unspecified one (`EADDRNOTAVAIL` for any other, where
     Linux takes each of the machine's own).
-  - On the loopback, a nonzero `SO_LINGER` time never holds `close`, as the
-    bytes are delivered at once.
   - A UDP socket reaches the DNS stub and the guest's own sockets on the
     loopback; a datagram to any other address is `ENETUNREACH`. One
     connected elsewhere takes its port on every address, as the guest has
@@ -79,6 +77,8 @@ verified.
   whose effect is not modelled, where Linux takes them: `SO_PASSSEC` and
   `SO_TIMESTAMPING`, as well as filters and the other options Linux has. `SO_RCVTIMEO` and `SO_SNDTIMEO`
   round to a 1000 Hz tick, where Linux rounds to its own `CONFIG_HZ`.
+  A socket's last descriptor that `execve` closes (`FD_CLOEXEC`) does not
+  wait for its `SO_LINGER` time, where Linux's does.
   The guest is root, so the options that need `CAP_NET_ADMIN`
   (`SO_DEBUG`, `SO_SNDBUFFORCE`, …) are set, and `SO_PEERCRED` names uid and
   gid 0.

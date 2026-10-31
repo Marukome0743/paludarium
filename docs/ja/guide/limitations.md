@@ -15,8 +15,6 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
     （[ループバックのサーバー](./features#loopback-servers)）。ホストもほかのマシンも
     接続できず、`bind` が取るのはループバックのアドレスと未指定のアドレスだけです
     （ほかは `EADDRNOTAVAIL`。Linux ではマシンのどのアドレスも取れます）。
-  - ループバックでは、バイトはすぐに届くので、0 でない `SO_LINGER` の時間で `close`
-    が待つことはありません。
   - UDP のソケットが届くのは、DNS の代わりと、ループバックの上のゲスト自身のソケット
     だけです。ほかのアドレスへのデータグラムは `ENETUNREACH` です。ほかへ接続した
     ソケットは、すべてのアドレスでポートを取ります。ゲストはそこに自分のアドレスを
@@ -73,6 +71,8 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   フィルターなど Linux にある
   ほかのオプションです。`SO_RCVTIMEO` と `SO_SNDTIMEO` は 1000 Hz の刻みに丸めます。
   Linux は自分の `CONFIG_HZ` に丸めます。
+  `execve` が閉じる（`FD_CLOEXEC`）ソケットの最後のディスクリプタは `SO_LINGER` の
+  時間を待ちません。Linux では待ちます。
   ゲストは root なので、`CAP_NET_ADMIN` の
   要るオプション（`SO_DEBUG`、`SO_SNDBUFFORCE` など）も設定でき、`SO_PEERCRED` の
   uid と gid は 0 です。

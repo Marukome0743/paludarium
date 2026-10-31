@@ -2094,6 +2094,55 @@ pub(crate) fn of(file: &Arc<dyn FileHandle>) -> Option<&InetSocket> {
     file.as_any()?.downcast_ref::<InetSocket>()
 }
 
+impl InetSocket {
+    /// Whether closing this socket now waits: a connection on the loopback
+    /// with a nonzero linger time, whose bytes still wait for room in the
+    /// peer. Unread input, which resets it, does not wait.
+    fn lingers(&self) -> Option<u32> {
+        let seconds = self.options().linger.filter(|&seconds| seconds != 0)?;
+        let s = self.lock();
+        let stream = s.stream.as_ref()?;
+        Self::joined(&s)?;
+        let (unread, unsent) = stream.queued();
+        (unread == 0 && unsent > 0).then_some(seconds as u32)
+    }
+}
+
+/// Holds the close of `file`'s last descriptor, as Linux's `tcp_close` holds
+/// a socket with a nonzero linger time in `sk_stream_wait_close`: on the
+/// loopback, until the bytes it sent have all reached the peer and its end
+/// has gone, the time is up, or a signal comes. It closes all the same, so
+/// nothing here fails the close: a clock that fails ends the wait.
+pub(crate) fn linger(c: &mut Context<'_>, file: &Arc<dyn FileHandle>) {
+    if Arc::strong_count(file) != 1 {
+        return;
+    }
+    let Some(socket) = of(file) else { return };
+    let Some(seconds) = socket.lingers() else {
+        return;
+    };
+    // Linux's `sock_setsockopt` takes the time as unsigned seconds.
+    let ticks = Timeout::Ticks(u64::from(seconds) * crate::sockets::HZ);
+    let Ok(wait) = crate::sockets::wait_for(c, ticks) else {
+        return;
+    };
+    loop {
+        let ticket = c.files.readiness.token.value();
+        if socket.lingers().is_none() {
+            return;
+        }
+        let Ok(Some(deadline)) = wait.deadline(c) else {
+            return;
+        };
+        // Only a signal ends the wait early; any other error is the
+        // clock's, which would fail again.
+        match crate::events::wait(c, ticket, deadline) {
+            Err(e) if e != Errno(4) || crate::events::signalled(c) => return,
+            _ => {}
+        }
+    }
+}
+
 /// Reads a socket address of `len` bytes at `at` for `socket`, as
 /// `move_addr_to_kernel` (EINVAL past 128 bytes, EFAULT) and the protocol's
 /// checks: `None` for `AF_UNSPEC`, EINVAL when too short, EAFNOSUPPORT for
