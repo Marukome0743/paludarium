@@ -1,15 +1,16 @@
 //! Signal-driven I/O, as Linux's `fcntl.c` and `kill_fasync` have it: the
 //! owner (`F_SETOWN`, `F_SETOWN_EX`) and signal (`F_SETSIG`) of an open file,
-//! and the signal a pipe or socket with `O_ASYNC` sends its owner when it
-//! changes.
+//! and the signal a pipe, socket or the host's standard input with
+//! `O_ASYNC` sends its owner when it changes.
 use crate::processes::Processes;
 use crate::syscalls::Context;
 use paludarium_host::FileHandle;
 use paludarium_types::{Errno, GuestAddr};
 use std::sync::{Arc, Weak};
 
-/// `O_ASYNC` (`FASYNC`): only pipes and sockets keep it, the files that
-/// have Linux's `fasync` ([`has_fasync`]); on any other `F_SETFL` drops it.
+/// `O_ASYNC` (`FASYNC`): only pipes, sockets and a standard input that is
+/// one or a terminal keep it, the files that have Linux's `fasync`
+/// ([`has_fasync`]); on any other `F_SETFL` drops it.
 pub(crate) const O_ASYNC: u32 = 0o20000;
 
 /// Whom a file's signals go to, as `F_OWNER_TID`, `F_OWNER_PID` and
@@ -88,9 +89,12 @@ pub(crate) fn siginfo(signal: i32, fd: i32, reason: Reason) -> [u8; 48] {
     info
 }
 
-/// Whether `file` has Linux's `fasync`: a pipe or a socket.
+/// Whether `file` has Linux's `fasync`: a pipe or a socket, or the host's
+/// standard input when that is one, or a terminal.
 pub(crate) fn has_fasync(file: &Arc<dyn FileHandle>) -> bool {
-    crate::sockets::endpoint(file).is_some() || crate::inet::of(file).is_some()
+    crate::sockets::endpoint(file).is_some()
+        || crate::inet::of(file).is_some()
+        || crate::files::standard(file).is_some_and(crate::files::StandardFile::signals)
 }
 
 fn owner(c: &Context<'_>, file: &Arc<dyn FileHandle>) -> FileOwner {
@@ -134,8 +138,8 @@ fn take_owner(
 }
 
 /// Gives `file`, open as descriptor `fd`, the status `flags` of `F_SETFL`.
-/// Only pipes and sockets keep `O_ASYNC`, and changing it registers or
-/// drops the descriptor, as Linux's `fasync` does.
+/// Only the files with `fasync` ([`has_fasync`]) keep `O_ASYNC`, and
+/// changing it registers or drops the descriptor, as Linux's `fasync` does.
 pub(crate) fn set_flags(
     c: &Context<'_>,
     file: &Arc<dyn FileHandle>,
@@ -158,6 +162,8 @@ pub(crate) fn set_flags(
             endpoint.set_async(registration);
         } else if let Some(socket) = crate::inet::of(file) {
             socket.set_async(registration);
+        } else if let Some(stdin) = crate::files::standard(file) {
+            stdin.set_async(file, registration);
         }
     }
     Ok(())
