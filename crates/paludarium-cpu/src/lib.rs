@@ -18,6 +18,8 @@ mod decode_cache_tests;
 mod encodings_tests;
 mod exec;
 #[cfg(test)]
+mod fast_tests;
+#[cfg(test)]
 mod instructions_tests;
 #[cfg(test)]
 mod integer_tests;
@@ -137,6 +139,8 @@ struct Decoded {
     keeps_vector_state: bool,
     /// [`exec::fails_cleanly`]: no [`Snapshot`] is needed.
     fails_cleanly: bool,
+    /// The form [`exec::execute_fast`] runs, if it has one.
+    fast: exec::Fast,
 }
 
 impl Decoded {
@@ -144,6 +148,7 @@ impl Decoded {
         Decoded {
             keeps_vector_state: exec::keeps_vector_state(&instruction),
             fails_cleanly: exec::fails_cleanly(&instruction),
+            fast: exec::Fast::of(&instruction),
             instruction,
         }
     }
@@ -404,6 +409,14 @@ fn execute_decoded(
     decoded: &Decoded,
 ) -> Result<(), ExitReason> {
     let insn = &decoded.instruction;
+    // A form that fails changes nothing, and runs again below to give the
+    // fault.
+    if decoded.fast != exec::Fast::None
+        && exec::execute_fast(state, mem, insn, &decoded.fast).is_ok()
+    {
+        state.repeat_continuation = None;
+        return Ok(());
+    }
     let rip = state.rip;
     let repeating =
         insn.rep != paludarium_decoder::RepPrefix::None && exec::is_string(insn.mnemonic);

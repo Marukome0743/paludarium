@@ -3067,12 +3067,18 @@ impl AddressSpace {
     /// locks keeps a decoded instruction from outliving a change, as every
     /// store to code bumps the generation around it.
     #[must_use]
+    #[inline]
     pub fn code_generation_cached(&self) -> u64 {
         let layout = self.code.layout.load(Ordering::Acquire);
         if self.code.watched.load(Ordering::Acquire) != layout.wrapping_add(1) {
-            return self.locked().code_generation();
+            return self.code_generation_locked();
         }
         self.code.generation.load(Ordering::SeqCst)
+    }
+    #[cold]
+    #[inline(never)]
+    fn code_generation_locked(&self) -> u64 {
+        self.locked().code_generation()
     }
     /// Reads cache identity and generation under the same serialization guard.
     #[must_use]

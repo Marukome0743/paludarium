@@ -51,6 +51,17 @@ tool, and `paludarium-wasm`, the WebAssembly entry point that becomes
 The kernel owns the register state of each thread; the CPU only runs the state
 it is given.
 
+The interpreter keeps each thread's decoded instructions in a decode cache, so
+an instruction is decoded once. When it is decoded, the most frequent simple
+forms (moves between registers and memory, `lea`, `push` and `pop`, direct
+branches, `call`, `ret`, and `add`, `sub`, `and`, `or`, `xor`, `cmp` and `test`
+on a register) are also worked out: their operands are taken out in advance,
+so running them needs neither the general dispatch by mnemonic nor the general
+operand handling. Such a form changes the state only after everything that can
+fail. When it fails, nothing has changed, and the instruction runs again
+through the general path, which reports the fault. Both paths therefore mean
+the same thing, which a unit test checks for every form from random states.
+
 ## The host boundary
 
 All differences between native hosts and WebAssembly stay inside
