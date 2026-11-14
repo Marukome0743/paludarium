@@ -187,7 +187,9 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `st_dev` を返します。flags と mask は Linux と同じように確かめます（`EINVAL`）。
   mask が何を求めても、Linux と同じくマウントの ID も返します。`/proc/self/mountinfo`
   が示す ID（`STATX_MNT_ID`）か、`STATX_MNT_ID_UNIQUE` を求めたときはその代わりに
-  64 ビットの ID です。
+  64 ビットの ID です。内部のファイルシステムのファイル（パイプ・ソケット・memfd
+  など。後の `statfs` を参照）は、mountinfo に出ない小さな ID のマウントにあります。
+  mountinfo の ID は 21 から始まり、Linux の内部のマウントも mountinfo に出ません。
   `AT_EMPTY_PATH` はディスクリプタを、`AT_FDCWD` なら作業ディレクトリを指し、Linux 6.11
   からと同じく、それとともに渡した空ポインタのパスも同じ扱いです。
 - `name_to_handle_at` はファイルのハンドルを返し、Linux（6.13 以降）と同じ順に確かめます。
@@ -1720,8 +1722,13 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   ホストのファイルシステムの値を返します。`/proc/self/mountinfo`、`/proc/self/mounts`、
   `/proc/mounts` はマウントの一覧です（ルートは `tmpfs`、`--mount` ごとに `hostfs`。
   ホストのパスは見せません）。マウントごとに `mountinfo` の行と同じ `st_dev` を持つので、
-  `df` はどのマウントも表示します。`ustat` は、マウントの `st_dev` なら空きブロックと
-  空き inode の数を返し、ほかのデバイスなら `EINVAL` です。
+  `df` はどのマウントも表示します。パスから開いたのではないパイプ・ソケット・pidfd・
+  memfd・`memfd_secret` のファイル・名前空間のファイル・匿名 inode（eventfd や epoll
+  など）は、Linux と同じく、それぞれのファイルシステム（pipefs・sockfs・pidfs・内部の
+  tmpfs・secretmem・nsfs・anon_inodefs）が持つデバイスにあり、どれもマウントのもの
+  ではありません。`ustat` は、マウントの `st_dev` なら空きブロックと空き inode の数を
+  返し、それらのデバイスなら何も空いていない（0）と返します。Linux の `simple_statfs`
+  と、制限のない内部の tmpfs も 0 を返すからです。ほかのデバイスなら `EINVAL` です。
 - ファイルのブロックの大きさ（`st_blksize`、`stx_blksize`、`FIGETBSZ`）は、Linux と
   同じくそのファイルシステムのものです。`/proc`（procfs）と、疑似端末のスレーブ、
   標準入力・出力・エラーの端末（devpts）は 1024 で、ほかは、パイプ、ソケット、`memfd`、`/dev` も含めて 4096

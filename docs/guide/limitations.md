@@ -282,10 +282,7 @@ verified.
     its name, where Linux opens the file (so a bad pointer gives `EFAULT`,
     a missing file `ENOENT` and one that is not regular `EACCES`) and writes
     a record as each process exits.
-  - `ustat` finds only the mounts' devices. The `st_dev` of a pipe, a
-    socket, a memfd or a namespace file gives `EINVAL`, where Linux finds
-    the superblock of its pseudo filesystem and gives its counts (0). A
-    file in `/proc` or `/dev` has the `st_dev` of the mount holding the
+  - A file in `/proc` or `/dev` has the `st_dev` of the mount holding the
     path, so `ustat` of it gives that mount's counts, where Linux gives
     procfs's or devtmpfs's.
   - A file handle (`name_to_handle_at`, an inotify watch's in
