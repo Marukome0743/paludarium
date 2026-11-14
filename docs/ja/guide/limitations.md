@@ -179,11 +179,9 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
     Linux のホストで見分けるのは ext4、xfs、btrfs、f2fs だけです（ほかのファイルシステムは
     どちらも断ります）。
   - `madvise` は、Linux が受け付ける次の指定を断ります（`EINVAL`）。`MADV_COLLAPSE`、
-    `MADV_HWPOISON`、`MADV_SOFT_OFFLINE` です。`MADV_REMOVE` と `MADV_GUARD_INSTALL` は、
-    ロックしたマッピングのメモリも受け付けます。Linux では `EINVAL` です。ここでは
-    マッピングごとのロックの状態を持たないためです。`/proc/<pid>/smaps` は `VmFlags` を
-    出さないので、ガードを置いた VMA の `gu` フラグも出しません。`/proc/<pid>/pagemap` は
-    なく、ガードページを示せません。
+    `MADV_HWPOISON`、`MADV_SOFT_OFFLINE` です。`/proc/<pid>/smaps` はありません。Linux では
+    その `VmFlags` が、ガードを置いた VMA の `gu` とロックした VMA の `lo` を示します。
+    ガードページを示す `/proc/<pid>/pagemap` もありません。
   - `process_madvise` は、呼んだプロセス自身のメモリには `madvise` が受け付ける指定しか
     受け付けず、ほかのプロセスの範囲はマップされているかを確かめるだけです。Linux が知らない
     指定は、Linux master と同じく範囲を見る前に断ります（`EINVAL`）。CI のカーネルは範囲ごとに
@@ -266,12 +264,15 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   - `mincore` は、ファイルのページをファイルの範囲内なら常にメモリにあるとします。
     Linux はページキャッシュを調べます。`MAP_POPULATE` や `MAP_LOCKED`、メモリのロックで
     読み込んだページも、触るまでは数えません。
-  - メモリのロックは状態を残しません。そのためロックには `RLIMIT_MEMLOCK` を適用
-    しません（適用するのは `SHM_LOCK` だけで、`CAP_IPC_LOCK` を手放したゲストにだけ
-    関係します）。ロックしたメモリへの
-    `MADV_DONTNEED`、`MADV_COLD`、`MADV_PAGEOUT` は、Linux の `EINVAL` と違って成功します。ファイルの終わりより後ろの
-    ファイルのマッピングのページへの `mlock` は、Linux の `ENOMEM` と違って成功します。
-    `/proc` にもロックしたメモリは出ません。
+  - 隣り合うプライベートの VMA は、（`munlock` のあとなど）フラグがまたそろえば、
+    `anon_vma` によらずつながります。Linux は同じ `anon_vma` を持つときだけつなげます。
+    VMA は最初の書き込みで `anon_vma` を得て、そのとき隣とフラグがそろっていたときだけ
+    隣のものを使う（`anon_vma_compatible`）ので、離れている間に書き込んだかけらは、
+    `/proc/<pid>/maps` で別の VMA のまま残ることがあります。
+  - `/proc/<pid>/status` にロックしたメモリ（`VmLck`）は出ません。`MAP_LOCKED` の
+    `mmap` は、マッピングの場所を探し（`ENOMEM`）ファイルを確かめる前に、`can_do_mlock`
+    （`EPERM`）と `RLIMIT_MEMLOCK` の空き（`EAGAIN`）を確かめます。Linux はそれらを先にします。`mremap` は、
+    ロックした VMA が広がるときの空きを、新しい範囲のほかの確認より前に確かめます。
   - 共有のマッピングに `mbind` で付けたメモリのポリシーは、そのマッピングのものに
     なります。Linux はそのポリシーを共有メモリそのものに付け、マッピングしている
     すべてのプロセスで使います。`/proc/<pid>/numa_maps` はありません。
