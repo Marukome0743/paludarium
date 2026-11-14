@@ -237,6 +237,12 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
     ままです。負の時計 ID で表す CPU 時計での `clock_settime` は、時刻を読まずに `EINVAL` を
     返します。Linux は時刻を読み、タスクを探して `EPERM` を返します。補助の時計
     （`CLOCK_AUX`）もありません。
+  - `syslog` が読むカーネルのログはいつも空です。Linux のログには起動時のメッセージが
+    あります。`kernel.dmesg_restrict` はいつも 1 です（`/proc/sys/kernel/dmesg_restrict`、
+    `/proc/kmsg`、`/dev/kmsg` はありません）。`sysfs` が知っているファイルシステムの種類は
+    7 つだけで、Linux には何十もあります。そのため、順は同じでも番号は Linux と違います。
+    AppArmor も SELinux もありません。`lsm_list_modules` が並べるのは 3 つのモジュールで、
+    Linux が AppArmor のコンテキストを返すところで、`lsm_get_self_attr` は属性を見つけません。
   - `ustat` が見つけるのはマウントのデバイスだけです。パイプ・ソケット・memfd・名前空間の
     ファイルの `st_dev` では `EINVAL` を返します。Linux はその疑似ファイルシステムの
     スーパーブロックを見つけ、その数（0）を返します。`/proc` と `/dev` のファイルの

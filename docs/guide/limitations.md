@@ -275,6 +275,14 @@ verified.
     with. `clock_settime` on a CPU clock named by a negative clock ID gives
     `EINVAL` without reading the time, where Linux reads it, finds the task
     and gives `EPERM`, and the auxiliary clocks (`CLOCK_AUX`) are not there.
+  - The kernel log that `syslog` reads is always empty, where Linux's holds
+    its boot messages, and `kernel.dmesg_restrict` is always 1 (there is no
+    `/proc/sys/kernel/dmesg_restrict`, `/proc/kmsg` or `/dev/kmsg`).
+    `sysfs` knows only seven file system types, where Linux has dozens, so
+    their indexes differ from Linux's though not their order. There is no
+    AppArmor or SELinux: `lsm_list_modules` lists three modules, and
+    `lsm_get_self_attr` finds no attribute where Linux gives AppArmor's
+    context.
   - `ustat` finds only the mounts' devices. The `st_dev` of a pipe, a
     socket, a memfd or a namespace file gives `EINVAL`, where Linux finds
     the superblock of its pseudo filesystem and gives its counts (0). A
