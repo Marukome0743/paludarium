@@ -250,10 +250,10 @@ verified.
     CPU clock, which the sleeping thread looks at every tick; where that is
     wall time, the sleep counts its own time too, so a process alone ends
     it after the wall time it asked for.
-    `timer_create` on another process's or thread's CPU clock (a negative
-    clock ID) gives `EINVAL`, where Linux makes the timer, `clock_gettime`
-    gives `EINVAL` for those clocks, where Linux reads them, and so does
-    `clock_nanosleep`, where Linux sleeps on them.
+    `timer_create` on another process's CPU clock gives `EINVAL`, where
+    Linux makes the timer, and a sleep on another task's CPU clock gives
+    `EINVAL` unless its time has already come, where Linux waits until that
+    task has used the time.
   - `ustat` finds only the mounts' devices. The `st_dev` of a pipe, a
     socket, a memfd or a namespace file gives `EINVAL`, where Linux finds
     the superblock of its pseudo filesystem and gives its counts (0). A
