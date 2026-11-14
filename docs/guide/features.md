@@ -1265,8 +1265,9 @@ kernel.
   ends them, cancelling their polls.
 - `modify_ldt` keeps the address space's local descriptor table as Linux's
   `arch/x86/kernel/ldt.c` does. Writing (1, the old mode, or 0x11) takes one
-  16-byte `struct user_desc`: an entry number below 8,192, and a conforming
-  code segment only in the new mode and not present (`EINVAL`). It stores
+  16-byte `struct user_desc`. An entry number of 8,192 or more gives
+  `EINVAL`, and so does a conforming code segment, unless the mode is the
+  new one and the segment is not present. It stores
   Linux's descriptor, or clears the entry for an empty one (or, in the old
   mode, one with no base and no limit). The table grows to the highest
   entry written. Reading (0) gives 0 until something is written, then the

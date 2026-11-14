@@ -3144,9 +3144,9 @@ fn read_ldt(mem: &AddressSpace, ptr: u64, bytecount: u64) -> Result<u64, Errno> 
 }
 
 /// `write_ldt`: one `struct user_desc` (16 bytes, else `EINVAL`), read
-/// before its entry number (below 8192) and contents are checked
-/// (`EINVAL`: contents 3, a conforming code segment, only in the new mode
-/// and only not present). An empty one, or in the old mode one of no base
+/// before its entry number (8192 or more is `EINVAL`) and contents are
+/// checked (contents 3, a conforming code segment, is `EINVAL` unless the
+/// mode is the new one and the segment is not present). An empty one, or in the old mode one of no base
 /// and no limit, clears the entry; otherwise it becomes Linux's
 /// `fill_ldt` descriptor (accessed, user, privilege 3, never 64-bit),
 /// without the `useable` bit in the old mode. The table grows to hold the
