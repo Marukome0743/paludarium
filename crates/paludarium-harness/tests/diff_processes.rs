@@ -134,7 +134,9 @@ mod linux {
             // its own, for its counts), the mqueue cases, which make IPC and
             // network namespaces of their own for the namespace's default
             // limits and become an unprivileged user, the scheduling-set case, which sets
-            // real-time and deadline policies,
+            // real-time and deadline policies, the admin case, which makes a
+            // user namespace with its capabilities (Ubuntu's AppArmor gives none
+            // to one an unprivileged user makes) before it becomes one,
             // and the personality-layout case, which maps page 0.
             let as_root = matches!(
                 mode,
@@ -200,6 +202,7 @@ mod linux {
                     | "user-namespaces"
                     | "scheduling-set"
                     | "personality-layout"
+                    | "admin"
             );
             let native = if as_root && !running_as_root() {
                 let mut sudo = vec!["-n".to_owned(), self_path.clone()];
@@ -574,6 +577,7 @@ mod linux {
         processes_process_vm => ("process-vm","process"),
         processes_page_nodes => ("page-nodes","process"),
         processes_kernel_info => ("kernel-info","process"),
+        processes_admin => ("admin","process"),
         processes_pidfd_getfd => ("pidfd-getfd","process"),
         processes_cpu_clock_ids => ("cpu-clock-ids","process"),
         processes_alarm_clocks => ("alarm-clocks","process"),
