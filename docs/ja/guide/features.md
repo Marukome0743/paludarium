@@ -50,7 +50,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
 | メモリ | `mmap`（anonymous と、プライベートまたは共有のファイル）、`munmap`、`mremap`、`mprotect`、`pkey_mprotect`／`pkey_alloc`／`pkey_free`、`mseal`、`madvise`、`process_madvise`、`process_mrelease`、`mincore`、`cachestat`、`mlock`／`mlock2`／`munlock`／`mlockall`／`munlockall`、`mbind`、`set_mempolicy`／`get_mempolicy`、`set_mempolicy_home_node`、`migrate_pages`、`move_pages`、`map_shadow_stack`、`msync`、`remap_file_pages`、`brk`、`arch_prctl` |
 | System V IPC | `shmget`、`shmat`、`shmdt`、`shmctl`（共有メモリ）、`semget`、`semop`、`semtimedop`、`semctl`（セマフォー）、`msgget`、`msgsnd`、`msgrcv`、`msgctl`（メッセージキュー） |
 | POSIX メッセージキュー | `mq_open`、`mq_unlink`、`mq_timedsend`、`mq_timedreceive`、`mq_notify`、`mq_getsetattr` |
-| システムの情報 | `uname`、`sethostname`、`setdomainname`、`sysinfo`、`getrusage`、`times`、`syslog`、`sysfs` |
+| システムの情報 | `uname`、`sethostname`、`setdomainname`、`sysinfo`、`getrusage`、`times`、`acct`、`iopl`、`ioperm`、`syslog`、`sysfs` |
 | 資格情報 | `getuid`、`geteuid`、`getgid`、`getegid`、`getresuid`／`getresgid`、`setuid`／`setgid`、`setreuid`／`setregid`、`setresuid`／`setresgid`、`setfsuid`／`setfsgid`、`getgroups`／`setgroups`、`capget`／`capset` |
 | シグナル | `rt_sigaction`、`rt_sigprocmask`、`rt_sigreturn`、`sigaltstack`、`kill`、`tkill`、`tgkill`、`getitimer`／`setitimer`、`alarm`、`rt_sigtimedwait`、`rt_sigqueueinfo`、`rt_tgsigqueueinfo`、`rt_sigpending`、`rt_sigsuspend`、`pause`、`restart_syscall` |
 | 時刻 | `clock_gettime`、`clock_getres`、`gettimeofday`、`time`、`nanosleep`、`clock_nanosleep`、`timer_create`／`timer_settime`／`timer_gettime`／`timer_getoverrun`／`timer_delete`、`adjtimex`、`clock_adjtime`、`settimeofday`、`clock_settime` |
@@ -2105,6 +2105,11 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   返します。
 - `sysinfo` は、空きが 4 GiB でスワップのない固定のメモリを返し、ホストのメモリは
   見せません。起動からの時間は単調時計の値で、Linux と同じく秒単位に切り上げます。
+- `iopl` と `ioperm` は Linux と同じく引数を確かめ（3 を超えるレベルや、空の範囲、
+  ポート 65,535 を越える範囲は `EINVAL`）、スレッドのレベル 0 を保つことと、持っていない
+  ポートを手放すことは受け、それ以上はポートへのアクセスをロックダウンしたカーネルと同じく
+  `EPERM` を返します。`acct` は `CAP_SYS_PACCT` を求め（`EPERM`）、そのうえで、いつも
+  切れているアカウンティングを切ることは受け、ファイルには `EPERM` を返します。
 - `syslog` が読むカーネルのログは空です。ログに書くものがないためです。Ubuntu の
   `kernel.dmesg_restrict` が 1 であるのと同じく、どの操作にも `CAP_SYSLOG` が要ります
   （`EPERM`）。そのあとは Linux の `do_syslog` と同じく、知らない操作と 1 から 8 の外の

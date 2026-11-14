@@ -275,6 +275,14 @@ verified.
     with. `clock_settime` on a CPU clock named by a negative clock ID gives
     `EINVAL` without reading the time, where Linux reads it, finds the task
     and gives `EPERM`, and the auxiliary clocks (`CLOCK_AUX`) are not there.
+  - The host's I/O ports cannot be used: `iopl` above level 0 and `ioperm`
+    turning ports on give `EPERM` even to a caller with `CAP_SYS_RAWIO`, as
+    a kernel locked down against port access gives, where Linux without
+    lockdown grants them. Process accounting cannot be turned on: `acct`
+    with a file gives `EPERM` even with `CAP_SYS_PACCT`, without reading
+    its name, where Linux opens the file (so a bad pointer gives `EFAULT`,
+    a missing file `ENOENT` and one that is not regular `EACCES`) and writes
+    a record as each process exits.
   - The kernel log that `syslog` reads is always empty, where Linux's holds
     its boot messages, and `kernel.dmesg_restrict` is always 1 (there is no
     `/proc/sys/kernel/dmesg_restrict`, `/proc/kmsg` or `/dev/kmsg`).
@@ -615,7 +623,9 @@ verified.
   and only Linux on x86-64 hosts has it; the other native builds use the
   interpreter. It compiles only the instructions with a simple form at the
   start of a block ([Architecture](../design/architecture#the-native-jit)).
-- **Stable Rust**: a nightly Rust is required.
+- **Stable Rust**: stable releases before 1.101 cannot build the crates (their
+  MSRV), the WebAssembly build uses nightly-only features, and no stable Rust
+  is tested; use a nightly Rust ([Supported platforms](platforms#rust-toolchain)).
 
 ## Not verified
 

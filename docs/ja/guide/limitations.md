@@ -237,6 +237,13 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
     ままです。負の時計 ID で表す CPU 時計での `clock_settime` は、時刻を読まずに `EINVAL` を
     返します。Linux は時刻を読み、タスクを探して `EPERM` を返します。補助の時計
     （`CLOCK_AUX`）もありません。
+  - ホストの I/O ポートは使えません。レベル 0 を超える `iopl` と、ポートを使えるようにする
+    `ioperm` は、`CAP_SYS_RAWIO` を持つ呼び出し元にも、ポートへのアクセスをロックダウンした
+    カーネルと同じく `EPERM` を返します。ロックダウンのない Linux は許します。プロセス
+    アカウンティングも始められません。ファイルを渡した `acct` は `CAP_SYS_PACCT` があっても
+    名前を読まずに `EPERM` を返します。Linux はファイルを開き（そのため、不正なポインタは
+    `EFAULT`、ないファイルは `ENOENT`、通常のファイルでないものは `EACCES`）、プロセスが
+    終わるたびに記録を書きます。
   - `syslog` が読むカーネルのログはいつも空です。Linux のログには起動時のメッセージが
     あります。`kernel.dmesg_restrict` はいつも 1 です（`/proc/sys/kernel/dmesg_restrict`、
     `/proc/kmsg`、`/dev/kmsg` はありません）。`sysfs` が知っているファイルシステムの種類は
@@ -533,7 +540,9 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   x86-64 の Linux のホストだけで、それ以外のネイティブ版はインタプリタで動きます。
   コンパイルするのは、ブロックの先頭から続く、単純な形を持つ命令だけです
   （[アーキテクチャ](../design/architecture#the-native-jit)）。
-- **stable の Rust**：nightly の Rust が必要です。
+- **stable の Rust**：1.101 より前の stable では crate をビルドできず（MSRV）、WebAssembly 版は
+  nightly だけの機能を使い、stable の Rust では確かめていません。nightly の Rust を使ってください
+  （[対応環境](platforms#rust-toolchain)）。
 
 ## 確かめていないこと
 
