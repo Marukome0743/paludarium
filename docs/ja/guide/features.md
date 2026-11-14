@@ -266,8 +266,12 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   だけで（`EINVAL`）、終わりより先は `SIGBUS` です。`read`、`write` とその位置指定や
   ベクタの形はなく（`EINVAL`）、`lseek`（`ESPIPE`）、`fsync`（`EINVAL`）、`fallocate`
   （`EOPNOTSUPP`）、シール（`EINVAL`）もありません。`/proc/self/fd` から開き直すと
-  `ENXIO` です。ページはエミュレータのものなので、ゲストのほかのメモリと同じだけしか
-  秘密になりません。
+  `ENXIO` です。Linux の `get_user_pages` と同じく、カーネルはそのマッピングのページに
+  触れられません。`MADV_POPULATE_READ` と `MADV_POPULATE_WRITE` は `EINVAL`、`mlock` は
+  `ENOMEM` です。`mlock_fixup` がその VMA に `VM_LOCKONFAULT` を付けないので、
+  `MLOCK_ONFAULT` でも同じです。ファイルに `fsync` がないので、`MS_SYNC` の `msync` も、
+  範囲に穴があってもそのマッピングに着けば `EINVAL` です。ページはエミュレータのものなので、
+  ゲストのほかのメモリと同じだけしか秘密になりません。
 - `openat2` は `openat` と同じように開き（FIFO も）、`struct open_how` を Linux と同じく
   より厳しく調べます。24 バイトに満たない大きさは `EINVAL`、1 ページを超えるものや、
   最初の版より後ろに 0 でない未知のバイトがあるものは `E2BIG` です。未知のフラグや
