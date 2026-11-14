@@ -288,7 +288,7 @@ verified.
     `/proc/sys/kernel/dmesg_restrict`, `/proc/kmsg` or `/dev/kmsg`).
     `sysfs` knows only seven file system types, where Linux has dozens, so
     their indexes differ from Linux's though not their order. There is no
-    AppArmor or SELinux: `lsm_list_modules` lists three modules, and
+    AppArmor or SELinux: `lsm_list_modules` lists four modules, and
     `lsm_get_self_attr` finds no attribute where Linux gives AppArmor's
     context.
   - `ustat` finds only the mounts' devices. The `st_dev` of a pipe, a

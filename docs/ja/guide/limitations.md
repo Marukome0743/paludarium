@@ -248,7 +248,7 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
     あります。`kernel.dmesg_restrict` はいつも 1 です（`/proc/sys/kernel/dmesg_restrict`、
     `/proc/kmsg`、`/dev/kmsg` はありません）。`sysfs` が知っているファイルシステムの種類は
     7 つだけで、Linux には何十もあります。そのため、順は同じでも番号は Linux と違います。
-    AppArmor も SELinux もありません。`lsm_list_modules` が並べるのは 3 つのモジュールで、
+    AppArmor も SELinux もありません。`lsm_list_modules` が並べるのは 4 つのモジュールで、
     Linux が AppArmor のコンテキストを返すところで、`lsm_get_self_attr` は属性を見つけません。
   - `ustat` が見つけるのはマウントのデバイスだけです。パイプ・ソケット・memfd・名前空間の
     ファイルの `st_dev` では `EINVAL` を返します。Linux はその疑似ファイルシステムの

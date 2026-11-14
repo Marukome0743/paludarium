@@ -2123,8 +2123,9 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   ファイルは `ext4`）を、Linux が登録する順に並べています。オプション 1 は名前の番号を、
   2 は番号の名前を、3 は種類の数を返します。知らないオプション、名前、番号は `EINVAL`
   で、`PATH_MAX` バイトのうちに終わらない名前も `EINVAL` です。
-- セキュリティモジュールは paludarium にあるもので、Ubuntu の `CONFIG_LSM` での Linux の
-  順に、capability モジュール、Landlock、Yama です。`lsm_list_modules` はこれを並べます
+- セキュリティモジュールは paludarium にあるもので、Ubuntu の設定で Linux が始める順に、
+  Lockdown（Ubuntu では early のモジュールで、paludarium はこれによってポートへの
+  アクセスを断ります）、capability モジュール、Landlock、Yama です。`lsm_list_modules` はこれを並べます
   （バッファが小さければ、要る大きさを書いて `E2BIG`）。どれもタスクの属性を持たない
   ので、`lsm_get_self_attr` と `lsm_set_self_attr` は、引数が Linux の確認をその順に
   通ったあと `EOPNOTSUPP` を返します（大きさは 0 にします）。

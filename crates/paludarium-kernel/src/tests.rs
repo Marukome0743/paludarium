@@ -7682,19 +7682,19 @@ mod kernel_info {
         }
     }
     #[test]
-    fn lsm_list_modules_gives_capability_landlock_and_yama() {
+    fn lsm_list_modules_gives_lockdown_capability_landlock_and_yama() {
         let mut f = fixture();
         let e2big = errno(Errno(7));
         assert_eq!(f.ret(461, &[BUF, SIZE, 1]), errno(Errno::EINVAL));
         assert_eq!(f.ret(461, &[BUF, 0, 0]), errno(Errno::EFAULT));
         write_u32(&f, SIZE, 8);
         assert_eq!(f.ret(461, &[BUF, SIZE, 0]), e2big);
-        assert_eq!(read_u32(&f, SIZE), 24);
-        assert_eq!(f.ret(461, &[BUF, SIZE, 0]), 3);
-        let ids: Vec<u64> = (0..3)
+        assert_eq!(read_u32(&f, SIZE), 32);
+        assert_eq!(f.ret(461, &[BUF, SIZE, 0]), 4);
+        let ids: Vec<u64> = (0..4)
             .map(|i| f.mem.read_u64(GuestAddr(BUF + i * 8)).unwrap())
             .collect();
-        assert_eq!(ids, [100, 110, 105]);
+        assert_eq!(ids, [108, 100, 110, 105]);
         assert_eq!(f.ret(461, &[0, SIZE, 0]), errno(Errno::EFAULT));
     }
     #[test]

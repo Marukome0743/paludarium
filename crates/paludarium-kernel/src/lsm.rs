@@ -1,9 +1,11 @@
 //! The Linux Security Module system calls (`security/lsm_syscalls.c` and
 //! `security_getselfattr`/`security_setselfattr` in `security/security.c`).
 //!
-//! The modules here are the ones the emulator has: the capability module,
-//! Landlock and Yama, in the order Linux starts them with Ubuntu's
-//! `CONFIG_LSM` (the capability module first). None of them keeps
+//! The modules here are the ones the emulator has: Lockdown (whose port
+//! access it refuses, see `iopl`), the capability module, Landlock and Yama,
+//! in the order Linux starts them with Ubuntu's configuration: Lockdown is an
+//! early module there (`CONFIG_SECURITY_LOCKDOWN_LSM_EARLY`), the capability
+//! module comes first of the rest, and then `CONFIG_LSM`'s order. None of them keeps
 //! attributes of its own for a task, so `lsm_get_self_attr` and
 //! `lsm_set_self_attr` find no module to ask and give `EOPNOTSUPP` once
 //! their arguments pass Linux's checks.
@@ -11,8 +13,9 @@ use paludarium_types::{Errno, GuestAddr};
 
 use crate::syscalls::{Context, Outcome};
 
-/// `LSM_ID_CAPABILITY`, `LSM_ID_LANDLOCK` and `LSM_ID_YAMA`.
-const MODULES: [u64; 3] = [100, 110, 105];
+/// `LSM_ID_LOCKDOWN`, `LSM_ID_CAPABILITY`, `LSM_ID_LANDLOCK` and
+/// `LSM_ID_YAMA`.
+const MODULES: [u64; 4] = [108, 100, 110, 105];
 /// `LSM_ATTR_UNDEF`.
 const ATTR_UNDEF: u32 = 0;
 /// `LSM_ID_UNDEF`.

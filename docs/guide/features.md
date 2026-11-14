@@ -2443,8 +2443,10 @@ kernel.
   1 gives a name's index, 2 copies an index's name and 3 gives the count; an
   unknown option, name or index is `EINVAL`, and a name that does not end
   within `PATH_MAX` bytes too.
-- The security modules are the ones paludarium has, in Linux's order with
-  Ubuntu's `CONFIG_LSM`: the capability module, Landlock and Yama, which
+- The security modules are the ones paludarium has, in the order Linux
+  starts them with Ubuntu's configuration: Lockdown (an early module there,
+  whose port access paludarium refuses), the capability module, Landlock
+  and Yama, which
   `lsm_list_modules` lists (`E2BIG` with the size they take for a smaller
   buffer). None of them keeps an attribute of a task, so
   `lsm_get_self_attr` and `lsm_set_self_attr` give `EOPNOTSUPP` (and a size

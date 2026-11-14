@@ -9502,17 +9502,19 @@ static int kernel_info_worker(void) {
     printf("list-flags=%ld\n", pn(syscall(461, ids, &size, 1L)));
     printf("list-size-fault=%ld\n", pn(syscall(461, ids, NULL, 0L)));
     long r = pn(syscall(461, ids, &size, 0L));
-    printf("list-small=%ld size-words=%d at-least-3=%d\n", r, size % 8 == 0, size >= 24);
+    printf("list-small=%ld size-words=%d at-least-4=%d\n", r, size % 8 == 0, size >= 32);
     size = sizeof ids;
     long n = pn(syscall(461, ids, &size, 0L));
-    int capability_first = n > 0 && ids[0] == 100, landlock = 0, yama = 0, known = 1;
+    int lockdown_first = n > 0 && ids[0] == 108, capability_next = n > 1 && ids[1] == 100;
+    int landlock = 0, yama = 0, known = 1;
     for (long i = 0; i < n; i++) {
         landlock |= ids[i] == 110;
         yama |= ids[i] == 105;
         known &= ids[i] >= 100 && ids[i] <= 113;
     }
-    printf("list: size-matches=%d capability-first=%d landlock=%d yama=%d known=%d\n",
-           n > 0 && size == n * 8, capability_first, landlock, yama, known);
+    printf("list: size-matches=%d lockdown-first=%d capability-next=%d landlock=%d yama=%d "
+           "known=%d\n",
+           n > 0 && size == n * 8, lockdown_first, capability_next, landlock, yama, known);
     size = sizeof ids;
     printf("list-ids-fault=%ld\n", pn(syscall(461, NULL, &size, 0L)));
 
