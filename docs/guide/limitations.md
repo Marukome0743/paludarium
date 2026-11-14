@@ -258,16 +258,15 @@ verified.
     wall time, the sleep counts its own time too, so a process alone ends
     it after the wall time it asked for.
     A timer on another process's CPU time is looked at as that process's
-    threads make system calls, the same way. Another process's CPU time,
+    threads make system calls, the same way, and so is a sleep on another
+    task's CPU clock. Another process's CPU time,
     read or set from outside it, is each of its threads' as of that thread's
     last account (its last system call, while nothing timed that process),
     as a thread's CPU time can only be measured by the thread itself: a
     timer set on it counts from there, so its first expiry can come early
     by what the process ran since then without a system call, and
     `timer_gettime` can show more time left, where Linux samples the
-    running threads at once. A sleep on another task's CPU clock gives
-    `EINVAL` unless its time has already come, where Linux waits until that
-    task has used the time.
+    running threads at once.
   - The time cannot be set: `settimeofday`, `clock_settime` and an
     `adjtimex` or `clock_adjtime` that changes something give `EPERM` even
     to a caller with `CAP_SYS_TIME`, where Linux sets the clock, its time
@@ -291,10 +290,7 @@ verified.
     AppArmor or SELinux: `lsm_list_modules` lists four modules, and
     `lsm_get_self_attr` finds no attribute where Linux gives AppArmor's
     context.
-  - `ustat` finds only the mounts' devices. The `st_dev` of a pipe, a
-    socket, a memfd or a namespace file gives `EINVAL`, where Linux finds
-    the superblock of its pseudo filesystem and gives its counts (0). A
-    file in `/proc` or `/dev` has the `st_dev` of the mount holding the
+  - A file in `/proc` or `/dev` has the `st_dev` of the mount holding the
     path, so `ustat` of it gives that mount's counts, where Linux gives
     procfs's or devtmpfs's.
   - A file handle (`name_to_handle_at`, an inotify watch's in

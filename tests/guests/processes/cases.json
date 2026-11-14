@@ -273,6 +273,7 @@
     {"name":"port-access","binary":"process"},
     {"name":"timer-limits","binary":"process"},
     {"name":"cpu-sleep","binary":"process"},
+    {"name":"cpu-sleep-others","binary":"process"},
     {"name":"cpu-timer-others","binary":"process"},
     {"name":"mprotect-checks","binary":"process"},
     {"name":"io-uring","binary":"process"},

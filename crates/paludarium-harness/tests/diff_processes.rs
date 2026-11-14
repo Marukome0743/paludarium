@@ -271,7 +271,12 @@ mod linux {
             // clock does not pass.
             if matches!(
                 mode,
-                "cpu-itimer" | "rlimit-cpu" | "cpu-timer" | "cpu-sleep" | "cpu-timer-others"
+                "cpu-itimer"
+                    | "rlimit-cpu"
+                    | "cpu-timer"
+                    | "cpu-sleep"
+                    | "cpu-sleep-others"
+                    | "cpu-timer-others"
             ) {
                 host.measure_cpu_time();
             }
@@ -558,6 +563,7 @@ mod linux {
         processes_port_access => ("port-access","process"),
         processes_timer_limits => ("timer-limits","process"),
         processes_cpu_sleep => ("cpu-sleep","process"),
+        processes_cpu_sleep_others => ("cpu-sleep-others","process"),
         processes_cpu_timer_others => ("cpu-timer-others","process"),
         processes_mprotect_checks => ("mprotect-checks","process"),
         processes_io_uring => ("io-uring","process"),

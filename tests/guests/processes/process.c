@@ -7913,6 +7913,32 @@ static int old_forms_case(void) {
     for (int i = 16; i < 28; i++) names_empty &= ust[i] == 0;
     printf("ustat=%ld names-empty=%d none=%ld fault=%ld\n", u, names_empty,
            ot_errno(syscall(SYS_ustat, 0L, ust)), ot_errno(syscall(SYS_ustat, (long)st.st_dev, NULL)));
+    /* The internal file systems: a device of each one's own, with nothing
+     * free. */
+    int internal_pipe[2];
+    if (pipe(internal_pipe)) return 85;
+    int internal[] = {
+        internal_pipe[0],
+        socket(AF_UNIX, SOCK_STREAM, 0),
+        eventfd(0, 0),
+        (int)syscall(SYS_pidfd_open, (long)getpid(), 0L),
+        (int)syscall(SYS_memfd_create, "ustat", 0L),
+        open("/proc/self/ns/net", O_RDONLY),
+    };
+    const char *internal_names[] = {"pipe", "socket", "eventfd", "pidfd", "memfd", "ns"};
+    dev_t seen[7] = {st.st_dev};
+    for (int i = 0; i < 6; i++) {
+        struct stat is;
+        if (internal[i] < 0 || fstat(internal[i], &is)) return 86;
+        int own = 1;
+        for (int j = 0; j <= i; j++) own &= is.st_dev != seen[j];
+        seen[i + 1] = is.st_dev;
+        memset(ust, 0xff, sizeof ust);
+        long r = ot_errno(syscall(SYS_ustat, (long)is.st_dev, ust));
+        int zero = 1;
+        for (size_t k = 0; k < sizeof ust; k++) zero &= ust[k] == 0;
+        printf("ustat %s own=%d ret=%ld zero=%d\n", internal_names[i], own, r, zero);
+    }
 
     char *shared = mmap(NULL, 3 * 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if (shared == MAP_FAILED) return 84;
@@ -10001,6 +10027,87 @@ static int cpu_timer_others_case(void) {
     syscall(SYS_timer_gettime, quiet, &now);
     printf("reaped set=%ld quiet=%ld delete=%ld\n", reset, (long)now.it_value.tv_sec,
            syscall(SYS_timer_delete, timer) ? -errno : 0L);
+    return 0;
+}
+/* clock_nanosleep on the CPU clock of another task, by number: another
+ * thread's, a child process's, and a zombie's; a thread that goes while
+ * the sleep waits leaves it to a signal, which ends it with EINTR and the
+ * whole request left, as Linux's do_cpu_nanosleep copies out what it was
+ * asked once posix_cpu_timer_set finds no task. What is printed holds
+ * whatever the speed. */
+static long co_tid;
+static void *co_spin(void *arg) {
+    __atomic_store_n(&co_tid, syscall(SYS_gettid), __ATOMIC_SEQ_CST);
+    return cs_spin(arg);
+}
+static void *co_leave(void *arg) {
+    (void)arg;
+    __atomic_store_n(&co_tid, syscall(SYS_gettid), __ATOMIC_SEQ_CST);
+    struct timespec wait = {0, 20000000L};
+    nanosleep(&wait, NULL);
+    return NULL;
+}
+static long co_cpu(clockid_t clock) {
+    struct timespec t;
+    return clock_gettime(clock, &t) ? -errno : ct_ns(t);
+}
+static int cpu_sleep_others_case(void) {
+    /* Another thread's clock: relative, then absolute. */
+    pthread_t thread;
+    co_tid = 0;
+    if (pthread_create(&thread, NULL, co_spin, (void *)100000000L)) return 1;
+    while (!__atomic_load_n(&co_tid, __ATOMIC_SEQ_CST)) sched_yield();
+    clockid_t tclock = CI_CLOCK(co_tid, 1, 2);
+    long start = co_cpu(tclock);
+    long relative = cs_sleep(tclock, 0, 30000000L, NULL);
+    long used = co_cpu(tclock) - start;
+    long deadline = co_cpu(tclock) + 30000000L;
+    long absolute = cs_sleep(tclock, TIMER_ABSTIME, deadline, NULL);
+    long reached = co_cpu(tclock) >= deadline;
+    pthread_join(thread, NULL);
+    printf("thread relative=%ld used-enough=%d absolute=%ld reached=%ld\n", relative,
+           used >= 30000000L, absolute, reached);
+    /* A child process's clock. */
+    fflush(stdout);
+    pid_t kid = fork();
+    if (kid == 0) {
+        cs_spin((void *)100000000L);
+        _exit(0);
+    }
+    clockid_t pclock = CI_CLOCK(kid, 0, 2);
+    start = co_cpu(pclock);
+    relative = cs_sleep(pclock, 0, 30000000L, NULL);
+    used = co_cpu(pclock) - start;
+    printf("child relative=%ld used-enough=%d\n", relative, used >= 30000000L);
+    waitpid(kid, NULL, 0);
+    /* A zombie's clock does not move: a signal ends the sleep with the
+       time left. */
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = cs_alarm;
+    sigaction(SIGALRM, &sa, NULL);
+    fflush(stdout);
+    kid = fork();
+    if (kid == 0) _exit(0);
+    siginfo_t info;
+    waitid(P_PID, kid, &info, WEXITED | WNOWAIT);
+    struct timespec rem = {7, 7};
+    cs_alarm_in(20000);
+    long interrupted = cs_sleep(CI_CLOCK(kid, 0, 2), 0, 10000000000L, &rem);
+    printf("zombie=%ld left-in-range=%d\n", interrupted,
+           ct_ns(rem) > 9000000000L && ct_ns(rem) <= 10000000000L);
+    waitpid(kid, NULL, 0);
+    /* A thread that goes while the sleep waits: the signal ends it, the
+       whole request left. */
+    co_tid = 0;
+    if (pthread_create(&thread, NULL, co_leave, NULL)) return 1;
+    while (!__atomic_load_n(&co_tid, __ATOMIC_SEQ_CST)) sched_yield();
+    rem.tv_sec = 7;
+    rem.tv_nsec = 7;
+    cs_alarm_in(200000);
+    long gone = cs_sleep(CI_CLOCK(co_tid, 1, 2), 0, 10000000000L, &rem);
+    pthread_join(thread, NULL);
+    printf("gone=%ld rem=%ld %ld\n", gone, (long)rem.tv_sec, rem.tv_nsec);
     return 0;
 }
 static int pidfd_getfd_case(void) {
@@ -22770,6 +22877,7 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "port-access")) return port_access_case();
     if (!strcmp(mode, "timer-limits")) return timer_limits_case();
     if (!strcmp(mode, "cpu-sleep")) return cpu_sleep_case();
+    if (!strcmp(mode, "cpu-sleep-others")) return cpu_sleep_others_case();
     if (!strcmp(mode, "cpu-itimer-exec")) {
         struct itimerval v;
         syscall(SYS_getitimer, 1L, &v);

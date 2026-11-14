@@ -212,7 +212,10 @@ kernel.
   mount's `st_dev` as its device numbers, with Linux's flag and mask checks
   (`EINVAL`). Whatever the mask asks for, it also gives the mount's ID, as
   Linux does: the one `/proc/self/mountinfo` shows (`STATX_MNT_ID`), or a
-  64-bit one in its place when `STATX_MNT_ID_UNIQUE` is asked for.
+  64-bit one in its place when `STATX_MNT_ID_UNIQUE` is asked for. A file
+  of an internal file system (a pipe, a socket, a memfd and the like; see
+  `statfs` below) is on a mount with one of the small IDs that mountinfo,
+  whose IDs start at 21, does not show, as Linux's internal mounts are.
   `AT_EMPTY_PATH` names the descriptor, or the working directory for
   `AT_FDCWD`, and as since Linux 6.11 a null path with it does too.
 - `name_to_handle_at` gives a file's handle, checked in the order of
@@ -1978,8 +1981,14 @@ kernel.
   host filesystem's own numbers. `/proc/self/mountinfo`, `/proc/self/mounts`
   and `/proc/mounts` list the mounts (`tmpfs` for the root, `hostfs` for each
   `--mount`, without host paths). Each mount has its own `st_dev`, as its
-  line in `mountinfo` says, so `df` lists every mount. `ustat` of a mount's
-  `st_dev` gives its free blocks and inodes, and of any other device
+  line in `mountinfo` says, so `df` lists every mount. A pipe, a socket, a
+  pidfd, a memfd, a `memfd_secret` file, a namespace file and an anonymous
+  inode (an eventfd, an epoll and the like) that no path opened are each on
+  a device of their file system's own (pipefs, sockfs, pidfs, the internal
+  tmpfs, secretmem, nsfs, anon_inodefs), as on Linux, none of them a
+  mount's. `ustat` of a mount's `st_dev` gives its free blocks and inodes,
+  of one of those devices none (0, as Linux's `simple_statfs` and the
+  internal tmpfs, which has no limits, give), and of any other device
   `EINVAL`.
 - A file's block size (`st_blksize`, `stx_blksize`, `FIGETBSZ`) is its
   filesystem's, as on Linux: 1024 for `/proc` (procfs), a pseudo-terminal's
@@ -2373,11 +2382,14 @@ kernel.
   gives `EINVAL` with the ID used up. A dynamic clock has no timers and
   cannot sleep (`EOPNOTSUPP`). A sleep on a CPU clock by number reads its
   request, refuses the caller's own thread's clock (`EINVAL`) and then a
-  task that is not there (`EINVAL`); on the caller's process's clock it
-  sleeps as below, and on another task's it returns at once when its time
-  has come (a relative 0, or an absolute time the clock has reached), as
-  Linux's `posix_cpu_nsleep`, but one that would wait for that task's CPU
-  time is not modelled (`EINVAL`).
+  task that is not there (`EINVAL`); then it sleeps as below, until the
+  caller's process, another process (a zombie's clock does not move) or
+  another thread of the caller's process has used the time, that task's
+  threads accounting their CPU time while it waits. A task that goes while
+  it waits leaves the sleep to a signal, which ends it as it ends any but
+  with the whole request as the time left, as Linux's `do_cpu_nanosleep`
+  copies out what it was asked once `posix_cpu_timer_set` finds no task;
+  a restart after a stop then finds no task (`EINVAL`).
 - A sleep on the process's CPU clock ends once the process's threads
   together have used the time, as Linux's `do_cpu_nanosleep`: a time that
   has passed, or none to sleep, returns at once, and the sleeping thread
