@@ -718,6 +718,38 @@ void _start(void) {
   ts[2]=2000;results[x++]=call(280,-100,(long)fdpath(fd),(long)ts,0,0,0);S(5,fd,st,0);results[x++]=MTIME();
   results[x++]=S(21,fdpath(fd),4,0);
   S(3,op,0,0);S(3,ol,0,0);S(3,dp,0,0);}
+ if(CASE==79){ /* who may change which extended attributes: user.* of a sticky directory, security.* and system.* whatever the file's access, and file capabilities, whose value is checked before CAP_SETFCAP */
+  static char d[]="/tmp/paludarium-files-caps",f[]="/tmp/paludarium-files-caps/f",z[]="/tmp/paludarium-files-caps/z",s[]="/tmp/paludarium-files-caps/s";
+  static char caps[]="security.capability",user[]="user.paludarium",sec[]="security.paludarium",sys[]="system.paludarium";
+  static unsigned int v[6];
+  #define CAPV(rev,root,n) (v[0]=(rev)|1,v[1]=1u<<10,v[2]=0,v[3]=0,v[4]=0,v[5]=(root),(long)(n))
+  /* Root here, as the emulator runs guests, would have every capability: nobody's IDs instead. */
+  if(S(102,0,0,0)==0){S(106,65534,0,0);S(105,65534,0,0);}
+  long uid=S(102,0,0,0);
+  S(87,f,0,0);S(87,z,0,0);S(84,s,0,0);S(84,d,0,0);
+  results[x++]=S(83,d,0755,0);
+  long fd=S(2,f,0102,0644);results[x++]=fd>=0;S(3,S(2,z,0102,0),0,0);
+  /* A sticky directory: only its owner changes user.*; anyone reads them. */
+  results[x++]=call(188,(long)"/tmp",(long)user,(long)"x",1,0,0);
+  results[x++]=call(191,(long)"/tmp",(long)user,0,0,0,0);
+  results[x++]=S(83,s,01777,0);
+  results[x++]=call(188,(long)s,(long)user,(long)"x",1,0,0);
+  /* security.* and system.* do not ask for the file's access. */
+  results[x++]=call(191,(long)z,(long)sec,(long)buf,8,0,0);
+  results[x++]=call(188,(long)z,(long)sec,(long)"x",1,0,0);
+  results[x++]=call(197,(long)z,(long)sec,0,0,0,0);
+  results[x++]=call(191,(long)z,(long)sys,(long)buf,8,0,0);
+  /* File capabilities: the value first, then CAP_SETFCAP. */
+  results[x++]=call(188,(long)f,(long)caps,(long)v,CAPV(0x02000000,0,3),0,0);
+  results[x++]=call(188,(long)f,(long)caps,(long)v,CAPV(0x01000000,0,12),0,0);
+  results[x++]=call(188,(long)f,(long)caps,(long)v,CAPV(0x03000000,uid,24),0,0);
+  results[x++]=call(191,(long)f,(long)caps,0,0,0,0);
+  results[x++]=call(197,(long)f,(long)caps,0,0,0,0);
+  /* A user namespace is not tried here: the CI runners' AppArmor gives an unprivileged one no
+     capabilities, which the emulator does not model. */
+  S(3,fd,0,0);S(87,f,0,0);S(87,z,0,0);S(84,s,0,0);S(84,d,0,0);
+  #undef CAPV
+ }
  if(CASE==78){ /* cachestat(fd, range, stat, flags): the pages of a range a file's page cache holds, as ext4 and tmpfs both have written ones */
   static char f[]="/tmp/paludarium-files-cachestat";static unsigned long cr[2],cs[5];static char page[4096];
   #define CS(fd,o,l,fl) (cr[0]=(unsigned long)(o),cr[1]=(unsigned long)(l),cs[0]=99,cs[3]=99,call(451,fd,(long)cr,(long)cs,fl,0,0))
