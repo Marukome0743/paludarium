@@ -536,6 +536,7 @@ mod linux {
         processes_page_nodes => ("page-nodes","process"),
         processes_pidfd_getfd => ("pidfd-getfd","process"),
         processes_alarm_clocks => ("alarm-clocks","process"),
+        processes_yama => ("yama","process"),
         processes_ignored_signal_wait => ("ignored-signal-wait","process"),
         processes_mmsg => ("mmsg","process"),
         processes_itimer => ("itimer","process"),

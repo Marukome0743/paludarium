@@ -984,6 +984,18 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `ESRCH`、そのプロセスにないディスクリプタは `EBADF` です。写しは開いたファイル記述を
   共有し、空いている最小の番号を close-on-exec で得ます（`RLIMIT_NOFILE` に達すれば
   `EMFILE`）。
+- ほかのプロセスのスレッドを読めるか、アタッチできるかは、Linux の `__ptrace_may_access` が
+  ケーパビリティモジュールと Yama を合わせて決めるのと同じく決めます。読む場合（`kcmp`、`get_robust_list`、
+  `/proc/<pid>/environ` など、`move_pages`、`migrate_pages`、pidfd を渡した `setns`）は、
+  相手のユーザー名前空間での `CAP_SYS_PTRACE` か、次のすべてを求めます。相手がダンプでき、
+  相手のユーザー ID とグループ ID がすべて呼び出し元のもの（呼び出しに応じて実 ID か
+  ファイルシステム ID）と同じで、同じユーザー名前空間にいて、呼び出し元の許可された
+  ケーパビリティ（ファイルシステム ID の場合は実効ケーパビリティ）が相手の許可された
+  ケーパビリティを含むことです。そのうえで Landlock が、ドメインの中の呼び出し元を外の
+  タスクから遠ざけます。アタッチする場合（`process_vm_readv`、`process_vm_writev`、
+  `pidfd_getfd`）は、Debian や Ubuntu、CI のランナーと同じく Yama の `ptrace_scope` を 1 と
+  します。相手が呼び出し元の子孫であるか、`PR_SET_PTRACER` で呼び出し元を入れているか、
+  呼び出し元が相手のユーザー名前空間で `CAP_SYS_PTRACE` を持つことも求めます。
 - `personality` は、Linux と同じくどんな値でもスレッドに持ち、前の値を返します
   （`0xffffffff` は問い合わせだけです）。新しいスレッドとプロセスはそれを継ぎ、
   `execve` は `READ_IMPLIES_EXEC` を、set-ID のプログラムなら `PER_CLEAR_ON_SETID` も
@@ -1696,7 +1708,10 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   そのスレッドから見たプロセスのディレクトリを指し、`/proc` には並びません。Linux の
   `ptrace_may_access` と同じく、同じプロセスでなく `CAP_SYS_PTRACE` もない読み手には、
   `environ` は実 ID が、`exe`、`cwd`、`ns` のリンクはファイルシステムの ID が、ダンプできるプロセスの
-  ユーザーとグループのすべての ID と同じでなければ `EACCES` です。ダンプできないプロセスの
+  ユーザーとグループのすべての ID と同じで、そのプロセスが同じユーザー名前空間にいて、
+  その許可されたケーパビリティを読み手のもの（ファイルシステムの ID の場合は実効
+  ケーパビリティ）が含むのでなければ `EACCES` です。上に書いた、ほかのプロセスを読む場合と
+  同じです。ダンプできないプロセスの
   ディレクトリの持ち主は root です。ほかのプロセスについて見えるのは、そのプロセスのスレッドが
   最後のシステムコールかシグナルの確認で公開したもの（名前（`PR_SET_NAME`、`execve`）、
   ブロックしているシグナルと保留中のシグナル、資格情報）と、その時点のプロセスの
@@ -2112,7 +2127,12 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `PR_SET_KEEPCAPS`（スレッドごとで、`execve` で消えます）、
   `PR_SET_CHILD_SUBREAPER`（`fork` では受け継がれず、`execve` では残ります）、
   `PR_SET_NO_NEW_PRIVS`、`PR_SET_SECCOMP`（下の seccomp を見てください）と、
-  それぞれの `PR_GET_*` に対応します。ほかの指定には `EINVAL` を返します。
+  それぞれの `PR_GET_*`、そして Yama の `PR_SET_PTRACER` に対応します。`PR_SET_PTRACER` は
+  ほかの引数を読みません。0 で消え、`PR_SET_PTRACER_ANY`（`int` として -1 も同じ）でどの
+  プロセスもアタッチできるようになります。ほかの値は `int` として、呼び出し元の PID 名前空間の
+  タスクを指します（なければ `EINVAL`）。そのタスクがある間、そのプロセスとその子孫が
+  アタッチできます。どのスレッドが設定してもプロセスのもので、子には受け継がれません。
+  ほかの指定には `EINVAL` を返します。
 - プロセスが終わると、その子は、`PR_SET_CHILD_SUBREAPER` を設定していてまだ終わって
   いない一番近い祖先に、いなければ PID 名前空間の init にあたる最初のプロセスに
   引き取られます。Linux の `forget_original_parent` と同じです。その後 `getppid` は

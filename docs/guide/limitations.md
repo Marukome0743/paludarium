@@ -303,14 +303,8 @@ verified.
     each semaphore beside one for operations on several, and which of two
     waits that both could go through goes first can differ where waits of
     both kinds are mixed.
-  - Whether a caller may attach to another process (`process_vm_readv`,
-    `process_vm_writev`, `pidfd_getfd`) is decided by the IDs, dumpability,
-    `CAP_SYS_PTRACE` and Landlock alone, as Linux with no Yama does: there is
-    no `kernel.yama.ptrace_scope`, so a process may reach its parent, where
-    Yama's default scope 1 lets only an ancestor in. For that and for reading
-    another process (`get_robust_list`, `kcmp`, `migrate_pages`,
-    `move_pages`), the capability module's check that the caller's permitted
-    capabilities cover the target's is not made.
+  - Yama's `ptrace_scope` is always 1: there is no
+    `/proc/sys/kernel/yama/ptrace_scope` to read or change it.
   - `mincore` counts a page of a file as in memory whenever it lies within the
     file, where Linux asks its page cache, and does not count a page that
     `MAP_POPULATE`, `MAP_LOCKED` or a memory lock brought in until it is touched.

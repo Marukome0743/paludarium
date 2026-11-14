@@ -253,6 +253,7 @@
     {"name":"page-nodes","binary":"process"},
     {"name":"pidfd-getfd","binary":"process"},
     {"name":"alarm-clocks","binary":"process"},
+    {"name":"yama","binary":"process"},
     {"name":"ignored-signal-wait","binary":"process"},
     {"name":"mmsg","binary":"process"},
     {"name":"itimer","binary":"process"},

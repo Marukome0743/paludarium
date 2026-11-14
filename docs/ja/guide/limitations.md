@@ -261,13 +261,8 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
     待つものが先）。Linux はセマフォーごとの待ち行列と、複数のセマフォーへの操作の待ち行列を
     分けて持つので、両方の種類の待ちが混ざると、どちらも通れる 2 つの待ちのどちらが先に
     通るかが違うことがあります。
-  - ほかのプロセスにアタッチできるか（`process_vm_readv`、`process_vm_writev`、
-    `pidfd_getfd`）は、Yama のない Linux と同じく ID、ダンプ可能か、`CAP_SYS_PTRACE`、
-    Landlock だけで決めます。`kernel.yama.ptrace_scope` はないので、Yama の既定の
-    スコープ 1 なら祖先しか入れないところ、プロセスは親にも届きます。アタッチと、
-    ほかのプロセスを読むとき（`get_robust_list`、`kcmp`、`migrate_pages`、
-    `move_pages`）のどちらでも、呼び出し元の許可されたケーパビリティが相手のものを
-    含むかという、ケーパビリティモジュールの検査はしません。
+  - Yama の `ptrace_scope` は常に 1 です。それを読んだり変えたりする
+    `/proc/sys/kernel/yama/ptrace_scope` はありません。
   - `mincore` は、ファイルのページをファイルの範囲内なら常にメモリにあるとします。
     Linux はページキャッシュを調べます。`MAP_POPULATE` や `MAP_LOCKED`、メモリのロックで
     読み込んだページも、触るまでは数えません。
