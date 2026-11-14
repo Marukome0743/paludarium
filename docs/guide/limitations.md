@@ -236,9 +236,6 @@ verified.
     where Linux copies no page table of a VMA without an `anon_vma`
     (`-ENOENT` until the child touches the page): the loader's copy is
     the only one the page has here.
-  - An error that ends `recvmmsg` after some messages is dropped, where
-    Linux keeps it as the socket's error for the next call and
-    `SO_ERROR`, and `recvmmsg` does not first give a socket's pending error.
   - A fault of a `memfd_secret` page takes the faulting process's
     `RLIMIT_MEMLOCK` as of its last system call (its creator's before
     one), and the pages count only `memfd_secret` files, where Linux's
