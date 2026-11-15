@@ -143,9 +143,11 @@ mod linux {
             // real-time and deadline policies, the admin case, which makes a
             // user namespace with its capabilities (Ubuntu's AppArmor gives none
             // to one an unprivileged user makes) before it becomes one,
-            // the personality-layout case, which maps page 0, and the
+            // the personality-layout case, which maps page 0, the
             // proc-other-maps and proc-other-fds cases, which read a
-            // process's maps and descriptors as another user.
+            // process's maps and descriptors as another user, and the
+            // pagemap case, which becomes an unprivileged user, as the
+            // emulator's guest starts as root.
             let as_root = matches!(
                 mode,
                 "credentials"
@@ -247,6 +249,7 @@ mod linux {
                     | "user-namespaces"
                     | "scheduling-set"
                     | "personality-layout"
+                    | "pagemap"
                     | "admin"
             );
             let native = if as_root && !running_as_root() {
@@ -581,6 +584,7 @@ mod linux {
         processes_futex_shared => ("futex-shared","process"),
         processes_late_handler => ("late-handler","process"),
         processes_mincore => ("mincore","process"),
+        processes_pagemap => ("pagemap","process"),
         processes_memory_locks => ("memory-locks","process"),
         processes_proc_maps => ("proc-maps","process"),
         processes_fifo => ("fifo","process"),
