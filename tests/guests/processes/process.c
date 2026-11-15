@@ -9350,6 +9350,245 @@ static int proc_other_maps_case(void) {
     return 0;
 }
 
+/* The proc-other-fds case: another process's fd and fdinfo, as Linux's
+   fs/proc/fd.c makes them: fd is 0500 and its owner's, its links read and
+   lead to the descriptors' files for a reader that ptrace_may_access lets
+   read the process (PTRACE_MODE_READ_FSCREDS), as fdinfo is. */
+#define POF_SIZE 65536
+/* `dir`'s descriptors, each with its link and fdinfo, into `out`: their
+   number, or -errno. */
+static int pofd_describe(const char *dir, char *out) {
+    char path[128];
+    snprintf(path, sizeof path, "%s/fd", dir);
+    DIR *d = opendir(path);
+    if (!d) return -errno;
+    /* Its own listing has the descriptor that reads it, which is not one
+       to compare. */
+    int numbers[64], count = 0, reading = strcmp(dir, "/proc/self") ? -1 : dirfd(d);
+    for (struct dirent *e; (e = readdir(d)) && count < 64;)
+        if (e->d_name[0] != '.' && atoi(e->d_name) != reading) numbers[count++] = atoi(e->d_name);
+    closedir(d);
+    for (int i = 1; i < count; i++)
+        for (int j = i; j > 0 && numbers[j - 1] > numbers[j]; j--) {
+            int t = numbers[j];
+            numbers[j] = numbers[j - 1];
+            numbers[j - 1] = t;
+        }
+    size_t at = 0;
+    out[0] = 0;
+    for (int i = 0; i < count; i++) {
+        char link[512] = "", info[4096] = "";
+        snprintf(path, sizeof path, "%s/fd/%d", dir, numbers[i]);
+        ssize_t n = readlink(path, link, sizeof link - 1);
+        if (n >= 0) link[n] = 0;
+        snprintf(path, sizeof path, "%s/fdinfo/%d", dir, numbers[i]);
+        int fd = open(path, O_RDONLY);
+        if (fd >= 0) {
+            ssize_t m = read(fd, info, sizeof info - 1);
+            if (m >= 0) info[m] = 0;
+            close(fd);
+        }
+        at += (size_t)snprintf(out + at, POF_SIZE - at, "%d %s\n%s", numbers[i], link, info);
+    }
+    return count;
+}
+/* The text after `key` on its line of `path`'s contents, into `out`
+   (empty when there is none): -errno when it cannot be read. */
+static int pofd_field(const char *path, const char *key, char *out, size_t size) {
+    char text[4096];
+    out[0] = 0;
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return -errno;
+    ssize_t n = read(fd, text, sizeof text - 1);
+    close(fd);
+    if (n < 0) return -errno;
+    text[n] = 0;
+    for (char *line = text; line && *line; line = strchr(line, '\n') ? strchr(line, '\n') + 1 : NULL)
+        if (!strncmp(line, key, strlen(key))) {
+            size_t len = strcspn(line + strlen(key), "\n");
+            if (len >= size) len = size - 1;
+            memcpy(out, line + strlen(key), len);
+            out[len] = 0;
+            break;
+        }
+    return 0;
+}
+/* A process in a root of its own, with a file there it has a POSIX lock
+   on and its /proc/self/status open from before: another process reads
+   the links as paths from its own root (Linux's d_path), /proc/self as
+   that process's directory, and in fdinfo the file's mount and the lock,
+   owned by that process. */
+static int pofd_rooted(void) {
+    char base[] = "/tmp/paludarium-pofr-XXXXXX";
+    if (!mkdtemp(base)) return 86;
+    char inside[64];
+    snprintf(inside, sizeof inside, "%s/file", base);
+    int made = open(inside, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (made < 0 || write(made, "rooted", 6) != 6) return 87;
+    close(made);
+    int ready[2], done[2];
+    if (pipe(ready) || pipe(done)) return 88;
+    fflush(stdout);
+    pid_t kid = fork();
+    if (kid < 0) return 89;
+    if (!kid) {
+        char byte = 'r';
+        int status = open("/proc/self/status", O_RDONLY);
+        if (status != 10 && dup2(status, 10) != 10) byte = 's';
+        if (chroot(base) || chdir("/")) byte = 'c';
+        int fd = open("/file", O_RDWR);
+        struct flock lock = {.l_type = F_WRLCK, .l_whence = SEEK_SET, .l_start = 1, .l_len = 2};
+        if (fd < 0 || (fd != 11 && dup2(fd, 11) != 11) || fcntl(11, F_SETLK, &lock)) byte = 'f';
+        if (write(ready[1], &byte, 1) != 1 || read(done[0], &byte, 1) != 1) _exit(88);
+        _exit(0);
+    }
+    char byte, path[128], link[256], want[256];
+    if (read(ready[0], &byte, 1) != 1) return 90;
+    snprintf(path, sizeof path, "/proc/%d/fd/11", (int)kid);
+    ssize_t n = readlink(path, link, sizeof link - 1);
+    link[n > 0 ? n : 0] = 0;
+    printf("rooted child=%c file link=%d", byte, n > 0 && !strcmp(link, inside));
+    int fd = open(path, O_RDONLY);
+    char text[8] = "";
+    ssize_t got = fd >= 0 ? read(fd, text, 6) : -1;
+    if (fd >= 0) close(fd);
+    printf(" read=%zd %.6s", got, text);
+    snprintf(path, sizeof path, "/proc/%d/fd/10", (int)kid);
+    n = readlink(path, link, sizeof link - 1);
+    link[n > 0 ? n : 0] = 0;
+    snprintf(want, sizeof want, "/proc/%d/status", (int)kid);
+    printf(" status link=%d\n", n > 0 && !strcmp(link, want));
+    /* The same file's mount, as this process's own descriptor of it has. */
+    char theirs[64], ours[64], locked[256];
+    snprintf(path, sizeof path, "/proc/%d/fdinfo/11", (int)kid);
+    int r = pofd_field(path, "mnt_id:", theirs, sizeof theirs);
+    pofd_field(path, "lock:", locked, sizeof locked);
+    int mine = open(inside, O_RDONLY);
+    snprintf(path, sizeof path, "/proc/self/fdinfo/%d", mine);
+    pofd_field(path, "mnt_id:", ours, sizeof ours);
+    close(mine);
+    snprintf(want, sizeof want, "POSIX  ADVISORY  WRITE %d ", (int)kid);
+    char *at = strchr(locked, ':');
+    printf("rooted fdinfo=%d mnt_id same=%d lock=%d", r, theirs[0] && !strcmp(theirs, ours),
+           at && strstr(at, want) && strstr(at, " 1 2") != NULL);
+    if (write(done[1], "d", 1) != 1) return 91;
+    printf(" status=%d\n", reaped(kid));
+    unlink(inside);
+    rmdir(base);
+    return 0;
+}
+static int proc_other_fds_case(void) {
+    char *seen = mmap(NULL, POF_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    static char theirs[POF_SIZE];
+    if (seen == MAP_FAILED) return 80;
+    char name[] = "/tmp/paludarium-pofd-XXXXXX";
+    int file = mkstemp(name);
+    if (file < 0 || write(file, "hello", 5) != 5) return 81;
+    int ready[2], done[2];
+    if (pipe(ready) || pipe(done)) return 82;
+    fflush(stdout);
+    pid_t kid = fork();
+    if (kid < 0) return 83;
+    if (!kid) {
+        /* Descriptors of its own: the file at an offset, close-on-exec, a
+           pipe's ends and an eventfd. */
+        int again = open(name, O_RDONLY | O_CLOEXEC);
+        lseek(again, 2, SEEK_SET);
+        int ends[2];
+        char byte = again >= 0 && !pipe(ends) && eventfd(7, 0) >= 0 ? 'r' : 'o';
+        if (pofd_describe("/proc/self", seen) < 0) byte = 'd';
+        if (write(ready[1], &byte, 1) != 1 || read(done[0], &byte, 1) != 1) _exit(88);
+        _exit(0);
+    }
+    char byte;
+    if (read(ready[0], &byte, 1) != 1) return 84;
+    char dir[64], path[128];
+    snprintf(dir, sizeof dir, "/proc/%d", (int)kid);
+    int count = pofd_describe(dir, theirs);
+    printf("child=%c count=%d same=%d\n", byte, count, count > 0 && !strcmp(theirs, seen));
+    snprintf(dir, sizeof dir, "/proc/%d/task/%d", (int)kid, (int)kid);
+    count = pofd_describe(dir, theirs);
+    printf("task same=%d\n", count > 0 && !strcmp(theirs, seen));
+    /* The directories, a link not followed and followed, and the file
+       opened through it, at its own start. */
+    struct stat st, file_st;
+    fstat(file, &file_st);
+    snprintf(path, sizeof path, "/proc/%d/fd", (int)kid);
+    int r = stat(path, &st);
+    printf("fd stat=%d mode=%o size=%lld\n", r ? errno : 0, st.st_mode & 07777, (long long)st.st_size);
+    snprintf(path, sizeof path, "/proc/%d/fdinfo", (int)kid);
+    r = stat(path, &st);
+    printf("fdinfo stat=%d mode=%o\n", r ? errno : 0, st.st_mode & 07777);
+    /* The child's `again` is the lowest free number after the pipes. */
+    int again = -1;
+    for (int n = 3; n < 64 && again < 0; n++) {
+        snprintf(path, sizeof path, "/proc/%d/fd/%d", (int)kid, n);
+        if (!stat(path, &st) && st.st_ino == file_st.st_ino && st.st_dev == file_st.st_dev && n != file) again = n;
+    }
+    snprintf(path, sizeof path, "/proc/%d/fd/%d", (int)kid, again);
+    r = lstat(path, &st);
+    printf("link found=%d lstat=%d mode=%o size=%lld", again > 0, r ? errno : 0, st.st_mode & 07777,
+           (long long)st.st_size);
+    int fd = open(path, O_RDONLY);
+    int e = fd >= 0 ? 0 : errno;
+    char text[8] = "";
+    ssize_t got = fd >= 0 ? read(fd, text, 5) : -1;
+    printf(" open=%d read=%zd %.5s", e, got, text);
+    if (fd >= 0) close(fd);
+    printf(" nofollow=%d", open(path, O_RDONLY | O_NOFOLLOW) >= 0 ? 0 : errno);
+    snprintf(path, sizeof path, "/proc/%d/fd/63", (int)kid);
+    printf(" missing=%d", lstat(path, &st) ? errno : 0);
+    snprintf(path, sizeof path, "/proc/%d/fdinfo/63", (int)kid);
+    printf(" info missing=%d\n", open(path, O_RDONLY) >= 0 ? 0 : errno);
+    /* Another user: fd is not its to read or look in, and fdinfo and the
+       links are refused, though fdinfo can be found. */
+    fflush(stdout);
+    pid_t other = fork();
+    if (other == 0) {
+        if (setresgid(65534, 65534, 65534) || setresuid(65534, 65534, 65534)) _exit(90);
+        char link[256];
+        snprintf(path, sizeof path, "/proc/%d/fd", (int)kid);
+        DIR *d = opendir(path);
+        int e = d ? 0 : errno;
+        printf("other user fd=%d stat=%d", e, stat(path, &st) ? errno : 0);
+        if (d) closedir(d);
+        snprintf(path, sizeof path, "/proc/%d/fd/%d", (int)kid, again);
+        int l = lstat(path, &st) ? errno : 0;
+        int k = readlink(path, link, sizeof link) >= 0 ? 0 : errno;
+        printf(" lstat=%d readlink=%d", l, k);
+        snprintf(path, sizeof path, "/proc/%d/fdinfo", (int)kid);
+        d = opendir(path);
+        e = d ? 0 : errno;
+        printf(" fdinfo=%d stat=%d", e, stat(path, &st) ? errno : 0);
+        if (d) closedir(d);
+        snprintf(path, sizeof path, "/proc/%d/fdinfo/%d", (int)kid, again);
+        int o = open(path, O_RDONLY) >= 0 ? 0 : errno;
+        int s = stat(path, &st) ? errno : 0;
+        printf(" info=%d info stat=%d\n", o, s);
+        fflush(stdout);
+        _exit(0);
+    }
+    printf("other=%d\n", reaped(other));
+    /* Ended and not reaped: no descriptors; reaped: not there. */
+    if (write(done[1], "d", 1) != 1) return 85;
+    siginfo_t info;
+    memset(&info, 0, sizeof info);
+    waitid(P_PID, kid, &info, WEXITED | WNOWAIT);
+    snprintf(dir, sizeof dir, "/proc/%d", (int)kid);
+    snprintf(path, sizeof path, "/proc/%d/fd", (int)kid);
+    count = pofd_describe(dir, theirs);
+    r = stat(path, &st);
+    printf("zombie count=%d stat=%d size=%lld", count, r ? errno : 0, (long long)st.st_size);
+    snprintf(path, sizeof path, "/proc/%d/fd/%d", (int)kid, again);
+    printf(" link=%d", lstat(path, &st) ? errno : 0);
+    printf(" status=%d", reaped(kid));
+    printf(" reaped=%d\n", pofd_describe(dir, theirs));
+    close(file);
+    unlink(name);
+    munmap(seen, POF_SIZE);
+    return pofd_rooted();
+}
+
 /* The proc-other-mounts case: another process's mountinfo and mounts, as
    Linux's mounts_open_common makes them from that task's mount namespace
    and root, which anyone may read. */
@@ -25952,6 +26191,7 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "remounts")) return remounts_case();
     if (!strcmp(mode, "proc-other-mounts")) return proc_other_mounts_case();
     if (!strcmp(mode, "proc-other-maps")) return proc_other_maps_case();
+    if (!strcmp(mode, "proc-other-fds")) return proc_other_fds_case();
     if (!strcmp(mode, "modify-ldt")) return ldt_case(self);
     if (!strcmp(mode, "ldt-exec")) {
         ldt_show("after exec", 64);
