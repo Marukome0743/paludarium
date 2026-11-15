@@ -673,6 +673,7 @@ mod linux {
         processes_chroot => ("chroot","process"),
         processes_mounts => ("mounts","process"),
         processes_binds => ("binds","process"),
+        processes_remounts => ("remounts","process"),
         processes_proc_other_mounts => ("proc-other-mounts","process"),
         processes_proc_other_maps => ("proc-other-maps","process"),
         processes_modify_ldt => ("modify-ldt","process"),
