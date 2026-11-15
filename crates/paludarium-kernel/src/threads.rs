@@ -1647,6 +1647,19 @@ impl ThreadGroup {
         let index = signals::lowest_in(&pending.pending, set)?;
         Some(pending.pending.remove(index))
     }
+    /// The signals pending for the whole process, in the order they came
+    /// (Linux's `shared_pending` list).
+    pub(crate) fn process_pending_signals(&self) -> Vec<crate::signals::PendingSignal> {
+        let mut pending = self
+            .process_pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        self.process_inbox
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .drain_process(&mut pending);
+        pending.pending.clone()
+    }
     /// The process-directed signals waiting here, as a signal set, and how
     /// many have come so far.
     pub(crate) fn process_pending_set(&self) -> (u64, u64) {
