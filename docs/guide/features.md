@@ -2287,8 +2287,15 @@ kernel.
   (`tmpfs` for the root, `hostfs` for each `--mount`, without host paths,
   and the tmpfs mounts `mount` made, with their sources). After `chroot` they show each mount point
   from the process's root and leave out those not under it, as Linux's
-  `seq_path_root` does. Each mount has its own `st_dev`, as its
-  line in `mountinfo` says, so `df` lists every mount. A pipe, a socket, a
+  `seq_path_root` does. `/proc/<pid>/mountinfo` and `mounts` (and those of
+  `/proc/thread-self` and `/proc/<pid>/task/<tid>`) are those of that task,
+  as Linux's `mounts_open_common` makes them: the mounts of its mount
+  namespace, from its root, for any reader; a process that has ended,
+  until it is reaped, has them, but they open as `EINVAL`, and so do a
+  process's when its leader ended before its other threads, whose own
+  under `task/<tid>` still open. Each
+  mount has its own `st_dev`, as its line in `mountinfo` says, so `df`
+  lists every mount. A pipe, a socket, a
   pidfd, a memfd, a `memfd_secret` file, a namespace file and an anonymous
   inode (an eventfd, an epoll and the like) that no path opened are each on
   a device of their file system's own (pipefs, sockfs, pidfs, the internal
@@ -2335,8 +2342,8 @@ kernel.
   (`ELOOP`), and `O_PATH | O_NOFOLLOW` opens the link itself, which reads
   as the PID of the process reading it and names itself `/proc/self`; then
   `/proc/self/status`, `stat`, `cmdline`, `environ`, `comm`, `exe`, `cwd`,
-  `root`, `maps`, `smaps`, `fd`, `fdinfo`, `ns` and `task`. `root` leads to
-  the root, `/` unless `chroot` moved it. A link of `exe`, `cwd`, `root` or
+  `root`, `maps`, `mounts`, `mountinfo`, `smaps`, `fd`, `fdinfo`, `ns` and
+  `task`. `root` leads to the root, `/` unless `chroot` moved it. A link of `exe`, `cwd`, `root` or
   `fd` reads, as Linux's `d_path` gives it, as a path from the reader's root
   when its file is under that root, and otherwise from the machine's root,
   unmarked; `maps` and `smaps` name a mapped file the same way. `status`
@@ -2351,8 +2358,8 @@ kernel.
   and then a directory for every process of the guest, zombies included, as
   Linux lists them, which is what `ps`, `pgrep` and `pidof` read. Another
   process's `/proc/<pid>` (0555, owned by its effective IDs) has `status`,
-  `stat`, `cmdline`, `environ` (0400), `comm`, `exe`, `cwd`, `root`, `ns`
-  (0511) and `task`, made as
+  `stat`, `cmdline`, `environ` (0400), `comm`, `exe`, `cwd`, `root`,
+  `mounts`, `mountinfo`, `ns` (0511) and `task`, made as
   `fs/proc/base.c` and `array.c` make them for root; any other name there is
   `ENOENT`, as is the directory of a process that was never there or was
   reaped, whatever a mounted host `/proc` holds. `task` lists the threads of
