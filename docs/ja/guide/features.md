@@ -1288,10 +1288,25 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `relatime`、Linux の `shmem_show_options` が出す tmpfs のオプションとともにそれを並べ
   ます。パスは通るディレクトリごとにいちばん上のマウントに入り、マウントのルートでの
   `..` はマウントした場所に出ます。マウントをまたぐ `rename` と `link` は `EXDEV`、
-  マウントポイントの `rmdir` と `rename` は `EBUSY` で、名前の変更は動かすディレクトリの
-  下のマウントも動かします。マウントのルートへの `MS_PRIVATE` と `MS_SLAVE`（`MS_REC`
-  付きでもなしでも）は、`do_change_type` の確認（`EINVAL`）のあと成功します。どの
-  マウントもはじめからプライベートだからです。
+  マウントポイントの `rmdir`、`unlink`、`rename` は `EBUSY` で、名前の変更は動かす
+  ディレクトリの下のマウントも動かします。マウントのルートへの `MS_PRIVATE` と
+  `MS_SLAVE`（`MS_REC` 付きでもなしでも）は、`do_change_type` の確認（`EINVAL`）の
+  あと成功します。どのマウントもはじめからプライベートだからです。
+- `MS_BIND` 付きの `mount` は、`CAP_SYS_ADMIN` までの同じ確認のあと、Linux の
+  `do_loopback` と同じくバインドマウントを作ります。ソースが要り（ないものや空のものは
+  `EINVAL`）、リンクをたどって探し（`ENOENT`、`ENOTDIR`、`ELOOP`、`EACCES`）、ターゲットの
+  マウントが呼び出し元の名前空間にあること（`EINVAL`）、ディレクトリの上にはディレクトリ、
+  ファイルの上にはファイルであること（`ENOTDIR`）が要ります。新しいマウントは、ソースの
+  マウントのファイルシステムをソースから下で見せます。デバイス、型、ソース、フラグは
+  そのマウントのものです（呼び出しの型、データ、ほかのフラグは何も変えないので、
+  `MS_RDONLY` を付けても読み出し専用になりません）。ID は自分のものを持ち、mountinfo の
+  4 つ目の欄にはソースをルートとして出します。ロックはされません。`MS_REC` がなければ、
+  ソースの下にロックされたマウントがあると `EINVAL`（`has_locked_children`）で、あれば
+  下のマウントも写しとして付いてきます。元がロックされていた写しはロックされます。
+  tmpfs は、最初のマウントを外したあとも、そのバインドマウントがある間は残ります。
+  バインドマウントは、ソースの名前を変えたあともそれを見せ続けます。`statx` と
+  `/proc/self/fdinfo` はファイルのマウント ID をパスから求めるので、バインドマウントの
+  ファイルはバインドマウントの ID を持ちます。
 - `umount2` は、ターゲットを探す前にフラグを確かめます（`EINVAL`）。最後のリンクは
   `UMOUNT_NOFOLLOW` がなければたどります。そのあと Linux の `can_umount` と `do_umount`
   と同じく、マウント名前空間に対する `CAP_SYS_ADMIN`（`EPERM`）、その名前空間のマウントの
@@ -2001,8 +2016,8 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   inode の数は、実際に持っているものです。マウントしたホストのディレクトリでは、
   ホストのファイルシステムの値を返します。`/proc/self/mountinfo`、`/proc/self/mounts`、
   `/proc/mounts` は呼び出し元のマウント名前空間のマウントの一覧です（ルートは `tmpfs`、
-  `--mount` ごとに `hostfs`。ホストのパスは見せません。`mount` が作った tmpfs のマウントは
-  ソースとともに出します）。`chroot` のあとは、Linux の `seq_path_root` と同じく、
+  `--mount` ごとに `hostfs`。ホストのパスは見せません。`mount` が作った tmpfs とバインドの
+  マウントは、ソースと、`mountinfo` ではルートとして見せるディレクトリとともに出します）。`chroot` のあとは、Linux の `seq_path_root` と同じく、
   マウントポイントをプロセスのルートから見せ、ルートの下にないものは出しません。
   `/proc/<pid>/mountinfo` と `mounts`（`/proc/thread-self` と `/proc/<pid>/task/<tid>` のものも）は、
   Linux の `mounts_open_common` と同じくそのタスクのもので、そのマウント名前空間のマウントを
@@ -2010,8 +2025,9 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   これらのファイルを持ちますが、開くと `EINVAL` です。ほかのスレッドより先に終わった
   リーダーのプロセスのもの（`/proc/<pid>/mountinfo`）も、開くと `EINVAL` です。残った
   スレッドの `task/<tid>` のものは開けます。
-  マウントごとに `mountinfo` の行と同じ `st_dev` を持つので、
-  `df` はどのマウントも表示します。パスから開いたのではないパイプ・ソケット・pidfd・
+  ファイルシステムごとに `mountinfo` のマウントの行と同じ `st_dev` を持つので、
+  `df` はどのファイルシステムも表示します。バインドマウントは、Linux と同じく、ソースと同じ
+  `st_dev` を持つので、`df` はそのデバイスを一度表示したあとは出しません。パスから開いたのではないパイプ・ソケット・pidfd・
   memfd・`memfd_secret` のファイル・名前空間のファイル・匿名 inode（eventfd や epoll
   など）は、Linux と同じく、それぞれのファイルシステム（pipefs・sockfs・pidfs・内部の
   tmpfs・secretmem・nsfs・anon_inodefs）が持つデバイスにあり、どれもマウントのもの

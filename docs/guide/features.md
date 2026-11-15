@@ -1468,11 +1468,28 @@ kernel.
   and tmpfs's options as Linux's `shmem_show_options` prints them. A path
   steps into the topmost mount on each directory it passes, and `..` at a
   mount's root goes to where it is mounted; `rename` and `link` from one
-  mount to another are `EXDEV`, `rmdir` and `rename` of a mount point
-  `EBUSY`, and a rename moves the mounts below the directory it moves.
-  `MS_PRIVATE` and `MS_SLAVE` (with `MS_REC` or not) of a mount's root
-  succeed, as every mount is private already, after `do_change_type`'s
-  checks (`EINVAL`).
+  mount to another are `EXDEV`, `rmdir`, `unlink` and `rename` of a mount
+  point `EBUSY`, and a rename moves the mounts below the directory it
+  moves. `MS_PRIVATE` and `MS_SLAVE` (with `MS_REC` or not) of a mount's
+  root succeed, as every mount is private already, after
+  `do_change_type`'s checks (`EINVAL`).
+- `mount` with `MS_BIND` makes a bind mount, after the same checks up to
+  `CAP_SYS_ADMIN`, as Linux's `do_loopback`: a source (`EINVAL` for none or
+  an empty one), looked up with its links followed (`ENOENT`, `ENOTDIR`,
+  `ELOOP`, `EACCES`), a target whose mount is in the caller's namespace
+  (`EINVAL`), and a directory on a directory or a file on a file
+  (`ENOTDIR`). The new mount shows the source's mount's file system from
+  the source down, with that mount's device, type, source and flags (the
+  type, the data and the other flags of the call change nothing, so
+  `MS_RDONLY` with it does not make it read-only), an ID of its own, and the
+  source as its root in mountinfo's fourth field. It is not locked; without
+  `MS_REC` a locked mount below the source is `EINVAL`
+  (`has_locked_children`), and with it the mounts below come along as
+  copies, each locked if its original was. A tmpfs stays while a bind mount
+  of it does, after its first mount goes, and a bind mount keeps showing its
+  source after a rename of it. `statx` and `/proc/self/fdinfo` give a
+  file's mount ID by its path, so a bind mount's files have the bind
+  mount's.
 - `umount2` checks its flags (`EINVAL`) before it looks the target up, its
   last link followed unless `UMOUNT_NOFOLLOW`; then, as Linux's
   `can_umount` and `do_umount`, it needs `CAP_SYS_ADMIN` over the mount
@@ -2306,7 +2323,8 @@ kernel.
   host filesystem's own numbers. `/proc/self/mountinfo`, `/proc/self/mounts`
   and `/proc/mounts` list the mounts of the caller's mount namespace
   (`tmpfs` for the root, `hostfs` for each `--mount`, without host paths,
-  and the tmpfs mounts `mount` made, with their sources). After `chroot` they show each mount point
+  and the tmpfs and bind mounts `mount` made, with their sources and, in
+  `mountinfo`, the directory each shows as its root). After `chroot` they show each mount point
   from the process's root and leave out those not under it, as Linux's
   `seq_path_root` does. `/proc/<pid>/mountinfo` and `mounts` (and those of
   `/proc/thread-self` and `/proc/<pid>/task/<tid>`) are those of that task,
@@ -2314,9 +2332,10 @@ kernel.
   namespace, from its root, for any reader; a process that has ended,
   until it is reaped, has them, but they open as `EINVAL`, and so do a
   process's when its leader ended before its other threads, whose own
-  under `task/<tid>` still open. Each
-  mount has its own `st_dev`, as its line in `mountinfo` says, so `df`
-  lists every mount. A pipe, a socket, a
+  under `task/<tid>` still open. Each file system has its own `st_dev`, as
+  its mounts' lines in `mountinfo` say, so `df` lists every file system. A
+  bind mount shares its source's `st_dev`, as in Linux, so `df` leaves it
+  out once it has listed that device. A pipe, a socket, a
   pidfd, a memfd, a `memfd_secret` file, a namespace file and an anonymous
   inode (an eventfd, an epoll and the like) that no path opened are each on
   a device of their file system's own (pipefs, sockfs, pidfs, the internal
