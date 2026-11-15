@@ -172,6 +172,27 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   伸びず、その呼び出しは `EFAULT` になります。Linux では、ユーザーメモリのコピーが、
   ゲストでのフォルトと同じようにマッピングを伸ばします。`RLIMIT_AS` は、`mmap` を
   止めないのと同じく、伸びることも止めません。
+- **perf のイベントの一部**：数えるのはソフトウェアのクロック（`cpu-clock`、`task-clock`）と、
+  x86-64 で起きないソフトウェアのイベントだけです。ページフォルト、コンテキストスイッチ、
+  CPU の移動、cgroup の切り替え、トレースポイント、ブレークポイント、kprobe、uprobe は
+  `ENOENT` で、ハードウェアのイベントも、PMU のあるホストでも `ENOENT` です。スレッドの
+  CPU 時間は、最後のシステムコールで最後に記録したものです。CPU のイベントは経った時間を
+  数えます。リングバッファはないので、イベントの `mmap` は `ENODEV`、サンプリングする
+  イベントはサンプルを取らずシグナルも送らず、`poll` は読めるとは見ません。`inherit` は
+  受け付けますが子は数えず、一つの CPU のタスクのイベントはどの CPU でも数え、cgroup の
+  モード（`PERF_FLAG_PID_CGROUP`）は `EBADF` です。`PERF_FLAG_FD_OUTPUT` と ioctl の
+  `SET_OUTPUT`、`SET_FILTER`、`SET_BPF`、`PAUSE_OUTPUT`、`QUERY_BPF`、
+  `MODIFY_ATTRIBUTES` は、何もしないか `ENOTTY` です。`remove_on_exec` は、タスクの
+  `execve` でイベントを無効にし、読めるまま残します。Linux はタスクのコンテキストから
+  取り除きます。それが率いたグループのメンバーは、それぞれで数え続けます。`execve` を待つ
+  イベントは、エミュレートするすべてのマシンで一つの一覧に置き、スレッドグループとスレッドで
+  照合して、閉じたときに除きます。グループのメンバーは、どのソフトウェアのクロックでも
+  数えます。Linux は、テストを動かす x86-64 のマシンで、`task-clock` のグループの
+  `cpu-clock` のメンバーに数を与えませんでした（理由は分かっていません）。Linux master の構造体の SIMD
+  レジスタのフィールドは確かめず、使うと `EOPNOTSUPP` です。`kernel.perf_event_paranoid` は
+  いつも 2 で（Debian と Ubuntu のカーネルの既定はそれより大きい）、それを示す
+  `/proc/sys/kernel` のファイルはなく、`prctl` の `PR_TASK_PERF_EVENTS_DISABLE` と
+  `ENABLE` もありません。
 - **BPF はマップだけ**：`bpf` が作るのは配列とハッシュだけです。プログラム
   （`BPF_PROG_LOAD`、`BPF_PROG_TEST_RUN`）、BTF（`BPF_BTF_LOAD`）、link、アタッチ、ピン
   （`BPF_OBJ_PIN`、`BPF_OBJ_GET`）、ID（`BPF_*_GET_NEXT_ID`、`BPF_*_GET_FD_BY_ID`）、

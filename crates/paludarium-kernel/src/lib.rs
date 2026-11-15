@@ -48,6 +48,7 @@ mod mqueue;
 mod msg;
 mod namespaces;
 mod page_cache;
+mod perf;
 mod proc;
 mod process_vm;
 mod processes;
