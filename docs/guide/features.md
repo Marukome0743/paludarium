@@ -1007,7 +1007,9 @@ kernel.
   1024000000, `SEMOPM` 500, `SEMMNI` 32000, `SEMVMX` 32767); a set's IDs are
   given out as a segment's. `semctl` has `IPC_STAT`, `IPC_SET`, `IPC_RMID`,
   `IPC_INFO`, `SEM_INFO`, `SEM_STAT`, `SEM_STAT_ANY`, `GETVAL`, `SETVAL`,
-  `GETALL`, `SETALL`, `GETPID` (in the caller's PID namespace), `GETNCNT`
+  `GETALL`, `SETALL`, `GETPID` (in the caller's PID namespace, still once
+  that process is reaped, as each semaphore keeps its `struct pid`, the
+  undo at its exit's included), `GETNCNT`
   and `GETZCNT` (counted by the operation each wait waits on). The
   operations of one call are done all at once or not at all; one that
   cannot go through waits, unless the operation it would wait on has
