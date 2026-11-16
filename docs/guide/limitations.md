@@ -238,9 +238,8 @@ verified.
   The SIMD register fields of Linux master's 176-byte structure are checked
   as master checks them and not compared with Linux: the test machines'
   Linux 7.0 knows 144 bytes and gives `E2BIG` for any of them that is not
-  0. `kernel.perf_event_paranoid` is always 2 (Debian's and
-  Ubuntu's kernels default to more), and its `/proc/sys/kernel` file cannot
-  be written (mode 0444), where Linux's root may write Linux's (0644).
+  0. `kernel.perf_event_paranoid` starts at Linux's 2 (Debian's and
+  Ubuntu's kernels default to more).
 - **BPF, maps only**: `bpf` makes arrays and hashes and nothing else.
   Programs (`BPF_PROG_LOAD`, `BPF_PROG_TEST_RUN`), BTF (`BPF_BTF_LOAD`),
   links, attachment, pins (`BPF_OBJ_PIN`, `BPF_OBJ_GET`), the IDs of
@@ -277,9 +276,6 @@ verified.
   first here). Map IDs are the emulated machine's, so they
   start at 1 and do not see the host's maps. `BPF_F_MMAPABLE` is taken but `mmap` of a map
   is `ENODEV`, and a map's SHA-256 (`bpf_map_info.hash`) is `EINVAL`.
-  `kernel.unprivileged_bpf_disabled` is always 2, and its
-  `/proc/sys/kernel` file cannot be written (mode 0444), where Linux's
-  root may write Linux's (0644).
 - **Virtual CPUs**: a thread that has registered `rseq` runs on a virtual
   CPU, not on a CPU of the host's, so the CPU its area and `getcpu` show is
   not where the host runs it, and `/proc/<pid>/stat` shows CPU 0. Its
@@ -472,8 +468,9 @@ verified.
     little later; a thread
     keyring follows only the file-system IDs that `setfsuid`, `setuid`
     and the like change.
-  - A `/proc/sys/fs/mqueue` file and an IPC limit of `/proc/sys/kernel`
-    check who may write them when they are opened,
+  - A `/proc/sys/fs/mqueue` file and the files of `/proc/sys/kernel`
+    check who may write them, and `unprivileged_bpf_disabled` whether the
+    writer has `CAP_SYS_ADMIN`, when they are opened,
     where Linux checks the writer again at each write, and each reports its
     value's length as its size, where Linux reports 0.
   - Yama's `ptrace_scope` is always 1: there is no

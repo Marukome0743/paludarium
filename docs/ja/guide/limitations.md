@@ -209,9 +209,7 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   176 バイトの構造体の SIMD レジスタのフィールドは、master と同じく確かめますが、Linux とは
   比べていません。テストのマシンの Linux 7.0 は 144 バイトまでしか知らず、0 でないものには
   `E2BIG` を返します。`kernel.perf_event_paranoid` は
-  いつも 2 で（Debian と Ubuntu のカーネルの既定はそれより大きい）、その
-  `/proc/sys/kernel` のファイルには書けません（モード 0444。Linux のファイルは 0644 で、
-  root が書けます）。
+  最初 Linux の 2 です（Debian と Ubuntu のカーネルの既定はそれより大きい）。
 - **BPF はマップだけ**：`bpf` が作るのは配列とハッシュだけです。プログラム
   （`BPF_PROG_LOAD`、`BPF_PROG_TEST_RUN`）、BTF（`BPF_BTF_LOAD`）、link、アタッチ、ピン
   （`BPF_OBJ_PIN`、`BPF_OBJ_GET`）、プログラム、BTF、link の ID（`BPF_PROG_GET_NEXT_ID`、
@@ -242,8 +240,6 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   マシンのものなので、1 から始まり、ホストのマップは見えません。`BPF_F_MMAPABLE` は
   受け付けますが、マップの `mmap` は `ENODEV`、マップの SHA-256
   （`bpf_map_info.hash`）は `EINVAL` です。
-  `kernel.unprivileged_bpf_disabled` はいつも 2 で、その `/proc/sys/kernel` の
-  ファイルには書けません（モード 0444。Linux のファイルは 0644 で、root が書けます）。
 - **仮想 CPU**：`rseq` を登録したスレッドは、ホストの CPU ではなく仮想 CPU で動きます。
   そのため、領域と `getcpu` が示す CPU は、ホストがそのスレッドを動かしている CPU では
   ありません。`/proc/<pid>/stat` は CPU 0 を示します。クリティカルセクションは、CPU が
@@ -406,8 +402,9 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
     専用のワーカーではなく、次の鍵の呼び出しの始めに行います。最後のリンクを失った鍵は
     すぐになくなり、割り当ても戻ります。Linux では少しあとで解放します。スレッドのキーリングが従うのは、`setfsuid` や `setuid` などが変える
     ファイルシステムの ID だけです。
-  - `/proc/sys/fs/mqueue` のファイルと `/proc/sys/kernel` の IPC の上限は、書ける者を
-    開くときに確かめます。Linux は書き込みの
+  - `/proc/sys/fs/mqueue` と `/proc/sys/kernel` のファイルは、書ける者を（
+    `unprivileged_bpf_disabled` は書き手に `CAP_SYS_ADMIN` があるかも）開くときに
+    確かめます。Linux は書き込みの
     たびに書く者を確かめ直します。また、サイズとして値の長さを示します。Linux は 0 です。
   - Yama の `ptrace_scope` は常に 1 です。それを読んだり変えたりする
     `/proc/sys/kernel/yama/ptrace_scope` はありません。
