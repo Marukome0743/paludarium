@@ -768,9 +768,13 @@ verified.
   neighbours (an `AF_MCTP` `RTM_NEWNEIGH` or `RTM_DELNEIGH`), a bridge's
   forwarding database (an `AF_BRIDGE` `RTM_GETNEIGH`, `RTM_NEWNEIGH` or
   `RTM_DELNEIGH`), rules, queueing disciplines and the rest are
-  `EOPNOTSUPP`, as are an input route
-  lookup (`RTA_IIF`, as `ip route get ... iif` sends), renaming `lo`
-  and setting any other attribute of it. A
+  `EOPNOTSUPP`, as are renaming `lo` and setting any other attribute of
+  it. An input route lookup (`RTA_IIF`) takes forwarding and reverse path
+  filtering to be off, as Linux's own settings have them, where a new
+  namespace of Linux takes the first one's for IPv4, which a host may
+  have changed (Docker turns forwarding on, Ubuntu reverse path filtering
+  to 2), and there are no files to change them (`/proc/sys/net/ipv4/conf`).
+  A
   route goes through `lo` or rejects: IPv6 gateways, multipath routes,
   encapsulations, nexthop objects, realms, expiries, source prefixes, router preferences
   and the anycast, multicast and NAT kinds (and broadcast for IPv6) are
@@ -787,8 +791,11 @@ verified.
   An address runs out as its lifetime ends, where Linux's checks are
   deferrable work, which comes up to a second later (`round_jiffies_up`)
   and, on an idle machine, may wait seconds more, unless an address of the
-  family is added or changed, which has them run at once. An IPv6
-  route that has run out goes from its table at once, where Linux's, which lookups pass over, stays in dumps until its
+  family is added or changed, which has them run at once. What a socket
+  that binds or sends finds run out is told of when a netlink socket of
+  the namespace next reads, polls or writes, where Linux tells of it as
+  its check runs. An IPv6 route that has run out goes from its table at
+  once, where Linux's, which lookups pass over, stays in dumps until its
   garbage collection (`gc_interval`, 30 seconds), and from 7.3 marks its
   notification of that with `RTA_DEL_REASON`. A change that gives a
   permanent IPv6 address a lifetime gives its prefix route the same, as
