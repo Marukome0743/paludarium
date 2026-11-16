@@ -1893,7 +1893,10 @@ kernel.
     last `rtnetlink` knows (`RTM_MAX`, 123) is sent, and answered with
     `EOPNOTSUPP`, as `rtnetlink_rcv_msg` does. Anything but a `GET` needs `CAP_NET_ADMIN` in
     the user namespace that owns the network namespace, for the sending
-    thread and the socket's opener (`EPERM`).
+    thread and the socket's opener (`EPERM`); a send that names an
+    address (`sendto`, `sendmsg` with a name) needs the sending thread's
+    alone, as `netlink_sendmsg` marks it `NETLINK_SKB_DST`, which
+    `__netlink_ns_capable` passes the opener over for.
   - **Strict checking:** with `NETLINK_GET_STRICT_CHK`, as iproute2 sets
     it, requests are checked as Linux checks them. A dump takes a whole
     header with nothing in it but what may narrow it, and of the
@@ -1943,6 +1946,23 @@ kernel.
     takes none of them. A change of the link takes one of
     `IFLA_NET_NS_PID`, `IFLA_NET_NS_FD` and `IFLA_TARGET_NETNSID` at most
     (`EINVAL`), and a get neither of the first two (`EOPNOTSUPP`).
+  - **Link changes and other namespaces:** `RTM_SETLINK` and `RTM_NEWLINK`
+    find the namespace those name as `rtnl_link_get_net_capable` does,
+    before `lo` is looked for: `ESRCH`, `EBADF` or `EINVAL` for a process,
+    descriptor or ID that names none, and `EPERM` without
+    `CAP_NET_ADMIN` over it, the opener's and the sender's (the sender's
+    alone for a send that names an address, as above). `lo` is found
+    (`RTM_NEWLINK` with `NLM_F_CREATE` and `NLM_F_EXCL` finds it in that
+    namespace, where it is too, so `EEXIST`), and moving it to another
+    namespace is `EINVAL`, as its namespace is immutable
+    (`__dev_change_net_namespace`), before any other attribute; its own
+    namespace, by process, descriptor or ID, is no move. `RTM_DELLINK`,
+    as `rtnl_dellink`, takes an ID alone (`EOPNOTSUPP` for the first two),
+    as `rtnl_get_net_ns_capable` finds it (`EINVAL`, `EACCES`), and finds
+    `lo` there by index or name, which may not be deleted (`EOPNOTSUPP`,
+    as it has no `rtnl_link_ops`); another link is `ENODEV`, and without
+    either, `IFLA_GROUP` is `EPERM` for group 0 and `ENODEV` for another,
+    and nothing `EINVAL`.
   - **Namespace IDs:** as Linux's `net_namespace.c`, `RTM_NEWNSID` gives
     the network namespace of a process (`NETNSA_PID`, `ESRCH` for none) or
     of a `/proc/<pid>/ns/net` descriptor (`NETNSA_FD`, `EBADF`, or `EINVAL`
