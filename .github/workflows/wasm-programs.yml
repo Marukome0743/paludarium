@@ -32,6 +32,9 @@ jobs:
         run: python3 -m unittest discover -s tests/guests/wasm/runner-tests -p 'test_*.py'
       - name: Build fixed guests and audit dependencies
         run: python tests/guests/programs/build.py target/guests/programs
+      # Before the oracle, whose sudo makes target/wasm root's.
+      - name: The x87 guest and what it prints on this x86-64 CPU
+        run: python3 tests/guests/wasm/x87.py target/wasm/x87
       - name: Fresh Linux oracle with filesystem metadata
         run: sudo unshare --net python3 scripts/wasm-run.py --native-only --guest-dir target/guests/programs --output target/wasm/native
       - name: Build one production wasm module for every environment
@@ -51,6 +54,7 @@ jobs:
             target/guests/programs/aube-deny.toml
             target/guests/programs/licenses/
             target/wasm/native/
+            target/wasm/x87/
             packages/paludarium-wasm/paludarium.wasm
           retention-days: 7
   differential:
@@ -155,6 +159,12 @@ jobs:
           assert sorted(report['restored']) == sorted(step['name'] for step in steps)
           assert all(row['pass'] and row['exit'] == 0 and not row['timed_out'] for row in report['restored'].values())
           PY
+      # The x87 cases of the process tests, byte for byte, with the time each
+      # takes here and natively.
+      - name: Compare the x87 cases with x86-64 Linux
+        env:
+          WASM_ENVIRONMENT: ${{ matrix.environment }}
+        run: node packages/paludarium-wasm/tests/wasm-x87-check.mjs "$WASM_ENVIRONMENT" packages/paludarium-wasm/paludarium.wasm target/wasm/x87 "target/wasm/$WASM_ENVIRONMENT"
       - name: Preserve raw results and cleanup evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
