@@ -212,6 +212,8 @@ mod linux {
                     | "bpf-calls"
                     | "bpf-elements"
                     | "bpf-batch"
+                    | "bpf-ids"
+                    | "bpf-memory"
                     | "keys-calls"
                     | "keys-keyrings"
                     | "keys-threads"
@@ -491,6 +493,8 @@ mod linux {
         bpf_calls => ("bpf-calls","bpf"),
         bpf_elements => ("bpf-elements","bpf"),
         bpf_batch => ("bpf-batch","bpf"),
+        bpf_ids => ("bpf-ids","bpf"),
+        bpf_memory => ("bpf-memory","bpf"),
         inotify_calls => ("inotify-calls","inotify"),
         inotify_directory => ("inotify-directory","inotify"),
         inotify_files => ("inotify-files","inotify"),
