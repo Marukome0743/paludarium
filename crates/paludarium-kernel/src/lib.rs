@@ -752,6 +752,7 @@ impl Kernel {
         let mut restart = ptrace::Restart {
             number: thread.state.restart.take(),
             seccomp: thread.state.seccomp_restart.take(),
+            no_handler: false,
             traced: false,
         };
         if self.group.retired(thread.tid) {
@@ -847,7 +848,9 @@ impl Kernel {
             thread.state.restart_block = None;
             // With SA_RESTART the frame resumes at the syscall instruction,
             // so the call runs again when the handler returns.
-            if action.flags & signals::SA_RESTART != 0 || restart.seccomp == Some(true) {
+            if !restart.no_handler
+                && (action.flags & signals::SA_RESTART != 0 || restart.seccomp == Some(true))
+            {
                 Self::rewind_restart(
                     thread,
                     restart.number.filter(|&number| {
@@ -868,6 +871,7 @@ impl Kernel {
             if forced && signal.number == signal::SIGSEGV {
                 return self.terminate(thread, signal::SIGSEGV);
             }
+            let stepped = self.ptrace_handler_entering(thread);
             let limits = self.stack_limits(thread);
             if signals::install(
                 &mut thread.state,
@@ -900,7 +904,9 @@ impl Kernel {
                 signals::queue(&mut thread.state, rseq::forced_sigsegv());
                 continue;
             }
-            self.ptrace_handler_entered(thread, &mut restart);
+            if stepped {
+                self.ptrace_handler_entered(thread, &mut restart);
+            }
             return Next::Resume;
         }
         if let Some(mask) = thread.state.wait_restore_mask.take() {
@@ -1262,7 +1268,7 @@ impl Kernel {
             thread.cpu.gpr[reg::R9],
         ];
         self.group.take_seccomp(thread.tid, &mut thread.state);
-        if thread.state.seccomp.mode != 0 {
+        if thread.state.seccomp.mode != 0 && !self.seccomp_suspended(thread.tid) {
             let mut verdict =
                 seccomp::check(&thread.state.seccomp, number as u32, args, thread.cpu.rip.0);
             // SECCOMP_RET_TRACE: the tracer may change or skip the call,

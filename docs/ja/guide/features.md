@@ -3506,13 +3506,20 @@ TCP のソケットは、ゲスト自身のループバックの上で Linux と
   （`struct user`）、`PTRACE_GETREGS`／`PTRACE_SETREGS`、`PTRACE_GETFPREGS`／
   `PTRACE_SETFPREGS`、`NT_PRSTATUS` と `NT_PRFPREG` の `PTRACE_GETREGSET`／
   `PTRACE_SETREGSET` で読み書きし、Linux の `putreg` と同じ値を受け付けます（トレーサーが
-  変えてよいフラグだけ、セグメントのベースは `TASK_SIZE_MAX` 未満、それ以外は `EIO`）。停止の
+  変えてよいフラグだけ、セグメントのベースは `TASK_SIZE_MAX` 未満、セグメントセレクタは null か
+  ユーザーのもので、`cs` と `ss` は null 以外、それ以外は `EIO`。セレクタは書いたとおりに残り、
+  `fs` と `gs` の新しいセレクタは FSGSBASE と同じくベースを変えません。exec で初めの値に
+  戻ります）。停止の
   siginfo は `PTRACE_GETSIGINFO`／`PTRACE_SETSIGINFO` で扱います（siginfo のない停止では
   `EINVAL`）。`orig_rax` は止まる直前のシステムコール、それ以外の後では -1 です。停止が
   割り込んだシステムコールは `rax` に再実行のコード（`-ERESTARTSYS`、`-ERESTARTNOINTR`、
-  `-ERESTARTNOHAND`、`-ERESTART_RESTARTBLOCK`）を見せ、トレーサーが `rax` を変えるか
-  `orig_rax` を -1 にしない限り、もう一度実行します。`orig_rax` を変えると、そのシステム
-  コールが実行されます。
+  `-ERESTARTNOHAND`、`-ERESTART_RESTARTBLOCK`）を見せます。Linux と同じく、トレーサーが
+  そこに残したコードで再実行が決まり（別の再実行のコードならそのとおりに、
+  `-ERESTART_RESTARTBLOCK` は `restart_syscall` として）、ほかの値や、`orig_rax` を -1 に
+  したときは再実行せず、コードがそのまま戻り値になります。`orig_rax` を変えると、そのシステム
+  コールが実行されます。`PTRACE_O_SUSPEND_SECCOMP` は、トレース対象のシステムコールを
+  seccomp のフィルターと strict モードに通さず、checkpoint／restore のある Linux と同じく、
+  設定には `CAP_SYS_ADMIN` と、seccomp のないトレーサーが要ります（`EPERM`）。
 - `PTRACE_SYSCALL` で再開したトレース対象は、システムコールの入口と出口ごとに止まります
   （`SIGTRAP`、`PTRACE_O_TRACESYSGOOD` があれば `SIGTRAP | 0x80`）。`PTRACE_SYSEMU` では入口だけで
   止まり、システムコールは実行されません。入口では `rax` が `-ENOSYS`、`orig_rax` がシステム
@@ -3539,7 +3546,8 @@ TCP のソケットは、ゲスト自身のループバックの上で Linux と
   自分で立てたのでなければ、トレーサーにはレジスタで見えず（`TIF_FORCED_TF`）、ほかの再開で
   消えます。トレース対象は 1 命令の後に `SIGTRAP` で止まり、`syscall` の後はその出口で
   `TRAP_BRKPT` で止まります。シングルステップ中のトレース対象は、シグナルハンドラーに入る前に
-  `SIGTRAP` で止まります。`PTRACE_SYSEMU_SINGLESTEP` も同じくステップし、さらに
+  `SIGTRAP` で止まり、そこでステップは終わります。ハンドラーのフレームには、トレーサーが
+  立てたトラップフラグは残りません。`PTRACE_SYSEMU_SINGLESTEP` も同じくステップし、さらに
   `PTRACE_SYSEMU` と同じく、各システムコールの入口で止まって実行しません。
 - `PTRACE_PEEKSIGINFO` は、止まっているトレース対象に、`PTRACE_PEEKSIGINFO_SHARED` 付きでは
   そのプロセスに保留中のシグナルの siginfo を、来た順に読みます。`PTRACE_GETSIGMASK` は
