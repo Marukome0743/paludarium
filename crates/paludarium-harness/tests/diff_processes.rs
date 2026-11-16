@@ -148,10 +148,10 @@ mod linux {
             // user namespace with its capabilities (Ubuntu's AppArmor gives none
             // to one an unprivileged user makes) before it becomes one,
             // the personality-layout case, which maps page 0, the
-            // proc-other-maps and proc-other-fds cases, which read a
-            // process's maps and descriptors as another user, and the
-            // pagemap and proc-owners cases, which become an unprivileged
-            // user, as the emulator's guest starts as root.
+            // proc-other-maps, proc-other-fds and proc-other-limits cases,
+            // which read a process's maps, descriptors and auxv as another
+            // user, and the pagemap and proc-owners cases, which become an
+            // unprivileged user, as the emulator's guest starts as root.
             let as_root = matches!(
                 mode,
                 "credentials"
@@ -169,6 +169,7 @@ mod linux {
                     | "proc-maps"
                     | "proc-other-maps"
                     | "proc-other-fds"
+                    | "proc-other-limits"
                     | "dynamic-exec"
                     | "pty-vhangup"
                     | "pid-namespace"
@@ -721,6 +722,7 @@ mod linux {
         processes_proc_other_mounts => ("proc-other-mounts","process"),
         processes_proc_other_maps => ("proc-other-maps","process"),
         processes_proc_other_fds => ("proc-other-fds","process"),
+        processes_proc_other_limits => ("proc-other-limits","process"),
         processes_modify_ldt => ("modify-ldt","process"),
         processes_port_access => ("port-access","process"),
         processes_timer_limits => ("timer-limits","process"),
