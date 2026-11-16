@@ -2809,7 +2809,14 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   ならそのグループ）と `PERF_EVENT_IOC_ID` があり、サンプリングしないイベントでは `PERIOD`
   と `REFRESH` は `EINVAL` です。`enable_on_exec` は、`perf stat` が使うように、無効な
   イベントをそのタスクの `execve` で有効にし、`remove_on_exec` はそのとき
-  イベントを以後ずっと無効にします。ディスクリプタのリンクは
+  イベントを以後ずっと無効にします。`prctl` の `PR_TASK_PERF_EVENTS_DISABLE` と `ENABLE` は、
+  呼んだスレッドが開いたすべてのイベントを、どのタスクを数えるものでも（無効で開いたものも）
+  無効または有効にし、ほかの引数は読みません。`execve` を実行したスレッドは、開いたイベントを
+  そのまま持ちます。`sample_simd_regs_enabled` があると、Linux master の構造体の SIMD
+  レジスタのフィールドを、x86 の `perf_simd_reg_validate` と同じく確かめます（`EINVAL`）。
+  XMM か YMM（2 か 4 クワッドワード）は 16 個すべて、ZMM（8）は 32 個すべて、opmask（1）は
+  8 個すべてか、どれもないかです。正しく使っても、ソフトウェアのイベントは取らないので
+  `EOPNOTSUPP` です。ディスクリプタのリンクは
   `anon_inode:[perf_event]` で、読み書きで開かれ、書き込みは `EINVAL` です。ないものは
   [制限](./limitations) を参照してください。
 - `bpf` は、Linux の `kernel/bpf/syscall.c`、`arraymap.c`、`hashtab.c` と同じくマップを
@@ -2838,9 +2845,9 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `INT_MAX` からは `EINVAL`）、`BPF_MAP_GET_FD_BY_ID` はマップの新しい close-on-exec の
   ディスクリプタを `open_flags`（`BPF_F_RDONLY` か `BPF_F_WRONLY`）に従って開きます
   （どのマップの ID でもなければ `ENOENT`）。どちらも、フィールドを確かめた（`EINVAL`）あとで
-  `CAP_SYS_ADMIN` が要ります（`EPERM`）。マップが取るメモリは、x86-64 のテストのマシンが
-  動かす Linux 7.0 が x86-64 で与えるものです。配列は 312 バイトのヘッダーと、8 バイトに
-  切り上げたすべての値です（マップできるものはそれぞれをページに揃えます）。ハッシュは
+  `CAP_SYS_ADMIN` が要ります（`EPERM`）。マップが取るメモリは、x86-64 のテストのマシンの
+  カーネル（Ubuntu の Linux 7.0）が x86-64 で与えるものです。配列は 312 バイトの
+  ヘッダーと、8 バイトに切り上げたすべての値です（マップできるものはそれぞれをページに揃えます）。ハッシュは
   896 バイトのヘッダー、バケット一つに 16 バイト（`max_entries` を 2 のべき乗に切り上げた数。
   2^31 を超えるエントリや 4 GiB を超えるバケットは `E2BIG`）と要素で、要素は 48 バイトと、
   それぞれ 8 バイトに切り上げたキーと値です。事前に確保するものはすべての要素と CPU ごとに

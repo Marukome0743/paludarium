@@ -3242,8 +3242,16 @@ kernel.
   and `PERF_EVENT_IOC_ID` are there; `PERIOD` and `REFRESH` are `EINVAL`
   for an event that does not sample. `enable_on_exec` enables a disabled
   event when its task runs `execve`, as `perf stat` uses it, and
-  `remove_on_exec` disables one then for good. The
-  descriptor's link is `anon_inode:[perf_event]`, it is open for reading
+  `remove_on_exec` disables one then for good. `prctl`'s
+  `PR_TASK_PERF_EVENTS_DISABLE` and `ENABLE` disable and enable every
+  event the calling thread opened, whatever task it counts (one opened
+  disabled too), and read no other argument; a thread that runs `execve`
+  keeps the events it opened. With `sample_simd_regs_enabled`, the SIMD
+  register fields of Linux master's structure are checked as x86's
+  `perf_simd_reg_validate` checks them (`EINVAL`): XMM or YMM (2 or 4
+  quadwords) all 16 registers, ZMM (8) all 32, the opmask ones (1) all 8,
+  or none; a valid use of them is `EOPNOTSUPP`, as a software event takes
+  none. The descriptor's link is `anon_inode:[perf_event]`, it is open for reading
   and writing, and a write is `EINVAL`. See [limitations](./limitations)
   for what is not there.
 - `bpf` has maps, as Linux's `kernel/bpf/syscall.c`, `arraymap.c` and
@@ -3278,8 +3286,8 @@ kernel.
   `BPF_MAP_GET_FD_BY_ID` a new close-on-exec descriptor of a map, open as
   `open_flags` (`BPF_F_RDONLY` or `BPF_F_WRONLY`) asks (`ENOENT` for an ID
   no map has); both need `CAP_SYS_ADMIN` (`EPERM`), after their fields are
-  checked (`EINVAL`). A map takes the memory Linux 7.0, which the x86-64
-  test machines run, gives it on x86-64: an array its 312-byte header and
+  checked (`EINVAL`). A map takes the memory the x86-64 test machines'
+  kernel, Ubuntu's Linux 7.0, gives it on x86-64: an array its 312-byte header and
   every value rounded up to 8 bytes (a mappable one each page-aligned), a
   hash its 896-byte header, 16 bytes a bucket (as many as `max_entries`
   rounded up to a power of two; more than 2^31 entries, or buckets past

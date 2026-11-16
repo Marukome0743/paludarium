@@ -212,6 +212,7 @@ mod linux {
                     | "perf-calls"
                     | "perf-counts"
                     | "perf-exec"
+                    | "perf-prctl"
                     | "bpf-calls"
                     | "bpf-elements"
                     | "bpf-batch"
@@ -357,6 +358,7 @@ mod linux {
                     | "cpu-timer-others"
                     | "perf-counts"
                     | "perf-exec"
+                    | "perf-prctl"
             ) {
                 host.measure_cpu_time();
             }
@@ -501,6 +503,7 @@ mod linux {
         perf_calls => ("perf-calls","perf"),
         perf_counts => ("perf-counts","perf"),
         perf_exec => ("perf-exec","perf"),
+        perf_prctl => ("perf-prctl","perf"),
         bpf_calls => ("bpf-calls","bpf"),
         bpf_elements => ("bpf-elements","bpf"),
         bpf_batch => ("bpf-batch","bpf"),
