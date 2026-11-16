@@ -263,20 +263,24 @@ impl Segments {
     /// Sets `kernel.shm_rmid_forced`; set, it removes the orphans no
     /// mapping shows, as Linux's `shm_destroy_orphaned`.
     pub(crate) fn set_rmid_forced(&self, value: i32) {
+        self.lock().limits.rmid_forced = value;
+        self.remove_orphans();
+    }
+    /// With `kernel.shm_rmid_forced` set, removes the orphans no mapping
+    /// shows (`shm_destroy_orphaned`), as each write of it does.
+    pub(crate) fn remove_orphans(&self) {
         let mut table = self.lock();
-        table.limits.rmid_forced = value;
-        if value != 0 {
-            let orphans: Vec<u32> = table
-                .segments
-                .iter()
-                .filter(|(_, segment)| {
-                    segment.attached() == 0 && segment.creator.strong_count() == 0
-                })
-                .map(|(&index, _)| index)
-                .collect();
-            for index in orphans {
-                table.destroy(index);
-            }
+        if table.limits.rmid_forced == 0 {
+            return;
+        }
+        let orphans: Vec<u32> = table
+            .segments
+            .iter()
+            .filter(|(_, segment)| segment.attached() == 0 && segment.creator.strong_count() == 0)
+            .map(|(&index, _)| index)
+            .collect();
+        for index in orphans {
+            table.destroy(index);
         }
     }
 }

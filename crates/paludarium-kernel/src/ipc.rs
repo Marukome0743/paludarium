@@ -56,8 +56,8 @@ impl Ids {
     /// An ID `kernel.*_next_id` set is taken instead, once (`ipc_idr_alloc`
     /// with `next_id`): its sequence number, and the first free index from
     /// its own, which leaves the turn and the sequence number as they were.
-    /// Linux looks past `IPCMNI` for a free index; here none past it is
-    /// `ENOSPC`.
+    /// None free below `IPCMNI` is `ENOSPC`, as Linux master's `idr_alloc`
+    /// stops at `ipc_mni` (7.0's looked past it).
     pub fn allocate<T>(&mut self, objects: &BTreeMap<u32, T>, limit: usize) -> Result<i32, Errno> {
         let in_use = objects.len();
         if in_use >= limit {

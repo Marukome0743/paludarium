@@ -15207,6 +15207,40 @@ static int ipc_sysctl_more(void) {
     printf(" made=%d exited=%ld own=%ld", made, ksys_exists(left), ksys_exists(own));
     printf(" unset=%ld\n", ksys_write("shm_rmid_forced", "0"));
     syscall(SYS_shmctl, own, IPC_RMID, NULL);
+
+    /* A next ID whose index and all after it below IPCMNI are taken is
+       ENOSPC, as Linux master's idr_alloc stops at ipc_mni (7.0's went
+       past it), and the next ID is used up all the same. */
+    ksys_write("shm_next_id", "32767");
+    int last = (int)syscall(SYS_shmget, IPC_PRIVATE, 1, 0600);
+    ksys_write("shm_next_id", "32767");
+    errno = 0;
+    int past = (int)syscall(SYS_shmget, IPC_PRIVATE, 1, 0600);
+    int past_errno = errno;
+    printf("past-ipcmni: last=%d past=%d errno=%d", last, past, past_errno);
+    ksys_show("shm_next_id");
+    unsigned long shminfo[9] = {0};
+    long max = syscall(SYS_shmctl, 0, 3 /* IPC_INFO */, shminfo);
+    printf(" max=%ld\n", max);
+    syscall(SYS_shmctl, last, IPC_RMID, NULL);
+
+    /* Another user writing through root's descriptor is refused at the
+       write (proc_sys_call_handler's EPERM). */
+    long held = ksys_open("msgmax", O_WRONLY);
+    fflush(stdout);
+    pid_t writer = child();
+    if (writer == 0) {
+        if (setgroups(0, NULL) || setresgid(65534, 65534, 65534) || setresuid(65534, 65534, 65534)) _exit(90);
+        errno = 0;
+        long n = write((int)held, "100", 3);
+        printf("held-write: open=%d write=%ld", held >= 0, n < 0 ? -errno : n);
+        ksys_show("msgmax");
+        printf("\n");
+        fflush(stdout);
+        _exit(0);
+    }
+    result("held-write", reaped(writer));
+    if (held >= 0) close((int)held);
     return 0;
 }
 static int ipc_sysctl_case(void) {
@@ -15261,7 +15295,7 @@ static int ipc_sysctl_case(void) {
     printf(" negative-opm=%d", semx_errno(syscall(SYS_semop, sets[0], many, 501)));
     int seminfo[10] = {0};
     long max = syscall(SYS_semctl, 0, 0, 3 /* IPC_INFO */, seminfo);
-    printf(" info=%ld mni=%d mns=%d msl=%d opm=%d\n", max >= 0, seminfo[1], seminfo[2], seminfo[4], seminfo[5]);
+    printf(" info=%ld mni=%d mns=%d msl=%d opm=%d\n", (long)(max >= 0), seminfo[1], seminfo[2], seminfo[4], seminfo[5]);
     for (int i = 0; i < 3; i++) semx_ctl(sets[i], 0, IPC_RMID, 0);
 
     /* Message queues. */
@@ -15307,7 +15341,7 @@ static int ipc_sysctl_case(void) {
     printf(" wrap=%ld", ksys_errno(syscall(SYS_shmget, IPC_PRIVATE, 0xfffffffffffff001UL, 0600)));
     unsigned long shminfo[9] = {0};
     max = syscall(SYS_shmctl, 0, 3 /* IPC_INFO */, shminfo);
-    printf(" info=%ld max=%lu min=%lu mni=%lu seg=%lu all=%lu\n", max >= 0, shminfo[0], shminfo[1], shminfo[2],
+    printf(" info=%ld max=%lu min=%lu mni=%lu seg=%lu all=%lu\n", (long)(max >= 0), shminfo[0], shminfo[1], shminfo[2],
            shminfo[3], shminfo[4]);
     syscall(SYS_shmctl, first, IPC_RMID, NULL);
 
@@ -15383,6 +15417,24 @@ static int kernel_sysctl_case(void) {
         _exit(0);
     }
     result("other", reaped(other));
+    /* Root's descriptor, written through by another user: refused at the
+       write (EPERM). It writes 2, the default, so even a write that went
+       through would leave the machine as it was. */
+    errno = 0;
+    int held = open("/proc/sys/kernel/unprivileged_bpf_disabled", O_WRONLY | O_CLOEXEC);
+    printf("held: open=%d\n", held >= 0 ? 0 : -errno);
+    fflush(stdout);
+    other = child();
+    if (other == 0) {
+        if (setgroups(0, NULL) || setresgid(65534, 65534, 65534) || setresuid(65534, 65534, 65534)) _exit(90);
+        errno = 0;
+        long n = held < 0 ? 0 : write(held, "2", 1);
+        printf("held-write: write=%ld\n", n < 0 ? -errno : n);
+        fflush(stdout);
+        _exit(0);
+    }
+    result("held-write", reaped(other));
+    if (held >= 0) close(held);
     return 0;
 }
 static int sem_case(void) {
