@@ -79,6 +79,8 @@ struct Numbers {
     groups: Mutex<BTreeSet<u64>>,
     boot: Mutex<BTreeMap<u64, Arc<SuperState>>>,
     tables: Mutex<Vec<std::sync::Weak<dyn Listed>>>,
+    /// What is told of each mount ID once it is free ([`ReleaseHook`]).
+    released: Mutex<Option<ReleaseHook>>,
 }
 /// A table [`Numbers`] keeps, behind a trait object, which keeps the
 /// auto-trait checks of what holds a table shallow.
@@ -218,6 +220,13 @@ impl Token {
 impl Drop for Token {
     fn drop(&mut self) {
         lock(&self.numbers.ids).remove(&self.id);
+        // The mount below the root (numbered 1) is never handed out.
+        if self.id >= 21 {
+            let hook = lock(&self.numbers.released).clone();
+            if let Some(hook) = hook {
+                hook(self.id);
+            }
+        }
     }
 }
 
@@ -460,6 +469,21 @@ impl Entry {
     }
 }
 
+/// What a table tells of the mounts an unmount takes out of its namespace
+/// (`umount_tree`): their IDs, each mount before those on it, after they
+/// went. A hook point for fanotify's mount events (`FAN_MNT_DETACH`, which
+/// Linux's `mnt_notify` sends). A detached tree that goes with its last
+/// descriptor is in no namespace and tells nothing, nor do moves.
+pub type UnmountHook = Arc<dyn Fn(&[u64]) + Send + Sync>;
+
+/// What a machine's tables tell of a mount once it is freed, as Linux's
+/// last `mntput` does (`cleanup_mnt`, `fsnotify_vfsmount_delete`): its ID,
+/// free again, once no table and nothing open holds the mount, whichever
+/// way it went (an unmount, a detached tree, a namespace that ended). A
+/// hook point for fanotify's marks on mounts, which are kept by mount ID.
+/// It may run while a table is being changed, so it must not use one.
+pub type ReleaseHook = Arc<dyn Fn(u64) + Send + Sync>;
+
 /// One mount namespace's mounts.
 pub struct MountTable {
     entries: RwLock<Arc<Vec<Entry>>>,
@@ -467,6 +491,8 @@ pub struct MountTable {
     boot_only: AtomicBool,
     /// Where the lower filesystem has its mounts, which it shows itself.
     lower_points: Arc<Vec<Vec<u8>>>,
+    /// What is told of mounts that leave the namespace ([`UnmountHook`]).
+    unmount_hook: Mutex<Option<UnmountHook>>,
     numbers: Arc<Numbers>,
 }
 impl std::fmt::Debug for MountTable {
@@ -510,6 +536,7 @@ impl MountTable {
             entries: RwLock::new(Arc::new(entries)),
             boot_only: AtomicBool::new(true),
             lower_points: Arc::new(mounts.iter().map(|m| m.path.clone()).collect()),
+            unmount_hook: Mutex::default(),
             numbers,
         })
     }
@@ -589,8 +616,18 @@ impl MountTable {
             entries: RwLock::new(Arc::new(entries)),
             boot_only: AtomicBool::new(self.boot_only.load(Ordering::SeqCst)),
             lower_points: Arc::clone(&self.lower_points),
+            unmount_hook: Mutex::default(),
             numbers: Arc::clone(&self.numbers),
         })
+    }
+    /// Tells `hook` of each mount freed from now on, in this table or any
+    /// made from it ([`ReleaseHook`]), in place of any hook before.
+    pub fn set_release_hook(&self, hook: Option<ReleaseHook>) {
+        *lock(&self.numbers.released) = hook;
+    }
+    /// Tells `hook` of each unmount from now on, in place of any hook before.
+    pub fn set_unmount_hook(&self, hook: Option<UnmountHook>) {
+        *lock(&self.unmount_hook) = hook;
     }
     fn snapshot(&self) -> Arc<Vec<Entry>> {
         Arc::clone(&self.entries.read().unwrap_or_else(PoisonError::into_inner))
@@ -1069,13 +1106,24 @@ impl NamespacedFs {
             loc
         };
         let e = self.entry(&entries, &loc);
+        Ok(self.target_entry(&entries, e, e.point == loc.path))
+    }
+    /// What [`Self::target`] finds of the mount numbered `id`, at its root,
+    /// while this table has it.
+    #[must_use]
+    pub fn target_of(&self, id: u64) -> Option<Target> {
+        let entries = self.table.snapshot();
+        let e = entries.iter().find(|e| e.id() == id && !e.hidden)?;
+        Some(self.target_entry(&entries, e, true))
+    }
+    fn target_entry(&self, entries: &[Entry], e: &Entry, root: bool) -> Target {
         let id = e.id();
-        Ok(Target {
+        Target {
             id,
-            root: e.point == loc.path,
-            boot: self.stays(&entries, e),
+            root,
+            boot: self.stays(entries, e),
             namespace_root: entries
-                .get(Self::root_index(&entries))
+                .get(Self::root_index(entries))
                 .is_some_and(|root| root.id() == id),
             locked: e.locked,
             covered: entries.iter().any(|c| c.parent == id && c.id() != id),
@@ -1088,7 +1136,7 @@ impl NamespacedFs {
             },
             settings: e.memory().map(|sb| lock(&sb.settings).clone()),
             read_only: e.read_only(),
-        })
+        }
     }
     /// Mounts `new` on the directory at the resolved `path`, on top of what
     /// is there (`do_add_mount`): `ENOTDIR` for another file.
@@ -1100,6 +1148,36 @@ impl NamespacedFs {
             return Err(Errno::ENOTDIR);
         }
         let parent = self.entry(&entries, &loc);
+        let mut entry = self.new_entry(new, parent.id(), loc.path);
+        // `attach_recursive_mnt`: a mount on a shared one is shared too.
+        if parent.group != 0 {
+            entry.group = self.table.new_group();
+        }
+        self.table.update(|entries| {
+            entries.push(entry);
+            Ok(())
+        })
+    }
+    /// `fsmount`: a mount of the new tmpfs `new` in a detached tree of its
+    /// own, as [`Self::clone_tree`] makes one, named by the path this gives
+    /// and kept while the [`MountPin`] this gives, or another on it, lasts;
+    /// and its ID.
+    pub fn mount_detached(&self, new: NewTmpfs) -> Result<(Vec<u8>, MountPin, u64), Errno> {
+        self.swept();
+        let mut entry = self.new_entry(new, 0, Vec::new());
+        let id = entry.id();
+        entry.parent = id;
+        entry.point = [&b"/\0"[..], id.to_string().as_bytes()].concat();
+        let point = entry.point.clone();
+        let pin = MountPin::new(&entry.token, false);
+        self.table.update(|entries| {
+            entries.push(entry);
+            Ok(())
+        })?;
+        Ok((point, pin, id))
+    }
+    /// A mount of a new superblock for `new` at `point` on mount `parent`.
+    fn new_entry(&self, new: NewTmpfs, parent: u64, point: Vec<u8>) -> Entry {
         let numbers = &self.table.numbers;
         let minor = Numbers::take(&numbers.minors, 1);
         let state = Arc::new(SuperState::default());
@@ -1111,15 +1189,15 @@ impl NamespacedFs {
             settings: Mutex::new(new.settings),
             owner: new.owner,
         });
-        let mut entry = Entry {
+        Entry {
             token: Token::new(
                 Numbers::take(&numbers.ids, 21),
                 numbers,
                 Some(Arc::clone(&sb)),
                 state,
             ),
-            parent: parent.id(),
-            point: loc.path,
+            parent,
+            point,
             backing: Backing::Memory(sb),
             root: b"/".to_vec(),
             flags: new.flags,
@@ -1130,15 +1208,7 @@ impl NamespacedFs {
             master: 0,
             unbindable: false,
             hidden: false,
-        };
-        // `attach_recursive_mnt`: a mount on a shared one is shared too.
-        if parent.group != 0 {
-            entry.group = self.table.new_group();
         }
-        self.table.update(|entries| {
-            entries.push(entry);
-            Ok(())
-        })
     }
     /// The copies `__do_loopback` makes of the mount at `from` to go at `at`
     /// on mount `parent`: of the mount, rooted there (`clone_mnt`), a peer
@@ -1634,11 +1704,22 @@ impl NamespacedFs {
                 .filter(|e| gone.contains(&e.id()))
                 .map(|e| (e.group, e.master))
                 .collect();
+            let told: Vec<u64> = Self::tree(entries, id, true)
+                .into_iter()
+                .filter(|id| entries.iter().any(|e| e.id() == *id && !detached(&e.point)))
+                .collect();
             entries.retain(|e| !gone.contains(&e.id()));
-            Ok(left)
+            Ok((left, told))
         })?;
-        for (group, master) in gone {
+        let (left, told) = gone;
+        for (group, master) in left {
             self.table.numbers.left(group, master);
+        }
+        let hook = lock(&self.table.unmount_hook).clone();
+        if let Some(hook) = hook
+            && !told.is_empty()
+        {
+            hook(&told);
         }
         Ok(())
     }
