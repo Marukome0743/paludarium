@@ -513,12 +513,45 @@ fn a_string_instruction_without_a_repeat_hits_a_data_breakpoint() {
             step: false
         }
     );
-    // A repeated one is not looked at yet.
-    set.0[3].as_mut().unwrap().address = 0x4000_0018;
+    // A repeated one stops after the iteration that wrote the range, with
+    // rcx and rdi past it and rip still on it while it repeats.
+    s.gpr[reg::RCX] = 3;
+    set.0[3].as_mut().unwrap().address = 0x4000_0020;
+    assert_eq!(
+        run_watched(&mut s, &mem, 10, &mut cache, &set),
+        ExitReason::HardwareBreakpoint {
+            rip: GuestAddr(0x10002),
+            hits: 0b1000,
+            step: false
+        }
+    );
+    assert_eq!((s.gpr[reg::RCX], s.gpr[reg::RDI]), (1, 0x4000_0028));
     assert_eq!(
         run_watched(&mut s, &mem, 1, &mut cache, &set),
         ExitReason::BudgetExhausted {
             rip: GuestAddr(0x10005)
+        }
+    );
+}
+
+#[test]
+fn a_repeated_string_instruction_single_steps_each_iteration() {
+    // rep stosb
+    let (mut s, mem) = fixture(&[0xf3, 0xaa]);
+    s.gpr[reg::RDI] = 0x4000_0000;
+    s.gpr[reg::RCX] = 2;
+    s.rflags |= flag::TF;
+    let mut cache = DecodeCache::new();
+    assert_eq!(
+        step_traced(&mut s, &mem, &mut cache),
+        ExitReason::SingleStep {
+            rip: GuestAddr(0x10000)
+        }
+    );
+    assert_eq!(
+        step_traced(&mut s, &mem, &mut cache),
+        ExitReason::SingleStep {
+            rip: GuestAddr(0x10002)
         }
     );
 }
@@ -582,4 +615,36 @@ fn save_areas_and_implicit_accesses_hit_data_breakpoints() {
     let maskmovdqu = [0x66, 0x0f, 0xf7, 0xc1];
     assert!(hits_breakpoint(&maskmovdqu, masked, 0x4000_0013, 1, Write));
     assert!(!hits_breakpoint(&maskmovdqu, masked, 0x4000_0014, 1, Write));
+}
+
+#[test]
+fn an_execute_breakpoint_on_a_repeated_string_instruction_hits_once() {
+    use crate::breakpoints::{BreakOn, Breakpoint, Breakpoints, run_watched};
+    // rep stosb; nop
+    let (mut s, mem) = fixture(&[0xf3, 0xaa, 0x90]);
+    s.gpr[reg::RDI] = 0x4000_0000;
+    s.gpr[reg::RCX] = 3;
+    let mut cache = DecodeCache::new();
+    let mut set = Breakpoints::default();
+    set.0[0] = Some(Breakpoint {
+        address: 0x10000,
+        length: 1,
+        on: BreakOn::Execute,
+    });
+    assert_eq!(
+        run_watched(&mut s, &mem, 10, &mut cache, &set),
+        ExitReason::HardwareBreakpoint {
+            rip: GuestAddr(0x10000),
+            hits: 1,
+            step: false
+        }
+    );
+    // Resumed, it runs every iteration and the nop without hitting again.
+    assert_eq!(
+        run_watched(&mut s, &mem, 4, &mut cache, &set),
+        ExitReason::BudgetExhausted {
+            rip: GuestAddr(0x10003)
+        }
+    );
+    assert_eq!(s.gpr[reg::RCX], 0);
 }
