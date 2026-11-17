@@ -705,7 +705,8 @@ verified.
   a descriptor's place does not follow them.
 - **userfaultfd, in part**: missing pages and the write protection of
   private anonymous memory are registered. The minor mode is refused
-  (`EINVAL`), as is the write-protect mode for shared memory, which Linux
+  (`EINVAL`), as is the write-protect mode for shmem (shared anonymous
+  memory and a shmem file's mappings, private ones too), which Linux
   takes, and `UFFDIO_CONTINUE` is not offered (`EINVAL`), nor the events
   of `fork`, `mremap`, `madvise` and `munmap` or `UFFD_FEATURE_WP_HUGETLBFS_SHMEM`,
   `UFFD_FEATURE_WP_UNPOPULATED` and `UFFD_FEATURE_WP_ASYNC`, which
@@ -713,9 +714,13 @@ verified.
   `UFFDIO_REGISTER` and `fdinfo` report leave them out too. A
   registration that replaces the write-protect mode with others ends the
   protection of the range's pages, whose marks Linux leaves in their PTEs.
-  Shared memory
-  of a file (a memfd, a tmpfs file, System V shared memory) cannot be
-  registered (`EINVAL`), where Linux takes any shmem. A system call's own
+  Of shmem's files only a memfd is registered: a tmpfs file
+  is refused (`EINVAL`), where Linux takes it, as the in-memory file
+  system says it is a tmpfs but stands for the files a guest has on disk,
+  and a host's tmpfs file is not kept here. A zero page `UFFDIO_ZEROPAGE` gives a
+  private mapping of a shmem file is a page of zeros of its own, which
+  `/proc/<pid>/pagemap` and `smaps` count as such, where Linux maps its
+  zero page. A system call's own
   copy to or from a missing page of a registered range, or to a
   write-protected one, is `EFAULT`, as with `UFFD_USER_MODE_ONLY`, where
   Linux waits for the page as for an instruction. A `UFFDIO_MOVE` source
