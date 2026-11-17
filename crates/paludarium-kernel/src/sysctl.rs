@@ -48,8 +48,10 @@
 //! `sysctl_writes_strict` has it. A file's mode is 0644, and only the root
 //! of the user namespace that owns the IPC namespace may open it to write
 //! (`mq_permissions`, `EACCES`). A write asks the writer again, as Linux's
-//! `proc_sys_call_handler` does (`EPERM`) ([`write`], [`write_as`]), but
-//! one through `copy_file_range`, which has no writer to ask.
+//! `proc_sys_call_handler` does (`EPERM`) ([`write`], [`write_as`]). Each
+//! file has an inode of its own and a size of 0 ([`stat`]), so, as on
+//! Linux, `copy_file_range` never writes one: from another filesystem it is
+//! `EXDEV`, and from a sysctl it copies nothing.
 use crate::ipc::IPCMNI;
 use crate::mqueue::{HARD_MSGMAX, HARD_MSGSIZEMAX, Limits, Queues};
 use crate::namespaces::Namespace;
@@ -470,16 +472,109 @@ fn entries_of(directory: Directory, network: Option<&crate::inet::Network>) -> V
         Directory::Fanotify => FANOTIFY.iter().map(|&(name, _)| (name, DT_REG)).collect(),
         Directory::Kernel => KERNEL.iter().map(|&(name, _)| (name, DT_REG)).collect(),
     };
-    [(&b"."[..], DT_DIR), (b"..", DT_DIR)]
-        .into_iter()
-        .chain(names)
+    // Each entry's number is the inode its `stat` gives, as Linux's
+    // `proc_sys_fill_cache` gives `d_ino`; `..` of `/proc/sys` keeps its
+    // place, `/proc` not being one of these.
+    let dots = [
+        (&b"."[..], DT_DIR, Some(Entry::Directory(directory))),
+        (b"..", DT_DIR, parent(directory).map(Entry::Directory)),
+    ];
+    dots.into_iter()
+        .chain(
+            names
+                .into_iter()
+                .map(|(name, kind)| (name, kind, child(directory, name, network))),
+        )
         .enumerate()
-        .map(|(i, (name, kind))| DirectoryEntry {
+        .map(|(i, (name, kind, entry))| DirectoryEntry {
             name: name.to_vec(),
-            inode: i as u64 + 1,
+            inode: entry.map_or(i as u64 + 1, inode),
             kind,
         })
         .collect()
+}
+
+/// The directory `directory` is in, none for `/proc/sys`.
+fn parent(directory: Directory) -> Option<Directory> {
+    Some(match directory {
+        Directory::Sys => return None,
+        Directory::Fs | Directory::Kernel | Directory::Net => Directory::Sys,
+        Directory::Mqueue | Directory::Inotify | Directory::Fanotify => Directory::Fs,
+        Directory::Ipv4 | Directory::Ipv6 => Directory::Net,
+        Directory::Conf4 => Directory::Ipv4,
+        Directory::Conf6 => Directory::Ipv6,
+        Directory::Device4(_) => Directory::Conf4,
+        Directory::Device6(_) => Directory::Conf6,
+    })
+}
+
+/// The entry `name` in `directory` is, as [`entries_of`] lists it.
+fn child(
+    directory: Directory,
+    name: &[u8],
+    network: Option<&crate::inet::Network>,
+) -> Option<Entry> {
+    let dir = |d| Some(Entry::Directory(d));
+    let find = |table: &[(&[u8], Entry)]| {
+        table
+            .iter()
+            .find(|(known, _)| *known == name)
+            .map(|&(_, entry)| entry)
+    };
+    match directory {
+        Directory::Sys => match name {
+            b"fs" => dir(Directory::Fs),
+            b"kernel" => dir(Directory::Kernel),
+            b"net" => dir(Directory::Net),
+            _ => None,
+        },
+        Directory::Net => match name {
+            b"ipv4" => dir(Directory::Ipv4),
+            b"ipv6" => dir(Directory::Ipv6),
+            _ => None,
+        },
+        Directory::Ipv4 => match name {
+            b"conf" => dir(Directory::Conf4),
+            b"ip_forward" => Some(Entry::Net(Net::IpForward)),
+            _ => None,
+        },
+        Directory::Ipv6 => (name == b"conf").then_some(Entry::Directory(Directory::Conf6)),
+        Directory::Conf4 | Directory::Conf6 => {
+            let target = match name {
+                b"all" => Target::All,
+                b"default" => Target::Default,
+                _ => Target::Device(network?.devices().by_name(name)?.index),
+            };
+            dir(if directory == Directory::Conf4 {
+                Directory::Device4(target)
+            } else {
+                Directory::Device6(target)
+            })
+        }
+        Directory::Device4(target) | Directory::Device6(target) => {
+            let files: &[DeviceFile] = if matches!(directory, Directory::Device4(_)) {
+                &CONF4
+            } else {
+                &CONF6
+            };
+            files
+                .iter()
+                .find(|(known, _)| *known == name)
+                .map(|&(_, make)| Entry::Net(make(target)))
+        }
+        Directory::Fs => match name {
+            b"aio-max-nr" => Some(Entry::Aio(Aio::MaxNr)),
+            b"aio-nr" => Some(Entry::Aio(Aio::Nr)),
+            b"fanotify" => dir(Directory::Fanotify),
+            b"inotify" => dir(Directory::Inotify),
+            b"mqueue" => dir(Directory::Mqueue),
+            _ => None,
+        },
+        Directory::Mqueue => find(&SETTINGS.map(|(n, s)| (n, Entry::Setting(s)))),
+        Directory::Inotify => find(&INOTIFY.map(|(n, f)| (n, Entry::Inotify(f)))),
+        Directory::Fanotify => find(&FANOTIFY.map(|(n, f)| (n, Entry::Fanotify(f)))),
+        Directory::Kernel => find(&KERNEL.map(|(n, f)| (n, Entry::Kernel(f)))),
+    }
 }
 
 /// The limits of the caller's IPC namespace.
@@ -642,10 +737,35 @@ fn fanotify_line(limits: &crate::fanotify::Limits, file: Fanotify) -> Vec<u8> {
     }
 }
 
+/// The status of `entry`, as Linux's `proc_sys_make_inode` gives it: an
+/// inode of its own ([`inode`]), and for a file a size of 0, whatever its
+/// value's length, so that `copy_file_range` from it copies nothing.
+pub(crate) fn stat(c: &Context<'_>, entry: Entry) -> FileStat {
+    let mut stat = shown(c, entry);
+    stat.inode = inode(entry);
+    if stat.mode & 0o170_000 == 0o100_000 {
+        stat.size = 0;
+    }
+    stat
+}
+
+/// An inode number for `entry`, the same at each `stat` and another for
+/// each entry: Linux numbers each sysctl's inode as it makes it
+/// (`get_next_ino`), so only that it is its own is compared. An FNV-1a
+/// hash of the entry, kept to 32 bits and above the small numbers.
+fn inode(entry: Entry) -> u64 {
+    let hash = format!("{entry:?}")
+        .bytes()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+    (hash % 0xffff_0000) + 0x1_0000
+}
+
 /// The status of `entry`: a directory anyone may read and search, a
 /// regular file of mode 0644, its owner's root's, or an aio file, root's,
 /// 0644 or for `aio-nr` 0444.
-pub(crate) fn stat(c: &Context<'_>, entry: Entry) -> FileStat {
+fn shown(c: &Context<'_>, entry: Entry) -> FileStat {
     match entry {
         Entry::Directory(directory) if directory.net() => {
             let (uid, gid) = net_owner(c);
@@ -1081,6 +1201,12 @@ impl Value {
     }
 }
 
+/// Whether `file` is an open file of `/proc/sys`, whose size of 0 does not
+/// bound what a read gives ([`stat`]).
+pub(crate) fn is_file(file: &dyn std::any::Any) -> bool {
+    file.is::<SettingFile>()
+}
+
 /// An open file of `/proc/sys`.
 struct SettingFile {
     value: Value,
@@ -1307,6 +1433,48 @@ fn strtoul(digits: &[u8]) -> Option<(u64, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_entry_has_an_inode_of_its_own_which_its_listing_gives() {
+        let mut all = vec![];
+        for directory in [
+            Directory::Sys,
+            Directory::Fs,
+            Directory::Mqueue,
+            Directory::Inotify,
+            Directory::Fanotify,
+            Directory::Kernel,
+            Directory::Net,
+            Directory::Ipv4,
+            Directory::Ipv6,
+            Directory::Conf4,
+            Directory::Conf6,
+            Directory::Device4(Target::All),
+            Directory::Device4(Target::Default),
+            Directory::Device6(Target::All),
+            Directory::Device6(Target::Default),
+        ] {
+            all.push(Entry::Directory(directory));
+            let listed = entries_of(directory, None);
+            assert_eq!(listed[0].inode, inode(Entry::Directory(directory)));
+            for named in &listed[2..] {
+                let entry = child(directory, &named.name, None).unwrap();
+                assert_eq!(named.inode, inode(entry), "{entry:?}");
+                if !matches!(entry, Entry::Directory(_)) {
+                    all.push(entry);
+                }
+            }
+        }
+        let mut inodes: Vec<u64> = all.iter().map(|&entry| inode(entry)).collect();
+        inodes.sort_unstable();
+        inodes.dedup();
+        assert_eq!(inodes.len(), all.len());
+        assert!(
+            inodes
+                .iter()
+                .all(|&n| n >= 0x1_0000 && n <= u32::MAX as u64)
+        );
+    }
 
     #[test]
     fn paths_name_the_directories_and_settings() {
