@@ -229,6 +229,7 @@ mod linux {
                     | "perf-exec"
                     | "perf-prctl"
                     | "perf-inherit"
+                    | "perf-software"
                     | "bpf-calls"
                     | "bpf-elements"
                     | "bpf-batch"
@@ -537,6 +538,7 @@ mod linux {
         perf_exec => ("perf-exec","perf"),
         perf_prctl => ("perf-prctl","perf"),
         perf_inherit => ("perf-inherit","perf"),
+        perf_software => ("perf-software","perf"),
         bpf_calls => ("bpf-calls","bpf"),
         bpf_elements => ("bpf-elements","bpf"),
         bpf_batch => ("bpf-batch","bpf"),
