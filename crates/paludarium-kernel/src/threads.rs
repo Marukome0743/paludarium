@@ -132,6 +132,9 @@ pub struct ThreadGroup {
     /// What each thread keeps itself that other processes read in `/proc`,
     /// as of its last checkpoint. The leader's stays while it is a zombie.
     public: Mutex<BTreeMap<u32, PublicThread>>,
+    /// The names a write to `comm` gave threads, which each takes at its
+    /// next system call or checkpoint (Linux's `set_task_comm` of it).
+    renames: Mutex<BTreeMap<u32, [u8; 16]>>,
     /// The process is the init of a nested PID namespace, which takes only
     /// the signals it handles, and SIGKILL and SIGSTOP from outside (Linux's
     /// SIGNAL_UNKILLABLE), until a fault ends it.
@@ -250,6 +253,7 @@ impl Default for ThreadGroup {
             executable: Mutex::default(),
             exe_file: Mutex::default(),
             public: Mutex::default(),
+            renames: Mutex::default(),
             unkillable: std::sync::atomic::AtomicBool::new(false),
             killed: std::sync::atomic::AtomicBool::new(false),
             traced: AtomicU32::new(0),
@@ -537,6 +541,13 @@ impl ThreadGroup {
         }
         public.retain(|&tid, _| tid == pid);
         drop(public);
+        // A rename of a thread execve ended, which must not name the new
+        // program when the thread that ran it takes the leader's TID; that
+        // thread took its own at the system call's entry.
+        self.renames
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
         // So does its CPU mask.
         let mut affinity = self.affinity.lock().unwrap_or_else(PoisonError::into_inner);
         let kept = affinity.remove(&old_tid);
@@ -1423,6 +1434,11 @@ impl ThreadGroup {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(&tid);
+        // A rename it did not live to take.
+        self.renames
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&tid);
     }
     /// Publishes what thread `tid` shows in `/proc`.
     pub(crate) fn publish(&self, tid: u32, thread: PublicThread) {
@@ -1430,6 +1446,27 @@ impl ThreadGroup {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(tid, thread);
+    }
+    /// Renames thread `tid` to `name`, as `/proc` shows it at once and the
+    /// thread takes at its next system call or checkpoint ([`Self::take_rename`]).
+    /// A thread that is gone is not renamed.
+    pub(crate) fn rename(&self, tid: u32, name: [u8; 16]) {
+        let mut public = self.public.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(record) = public.get_mut(&tid) else {
+            return;
+        };
+        record.name = name;
+        self.renames
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(tid, name);
+    }
+    /// The name a write to `comm` gave thread `tid` since it last looked.
+    pub(crate) fn take_rename(&self, tid: u32) -> Option<[u8; 16]> {
+        self.renames
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&tid)
     }
     /// What thread `tid` last published, if it is here.
     pub(crate) fn public(&self, tid: u32) -> Option<PublicThread> {
