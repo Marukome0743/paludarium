@@ -1618,9 +1618,17 @@ fn access(c: &Context<'_>, dir: u64, ptr: u64, mode: u64, flags: u64) -> Result<
     } else {
         let p = c.files.path(dir, raw.clone())?;
         crate::permissions::search(c.files, &creds, dir, &raw, follow)?;
-        let stat = match generated_stat(c, &p, follow)? {
-            Some((stat, ..)) => stat,
-            None => c.files.fs().metadata(&p, follow)?,
+        // A link on the way to a generated file is checked there, on its
+        // own mount.
+        let (stat, p) = match generated_stat(c, &p, follow)? {
+            Some((stat, ..)) => (stat, p),
+            None => match c.files.fs().metadata(&p, follow) {
+                Err(e) => {
+                    let (stat, _, _, target) = linked_generated(c, &p, follow, e)?;
+                    (stat, target)
+                }
+                Ok(stat) => (stat, p),
+            },
         };
         (stat, p, follow)
     };
@@ -3731,13 +3739,19 @@ fn statx(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
         let (p, _) = lookup(c, dir, raw, follow)?;
         match generated_stat(c, &p, follow)? {
             Some((stat, device, block_size)) => (stat, device, block_size, false, Vec::new()),
-            None => (
-                c.files.fs().metadata(&p, follow)?,
-                device(c, &p),
-                path_block_size(&p),
-                c.files.fs().with_attributes(&p, follow, noop).is_ok(),
-                p,
-            ),
+            None => match c.files.fs().metadata(&p, follow) {
+                Err(e) => {
+                    let (stat, device, block_size, _) = linked_generated(c, &p, follow, e)?;
+                    (stat, device, block_size, false, Vec::new())
+                }
+                Ok(s) => (
+                    s,
+                    device(c, &p),
+                    path_block_size(&p),
+                    c.files.fs().with_attributes(&p, follow, noop).is_ok(),
+                    p,
+                ),
+            },
         }
     };
     let attributes = u64::from(s.attributes & STATX_ATTR_FLAGS);
@@ -4085,11 +4099,11 @@ pub(crate) fn named(
         ),
         None => match generated_stat(c, p, follow)? {
             Some((stat, device, _)) => (stat, device, path_kind(c, p, follow)),
-            None => (
-                c.files.fs().metadata(p, follow)?,
-                watched_device(c, p, follow),
-                path_kind(c, p, follow),
-            ),
+            None => match c.files.fs().metadata(p, follow) {
+                // A link on the way to a file the kernel generates.
+                Err(e) => return named(c, &generated_target(c, p, follow, e)?, follow),
+                Ok(stat) => (stat, watched_device(c, p, follow), path_kind(c, p, follow)),
+            },
         },
     })
 }
@@ -4804,13 +4818,13 @@ pub(crate) fn run(c: &mut Context<'_>, n: u64, a: [u64; 6]) -> Result<u64, Errno
             if let Some((generated, device, block_size)) = generated_stat(c, &p, follow)? {
                 return stat(c, out, generated, device, block_size);
             }
-            stat(
-                c,
-                out,
-                c.files.fs().metadata(&p, follow)?,
-                device(c, &p),
-                path_block_size(&p),
-            )
+            match c.files.fs().metadata(&p, follow) {
+                Err(e) => {
+                    let (generated, device, block_size, _) = linked_generated(c, &p, follow, e)?;
+                    stat(c, out, generated, device, block_size)
+                }
+                Ok(s) => stat(c, out, s, device(c, &p), path_block_size(&p)),
+            }
         }
         5 => {
             let d = c.files.descriptor(a[0])?;
@@ -7113,7 +7127,14 @@ fn open_path(
             let key = (device(c, p), node.inode);
             return Ok((crate::fifo::open(c, p, key, &node, flags)?, p.to_vec()));
         }
-        let file = c.files.fs().open(p, flags, mode & !c.files.umask())?;
+        let file = match c.files.fs().open(p, flags, mode & !c.files.umask()) {
+            // A link on the way to a file the kernel generates.
+            Err(e) => {
+                let target = generated_target(c, p, flags & O_NOFOLLOW == 0, e)?;
+                return open_path(c, &target, flags, mode);
+            }
+            Ok(file) => file,
+        };
         const O_TRUNC: u32 = 0o1000;
         if flags & O_TRUNC != 0 && flags & O_PATH == 0 {
             crate::permissions::remove_set_ids(&c.process.credentials, &*file);
@@ -7409,6 +7430,107 @@ pub(crate) fn resolved_in(fs: &dyn HostFs, path: &[u8]) -> Option<Vec<u8>> {
         }
     }
     Some(join(&parts))
+}
+/// The `stat` of the generated file a symbolic link on the way of `p` leads
+/// to ([`into_generated`]) when the file system's own lookup of `p` failed
+/// with `error`; else that error.
+fn linked_generated(
+    c: &Context<'_>,
+    p: &[u8],
+    follow: bool,
+    error: Errno,
+) -> Result<(FileStat, u64, u32, Vec<u8>), Errno> {
+    let target = generated_target(c, p, follow, error)?;
+    let (stat, device, block_size) = generated_stat(c, &target, follow)?.ok_or(error)?;
+    Ok((stat, device, block_size, target))
+}
+/// The generated path a symbolic link on the way of `p` leads to
+/// ([`into_generated`]) when the file system's own lookup of `p` failed
+/// with `error` (else that error), which, for a path ending in `/`, must be
+/// a directory (`ENOTDIR`), as a trailing slash asks of its last component.
+fn generated_target(
+    c: &Context<'_>,
+    p: &[u8],
+    follow: bool,
+    error: Errno,
+) -> Result<Vec<u8>, Errno> {
+    if error != Errno::ENOENT && error != Errno::ENOTDIR {
+        return Err(error);
+    }
+    let target = into_generated(&*c.files.fs(), p, follow).ok_or(error)?;
+    if p.ends_with(b"/") {
+        let (stat, ..) = generated_stat(c, &target, true)?.ok_or(error)?;
+        if stat.mode & 0o170000 != 0o040000 {
+            return Err(Errno::ENOTDIR);
+        }
+    }
+    Ok(target)
+}
+/// Where `path` leads when a symbolic link on the way (its last one only
+/// with `follow`) goes into `/dev` or `/proc`, which no file system here
+/// holds: the generated path, with the rest of `path` after it, for the
+/// kernel's own walk to take on (its links, as `/proc/self`). `None` when
+/// the walk stays out of them, or a name on the way is missing.
+fn into_generated(fs: &dyn HostFs, path: &[u8], follow: bool) -> Option<Vec<u8>> {
+    const SYMLINK: u32 = 0o120000;
+    if fs.root() != b"/" {
+        return None;
+    }
+    let inside = |p: &[u8]| generated(p) || p == b"/proc" || p.starts_with(b"/dev/");
+    let trailing = path.ends_with(b"/");
+    let mut pending: Vec<Vec<u8>> = path
+        .split(|&b| b == b'/')
+        .rev()
+        .map(<[u8]>::to_vec)
+        .collect();
+    let mut parts: Vec<Vec<u8>> = Vec::new();
+    let mut links = 0;
+    let mut jumped = false;
+    let join = |parts: &[Vec<u8>]| -> Vec<u8> {
+        let joined: Vec<u8> = parts.iter().flat_map(|p| [&b"/"[..], p].concat()).collect();
+        if joined.is_empty() {
+            b"/".to_vec()
+        } else {
+            joined
+        }
+    };
+    while let Some(part) = pending.pop() {
+        match &part[..] {
+            b"" | b"." => continue,
+            b".." => {
+                parts.pop();
+                continue;
+            }
+            _ => {}
+        }
+        parts.push(part);
+        let candidate = join(&parts);
+        if jumped && inside(&candidate) {
+            let rest: Vec<u8> = pending
+                .iter()
+                .rev()
+                .filter(|p| !p.is_empty())
+                .flat_map(|p| [&b"/"[..], p].concat())
+                .collect();
+            return Some([candidate, rest].concat());
+        }
+        // A trailing slash follows the last link too.
+        let last = pending.iter().all(|p| p == b".") && !trailing;
+        if fs.metadata(&candidate, false).ok()?.mode & 0o170000 == SYMLINK && (follow || !last) {
+            links += 1;
+            if links > 40 {
+                return None;
+            }
+            let target = fs.readlink(&candidate).ok()?;
+            parts.pop();
+            if target.first() == Some(&b'/') {
+                parts.clear();
+            }
+            jumped = true;
+            pending.extend(target.split(|&b| b == b'/').rev().map(<[u8]>::to_vec));
+        }
+    }
+    None
 }
 /// The path that still names the file of `d` (its recorded path resolved),
 /// or `None` once nothing does.
