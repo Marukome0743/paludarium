@@ -6525,6 +6525,143 @@ mod robust_lists {
         assert_eq!(get(&mut k, &mut t, &m, other).0, esrch);
     }
 }
+/// Another process's `/proc/<pid>/stat` and `maps`, as its parent, a reader
+/// of another user and a reader of its zombie see them (Linux's
+/// `do_task_stat`, `proc_maps_open` and `m_start`).
+mod proc_other {
+    use super::*;
+    /// What reading the whole of `path` gives, or the errno of its open.
+    fn read(k: &mut Kernel, t: &mut Thread, m: &AddressSpace, path: &str) -> Result<Vec<u8>, u64> {
+        m.write(GuestAddr(DATA), format!("{path}\0").as_bytes())
+            .unwrap();
+        let fd = syscall(k, t, m, 2, [DATA, 0, 0, 0, 0, 0]);
+        if fd > 1 << 20 {
+            return Err(fd);
+        }
+        let mut text = Vec::new();
+        loop {
+            let n = syscall(k, t, m, 0, [fd, DATA + 1024, 2048, 0, 0, 0]);
+            assert!(n <= 2048, "{path}: {}", n as i64);
+            if n == 0 {
+                break;
+            }
+            let mut bytes = vec![0; n as usize];
+            m.read(GuestAddr(DATA + 1024), &mut bytes).unwrap();
+            text.extend(bytes);
+        }
+        assert_eq!(syscall(k, t, m, 3, [fd, 0, 0, 0, 0, 0]), 0);
+        Ok(text)
+    }
+    /// The fields of a `stat` line after the name: `fields[0]` is the
+    /// state, the third field.
+    fn fields(line: &[u8]) -> Vec<String> {
+        let line = String::from_utf8_lossy(line).into_owned();
+        let after = line.rfind(')').unwrap() + 2;
+        line[after..].split_whitespace().map(String::from).collect()
+    }
+    /// A program's code, data and stack, as an exec records them.
+    fn program() -> paludarium_loader::LoadedImage {
+        paludarium_loader::LoadedImage {
+            entry_point: GuestAddr(0x40_1000),
+            program_entry: GuestAddr(0x40_1000),
+            interpreter_base: 0,
+            program_header_address: GuestAddr(0x40_0040),
+            program_header_count: 2,
+            initial_stack_pointer: GuestAddr(0x7fff_f000),
+            initial_break: GuestAddr(0x40_4000),
+            load_base: GuestAddr(0),
+            auxv: [(0, 0); paludarium_loader::AUXV_ENTRIES],
+            code: (0x40_1000, 0x40_2345),
+            data: (0x40_3000, 0x40_3100),
+        }
+    }
+    #[test]
+    fn a_parent_sees_its_child_s_stat_and_another_user_sees_no_addresses() {
+        let (mut k, mut t, m) = setup();
+        // The program the child keeps from its parent at the fork.
+        k.group.set_program(&program());
+        let (child, ct, _cm) = fork(&mut k, &mut t, &m);
+        // In a system call, where it waits: `wchan` is 1 for a reader that
+        // may see it.
+        child.inbox.set_in_call(true);
+        let path = format!("/proc/{}/stat", ct.tid);
+        let line = read(&mut k, &mut t, &m, &path).unwrap();
+        assert!(line.starts_with(format!("{} (", ct.tid).as_bytes()));
+        assert!(line.ends_with(b"\n"));
+        let seen = fields(&line);
+        // 52 fields, the parent the fourth; the reader may see the memory,
+        // so start_code, end_code, start_stack, start_data and end_data are
+        // the program's.
+        assert_eq!(seen.len() + 2, 52);
+        assert_eq!(seen[1], t.tid.to_string());
+        assert_eq!(&seen[23..26], ["4198400", "4203333", "2147479552"]);
+        assert_eq!(&seen[42..44], ["4206592", "4206848"]);
+        assert_eq!(seen[32], "1");
+        // A reader of another user that ptrace_may_access refuses: 1 for
+        // start_code and end_code, 0 for start_stack, wchan and every field
+        // from start_data on.
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 117, [65534, 65534, 65534, 0, 0, 0]),
+            0
+        );
+        let hidden = fields(&read(&mut k, &mut t, &m, &path).unwrap());
+        assert_eq!(&hidden[23..26], ["1", "1", "0"]);
+        assert_eq!(hidden[32], "0");
+        assert!(
+            hidden[42..50].iter().all(|field| field == "0"),
+            "{hidden:?}"
+        );
+        // What does not tell where its memory is stays.
+        assert_eq!(hidden[1], seen[1]);
+        assert_eq!(hidden[20], seen[20]);
+    }
+    #[test]
+    fn a_parent_reads_its_child_s_maps_as_the_child_does_and_another_user_may_not() {
+        let (mut k, mut t, m) = setup();
+        let (mut child, mut ct, cm) = fork(&mut k, &mut t, &m);
+        let theirs = read(&mut k, &mut t, &m, &format!("/proc/{}/maps", ct.tid)).unwrap();
+        let own = read(&mut child, &mut ct, &cm, "/proc/self/maps").unwrap();
+        assert!(!theirs.is_empty());
+        assert_eq!(theirs, own);
+        // `proc_maps_open` asks `ptrace_may_access`: EACCES.
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 117, [65534, 65534, 65534, 0, 0, 0]),
+            0
+        );
+        assert_eq!(
+            read(&mut k, &mut t, &m, &format!("/proc/{}/maps", ct.tid)),
+            Err(Errno::EACCES.to_syscall_return())
+        );
+    }
+    #[test]
+    fn a_zombie_s_stat_has_no_memory_and_its_maps_read_nothing() {
+        let (mut k, mut t, m) = setup();
+        let (mut child, ct, cm) = fork(&mut k, &mut t, &m);
+        finish(&mut child, &ct, &cm, ExitStatus::Exited(0));
+        let seen = fields(&read(&mut k, &mut t, &m, &format!("/proc/{}/stat", ct.tid)).unwrap());
+        // State Z, no mappings (vsize), and no code without memory; it is
+        // not running, so `wchan` is 1 for a reader that may see it.
+        assert_eq!(seen[0], "Z");
+        assert_eq!(seen[32], "1");
+        assert_eq!(seen[20], "0");
+        assert_eq!(&seen[23..26], ["0", "0", "0"]);
+        assert!(seen[42..49].iter().all(|field| field == "0"), "{seen:?}");
+        // `m_start` finds no mm: the file opens and reads nothing.
+        assert_eq!(
+            read(&mut k, &mut t, &m, &format!("/proc/{}/maps", ct.tid)),
+            Ok(Vec::new())
+        );
+        // Reaped, it is gone.
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 61, [u64::from(ct.tid), 0, 0, 0, 0, 0]),
+            u64::from(ct.tid)
+        );
+        assert_eq!(
+            read(&mut k, &mut t, &m, &format!("/proc/{}/stat", ct.tid)),
+            Err(Errno::ENOENT.to_syscall_return())
+        );
+    }
+}
 /// A new task's kernel entry is its parent's in the call that made it, as
 /// Linux's `copy_thread` copies `pt_regs`: what `/proc/<pid>/syscall` of a
 /// child shows before it enters the kernel itself.
