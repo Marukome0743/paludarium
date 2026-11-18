@@ -492,8 +492,8 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   `/proc` や `/dev`（とその中のファイル）へのマウントやその移動、パスのないファイルへの
   ディスクリプタのリンクのバインドマウントは
   `EOPNOTSUPP` で、プログラムはできないことを知れます。`open_tree` の
-  `OPEN_TREE_NAMESPACE`（Linux master で新しいもの）と `move_mount` の
-  `MOVE_MOUNT_BENEATH`、`fsmount` の `FSMOUNT_NAMESPACE`（Linux master で新しいもの）と
+  `OPEN_TREE_NAMESPACE`（Linux master で新しいもの）、`fsmount` の
+  `FSMOUNT_NAMESPACE`（Linux master で新しいもの）と
   tmpfs への `MOUNT_ATTR_NOSYMFOLLOW`、`/proc` や `/dev` の `fspick`、ID を
   マップしたマウント（`mount_setattr` と `open_tree_attr` の `MOUNT_ATTR_IDMAP`。その
   ユーザー名前空間のディスクリプタを確かめたあと）も同じです。一意なマウントの ID と
@@ -554,7 +554,11 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   Linux の `/` が rootfs の上のロックされたマウントであるのと同じく、ルートもロックされ
   ます）`EINVAL`、そうでなければ `EBUSY` を返し、`MS_MOVE` は `EOPNOTSUPP` です。下の
   ファイルシステムがそれぞれの `--mount` を自分で見せるので、外すと下のディレクトリーでは
-  なくそれがまた見えてしまうためです。`pivot_root` のあとは古いルートを外せますが、その
+  なくそれがまた見えてしまうためです。同じ理由で、その下への `MOVE_MOUNT_BENEATH` 付きの
+  `move_mount` は `EOPNOTSUPP` です。`pivot_root` のあとの名前空間のルートの下へは、
+  ここではルートの下に残るマウントがマウントを受け付けないので `EINVAL` です。Linux
+  master はソースをそのマウントの上に付けます。
+  `pivot_root` のあとは古いルートを外せますが、その
   下の `--mount` は外せないままです。新しいルートが `--mount` なら、`put_old` の下の元の
   場所にもそのファイルが見えます。Linux はそれが覆っていたディレクトリーを見せます。
   生成される `/proc` と `/dev` は、`pivot_root` のあともルートの `/proc` と `/dev` に

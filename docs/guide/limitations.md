@@ -582,7 +582,7 @@ verified.
   file in them), and a bind mount of a descriptor's link to a file no path
   names, give `EOPNOTSUPP`, so a program
   learns they are not supported, as do `open_tree`'s `OPEN_TREE_NAMESPACE`
-  (new in Linux master), `move_mount`'s `MOVE_MOUNT_BENEATH`, `fsmount`'s
+  (new in Linux master), `fsmount`'s
   `FSMOUNT_NAMESPACE` (new in Linux master) and `MOUNT_ATTR_NOSYMFOLLOW` on
   a tmpfs, `fspick` of `/proc` or `/dev`, and an idmapped mount
   (`mount_setattr`'s and `open_tree_attr`'s `MOUNT_ATTR_IDMAP`, after the
@@ -652,9 +652,13 @@ verified.
   Linux's `/` is a locked mount on its rootfs) and `EBUSY` otherwise, and
   `MS_MOVE` of one gives `EOPNOTSUPP`: the lower filesystem shows each
   `--mount` itself, so taking one away would show it again, not the
-  directory under it. After `pivot_root` the old root can go, but a
-  `--mount` under it still stays, and a new root that is a `--mount`
-  shows its files at its old place under `put_old` too, where Linux shows
+  directory under it. For the same reason `move_mount` with
+  `MOVE_MOUNT_BENEATH` beneath one gives `EOPNOTSUPP`. Beneath the
+  namespace's root after `pivot_root` it gives `EINVAL`, as the mount left
+  below the root here takes no mounts, where Linux master mounts the
+  source on that mount. After `pivot_root` the old root can go, but a
+  `--mount` under it still stays, and a new root that is a `--mount` shows
+  its files at its old place under `put_old` too, where Linux shows
   the directory it covered. The generated `/proc` and `/dev` stay at the
   root's `/proc` and `/dev` after `pivot_root`, where Linux's go to
   `put_old` with the old root. A move or a `pivot_root` takes the roots
