@@ -933,7 +933,9 @@ kernel.
   data are a file mapping and read the executable again, also those of a
   read-only segment (code) that `mprotect` made writable and that was
   written, while the rest (`.bss`) is anonymous memory and reads as zeros.
-  Shared memory keeps its own contents. `MADV_FREE` keeps the contents, as
+  Shared memory keeps its own contents and loses its entries, as Linux's
+  zap clears them: shmem's, System V shared memory's and a shared file
+  mapping's pages are mapped again at their next access. `MADV_FREE` keeps the contents, as
   Linux does without memory pressure.
   `MADV_WILLNEED` is accepted, and so are `MADV_COLD` and `MADV_PAGEOUT`
   (with nothing to reclaim, hints too): each needs only the range mapped
@@ -1079,8 +1081,9 @@ kernel.
   always protected. Such a page gets Linux's uffd-wp marker, which
   `/proc/<pid>/pagemap` shows as a swap entry with bit 57, and the entry
   an access makes for it is write-protected, so that a write faults once
-  the page is in. `MADV_DONTNEED` takes shmem's entries away, the page
-  cache keeping the pages, and leaves a marker for each protected one, as
+  the page is in. `MADV_DONTNEED` takes shmem's entries away, as any shared
+  mapping's, the page cache keeping the pages, and leaves a marker for
+  each protected one, as
   `zap_install_uffd_wp_if_needed` does; that of private anonymous memory
   drops the markers. A fill or `UFFDIO_CONTINUE` takes a marker's place,
   protected only by its own mode, and a `UFFDIO_ZEROPAGE` of private
@@ -1094,8 +1097,9 @@ kernel.
   fault: it clears the page's protection and goes on, as `do_wp_page`
   does, so that bit 57 of `/proc/<pid>/pagemap` tells which pages were
   written since `UFFDIO_WRITEPROTECT`, and `PAGEMAP_SCAN` (below) finds
-  and protects them again. `MADV_DONTNEED` of a file's private
-  mapping leaves a marker for each page still protected, as for shmem; a
+  and protects them again. `MADV_DONTNEED` of a file's private or shared
+  mapping, or of System V shared memory, leaves a marker for each page
+  still protected, as for shmem; a
   fill there is `EINVAL`, as the memory is neither anonymous nor shmem's.
   `UFFDIO_COPY` and `UFFDIO_ZEROPAGE` fill page by page as `mfill_atomic`
   does: `ENOENT` for a range that does not lie in one registered VMA,
