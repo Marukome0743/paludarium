@@ -91,7 +91,7 @@ kernel.
 | Administration | `reboot`, `swapon`/`swapoff`, `init_module`/`finit_module`/`delete_module`, `kexec_load`/`kexec_file_load`, `quotactl`/`quotactl_fd` |
 | seccomp | `seccomp` (see below) |
 | BPF | `bpf`, for maps, and `BPF_PROG_LOAD` of socket filters, with a verifier (see below) |
-| I/O | `poll`, `ppoll`, `select`, `pselect6`, `vhangup`, `ioctl` (`TCGETS`, `TIOCGWINSZ`, `FIOCLEX`, `FIONCLEX`, `FIONBIO`, `FIOASYNC`, `FIOQSIZE`, `FIGETBSZ`, `SIOCATMARK`, `FIONREAD`/`SIOCINQ`, `SIOCOUTQ`, `SIOCGIFFLAGS`, `SIOCSIFFLAGS`, `SIOCGIFINDEX` and `SIOCGIFNAME` of the loopback, `INOTIFY_IOC_SETNEXTWD`, the seccomp listener's `SECCOMP_IOCTL_NOTIF_*` (see seccomp below), `FS_IOC_GETFLAGS`, `FS_IOC_SETFLAGS`, `FS_IOC_FSGETXATTR`, `FS_IOC_FSSETXATTR`, and the pseudo-terminals' requests below) |
+| I/O | `poll`, `ppoll`, `select`, `pselect6`, `vhangup`, `ioctl` (`TCGETS`, `TIOCGWINSZ`, `FIOCLEX`, `FIONCLEX`, `FIONBIO`, `FIOASYNC`, `FIOQSIZE`, `FIGETBSZ`, `SIOCATMARK`, `FIONREAD`/`SIOCINQ`, `SIOCOUTQ`, `SIOCGIFFLAGS`, `SIOCSIFFLAGS`, `SIOCGIFINDEX` and `SIOCGIFNAME` of the loopback and veth ends, `INOTIFY_IOC_SETNEXTWD`, the seccomp listener's `SECCOMP_IOCTL_NOTIF_*` (see seccomp below), `FS_IOC_GETFLAGS`, `FS_IOC_SETFLAGS`, `FS_IOC_FSGETXATTR`, `FS_IOC_FSSETXATTR`, and the pseudo-terminals' requests below) |
 | Events | `eventfd`/`eventfd2`, `timerfd_create`/`timerfd_settime`/`timerfd_gettime`, `signalfd`/`signalfd4`, `inotify_init`/`inotify_init1`, `inotify_add_watch`, `inotify_rm_watch`, `fanotify_init`, `fanotify_mark`, `epoll_create`/`epoll_create1`, `epoll_ctl`, `epoll_wait`, `epoll_pwait`, `epoll_pwait2`, `io_uring_setup`, `io_uring_enter`, `io_uring_register` (see below) |
 | Asynchronous I/O | `io_setup`, `io_destroy`, `io_submit`, `io_cancel`, `io_getevents`, `io_pgetevents` (see below) |
 | Sockets | `socket` (`AF_UNIX` streams, packet and datagram sockets; `AF_INET`, `AF_INET6`, `AF_NETLINK` (`NETLINK_ROUTE`, `NETLINK_SOCK_DIAG` and `NETLINK_GENERIC`) and `AF_MCTP` datagrams with a [network](#network) or in a new network namespace, else `EAFNOSUPPORT`), `connect`, `getsockname`, `getpeername`, `bind`, `listen`, `accept` and `accept4` (AF_UNIX streams and packet sockets, and on the guest's own [loopback](#loopback-servers) TCP), `socketpair` (AF_UNIX, `SOCK_STREAM`, `SOCK_SEQPACKET` and `SOCK_DGRAM`), `sendto`, `recvfrom`, `sendmsg` and `recvmsg` (passing descriptors with `SCM_RIGHTS`, credentials with `SCM_CREDENTIALS` and the sender's pidfd with `SCM_PIDFD`), `sendmmsg` and `recvmmsg`, `setsockopt` and `getsockopt` (`SOL_SOCKET`), `shutdown` |
@@ -2024,17 +2024,18 @@ kernel.
   `unix_find_abstract`, while a socket file on a path is reached from any
   namespace. `SIOCGIFFLAGS` and `SIOCGIFINDEX` on a socket of any family,
   an AF_UNIX one too (as glibc's and musl's `if_nametoindex` use), read the
-  loopback of the namespace the socket was made in, as Linux's `dev_ioctl`
-  takes `sock_net` (`IFF_UP | IFF_LOOPBACK | IFF_RUNNING` while it is up,
-  in the first namespace too); an accepted AF_UNIX socket is in its
-  client's. `SIOCSIFFLAGS` needs CAP_NET_ADMIN in the user namespace that
-  owns that namespace, whichever the caller is in. An AF_UNIX socket of a
-  first namespace without a network has none (`ENOTTY`). Another interface
-  name is `ENODEV`. `SIOCGIFNAME` (`if_indextoname`) names index 1
-  `lo` (`ENODEV` for another).
+  devices of the namespace the socket was made in, as Linux's `dev_ioctl`
+  takes `sock_net`: its loopback (`IFF_UP | IFF_LOOPBACK | IFF_RUNNING`
+  while it is up, in the first namespace too) and its veth ends (veth
+  pairs, below); an accepted AF_UNIX socket is in its client's.
+  `SIOCSIFFLAGS` needs CAP_NET_ADMIN in the user namespace that owns that
+  namespace, whichever the caller is in. An AF_UNIX socket of a first
+  namespace without a network has none (`ENOTTY`). Another interface name
+  is `ENODEV`. `SIOCGIFNAME` (`if_indextoname`) names the device of the
+  index (`ENODEV` for none).
 - A netlink socket (`AF_NETLINK`, `SOCK_RAW` or `SOCK_DGRAM`, protocol
-  `NETLINK_ROUTE`) shows and changes the loopback of the network namespace
-  it was made in, so glibc's and musl's `getifaddrs`, `ip link`, `ip addr`
+  `NETLINK_ROUTE`) shows and changes the devices of the network namespace
+  it was made in, its loopback and its veth ends (veth pairs, below), so glibc's and musl's `getifaddrs`, `ip link`, `ip addr`
   (with `ip addr add` and `del`), `ip route` (with `ip route add`, `del`,
   `replace` and `append`), `ip route get`, `ip link set lo up` and
   `ip monitor` work.
@@ -2159,13 +2160,48 @@ kernel.
     as it has no `rtnl_link_ops`); another link is `ENODEV`, and without
     either, `IFLA_GROUP` is `EPERM` for group 0 and `ENODEV` for another,
     and nothing `EINVAL`.
+  - **veth pairs:** `RTM_NEWLINK` of kind `veth` (`IFLA_LINKINFO`) makes a
+    pair, as `rtnl_newlink` and `veth_newlink` do: its peer, of
+    `VETH_INFO_PEER`'s name, address, MTU and namespace (`IFLA_NET_NS_PID`
+    or `IFLA_NET_NS_FD`; the requester's without one), then the first end,
+    of the request's, each `veth%d` without a name, of a random address
+    without one and of the index the request asks (the peer's only with
+    the first end's). Without `VETH_INFO_PEER` the peer takes the
+    request's MTU and namespace, but a name and an address of its own. It
+    checks in Linux's order: an address of other than six bytes or an MTU
+    past 68 to 65535 (`EINVAL`), a multicast address (`EADDRNOTAVAIL`), a
+    name or index taken (`EEXIST`, `EBUSY`), a link the request names that
+    is there (`EEXIST` with `NLM_F_EXCL`). Each end is an Ethernet device,
+    told of with `RTM_NEWLINK` in its namespace; it has its carrier
+    (`IFF_LOWER_UP`, then `IFF_RUNNING` and an operational state of up)
+    while both ends are up, each telling of it (an end up without it is
+    lower layer down where the device of its peer's index in its own
+    namespace is not up, as `default_operstate` finds it), and its link
+    messages give
+    its kind, its peer (`IFLA_LINK`) and, where that is in another
+    namespace, that namespace's ID (`IFLA_LINK_NETNSID`, which the
+    namespace telling of it gives first, with `RTM_NEWNSID`). `RTM_SETLINK`
+    or `RTM_NEWLINK` brings an end up or down, as `SIOCSIFFLAGS` does
+    (with `SIOCGIFFLAGS`, `SIOCGIFINDEX` and `SIOCGIFNAME`), and moves it
+    to another namespace, as `__dev_change_net_namespace` does: closed
+    first if up (told of with `IFF_UP` and `IFF_RUNNING` changed), it is
+    told of with `RTM_DELLINK` in the namespace it leaves, which gives the
+    other an ID, with that ID and its index there (`IFLA_NEW_NETNSID`,
+    `IFLA_NEW_IFINDEX`), then with `RTM_NEWLINK` in the one it enters,
+    keeping its index unless that one has it. `RTM_DELLINK` of either end
+    takes both, and so does the namespace of either going (after its
+    `RTM_DELNSID`); as `unregister_netdevice_many_notify` does, every end
+    that is up is closed before either is told gone.
   - **Namespace IDs:** as Linux's `net_namespace.c`, `RTM_NEWNSID` gives
     the network namespace of a process (`NETNSA_PID`, `ESRCH` for none) or
     of a `/proc/<pid>/ns/net` descriptor (`NETNSA_FD`, `EBADF`, or `EINVAL`
     for another file) the ID `NETNSA_NSID`, or with a negative one the
     lowest free; one without either is `EINVAL`, and a namespace that has
     an ID, or an ID taken, `EEXIST`, each with Linux's extended-ack
-    message. The members of `RTNLGRP_NSID` hear of each new ID
+    message. Telling of a veth end whose peer is in another namespace
+    gives that namespace an ID too, the lowest free, as
+    `peernet2id_alloc` does, and so does moving one there (veth pairs,
+    above). The members of `RTNLGRP_NSID` hear of each new ID
     (`NLM_F_ECHO` sends it to the requester alone of them), and with
     `RTM_DELNSID` of each that goes with its namespace, once no process,
     descriptor or socket holds that, as `unhash_nsid` tells it; the ID is
