@@ -641,6 +641,8 @@ mod linux {
         ptrace_memory => ("ptrace-memory","ptrace"),
         ptrace_thread => ("ptrace-thread","ptrace"),
         ptrace_sibling => ("ptrace-sibling","ptrace"),
+        ptrace_attach_stopped => ("ptrace-attach-stopped","ptrace"),
+        ptrace_tracer_exit => ("ptrace-tracer-exit","ptrace"),
         ptrace_strace => ("ptrace-strace","ptrace-syscalls"),
         ptrace_sysemu => ("ptrace-sysemu","ptrace-syscalls"),
         ptrace_events => ("ptrace-events","ptrace-syscalls"),
