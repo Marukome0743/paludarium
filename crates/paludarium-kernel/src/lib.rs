@@ -55,6 +55,7 @@ mod mqueue;
 mod msg;
 mod namespaces;
 mod page_cache;
+mod pagemap_scan;
 mod perf;
 mod proc;
 mod process_vm;
