@@ -3545,13 +3545,23 @@ kernel.
   block, read as `maps` is: the size, what the pages hold (`Rss`, `Pss`,
   `Pss_Dirty`, the shared and private clean and dirty pages, `Anonymous`,
   `Locked`, with 0 for huge pages, swap and KSM), `THPeligible` and
-  `VmFlags`. A page counts once it has an entry: private memory only read
+  `VmFlags`. A page counts once it has an entry: anonymous private memory only read
   shows the zero page, which is not counted, written private memory is
   anonymous and dirty, and a page that more than one page table entry
   maps, in this process or any other (one a `fork` shares until it is
   written, a file's page two mappings show), is shared, with its size
   divided by that count in `Pss`, as Linux's `smaps_account` takes the
-  precise map count. `VmFlags` names Linux's flags of the VMA
+  precise map count. A read fault in a file's mapping gives entries to
+  the pages around it too, as Linux's `do_fault_around` maps them: up to
+  16 (the default `fault_around_bytes`, 64 KiB) from the faulting page's
+  aligned block of 16, or from the VMA's start if that is later, within
+  the VMA, its page table and the file, and only pages the page cache
+  holds: a memfd's written pages, shared memory's that any process
+  touched, and every page of another file within its size. A page that
+  has an entry or a marker keeps it. System V shared memory and secret
+  memory map none around, as Linux's have no `map_pages`, nor does a VMA
+  that `userfaultfd` watches for writes or minor faults. The present bits of `pagemap`
+  show the same pages. `VmFlags` names Linux's flags of the VMA
   in Linux's order: the protection and what it may become (`mr`, `mw`, `me`,
   `ms`, without `mw` for a file open only for reading or sealed against
   writes, and without `me` for the rings of AIO and `io_uring` and secret

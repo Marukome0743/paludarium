@@ -51,10 +51,15 @@ verified.
   do not exist.
 - **`/proc/self/smaps`, in part**: what it counts comes from the emulator's
   page entries. `Referenced` is every page counted. A page of a loaded program's segment counts as
-  anonymous once the segment was written, not once the page was. A
-  file's pages are counted as they are touched, where Linux's fault
-  brings in up to 16 pages around one (`fault_around_bytes`), and so are
-  those that `MAP_POPULATE`, `MAP_LOCKED` or a lock would bring in.
+  anonymous once the segment was written, not once the page was. The
+  pages that `MAP_POPULATE`, `MAP_LOCKED` or a lock would bring in of a
+  file are counted only once touched. A read fault in a file's mapping
+  maps no more than the 16 pages around it
+  ([features](./features#system-calls)), where Linux maps a large folio
+  of its page cache whole when the folio lies within the file, the VMA
+  and the page table (`filemap_map_folio_range`): the emulator's page
+  cache has no large folios, whose size each file system picks. `pagemap`
+  shows the same pages.
   `THPeligible` is always 0 and there is no `ProtectionKey`, as there are
   no huge pages and the CPU has no protection keys. `VmFlags` shows no
   `ht` or `dp` (`MAP_HUGETLB`, `MAP_DROPPABLE`). A page of a host file
@@ -62,9 +67,7 @@ verified.
 - **`/proc/<pid>/pagemap`, in part**: its entries come from the
   emulator's page entries, as `smaps`'s counts do. A page of a loaded program's segment, or of a
   private file mapping, is a file's (bit 61) until the mapping was
-  written, not until the page was. A read of a file's page gives only
-  that page an entry, where Linux's fault maps the pages around it too
-  (`fault_around_bytes`). A page of a file's private mapping that
+  written, not until the page was. A page of a file's private mapping that
   `MADV_DONTNEED` dropped is read from the file again at once, so it has
   an entry (bit 63, and bit 57 if it was write-protected) where Linux has
   none, or a uffd-wp marker, until an access. The frame number is 0 for every reader, also one
