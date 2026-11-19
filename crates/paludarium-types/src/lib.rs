@@ -556,3 +556,6 @@ mod tests {
         assert_eq!(plain.to_string(), "invalid-program: not an ELF file");
     }
 }
+
+#[allow(dead_code)]
+fn   quick_gate_check( ) {}
