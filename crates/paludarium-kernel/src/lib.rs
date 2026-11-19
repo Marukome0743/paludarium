@@ -25,6 +25,7 @@ mod bpf_prog;
 #[cfg(test)]
 mod bpf_tests;
 mod bpf_trie;
+mod bpf_verifier;
 mod devices;
 mod epoll;
 mod events;
