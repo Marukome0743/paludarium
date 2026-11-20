@@ -173,6 +173,68 @@ impl Shift {
     }
 }
 
+/// A count of bits of [`Fast`]: `tzcnt`, `lzcnt`, `popcnt`, `bsf` or `bsr`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Count {
+    Tzcnt,
+    Lzcnt,
+    Popcnt,
+    Bsf,
+    Bsr,
+}
+
+impl Count {
+    fn of(m: Mnemonic) -> Option<Self> {
+        Some(match m {
+            Mnemonic::Tzcnt => Self::Tzcnt,
+            Mnemonic::Lzcnt => Self::Lzcnt,
+            Mnemonic::Popcnt => Self::Popcnt,
+            Mnemonic::Bsf => Self::Bsf,
+            Mnemonic::Bsr => Self::Bsr,
+            _ => return None,
+        })
+    }
+
+    /// The result of the count of `value`, already masked to `size`, or
+    /// `None` where `bsf` and `bsr` leave the destination as it was, the
+    /// flags it changes and their values, as [`Exec::count_bits`] and
+    /// [`Exec::scan`] have them.
+    #[inline]
+    fn apply(self, value: u64, size: u8) -> (Option<u64>, u64, u64) {
+        let width = alu::bits(size);
+        let zero = value == 0;
+        let zf = |z: bool| if z { flag::ZF } else { 0 };
+        match self {
+            Self::Bsf | Self::Bsr => {
+                let index = (!zero).then(|| {
+                    u64::from(if self == Self::Bsr {
+                        63 - value.leading_zeros()
+                    } else {
+                        value.trailing_zeros()
+                    })
+                });
+                (index, flag::ZF, zf(zero))
+            }
+            Self::Popcnt => (Some(u64::from(value.count_ones())), flag::STATUS, zf(zero)),
+            Self::Tzcnt | Self::Lzcnt => {
+                let count = if self == Self::Lzcnt {
+                    value.leading_zeros() - (64 - width)
+                } else if zero {
+                    width
+                } else {
+                    value.trailing_zeros()
+                };
+                let cf = if zero { flag::CF } else { 0 };
+                (
+                    Some(u64::from(count)),
+                    flag::CF | flag::ZF,
+                    cf | zf(count == 0),
+                )
+            }
+        }
+    }
+}
+
 /// A second operand of [`Fast`]: a register or an immediate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Source {
@@ -433,6 +495,28 @@ pub enum Fast {
         op: Shift,
         dst: Register,
     },
+    /// `adc` (`sub` false) or `sbb` (`sub` true) of a register and a
+    /// register or an immediate, which takes CF as the carry in.
+    Carry {
+        sub: bool,
+        dst: Register,
+        src: Source,
+    },
+    /// `tzcnt`, `lzcnt`, `popcnt`, `bsf` or `bsr` of a register into one of
+    /// its size.
+    Count {
+        op: Count,
+        dst: Register,
+        src: Register,
+    },
+    /// `bt` of a register by a register of its size or by an immediate,
+    /// which is masked as the instruction masks it.
+    BitTest {
+        dst: Register,
+        bit: Source,
+    },
+    /// `bswap r32` or `bswap r64`.
+    Bswap(Register),
 }
 
 /// A general register, or one of the high-byte registers ah, ch, dh and bh.
@@ -774,6 +858,48 @@ impl Fast {
                 (None, None) => Self::CallLoad(target(a)?),
             },
             Mnemonic::Ret if a.is_none() => Self::Ret,
+            Mnemonic::Adc | Mnemonic::Sbb => {
+                let dst = gpr(a)?;
+                Self::Carry {
+                    sub: i.mnemonic == Mnemonic::Sbb,
+                    dst,
+                    src: source(b, dst.size())?,
+                }
+            }
+            m if Count::of(m).is_some() => {
+                let (dst, src) = (gpr(a)?, gpr(b)?);
+                if src.size() != dst.size() || dst.size() == 1 {
+                    return None;
+                }
+                Self::Count {
+                    op: Count::of(m)?,
+                    dst,
+                    src,
+                }
+            }
+            Mnemonic::Bt => {
+                let dst = gpr(a)?;
+                if dst.size() == 1 {
+                    return None;
+                }
+                let bit = match b {
+                    // The width divides the size's range, so masking the
+                    // immediate to the size first, as `Exec::bit` does,
+                    // changes nothing.
+                    Some(Operand::Immediate(v)) => {
+                        Source::Immediate(v % u64::from(alu::bits(dst.size())))
+                    }
+                    _ => match gpr(b)? {
+                        src if src.size() == dst.size() => Source::Register(src),
+                        _ => return None,
+                    },
+                };
+                Self::BitTest { dst, bit }
+            }
+            Mnemonic::Bswap if b.is_none() => match gpr(a)? {
+                dst @ Register::Gpr { size: 4 | 8, .. } => Self::Bswap(dst),
+                _ => return None,
+            },
             m if Unary::of(m).is_some() => {
                 if b.is_some() {
                     return None;
@@ -1196,7 +1322,74 @@ pub(crate) fn execute(
             x.set_status(update, flags);
             next
         }
+        Fast::Carry { sub, dst, src } => {
+            carry(&mut x, sub, dst, src);
+            next
+        }
+        Fast::Count { op, dst, src } => {
+            count(&mut x, op, dst, src);
+            next
+        }
+        Fast::BitTest { dst, bit } => {
+            bit_test(&mut x, dst, bit);
+            next
+        }
+        Fast::Bswap(dst) => {
+            bswap(&mut x, dst);
+            next
+        }
     };
     x.s.rip = GuestAddr(target);
     Ok(())
+}
+
+// The forms below run out of line, so that the arms of `execute` that most
+// instructions take stay as they are.
+
+/// [`Fast::Carry`], as [`Exec::alu`] has it.
+#[inline(never)]
+fn carry(x: &mut Exec<'_>, sub: bool, dst: Register, src: Source) {
+    let size = dst.size();
+    let b = x.source(src, size);
+    let a = x.read_reg(dst) & size_mask(size);
+    let cf = x.s.flag(flag::CF);
+    let (r, flags) = if sub {
+        alu::sub(a, b, cf, size)
+    } else {
+        alu::add(a, b, cf, size)
+    };
+    x.write_reg(dst, r);
+    x.set_status(flag::STATUS, flags);
+}
+
+/// [`Fast::Count`].
+#[inline(never)]
+fn count(x: &mut Exec<'_>, op: Count, dst: Register, src: Register) {
+    let value = x.read_reg(src) & size_mask(src.size());
+    let (r, update, flags) = op.apply(value, dst.size());
+    if let Some(r) = r {
+        x.write_reg(dst, r);
+    }
+    x.set_status(update, flags);
+}
+
+/// [`Fast::BitTest`], as [`Exec::bit`] has it.
+#[inline(never)]
+fn bit_test(x: &mut Exec<'_>, dst: Register, bit: Source) {
+    let size = dst.size();
+    let n = x.source(bit, size) % u64::from(alu::bits(size));
+    let set = x.read_reg(dst) >> n & 1 != 0;
+    x.set_status(flag::CF, if set { flag::CF } else { 0 });
+}
+
+/// [`Fast::Bswap`].
+#[inline(never)]
+fn bswap(x: &mut Exec<'_>, dst: Register) {
+    let v = x.read_reg(dst);
+    let r = if dst.size() == 8 {
+        v.swap_bytes()
+    } else {
+        u64::from((v as u32).swap_bytes())
+    };
+    x.write_reg(dst, r);
 }
