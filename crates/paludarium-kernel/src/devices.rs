@@ -145,8 +145,8 @@ pub(crate) fn stat(entry: Entry) -> FileStat {
     }
 }
 /// `/dev`'s entries: `.`, `..` (the root, with inode `root`), then the
-/// devices and links by name.
-pub(crate) fn entries(root: u64) -> Vec<DirectoryEntry> {
+/// devices and links by name, with `shm` while a mount is there (`shm`).
+pub(crate) fn entries(root: u64, shm: bool) -> Vec<DirectoryEntry> {
     const DT_CHR: u8 = 2;
     const DT_DIR: u8 = 4;
     const DT_LNK: u8 = 10;
@@ -158,6 +158,11 @@ pub(crate) fn entries(root: u64) -> Vec<DirectoryEntry> {
         };
         (name, inode(entry), kind)
     });
+    // `shm`, which the tmpfs on `/dev/shm` is mounted on: a directory of
+    // the kernel's own, past its devices' inodes.
+    let shm = shm.then_some((&b"shm"[..], NAMES.len() as u64 + 2, DT_DIR));
+    let mut named: Vec<_> = named.chain(shm).collect();
+    named.sort_by_key(|&(name, ..)| name);
     [(&b"."[..], DIRECTORY_INODE, DT_DIR), (b"..", root, DT_DIR)]
         .into_iter()
         .chain(named)
@@ -321,7 +326,8 @@ mod device_tests {
         );
         assert_eq!(through_link(b"/dev/fd"), None);
         assert_eq!(through_link(b"/dev/fdx/3"), None);
-        let listed = entries(7);
+        assert!(!entries(7, false).iter().any(|e| e.name == b"shm"));
+        let listed = entries(7, true);
         let names: Vec<_> = listed.iter().map(|e| e.name.clone()).collect();
         assert_eq!(
             names[..4],
@@ -335,11 +341,14 @@ mod device_tests {
         // Each entry's inode is the one its stat reports.
         assert_eq!(listed[1].inode, 7);
         assert_eq!(listed[0].inode, directory_stat().inode);
-        // But `pts` and `mqueue`, which devpts and the mqueue filesystem are
-        // mounted on, as on Linux, whose `stat` gives the mounted root.
+        // But `pts`, `mqueue` and `shm`, which devpts, the mqueue
+        // filesystem and a tmpfs are mounted on, as on Linux, whose `stat`
+        // gives the mounted root.
+        assert!(listed.iter().any(|e| e.name == b"shm" && e.kind == 4));
+        assert_eq!(entry(b"/dev/shm"), None);
         for e in listed[2..]
             .iter()
-            .filter(|e| e.name != b"pts" && e.name != b"mqueue")
+            .filter(|e| e.name != b"pts" && e.name != b"mqueue" && e.name != b"shm")
         {
             let path = [&b"/dev/"[..], &e.name].concat();
             assert_eq!(stat(entry(&path).unwrap()).inode, e.inode);
