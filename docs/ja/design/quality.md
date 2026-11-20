@@ -173,10 +173,10 @@ lock 付きの命令のフェンスを外しても、テストはすべて通り
 
 | いつ | 何を |
 |---|---|
-| プルリクエストごと | Linux・macOS・Windows の単体テスト（変更が届くとき。下を参照）、lint、依存の検査、WebAssembly のビルド、x86-64 Linux での差分テスト（ネイティブの JIT ありでも）、カバレッジ、probe・aube・ripgrep の差分テスト、4 つの WebAssembly の環境（Safari は変更が Wasm のモジュールに届くとき。下を参照）と x86-64 Linux の WebKit での受け入れのテスト（x87 のプロセスのケースを x86-64 Linux とバイト単位で比べるものを含みます）、プルリクエストの 7 つの対象のうち変更が届くもののファジング（上を参照） |
+| プルリクエストごと | Linux・macOS・Windows の単体テスト（変更が届くとき。下を参照）、lint、依存の検査、WebAssembly のビルド、x86-64 Linux での差分テスト（ネイティブの JIT ありでも）、カバレッジ、probe・aube・ripgrep・coreutils の差分テスト、4 つの WebAssembly の環境（Safari は変更が Wasm のモジュールに届くとき。下を参照）と x86-64 Linux の WebKit での受け入れのテスト（x87 のプロセスのケースを x86-64 Linux とバイト単位で比べるものを含みます）、プルリクエストの 7 つの対象のうち変更が届くもののファジング（上を参照） |
 | 毎晩 | 14 の対象のファジング、macOS と Windows での差分テスト、x86-64 Linux での Debian のプログラム（ネイティブの JIT ありとなし）、4 つの WebAssembly の環境と x86-64 Linux の WebKit での JIT ありとなし、速さの測定 |
 | 毎日 | 定期実行のワークフローが時間どおりに始まったかを確かめます。始まらなかった、動かなかった、無効になっていたときは Issue を立てます |
-| 毎週 | 固定した nightly の Rust、workspace の `rust-version`（最新の stable の Rust）、aube と ripgrep のゲストを最新のリリースへ上げます。それぞれのプルリクエストは、検査が通ると自分でマージされます |
+| 毎週 | 固定した nightly の Rust、workspace の `rust-version`（最新の stable の Rust）、aube・ripgrep・coreutils のゲストを最新のリリースへ上げます。それぞれのプルリクエストは、検査が通ると自分でマージされます |
 | 公開の前 | 公開する同じコードで、上のすべて（下を参照） |
 
 プルリクエストと main への push では、重いジョブ（差分テスト、カバレッジ、ファジング、ゲストのプログラム、WebAssembly の検査）は、速い段階が通ってから始まります。速い段階は、lint、clippy（stable の Rust でも）、polyglot lint、Linux の単体テストで、2〜4 分です。これに落ちた head や、その間に後の push で置き換わった head は、重いジョブのランナーを使いません。速い段階の検査のうち変更が要らないもの（main への push での polyglot lint、Rust を変えないときの lint と clippy）は飛ばされます。飛ばされたことは、それを待つジョブへ伝わって、そのジョブも飛ばしてしまいます。そのため、重いジョブは速い段階のジョブ自身の結果を見ます。必須の検査の `ci-ok` は、すべてのジョブを自分で待ちます。そのため、速い段階が落ちて飛ばされたジョブがあっても `ci-ok` は通りません。そうなっていない `ci.yml` は `scripts/ci-changes.py --self-test` が拒みます。Dependency Review は、Cargo か npm のマニフェストかロックファイル、ワークフロー、ローカルのアクションを変えるプルリクエストでだけ走ります。
@@ -188,7 +188,9 @@ GitHub は、ホストのランナーがどれも受け取らなかったジョ�
 そのため、`CI` の実行のこのようなジョブを手で走らせ直さないでください。ワークフローは、その実行が終わるとすぐに始まります。見るのは `CI` だけで、`Publish` や `release-acceptance` は見ません。先に手で走らせ直すと、ワークフローは最新でない試行を見ることになり、何も走らせ直しません。手で走らせ直すのは、ログに 2 回走らせ直し済みと出たとき、またはステップを動かして落ちたジョブの失敗が一時的なものだと考える理由があるときだけにしてください。
 
 ゲストのプログラムは、ビルドの前に、依存がルートの方針の `cargo deny` を通らなければ
-なりません。例外があるのは aube だけです。2 つのクレートのライセンスと、今のところ
+なりません。例外があるのは aube と coreutils だけです。coreutils の例外は、coreutils だけに
+認めた 1 つで、`uu_tail` が使う `notify` 8.2.2 の CC0-1.0 のライセンスです。ビルドはその
+ライセンスの全文を残します。aube の例外は、2 つのクレートのライセンスと、今のところ
 `zstd` 0.13.3 と `zstd-safe` 7.3.0 への 3 つの RustSec のアドバイザリ（RUSTSEC-2026-0391、
 RUSTSEC-2026-0398、RUSTSEC-2026-0403）です。aube はこの版を、`zstd` を版まで固定している
 `decmpfs` から受け取るので、自分では上げられません。アドバイザリの例外は、`decmpfs` が
@@ -196,7 +198,8 @@ RUSTSEC-2026-0398、RUSTSEC-2026-0403）です。aube はこの版を、`zstd` �
 （[SocketDev/decmpfs#16](https://github.com/SocketDev/decmpfs/issues/16)）。どのクレートにも
 当たらなくなった例外は監査を失敗させるので、例外が要らなくなった aube の更新は、例外を
 外すまでマージされません。例外はすべて
-`tests/guests/programs/evidence.py` に並んでいます。
+`tests/guests/programs/evidence.py` に並んでいて、`source-lock.json` はクレートの版まで
+書いて例外を挙げています。
 
 ## 公開の前の受け入れの確かめ
 

@@ -249,10 +249,10 @@ every test passing.
 
 | When | What |
 |---|---|
-| Every pull request | unit tests on Linux, macOS and Windows (when the change can reach them, below); lint; dependency checks; the WebAssembly build; differential tests on x86-64 Linux, also with the native JIT; coverage; probe, aube and ripgrep differential tests; acceptance tests in the four WebAssembly environments (Safari when the change can reach the Wasm module, below) and in WebKit on x86-64 Linux, which include the x87 process cases compared byte for byte with x86-64 Linux; fuzzing of the seven pull-request targets the change can affect (above) |
+| Every pull request | unit tests on Linux, macOS and Windows (when the change can reach them, below); lint; dependency checks; the WebAssembly build; differential tests on x86-64 Linux, also with the native JIT; coverage; probe, aube, ripgrep and coreutils differential tests; acceptance tests in the four WebAssembly environments (Safari when the change can reach the Wasm module, below) and in WebKit on x86-64 Linux, which include the x87 process cases compared byte for byte with x86-64 Linux; fuzzing of the seven pull-request targets the change can affect (above) |
 | Every night | fuzzing of the 14 targets; differential tests on macOS and Windows; Debian's own programs on x86-64 Linux, with and without the native JIT; the four WebAssembly environments and WebKit on x86-64 Linux with and without the JIT; the performance measurement |
 | Every day | every scheduled workflow is checked to have started on time; one that failed to start, did not run or was disabled opens an Issue |
-| Every week | the pinned nightly Rust, the workspace's `rust-version` (the latest stable Rust) and the aube and ripgrep guests move to their latest releases, each in a pull request that merges itself once its checks pass |
+| Every week | the pinned nightly Rust, the workspace's `rust-version` (the latest stable Rust) and the aube, ripgrep and coreutils guests move to their latest releases, each in a pull request that merges itself once its checks pass |
 | Before a release | all of the above on the exact code being released (below) |
 
 On a pull request and on a push to main, the expensive jobs — the
@@ -303,7 +303,9 @@ the run was already rerun twice, or when a job that ran a step failed and
 you have reason to think the failure was a flake.
 
 Before a guest program is built, its dependencies must pass `cargo deny`
-under the root policy. Only aube has exceptions: the licenses of two crates
+under the root policy. Only aube and coreutils have exceptions. coreutils has
+one, for itself alone: the CC0-1.0 license of `notify` 8.2.2, which `uu_tail`
+uses; the build keeps its full license text. aube has the licenses of two crates
 and, for now, three RustSec advisories against `zstd` 0.13.3 and `zstd-safe`
 7.3.0 (RUSTSEC-2026-0391, RUSTSEC-2026-0398 and RUSTSEC-2026-0403). aube gets
 those versions through `decmpfs`, which pins `zstd` exactly, so aube cannot
@@ -311,7 +313,8 @@ update them. The advisory exceptions go once a `decmpfs` release takes `zstd`
 0.14 ([SocketDev/decmpfs#16](https://github.com/SocketDev/decmpfs/issues/16)):
 an exception that no crate matches fails the audit, so the aube bump that no
 longer needs them cannot merge until they are removed.
-`tests/guests/programs/evidence.py` lists every exception.
+`tests/guests/programs/evidence.py` lists every exception, and `source-lock.json`
+names them with the exact crate versions.
 
 ## Acceptance before a release
 
