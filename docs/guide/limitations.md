@@ -128,8 +128,8 @@ verified.
   another process's thread is `S (sleeping)` in every wait, where Linux
   shows some waits it cannot interrupt as `D (disk sleep)`. A thread shows another process
   what it published at its last system call or signal check, so a mask
-  changed only for the length of a call (`rt_sigsuspend`, `ppoll`) is not
-  seen. `meminfo` shows the fixed 4 GiB that `sysinfo` reports, with nothing
+  changed only for the length of a call (`rt_sigsuspend`, `ppoll`) is seen
+  only while the thread is stopped in it. `meminfo` shows the fixed 4 GiB that `sysinfo` reports, with nothing
   used. A generated file's `stat` gives its length as its size
   (`mountinfo`, `status`, `stat`, `loadavg` and the like), where Linux's
   seq files are of size 0; `maps`, `smaps` and `fdinfo` are 0 as on Linux.

@@ -113,7 +113,7 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   スレッドの `stat` の CPU 時間はプロセスのものです。ほかのプロセスのスレッドは、どの待ちでも
   `S (sleeping)` です。Linux は割り込めない待ちの一部を `D (disk sleep)` と見せます。スレッドが
   ほかのプロセスに見せるのは最後のシステムコールかシグナルの確認で公開したものなので、
-  呼び出しの間だけ変えたマスク（`rt_sigsuspend`、`ppoll`）は見えません。`meminfo` は
+  呼び出しの間だけ変えたマスク（`rt_sigsuspend`、`ppoll`）は、スレッドがその中で停止している間しか見えません。`meminfo` は
   `sysinfo` と同じ固定の 4 GiB を、何も使っていないものとして返します。生成するファイルの
   `stat` は、その長さを大きさとして返します（`mountinfo`、`status`、`stat`、`loadavg`
   など）。Linux の seq ファイルの大きさは 0 です。`maps`、`smaps`、`fdinfo` は Linux と
