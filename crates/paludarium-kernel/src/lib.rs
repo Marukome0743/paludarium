@@ -409,6 +409,9 @@ struct Published {
     files: [usize; 3],
     credentials: credentials::Credentials,
     personality: u32,
+    /// Its mode and filters, by identity, so that a `seccomp` or `prctl`
+    /// that changes them publishes them.
+    seccomp: seccomp::Seccomp,
 }
 
 impl Kernel {
@@ -803,6 +806,7 @@ impl Kernel {
                 && p.files == files
                 && p.credentials == state.credentials
                 && p.personality == state.personality
+                && p.seccomp == state.seccomp
         }) {
             return;
         }
@@ -828,6 +832,7 @@ impl Kernel {
             files,
             credentials: state.credentials.clone(),
             personality: state.personality,
+            seccomp: state.seccomp.clone(),
         });
     }
 
