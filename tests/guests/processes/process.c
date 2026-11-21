@@ -7243,6 +7243,13 @@ static int proc_stat_counts_case(const char *self) {
     printf("children at first: %ld\n", ps_field("/proc/self/stat", 11));
     ps_process_start = ps_field("/proc/self/stat", 22);
     printf("start: recent=%d\n", ps_recent(ps_process_start, ps_uptime()));
+    {
+        /* DIAGNOSTIC, to be removed: the raw values on this host. */
+        struct timespec boot;
+        clock_gettime(CLOCK_BOOTTIME, &boot);
+        printf("diag: start=%ld uptime=%ld boottime=%ld\n", ps_process_start, ps_uptime(),
+               (long)boot.tv_sec * 100 + boot.tv_nsec / 10000000);
+    }
 
     long rusage = pf_get(RUSAGE_SELF);
     long before = ps_field("/proc/self/stat", 10);
