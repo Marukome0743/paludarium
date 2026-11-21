@@ -340,9 +340,15 @@ static void wait_for(const char *ip, int index, const char *label) {
     static unsigned char buf[65536];
     unsigned char in[16] = {0};
     if (ip) inet_pton(AF_INET6, ip, in);
-    for (int tries = 0; tries < 5; tries++) {
+    struct timespec start, now;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    for (;;) {
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long left = 5000 - ((now.tv_sec - start.tv_sec) * 1000 + (now.tv_nsec - start.tv_nsec) / 1000000);
+        if (left <= 0) break;
+        /* What else comes meanwhile takes none of the 5 s. */
         struct pollfd ready = {.fd = events, .events = POLLIN};
-        if (poll(&ready, 1, 1000) <= 0) continue;
+        if (poll(&ready, 1, (int)(left < 1000 ? left : 1000)) <= 0) continue;
         long n;
         while ((n = recv(events, buf, sizeof buf, MSG_DONTWAIT)) > 0)
             for (long at = 0; at + (long)sizeof(struct nl_header) <= n;) {
