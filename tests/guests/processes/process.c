@@ -8371,6 +8371,17 @@ static int io_uring_transfers_case(void) {
     ut_run("watched-read-negative");
     ut_entry(23, fd, 0, "x", 0);
     ut_run("watched-write-nothing");
+    /* A write the file itself refuses (EFBIG past RLIMIT_FSIZE, with
+       SIGXFSZ ignored) still gives IN_MODIFY. */
+    struct rlimit fsize;
+    if (getrlimit(RLIMIT_FSIZE, &fsize)) return 86;
+    struct rlimit small = {50, fsize.rlim_max};
+    signal(SIGXFSZ, SIG_IGN);
+    if (setrlimit(RLIMIT_FSIZE, &small)) return 86;
+    ut_entry(23, fd, 100, "x", 1);
+    ut_run("watched-write-too-big");
+    if (setrlimit(RLIMIT_FSIZE, &fsize)) return 86;
+    signal(SIGXFSZ, SIG_DFL);
     ut_events(ifd, "events");
 
     /* The probe says which operations run. */
@@ -8391,7 +8402,7 @@ static int io_uring_transfers_case(void) {
     close(fd);
     unlink("file");
     unlink("append");
-    if (chdir("/")) return 86;
+    if (chdir("/")) return 87;
     rmdir(dir);
     return 0;
 }
