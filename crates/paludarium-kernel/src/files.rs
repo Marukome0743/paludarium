@@ -228,6 +228,7 @@ fn released_to_notifiers(
     })));
     mounts_to_fanotify(table, caches, crate::namespaces::FIRST_MOUNT_INODE);
 }
+
 /// Tells fanotify of the mounts that come into `table`, the mount
 /// namespace whose inode is `namespace`, go or move
 /// ([`crate::fanotify::Registry::mount_events`]), as Linux's `mnt_notify`
@@ -237,10 +238,14 @@ pub(crate) fn mounts_to_fanotify(
     caches: &Arc<crate::page_cache::PageCaches>,
     namespace: u32,
 ) {
+    caches.notify.fan.mount_namespace(u64::from(namespace));
     let fan = Arc::downgrade(&caches.notify.fan);
-    table.set_mount_hook(Some(Arc::new(move |changes| {
+    table.set_mount_hook(Some(Arc::new(move |changes, ended| {
         if let Some(fan) = fan.upgrade() {
             fan.mount_events(u64::from(namespace), changes);
+            if ended {
+                fan.mount_namespace_ended(u64::from(namespace));
+            }
         }
     })));
 }
@@ -663,6 +668,23 @@ impl Files {
     pub(crate) fn release_home(&mut self) {
         self.home = Arc::default();
         self.root_pin = Arc::default();
+    }
+    /// An exiting task's `exit_task_namespaces`: it no longer sees the
+    /// files through its mount namespace's table, which the tasks that
+    /// share its working directory keep; it is left the first one's.
+    pub(crate) fn leave_mount_namespace(&mut self) {
+        let lower = Arc::clone(
+            &self
+                .space
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .lower,
+        );
+        self.space = Arc::new(Mutex::new(Space::new(
+            lower,
+            Arc::clone(&self.first_mounts),
+            &self.caches,
+        )));
     }
     /// Detaches this worker's table reference without closing a table still
     /// shared by live CLONE_FILES siblings; the last task to let go gets the

@@ -338,6 +338,11 @@ pub(crate) struct Registry {
     /// The mounts freed since the marks were last looked at, whose marks
     /// go then ([`Registry::unmounted`]).
     released: Mutex<Vec<u64>>,
+    /// The inodes of the mount namespaces, the only namespaces a mount
+    /// namespace mark may be on (`mnt_ns_from_dentry`), each with its
+    /// tables: the first namespace's table is replaced when the machine's
+    /// file system is, the old one going after the new one is set.
+    mount_namespaces: Mutex<std::collections::BTreeMap<u64, usize>>,
 }
 
 /// The machine's limits of `/proc/sys/fs/fanotify`.
@@ -1103,6 +1108,48 @@ impl Registry {
         self.fsnotify(&groups, mask, &data, Some(dir), Some(name), None);
     }
 
+    /// The mount namespace whose inode is `namespace` is one a mark may be
+    /// on ([`Self::mount_namespace_ended`]).
+    pub(crate) fn mount_namespace(&self, namespace: u64) {
+        *lock(&self.mount_namespaces).entry(namespace).or_default() += 1;
+    }
+    /// The mount namespace whose inode is `namespace` has ended
+    /// (`free_mnt_ns`): its marks go (`fsnotify_mntns_delete`), after its
+    /// mounts' events, given back to their users.
+    pub(crate) fn mount_namespace_ended(&self, namespace: u64) {
+        {
+            let mut namespaces = lock(&self.mount_namespaces);
+            let Some(tables) = namespaces.get_mut(&namespace) else {
+                return;
+            };
+            *tables -= 1;
+            if *tables > 0 {
+                return;
+            }
+            namespaces.remove(&namespace);
+        }
+        if !self.active() {
+            return;
+        }
+        for group in self.live_groups() {
+            let removed = {
+                let mut queue = group.queue();
+                let before = queue.marks.len();
+                queue
+                    .marks
+                    .retain(|m| m.target != Target::Namespace(namespace));
+                (before - queue.marks.len()) as u64
+            };
+            if removed > 0 {
+                self.release(
+                    group.owner,
+                    removed,
+                    group.flags & UNLIMITED_MARKS == 0,
+                    false,
+                );
+            }
+        }
+    }
     /// `fsnotify_mnt`: the mounts of `changes` came into the mount namespace
     /// whose inode is `namespace`, went or moved, in that order; each group
     /// with `FAN_REPORT_MNT` and a mark on the namespace is told of each it
@@ -1921,8 +1968,11 @@ fn mark(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
         MARK_MOUNT => Target::Mount(found.mount, found.key.0),
         MARK_FILESYSTEM => Target::FileSystem(found.key.0),
         _ => {
-            // A mount namespace file names the namespace.
-            if found.kind != NSFS_MAGIC {
+            // A mount namespace's file names it; another namespace's is
+            // `EINVAL` too (`mnt_ns_from_dentry`).
+            if found.kind != NSFS_MAGIC
+                || !lock(&group.fan().mount_namespaces).contains_key(&found.stat.inode)
+            {
                 return Err(Errno::EINVAL);
             }
             Target::Namespace(found.stat.inode)

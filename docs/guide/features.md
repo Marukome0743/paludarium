@@ -4674,7 +4674,9 @@ kernel.
   (`EMFILE`), and the file is `anon_inode:[fanotify]`, read and written,
   with `O_NONBLOCK` and `O_CLOEXEC` as asked. `fanotify_mark` adds, removes
   or flushes marks on a file, a mount or a file system (and on a mount
-  namespace, by its file in `/proc/<pid>/ns`, for mount events); a mount's mark, by the mount's ID, hears only of the paths
+  namespace, by its file in `/proc/<pid>/ns` or a descriptor of it, for
+  mount events; another namespace's file is `EINVAL`, as
+  `mnt_ns_from_dentry` finds none); a mount's mark, by the mount's ID, hears only of the paths
   in that mount, not of a bind mount of the same file system, and fdinfo
   shows that ID; it goes when its mount is freed (`fsnotify_vfsmount_delete`),
   so a mount that takes the ID next is not marked. Exec's open of the
@@ -4729,7 +4731,13 @@ kernel.
   mount before those on it, after the mounts it slides down onto their
   parent move; `move_mount` and `MS_MOVE` the moved tree's root alone, or
   each mount of a detached tree they attach; `pivot_root` the old root, then
-  the new one. A detached tree is in no namespace and tells nothing. Such an
+  the new one. A namespace that ends (`put_mnt_ns`, when the last process
+  in it and the last descriptor of it are gone; a task lets go of it as it
+  exits, before its parent's wait can end, as `exit_task_namespaces` comes
+  before `exit_notify`, and the events then name that task) takes out each of its
+  mounts, as `umount_tree` takes them from its root: the mount below its
+  root first, then each mount before those on it; then its marks go
+  (`fsnotify_mntns_delete`). A detached tree is in no namespace and tells nothing. Such an
   event has no descriptor and, after any pidfd's, a record of the mount's
   unique ID (`FAN_EVENT_INFO_TYPE_MNT`, the `statx` `STATX_MNT_ID_UNIQUE`
   one), and is never merged. A read takes whole events (`EINVAL`

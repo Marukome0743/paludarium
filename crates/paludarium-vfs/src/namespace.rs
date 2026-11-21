@@ -598,9 +598,11 @@ pub enum MountChange {
 /// (`reparent`) move; `move_mount` moves the root of the tree it moves, or
 /// takes in each mount of a detached tree; `pivot_root` moves the old root,
 /// then the new one. A detached tree is in no namespace and tells nothing,
-/// and a copy of a namespace tells nothing of its first mounts. A hook
-/// point for fanotify's mount events.
-pub type MountHook = Arc<dyn Fn(&[(u64, MountChange)]) + Send + Sync>;
+/// and a copy of a namespace tells nothing of its first mounts. A table
+/// that goes (`put_mnt_ns`) takes out every mount, from the one below its
+/// root (`umount_tree(ns->root)`), and the second argument then says the
+/// namespace has ended. A hook point for fanotify's mount events.
+pub type MountHook = Arc<dyn Fn(&[(u64, MountChange)], bool) + Send + Sync>;
 
 /// What a machine's tables tell of a mount once it is freed, as Linux's
 /// last `mntput` does (`cleanup_mnt`, `fsnotify_vfsmount_delete`): its ID,
@@ -840,7 +842,7 @@ impl MountTable {
         }
         let hook = lock(&self.mount_hook).clone();
         if let Some(hook) = hook {
-            hook(changes);
+            hook(changes, false);
         }
     }
     fn snapshot(&self) -> Arc<Vec<Entry>> {
@@ -887,9 +889,33 @@ impl MountTable {
 }
 
 impl Drop for MountTable {
-    /// The namespace's mounts go (`put_mnt_ns`), each private first.
+    /// The namespace's mounts go (`put_mnt_ns`), each private first, and
+    /// the hook hears each go, in the order `umount_tree` takes them from
+    /// the namespace's root: the mount below the root (Linux's rootfs),
+    /// then the root and each mount before those on it.
     fn drop(&mut self) {
         let entries = self.snapshot();
+        let hook = lock(&self.mount_hook).take();
+        if let Some(hook) = hook
+            && !entries.is_empty()
+        {
+            let mut changes = Vec::new();
+            let top = match entries.iter().find(|e| e.hidden) {
+                Some(below) => below.id(),
+                None => {
+                    changes.push((self.below, MountChange::Detach));
+                    entries[NamespacedFs::root_index(&entries)].id()
+                }
+            };
+            changes.extend(
+                NamespacedFs::tree(&entries, top, true)
+                    .into_iter()
+                    .filter_map(|id| NamespacedFs::by_id(&entries, id))
+                    .filter(|e| !detached(&e.point))
+                    .map(|e| (e.token.unique, MountChange::Detach)),
+            );
+            hook(&changes, true);
+        }
         for e in entries.iter() {
             self.numbers.left(e.group, e.master);
         }
@@ -1461,6 +1487,7 @@ impl NamespacedFs {
     }
     /// Adds `tree` to the table, and what [`Self::propagated`] gives to
     /// each table, this one first.
+    ///
     /// Each table is told of the mounts it takes in ([`MountHook`]) once
     /// all are added.
     fn attached(&self, tree: Vec<Entry>, spreads: Vec<Spread>) -> Result<(), Errno> {

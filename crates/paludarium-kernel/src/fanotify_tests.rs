@@ -750,3 +750,50 @@ fn a_mount_namespace_mark_hears_mounts_come_go_and_move() {
     assert!(events(&mut f, fan).is_empty());
     assert_eq!(events(&mut f, pidfd).len(), 1);
 }
+
+#[test]
+fn a_mount_namespace_that_ends_takes_out_each_mount_and_its_marks() {
+    const REPORT_MNT: u64 = 0x4000;
+    const MNTNS: u64 = 0x110;
+    const ATTACH: u64 = 0x100_0000;
+    const DETACH: u64 = 0x200_0000;
+    let mut f = fixture();
+    let fan = f.init(REPORT_MNT | NONBLOCK, 0);
+    // Only a mount namespace's file takes the mark (`mnt_ns_from_dentry`).
+    for other in [
+        "/proc/self/ns/net",
+        "/proc/self/ns/uts",
+        "/proc/self/ns/user",
+    ] {
+        assert_eq!(
+            f.mark(fan, ADD | MNTNS, ATTACH, other),
+            errno(Errno::EINVAL)
+        );
+    }
+    f.mkdir("/tmp/m");
+    let target = f.put(b"none");
+    let path = f.put(b"/tmp/m");
+    let kind = f.put(b"tmpfs");
+    assert_eq!(f.ret(165, &[target, path, kind, 0, 0]), 0);
+    // A namespace of the tree at /tmp/m, marked by its descriptor's link.
+    let ns = f.ret(428, &[AT_FDCWD, path, 2 | 0x8000]);
+    assert!((ns as i64) >= 0, "{ns}");
+    let link = format!("/proc/self/fd/{ns}");
+    assert_eq!(f.mark(fan, ADD | MNTNS, ATTACH | DETACH, &link), 0);
+    assert!(f.fdinfo(fan).contains("fanotify mnt_ns:"));
+    assert_eq!(f.read(fan, 4096).unwrap_err(), errno(Errno::EAGAIN));
+    f.close(ns);
+    // Each mount goes, the one below its root first, then the mark with the
+    // namespace.
+    let seen = f.read(fan, 4096).unwrap();
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    for event in &seen {
+        assert_eq!((event.mask, event.fd, event.records.len()), (DETACH, -1, 1));
+        assert_eq!(event.records[0].0, 7);
+    }
+    assert!(!f.fdinfo(fan).contains("fanotify mnt_ns:"));
+    assert_eq!(
+        f.mark(fan, ADD | MNTNS, ATTACH, &link),
+        errno(Errno::ENOENT)
+    );
+}

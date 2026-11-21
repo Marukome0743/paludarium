@@ -930,13 +930,83 @@ static void show_mount_events(const char *label, int fan) {
     }
 }
 
+/* How many mount namespace marks fdinfo shows for `fan`. */
+static int namespace_marks(int fan) {
+    char path[64], line[512];
+    snprintf(path, sizeof path, "/proc/self/fdinfo/%d", fan);
+    FILE *info = fopen(path, "r");
+    int n = 0;
+    while (info && fgets(line, sizeof line, info)) n += strstr(line, "fanotify mnt_ns:") != NULL;
+    if (info) fclose(info);
+    return n;
+}
+
+/* A mount namespace that ends with its last process: a child unshares
+   one, a copy of this one, and waits; the group marks it by the child's
+   /proc/<pid>/ns/mnt and lets the child exit. Each of its mounts goes,
+   those mountinfo shows and the one below its root, before the wait ends
+   (exit_task_namespaces comes before exit_notify), each a FAN_MNT_DETACH
+   with the child's pid; then its mark is gone. */
+static void show_namespace_exit(int fan) {
+    int ready[2], go[2];
+    if (pipe(ready) || pipe(go)) return;
+    pid_t child = fork();
+    if (child == 0) {
+        char c = unshare(CLONE_NEWNS) == 0 ? 'r' : 'x';
+        if (write(ready[1], &c, 1) != 1 || read(go[0], &c, 1) != 1) _exit(1);
+        _exit(0);
+    }
+    char c = 0;
+    if (read(ready[0], &c, 1) != 1 || c != 'r') {
+        printf("child unshare failed\n");
+        return;
+    }
+    char path[64], line[512];
+    snprintf(path, sizeof path, "/proc/%d/mountinfo", child);
+    FILE *info = fopen(path, "r");
+    int listed = 0;
+    while (info && fgets(line, sizeof line, info)) listed++;
+    if (info) fclose(info);
+    snprintf(path, sizeof path, "/proc/%d/ns/mnt", child);
+    printf("mark child namespace=%ld\n", fan_mark(fan, FAN_MARK_ADD | FAN_MARK_MNTNS, FAN_MNT_DETACH, AT_FDCWD, path));
+    if (write(go[1], "g", 1) != 1) return;
+    int status;
+    waitpid(child, &status, 0);
+    int events = 0, detach = 0, from_child = 0;
+    char buf[8192] __attribute__((aligned(8)));
+    ssize_t n;
+    while ((n = read(fan, buf, sizeof buf)) > 0) {
+        for (ssize_t at_ = 0; at_ < n;) {
+            struct metadata m;
+            memcpy(&m, buf + at_, sizeof m);
+            events++;
+            detach += m.mask == FAN_MNT_DETACH;
+            from_child += m.pid == child;
+            if (!m.event_len) break;
+            at_ += m.event_len;
+        }
+    }
+    printf("child exit: mounts=%s detach=%d child's pid=%d namespace marks=%d\n",
+           events == listed + 1 ? "mountinfo's and the one below the root" : "other",
+           detach == events, from_child == events, namespace_marks(fan));
+    close(ready[0]);
+    close(ready[1]);
+    close(go[0]);
+    close(go[1]);
+}
+
 /* FAN_MNT_ATTACH and FAN_MNT_DETACH: a group with FAN_REPORT_MNT and a
    mark on the mount namespace hears of each mount that comes into it, goes
    or moves (both bits), with no descriptor and a record of the mount's
    unique ID. In a mount namespace of its own: tmpfs mounts, a recursive
    bind, a move, a detached tree attached, a mount propagated to a peer and
    its unmount, a lazy unmount of a tree, and a group that asked for
-   FAN_MNT_DETACH alone. Once the mark is removed nothing more comes. */
+   FAN_MNT_DETACH alone. Once the mark is removed nothing more comes. A
+   namespace OPEN_TREE_NAMESPACE makes, marked by its descriptor, takes out
+   each of its mounts as its last descriptor closes (put_mnt_ns), the one
+   below its root first, and its mark goes with it; another namespace's
+   file takes no mark. A namespace that ends as a child exits does the
+   same, before the parent's wait ends, with the child's pid. */
 static int case_mount_events(void) {
     make_base("mount-events");
     const char *dirs[] = {"a", "b", "c", "d", "e"};
@@ -990,6 +1060,18 @@ static int case_mount_events(void) {
     printf("umount d=%ld\n", e(umount2(at("d"), MNT_DETACH)));
     show_mount_events("unmarked", fan);
     show_mount_events("unmarked, detach only", detach);
+    printf("mark net=%ld\n", fan_mark(fan, FAN_MARK_ADD | FAN_MARK_MNTNS, FAN_MNT_ATTACH, AT_FDCWD, "/proc/self/ns/net"));
+    int ns = e(syscall(428 /* open_tree */, AT_FDCWD, at("a"), 2 /* OPEN_TREE_NAMESPACE */ | 0x8000));
+    printf("open_tree namespace=%d\n", ns >= 0);
+    char link[64];
+    snprintf(link, sizeof link, "/proc/self/fd/%d", ns);
+    printf("mark namespace=%ld\n",
+           fan_mark(fan, FAN_MARK_ADD | FAN_MARK_MNTNS, FAN_MNT_ATTACH | FAN_MNT_DETACH, AT_FDCWD, link));
+    printf("namespace marks=%d\n", namespace_marks(fan));
+    close(ns);
+    show_mount_events("namespace ended", fan);
+    printf("namespace marks=%d\n", namespace_marks(fan));
+    show_namespace_exit(fan);
     close(fan);
     close(detach);
     printf("umount=%ld %ld %ld\n", e(umount2(at("e"), 0)), e(umount2(at("a/in"), 0)), e(umount2(at("a"), 0)));
