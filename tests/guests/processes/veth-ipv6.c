@@ -377,6 +377,9 @@ int main(int argc, char **argv) {
     set_up(ctl, A_INDEX, "up va");
     set_up(ctl, B_INDEX, "up vb");
     carrier(links, A_INDEX);
+    /* vb's address, not checked, is done in Linux's work queue: let it
+       run before the dump. */
+    usleep(200000);
     dump(ctl, RTM_GETADDR, "addresses, up");
     dump(ctl, RTM_GETROUTE, "routes, up");
     heard(watch, "heard");
@@ -419,6 +422,9 @@ int main(int argc, char **argv) {
     info(&d, A_INDEX, 0, IFF_UP);
     request(ctl, RTM_NEWLINK, 0, &d, "down va");
     route6(ctl, RTM_NEWROUTE, "2001:db8:6::", 64, A_INDEX, 0, "add 2001:db8:6::/64 dev va, down");
+    /* vb's lost carrier marks its routes as Linux's link watch finds it,
+       up to a second later. */
+    usleep(1500000);
     dump(ctl, RTM_GETADDR, "addresses, va down");
     dump(ctl, RTM_GETROUTE, "routes, va down");
     heard(watch, "heard");
