@@ -314,7 +314,7 @@ fn perf_sample_records_faults_loses_pauses_and_writes_backward() {
         "samples>=5 {} alike {} whole {}",
         (samples >= 5) as i32,
         alike as i32,
-        (head % 48 == 0) as i32
+        head.is_multiple_of(48) as i32
     ));
     let lost = e.lost_samples(fd);
     e.say(format!("lost {lost}"));
@@ -381,7 +381,7 @@ fn perf_sample_records_faults_loses_pauses_and_writes_backward() {
     e.say(format!(
         "overwrite past {} whole {} lost {lost}",
         (head > 4096) as i32,
-        (head % 24 == 0) as i32
+        head.is_multiple_of(24) as i32
     ));
     e.unmap(page, 2);
     e.close(fd);
@@ -394,7 +394,7 @@ fn perf_sample_records_faults_loses_pauses_and_writes_backward() {
     e.say(format!(
         "backward below {} whole {} sample {}",
         ((head as i64) < 0) as i32,
-        (0u64.wrapping_sub(head) % 24 == 0) as i32,
+        0u64.wrapping_sub(head).is_multiple_of(24) as i32,
         (r[0] as u32 == RECORD_SAMPLE) as i32
     ));
     e.unmap(page, 2);
