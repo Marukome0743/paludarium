@@ -527,15 +527,17 @@ mod tests {
             source: false,
             offset: 0,
         };
-        let m = Mapping::of(
-            &vma(0, 0x1000, vm::READ | vm::MAYSHARE, Some(shared)),
-            0,
-            b"/",
-            false,
-        );
+        // Its file's device is 0, as the memory gives it.
+        let anonymous = Vma {
+            identity: (0, 7),
+            ..vma(0, 0x1000, vm::READ | vm::MAYSHARE, Some(shared))
+        };
+        let m = Mapping::of(&anonymous, 0, b"/", false);
+        // On the device /proc/<pid>/maps gives it: Linux's first unnamed
+        // one, of the tmpfs `shmem_zero_setup` puts its file on.
         assert_eq!(
-            (m.minor, &m.name[..]),
-            (1, &padded(b"/dev/zero (deleted)")[..])
+            (m.major, m.minor, m.inode, &m.name[..]),
+            (0, 1, 7, &padded(b"/dev/zero (deleted)")[..])
         );
     }
 }
