@@ -639,19 +639,19 @@ fn switch(
         // `NETDEV_UP`, after `__dev_notify_flags` has told of the change.
         let list = super::device_up4(network, index, peer_up);
         tell(own, network, notices, list);
-        // IPv6's `NETDEV_UP`, then the peer's, ready with its carrier as
-        // the link watch finds it.
+        // IPv6's `NETDEV_UP`.
         let list = super::device_up6(network, index, peer_up, now);
         tell(own, network, notices, list);
-        if peer_up && let Some((n, i)) = &peer {
-            let list = super::link_ready6(n, *i, now);
-            tell(own, n, notices, list);
-        }
         if peer_up {
             change(network, index, |v| v.oper_up = true);
             let list = told(network, index, RTM_NEWLINK, 0, false);
             tell(own, network, notices, list);
             if let Some((n, i)) = &peer {
+                // The link watch takes the peer's carrier next: its
+                // `NETDEV_CHANGE` makes IPv6 ready on it before
+                // `netif_state_change` tells of it.
+                let list = super::link_ready6(n, *i, now);
+                tell(own, n, notices, list);
                 change(n, *i, |v| v.oper_up = true);
                 let list = told(n, *i, RTM_NEWLINK, 0, false);
                 tell(own, n, notices, list);

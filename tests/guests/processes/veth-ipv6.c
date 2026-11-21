@@ -237,8 +237,11 @@ static int describe(const struct nl_header *h, char *line, size_t size) {
         }
         /* The ends' alone. */
         if (oif != A_INDEX && oif != B_INDEX) return 0;
-        snprintf(line, size, "%s table=%u type=%u proto=%u scope=%u %s/%u dev=%d metric=%u",
-                 h->type == RTM_NEWROUTE ? "route" : "-route", table, body[7], body[5], body[6], dst, body[1], oif, metric);
+        unsigned flags;
+        memcpy(&flags, body + 8, 4);
+        snprintf(line, size, "%s table=%u type=%u proto=%u scope=%u flags=0x%x %s/%u dev=%d metric=%u",
+                 h->type == RTM_NEWROUTE ? "route" : "-route", table, body[7], body[5], body[6], flags, dst, body[1], oif,
+                 metric);
         return 1;
     }
     return 0;
@@ -311,6 +314,20 @@ static void address6(int fd, unsigned short type, int index, const char *ip, int
     usleep(200000);
 }
 
+/* Adds an IPv6 route to `dst`/`prefix` through `lo` of metric `metric`
+   with NLM_F_EXCL. */
+static void route6(int fd, const char *dst, int prefix, unsigned metric, const char *label) {
+    struct body b = {0};
+    const unsigned char rtm[12] = {AF_INET6, (unsigned char)prefix, 0, 0, 254, 3, 0, 1};
+    unsigned char in[16];
+    inet_pton(AF_INET6, dst, in);
+    raw(&b, rtm, sizeof rtm);
+    put(&b, RTA_DST, in, 16);
+    put32(&b, RTA_OIF, 1);
+    put32(&b, RTA_PRIORITY, metric);
+    request(fd, RTM_NEWROUTE, NLM_F_CREATE | NLM_F_EXCL, &b, label);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2 || strcmp(argv[1], "veth-ipv6")) return 99;
     setvbuf(stdout, NULL, _IOLBF, 0);
@@ -352,6 +369,9 @@ int main(int argc, char **argv) {
     dump(ctl, RTM_GETADDR, "addresses, 3 s on");
     dump(ctl, RTM_GETROUTE, "routes, 3 s on");
     heard(watch, "heard");
+    /* NLM_F_EXCL finds the end's route of the same metric, whatever its
+       device. */
+    route6(ctl, "2001:db8:9::", 64, 256, "add va's prefix through lo");
 
     address6(ctl, RTM_NEWADDR, A_INDEX, "2001:db8::1", 64, 0, "add 2001:db8::1/64");
     address6(ctl, RTM_NEWADDR, A_INDEX, "2001:db8:1::1", 64, IFA_F_NODAD, "add 2001:db8:1::1/64 nodad");

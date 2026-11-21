@@ -324,6 +324,7 @@ impl V6 {
             prefsrc: None,
             metrics: NO_METRICS,
             expires: None,
+            linkdown: false,
         }
     }
     /// Its prefix route in the main table (`addrconf_prefix_route`), which
@@ -343,6 +344,7 @@ impl V6 {
             prefsrc: None,
             metrics: NO_METRICS,
             expires: None,
+            linkdown: false,
         })
     }
     fn prefix_of(&self) -> Ipv6Addr {
@@ -555,6 +557,10 @@ pub(crate) struct Route6 {
     /// When it runs out (`RTF_EXPIRES`), in nanoseconds of the monotonic
     /// clock.
     pub expires: Option<u64>,
+    /// `RTNH_F_LINKDOWN`: its device, up, has no carrier, as
+    /// `fib6_nh_init` finds it for any but a local route and
+    /// `rt6_sync_down_dev` and `rt6_sync_up` change it, without a word.
+    pub linkdown: bool,
 }
 impl Route6 {
     fn covers(&self, ip: Ipv6Addr) -> bool {
@@ -1591,6 +1597,13 @@ impl Addresses {
         {
             route.linkdown = !carrier;
         }
+        for route in self
+            .routes6
+            .iter_mut()
+            .filter(|r| r.oif == oif && r.kind != Kind::Local)
+        {
+            route.linkdown = !carrier;
+        }
     }
     /// IPv4's part of the device of `index` going (`NETDEV_UNREGISTER`),
     /// once closed ([`Self::device_down4`]): `inetdev_destroy` removes each of its addresses, the
@@ -1746,6 +1759,7 @@ impl Addresses {
                 prefsrc: None,
                 metrics: NO_METRICS,
                 expires: None,
+                linkdown: false,
             },
             &mut events,
         );
@@ -2377,15 +2391,23 @@ impl Addresses {
     fn insert6(&mut self, new: Route6, flags: Option<u16>) -> Result<u16, Errno> {
         let asked = |flag: u16| flags.is_some_and(|f| f & flag != 0);
         let mut told = F_EXCL;
-        // The same route is of the same metric through the same device;
-        // another device's of the prefix is another route of its node.
-        if let Some(i) = self.routes6.iter().position(|r| {
-            r.table == new.table
-                && r.dst == new.dst
-                && r.len == new.len
-                && r.metric == new.metric
-                && r.oif == new.oif
-        }) {
+        // `fib6_add_rt2node`: with `NLM_F_EXCL` any route of the node of
+        // the same metric is there already, and `NLM_F_REPLACE` takes the
+        // first of them (none here has a gateway, so all qualify alike
+        // for ECMP); with neither, only one through the same device is
+        // the same (`rt6_duplicate_nexthop`), another device's of the
+        // prefix being another route of its node.
+        let same_metric = |r: &Route6| {
+            r.table == new.table && r.dst == new.dst && r.len == new.len && r.metric == new.metric
+        };
+        let found = if asked(F_EXCL) || asked(F_REPLACE) {
+            self.routes6.iter().position(same_metric)
+        } else {
+            self.routes6
+                .iter()
+                .position(|r| same_metric(r) && r.oif == new.oif)
+        };
+        if let Some(i) = found {
             if asked(F_EXCL) || !asked(F_REPLACE) {
                 // The same route through the same device, which runs out,
                 // runs out as the new one does instead, if at all
@@ -2456,14 +2478,24 @@ impl Addresses {
             events.push(Event::DelRoute4(self.routes4.remove(i)));
         }
     }
-    fn kernel_add6(&mut self, route: Route6, events: &mut Vec<Event>) {
+    fn kernel_add6(&mut self, mut route: Route6, events: &mut Vec<Event>) {
+        route.linkdown = route.kind != Kind::Local && self.no_carrier.contains(&route.oif);
         self.create6(route.table);
         if let Ok(flags) = self.insert6(route, None) {
             events.push(Event::NewRoute6(route, flags));
         }
     }
     fn kernel_del6(&mut self, route: &Route6, events: &mut Vec<Event>) {
-        if let Some(i) = self.routes6.iter().position(|r| r == route) {
+        let same = |r: &&Route6| {
+            Route6 {
+                linkdown: false,
+                ..**r
+            } == Route6 {
+                linkdown: false,
+                ..*route
+            }
+        };
+        if let Some(i) = self.routes6.iter().position(|r| same(&r)) {
             events.push(Event::DelRoute6(self.routes6.remove(i)));
         }
     }
@@ -2751,6 +2783,7 @@ impl Addresses {
             prefsrc: ask.prefsrc,
             metrics,
             expires: None,
+            linkdown: false,
         };
         let flags = self.insert6(route, Some(ask.request))?;
         Ok(vec![Event::NewRoute6(route, flags)])

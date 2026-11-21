@@ -2407,8 +2407,10 @@ kernel.
     end is up with its carrier and ends 2 seconds on; then it is told of
     again, as it is, with its local route. A link-local one is told of
     only then. An end with IPv6 off (`disable_ipv6`) or an MTU below 1280
-    has none. Going down, or away, it loses its IPv6 routes, told of in
-    the order of a dump, then its addresses (`addrconf_ifdown`).
+    has none. An end's IPv6 routes but its local ones are
+    `RTNH_F_LINKDOWN` while it is up without its carrier, as IPv4's are.
+    Going down, or away, it loses its IPv6 routes, told of in the order of
+    a dump, then its addresses (`addrconf_ifdown`).
   - **Netconf of veth ends:** each end's settings
     are told of in its namespace (`RTNLGRP_IPV4_NETCONF`,
     `RTNLGRP_IPV6_NETCONF`, as `inetdev_init`, `ipv6_add_dev` and their

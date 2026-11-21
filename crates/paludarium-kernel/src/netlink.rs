@@ -4016,7 +4016,9 @@ fn ipv6_route_of(
         RT_SCOPE_UNIVERSE,
         route.kind.code(),
     ];
-    body.extend_from_slice(&0u32.to_le_bytes());
+    // `rtm_flags`: `RTNH_F_LINKDOWN` (`fib_nexthop_info`).
+    let link = if route.linkdown { RTNH_F_LINKDOWN } else { 0 };
+    body.extend_from_slice(&link.to_le_bytes());
     attribute(&mut body, RTA_TABLE, &route.table.to_le_bytes());
     if route.len != 0 {
         attribute(&mut body, RTA_DST, &route.dst.octets());
