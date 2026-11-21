@@ -18,8 +18,10 @@
 //! without a dump answers for `lo` by index or name, an AF_INET6
 //! `RTM_GETADDR` without one with an address of it, and `RTM_GETROUTE`
 //! without one looks a route up; an `RTM_GETNEIGH` dump answers with the
-//! loopback's neighbours or the proxy entries, and one without a dump with
-//! one of them; `RTM_NEWNEIGH` and `RTM_DELNEIGH` add and remove them, and
+//! neighbours of the loopback and of the veth ends (IPv4's alone on an
+//! end), of one device for `NDA_IFINDEX`, or the proxy entries, and one
+//! without a dump with one of them; `RTM_NEWNEIGH` and `RTM_DELNEIGH` add
+//! and remove them, and
 //! an `RTM_GETNEIGHTBL` dump answers with the neighbour tables;
 //! `RTM_NEWADDR` and `RTM_DELADDR` add and
 //! remove the loopback's IPv4, IPv6 and MCTP addresses, and
