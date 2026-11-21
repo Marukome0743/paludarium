@@ -7201,6 +7201,30 @@ static void *ps_thread(void *unused) {
            ps_recent(start, ps_uptime()));
     return NULL;
 }
+/* A thread other than the leader runs execve: it takes the leader's ID and
+   start time (fs/exec.c de_thread) and keeps its own faults. */
+static const char *ps_self;
+static void *ps_exec_thread(void *unused) {
+    (void)unused;
+    pf_touch(64);
+    char path[64], own[24], leader[24], start[24];
+    snprintf(path, sizeof path, "/proc/self/task/%ld/stat", (long)syscall(SYS_gettid));
+    snprintf(own, sizeof own, "%ld", ps_field(path, 10));
+    snprintf(path, sizeof path, "/proc/self/task/%ld/stat", (long)getpid());
+    snprintf(leader, sizeof leader, "%ld", ps_field(path, 10));
+    snprintf(start, sizeof start, "%ld", ps_field("/proc/self/stat", 22));
+    char *arguments[] = {(char *)ps_self, "proc-stat-thread-exec", own, leader, start, NULL};
+    execv(ps_self, arguments);
+    _exit(71);
+}
+static int proc_stat_thread_exec(const char *own, const char *leader, const char *start) {
+    char path[64];
+    snprintf(path, sizeof path, "/proc/self/task/%ld/stat", (long)getpid());
+    long now = ps_field(path, 10);
+    printf("after thread exec: own-kept=%d not-leaders=%d start-is-leaders=%d\n", now >= atol(own),
+           now < atol(leader), ps_field("/proc/self/stat", 22) == atol(start));
+    return 0;
+}
 static int proc_stat_exec(const char *start, const char *faults) {
     printf("after exec: start-kept=%d minflt-kept=%d\n",
            ps_field("/proc/self/stat", 22) == atol(start),
@@ -7269,6 +7293,20 @@ static int proc_stat_counts_case(const char *self) {
     int status;
     waitpid(child, &status, 0);
     printf("exec child: %d\n", WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+
+    /* The leader faults far more than the thread that runs execve. */
+    fflush(stdout);
+    child = fork();
+    if (child == 0) {
+        pf_touch(4096);
+        ps_self = self;
+        pthread_t execing;
+        if (pthread_create(&execing, NULL, ps_exec_thread, NULL)) _exit(72);
+        pthread_join(execing, NULL);
+        _exit(73);
+    }
+    waitpid(child, &status, 0);
+    printf("thread exec child: %d\n", WIFEXITED(status) ? WEXITSTATUS(status) : -1);
     fflush(stdout);
     _exit(0);
 }
@@ -33848,6 +33886,8 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "page-faults-exec")) return argc < 3 ? 98 : page_faults_exec(argv[2]);
     if (!strcmp(mode, "proc-stat-counts")) return proc_stat_counts_case(self);
     if (!strcmp(mode, "proc-stat-exec")) return argc < 4 ? 98 : proc_stat_exec(argv[2], argv[3]);
+    if (!strcmp(mode, "proc-stat-thread-exec"))
+        return argc < 5 ? 98 : proc_stat_thread_exec(argv[2], argv[3], argv[4]);
     if (!strcmp(mode, "proc-owners")) return proc_owners_case();
     if (!strcmp(mode, "memory-locks")) return lock_cases();
     if (!strcmp(mode, "x87-arithmetic")) {

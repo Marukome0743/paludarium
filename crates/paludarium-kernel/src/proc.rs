@@ -544,8 +544,8 @@ pub(crate) struct ProcessStat<'a> {
     pub exit_code: i32,
 }
 /// `/proc/<pid>/stat` as Linux's `do_task_stat` prints it: 52 fields, and
-/// 0 for what nothing measures (major faults and the scheduler's figures). A reader that may not see the task's
-/// memory gets 1 for `start_code` and `end_code` and 0 for `start_stack`,
+/// 0 for what nothing measures (major faults and the scheduler's figures).
+/// A reader that may not see the task's memory gets 1 for `start_code` and `end_code` and 0 for `start_stack`,
 /// `wchan`, the addresses from `start_data` on and `exit_code`, as Linux
 /// hides them; without memory the addresses are all 0.
 pub(crate) fn render_stat(s: &ProcessStat<'_>) -> Vec<u8> {

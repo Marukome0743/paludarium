@@ -3388,8 +3388,9 @@ kernel.
   of the program's data (Linux's `start_data` and `end_data`, as
   `load_elf_binary` finds them: the highest address and the highest end in
   the file of all its `PT_LOAD` segments), and where
-  the argument and environment strings lie. What nothing measures is 0: page
-  faults, resident memory, the start time and the scheduler's figures.
+  the argument and environment strings lie, the minor faults, the resident
+  pages and the start time. What nothing measures
+  is 0: major faults and the scheduler's figures.
   A reader that may not see the task's memory, as Linux's
   `ptrace_may_access` decides with its filesystem IDs, gets 1 for
   `start_code` and `end_code` and 0 for the start of the stack, `wchan` and

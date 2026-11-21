@@ -564,6 +564,23 @@ impl ThreadGroup {
         }
         started.retain(|&tid, _| tid == pid);
         drop(started);
+        // Its counts, which Linux's `de_thread` leaves with the thread as it
+        // takes the leader's ID: those the old leader kept stay the
+        // process's (`signal->min_flt` and the CPU time) under no thread's.
+        if old_tid != pid {
+            for (owner, _) in self
+                .cpu
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .iter_mut()
+            {
+                if *owner == pid {
+                    *owner = 0;
+                } else if *owner == old_tid {
+                    *owner = pid;
+                }
+            }
+        }
         let mut sched = self.sched.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(value) = sched.remove(&old_tid) {
             sched.insert(pid, value);
@@ -3067,9 +3084,12 @@ mod fault_count_tests {
         // Noted once, at the clone, not again at the first account.
         group.set_started(2, 300);
         assert_eq!((group.started(1), group.started(2)), (Some(100), Some(200)));
-        // Thread 2's `execve` gives it the leader's ID and start.
+        // Thread 2's `execve` gives it the leader's ID and start, and it
+        // keeps its own faults; the process's count keeps the old leader's.
         group.end_exec(2, 1, Arc::default());
         assert_eq!((group.started(1), group.started(2)), (Some(100), None));
+        assert_eq!((group.thread_faults(1), group.thread_faults(2)), (4, 0));
+        assert_eq!(group.process_faults(), 7);
     }
 
     #[test]

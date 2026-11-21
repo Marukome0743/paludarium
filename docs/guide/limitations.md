@@ -270,10 +270,7 @@ verified.
   last thread to exit, where Linux counts them to the thread that dumps.
   `process_vm_readv`, `process_vm_writev`, `MADV_POPULATE_READ` and
   `MADV_POPULATE_WRITE` count their faults in `perf`'s `page-faults` too,
-  where Linux's `get_user_pages` gives no `perf` event. A thread's
-  `/proc/<pid>/task/<tid>/stat` after it ended an `execve` it ran as another
-  thread than the leader shows the old leader's `minflt`, where Linux shows
-  its own.
+  where Linux's `get_user_pages` gives no `perf` event.
 - **perf events, in part**: only the software events count; cgroup
   switches, tracepoints, breakpoints, kprobes and uprobes are `ENOENT`, as
   are hardware events even on a host with a PMU. A thread's CPU time, page
