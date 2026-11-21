@@ -130,7 +130,7 @@ static int route_socket(unsigned groups) {
     return fd;
 }
 /* Sends a request and prints its acknowledgement's error. */
-static void request(int fd, unsigned short type, unsigned short flags, const struct body *b, const char *label) {
+static int request(int fd, unsigned short type, unsigned short flags, const struct body *b, const char *label) {
     unsigned char buf[4096] = {0};
     struct nl_header *h = (void *)buf;
     h->len = sizeof *h + b->len;
@@ -144,15 +144,15 @@ static void request(int fd, unsigned short type, unsigned short flags, const str
         struct pollfd ready = {.fd = fd, .events = POLLIN};
         if (poll(&ready, 1, 2000) <= 0) {
             printf("%s: %s: no answer\n", side, label);
-            return;
+            return 1;
         }
         long n = recv(fd, buf, sizeof buf, 0);
-        if (n < (long)sizeof *h + 4) return;
+        if (n < (long)sizeof *h + 4) return 1;
         if (h->type == 2) {
             int error;
             memcpy(&error, buf + sizeof *h, 4);
             printf("%s: %s: error=%d\n", side, label, error);
-            return;
+            return error;
         }
     }
 }
@@ -300,6 +300,60 @@ static void heard(int watch, const char *label) {
         }
     }
 }
+/* A member of RTNLGRP_LINK and RTNLGRP_IPV6_ROUTE that the waits below
+   read, apart from what `heard` shows. */
+static int events = -1;
+/* Takes what `events` has heard so far, so that a wait sees only what
+   comes after. */
+static void drain(void) {
+    static unsigned char buf[65536];
+    while (recv(events, buf, sizeof buf, MSG_DONTWAIT) > 0) {
+    }
+}
+/* Whether the message is the local route of `ip` (`index` 0), or the
+   RTM_NEWLINK of the device of `index` without its carrier. */
+static int is(const struct nl_header *h, const unsigned char *ip, int index) {
+    const unsigned char *body = (const unsigned char *)(h + 1);
+    int len = (int)(h->len - sizeof *h);
+    int start = index ? 16 : 12;
+    if (index ? h->type != RTM_NEWLINK : (h->type != RTM_NEWROUTE || body[0] != AF_INET6 || body[7] != 2)) return 0;
+    if (index) {
+        int got;
+        memcpy(&got, body + 4, 4);
+        if (got != index) return 0;
+    }
+    for (int a = start; a + 4 <= len;) {
+        unsigned short alen, kind;
+        memcpy(&alen, body + a, 2);
+        memcpy(&kind, body + a + 2, 2);
+        if (alen < 4 || a + alen > len) break;
+        if (!index && kind == RTA_DST && alen == 20) return !memcmp(body + a + 4, ip, 16);
+        if (index && (kind & 0x3fff) == IFLA_CARRIER && alen >= 5) return body[a + 4] == 0;
+        a += (alen + 3) & ~3;
+    }
+    return 0;
+}
+/* Waits, up to 5 s, for what Linux's work queue or link watch does: the
+   local route of `ip` (an address done), or the RTM_NEWLINK of the device
+   of `index` without its carrier. */
+static void wait_for(const char *ip, int index, const char *label) {
+    static unsigned char buf[65536];
+    unsigned char in[16] = {0};
+    if (ip) inet_pton(AF_INET6, ip, in);
+    for (int tries = 0; tries < 5; tries++) {
+        struct pollfd ready = {.fd = events, .events = POLLIN};
+        if (poll(&ready, 1, 1000) <= 0) continue;
+        long n;
+        while ((n = recv(events, buf, sizeof buf, MSG_DONTWAIT)) > 0)
+            for (long at = 0; at + (long)sizeof(struct nl_header) <= n;) {
+                const struct nl_header *h = (const void *)(buf + at);
+                if (h->len < sizeof *h || at + h->len > n) break;
+                if (is(h, in, index)) return;
+                at += (h->len + 3) & ~3u;
+            }
+    }
+    printf("A: %s: never came\n", label);
+}
 /* Adds or removes the IPv6 address `ip`/`prefix` of the device of
    `index`, with `flags`. */
 static void address6(int fd, unsigned short type, int index, const char *ip, int prefix, unsigned flags, const char *label) {
@@ -311,10 +365,11 @@ static void address6(int fd, unsigned short type, int index, const char *ip, int
     raw(&b, m, sizeof m);
     put(&b, IFA_LOCAL, in, 16);
     if (flags) put32(&b, IFA_FLAGS, flags);
-    request(fd, type, type == RTM_NEWADDR ? NLM_F_CREATE | NLM_F_EXCL : 0, &b, label);
-    /* What follows an address's coming runs in Linux's work queue: let it
-       run before the next request. */
-    usleep(200000);
+    drain();
+    int error = request(fd, type, type == RTM_NEWADDR ? NLM_F_CREATE | NLM_F_EXCL : 0, &b, label);
+    /* One not checked is done in Linux's work queue: its local route comes
+       last. */
+    if (type == RTM_NEWADDR && flags & IFA_F_NODAD && error == 0) wait_for(ip, 0, label);
 }
 
 /* Adds (with NLM_F_EXCL) or removes an IPv6 route to `dst`/`prefix`
@@ -349,6 +404,7 @@ int main(int argc, char **argv) {
     printf("A: unshare=%ld\n", result(unshare(CLONE_NEWNET)));
     /* RTNLGRP_LINK, RTNLGRP_IPV6_IFADDR and RTNLGRP_IPV6_ROUTE. */
     int ctl = route_socket(0), links = route_socket(1), watch = route_socket(0x100 | 0x400);
+    events = route_socket(1 | 0x400);
     struct body m = {0};
     const unsigned char mac_a[6] = {2, 0, 0, 0, 0, 0x0a}, mac_b[6] = {2, 0, 0, 0, 0, 0x0b};
     info(&m, A_INDEX, 0, 0);
@@ -374,18 +430,18 @@ int main(int argc, char **argv) {
     dump(ctl, RTM_GETADDR, "addresses, down");
     heard(watch, "heard");
     set_up(ctl, 1, "up lo");
+    drain();
     set_up(ctl, A_INDEX, "up va");
     set_up(ctl, B_INDEX, "up vb");
     carrier(links, A_INDEX);
-    /* vb's address, not checked, is done in Linux's work queue: let it
-       run before the dump. */
-    usleep(200000);
+    /* vb's address, not checked, is done in Linux's work queue. */
+    wait_for("fe80::ff:fe00:b", 0, "vb's link-local address");
     dump(ctl, RTM_GETADDR, "addresses, up");
     dump(ctl, RTM_GETROUTE, "routes, up");
     heard(watch, "heard");
-    sleep(3);
-    dump(ctl, RTM_GETADDR, "addresses, 3 s on");
-    dump(ctl, RTM_GETROUTE, "routes, 3 s on");
+    wait_for("fe80::ff:fe00:a", 0, "va's link-local address");
+    dump(ctl, RTM_GETADDR, "addresses, checked");
+    dump(ctl, RTM_GETROUTE, "routes, checked");
     heard(watch, "heard");
     /* NLM_F_EXCL finds the end's route of the same metric, whatever its
        device. */
@@ -409,9 +465,9 @@ int main(int argc, char **argv) {
     dump(ctl, RTM_GETADDR, "addresses, added");
     dump(ctl, RTM_GETROUTE, "routes, added");
     heard(watch, "heard");
-    sleep(3);
-    dump(ctl, RTM_GETADDR, "addresses, added 3 s on");
-    dump(ctl, RTM_GETROUTE, "routes, added 3 s on");
+    wait_for("2001:db8::1", 0, "2001:db8::1 checked");
+    dump(ctl, RTM_GETADDR, "addresses, added and checked");
+    dump(ctl, RTM_GETROUTE, "routes, added and checked");
     heard(watch, "heard");
     address6(ctl, RTM_DELADDR, A_INDEX, "2001:db8::1", 64, 0, "delete 2001:db8::1");
     address6(ctl, RTM_DELADDR, A_INDEX, "2001:db8::1", 64, 0, "delete it again");
@@ -420,17 +476,19 @@ int main(int argc, char **argv) {
 
     struct body d = {0};
     info(&d, A_INDEX, 0, IFF_UP);
+    drain();
     request(ctl, RTM_NEWLINK, 0, &d, "down va");
     route6(ctl, RTM_NEWROUTE, "2001:db8:6::", 64, A_INDEX, 0, "add 2001:db8:6::/64 dev va, down");
     /* vb's lost carrier marks its routes as Linux's link watch finds it,
-       up to a second later. */
-    usleep(1500000);
+       before it tells of vb. */
+    wait_for(NULL, B_INDEX, "vb without its carrier");
     dump(ctl, RTM_GETADDR, "addresses, va down");
     dump(ctl, RTM_GETROUTE, "routes, va down");
     heard(watch, "heard");
+    drain();
     set_up(ctl, A_INDEX, "up va again");
     carrier(links, A_INDEX);
-    sleep(3);
+    wait_for("fe80::ff:fe00:a", 0, "va's link-local address again");
     dump(ctl, RTM_GETADDR, "addresses, up again");
     dump(ctl, RTM_GETROUTE, "routes, up again");
     heard(watch, "heard");
@@ -440,9 +498,10 @@ int main(int argc, char **argv) {
     printf("A: vb's disable_ipv6=%ld\n", result(off < 0 ? off : write(off, "1", 1)));
     heard(watch, "heard");
     route6(ctl, RTM_NEWROUTE, "2001:db8:8::", 64, B_INDEX, 0, "add 2001:db8:8::/64 dev vb, off");
+    drain();
     printf("A: vb's disable_ipv6 again=%ld\n", result(off < 0 ? off : pwrite(off, "0", 1, 0)));
     if (off >= 0) close(off);
-    usleep(200000);
+    wait_for("fe80::ff:fe00:b", 0, "vb's link-local address again");
     dump(ctl, RTM_GETADDR, "addresses, vb on again");
     heard(watch, "heard");
     /* A pair whose MTU is below 1280 has no IPv6. */
