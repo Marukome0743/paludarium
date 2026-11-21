@@ -5725,16 +5725,16 @@ fn link_change(network: &Network, up: bool, now: u64) -> Vec<Notice> {
     notices
 }
 /// What `network` tells of IPv4 as its device of `index` goes, closed
-/// (`inetdev_event`'s `NETDEV_UNREGISTER`): its neighbours, if closing
-/// left any (`neigh_ifdown`), then each of its addresses removed, with its
-/// routes ([`crate::interface::Addresses::device_gone4`]), before the
-/// device's `RTM_DELLINK`.
+/// (`inetdev_event`'s `NETDEV_UNREGISTER`): each of its addresses
+/// removed, with its routes ([`crate::interface::Addresses::device_gone4`]),
+/// then its neighbours, if closing left any, as `inetdev_destroy` calls
+/// `arp_ifdown` once they have gone; all before the device's
+/// `RTM_DELLINK`.
 pub(crate) fn addresses_gone(network: &Network, index: i32) -> Vec<Notice> {
     let (events, now) = {
         let mut addresses = network.addresses();
-        let mut events = addresses.flush_device(index, false);
-        let (gone, now) = addresses.device_gone4(index);
-        events.extend(gone);
+        let (mut events, now) = addresses.device_gone4(index);
+        events.extend(addresses.flush_device(index, false));
         (events, now)
     };
     told(events, 0, 0, false, false, now)

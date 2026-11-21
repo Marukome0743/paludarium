@@ -13,7 +13,9 @@
    An end that goes down takes its neighbours with it, and its peer, whose
    carrier goes, all but its permanent ones. Up again, a TCP connection
    makes them as a datagram does; a broadcast or a group makes one that
-   needs no ARP. Each change is told of to RTNLGRP_NEIGH. Only IPv4's are shown, as the
+   needs no ARP. Each change is told of to RTNLGRP_NEIGH, in its order
+   with the links' and addresses' as the peer's carrier goes and as the
+   pair goes. Only IPv4's are shown, as the
    ends make IPv6's of their own as they come up. The two processes take
    turns through pipes, so their lines come in one order. */
 #define _GNU_SOURCE
@@ -35,6 +37,8 @@
 #define NETLINK_ROUTE_ 0
 #define RTM_NEWLINK 16
 #define RTM_NEWADDR 20
+#define RTM_DELLINK 17
+#define RTM_DELADDR 21
 #define RTM_NEWNEIGH 28
 #define RTM_DELNEIGH 29
 #define RTM_GETNEIGH 30
@@ -297,44 +301,54 @@ static void dump(int fd, int index, const char *label) {
     }
     printf("%s: %s: no end\n", side, label);
 }
-/* What the member `watch` heard, each change with its order. */
-struct change {
-    char key[32], line[200];
-    int order;
-};
-/* By key, then in the order they came: Linux flushes a device's in the
-   order of its randomly keyed hash. */
-static int by_key(const void *a, const void *b) {
-    const struct change *x = a, *y = b;
-    int c = strcmp(x->key, y->key);
-    return c ? c : x->order - y->order;
-}
-/* Prints what the member `watch` heard since. */
+/* Prints what the member `watch` heard since, in its order: a device's
+   neighbours go the newest first, as each was put at the head of its
+   list. */
 static void heard(int watch, const char *label) {
     static unsigned char buf[65536];
-    static struct change changes[64];
-    int count = 0;
     for (;;) {
         long n = recv(watch, buf, sizeof buf, MSG_DONTWAIT);
-        if (n <= 0) break;
+        if (n <= 0) return;
         for (long at = 0; at + (long)sizeof(struct nl_header) <= n;) {
             const struct nl_header *h = (const void *)(buf + at);
             if (h->len < sizeof *h || at + h->len > n) break;
             const unsigned char *body = (const unsigned char *)(h + 1);
             /* IPv6's, which the ends make of their own, are not shown. */
-            if ((h->type == RTM_NEWNEIGH || h->type == RTM_DELNEIGH) && body[0] == AF_INET && count < 64) {
-                struct change *c = &changes[count];
+            if ((h->type == RTM_NEWNEIGH || h->type == RTM_DELNEIGH) && body[0] == AF_INET) {
                 char line[160];
                 describe(body, (int)(h->len - sizeof *h), line, sizeof line);
-                snprintf(c->line, sizeof c->line, "%s %s", h->type == RTM_NEWNEIGH ? "new" : "del", line);
-                inet_ntop(AF_INET, body + sizeof(struct ndmsg_) + 4, c->key, sizeof c->key);
-                c->order = count++;
+                printf("%s: %s: %s %s\n", side, label, h->type == RTM_NEWNEIGH ? "new" : "del", line);
             }
             at += (h->len + 3) & ~3u;
         }
     }
-    qsort(changes, (size_t)count, sizeof changes[0], by_key);
-    for (int i = 0; i < count; i++) printf("%s: %s: %s\n", side, label, changes[i].line);
+}
+/* Prints, or with `quiet` only takes, what the member `order` heard of
+   links, IPv4's addresses and IPv4's neighbours since, in its order. */
+static void sequence(int order, const char *label, int quiet) {
+    static unsigned char buf[65536];
+    for (;;) {
+        long n = recv(order, buf, sizeof buf, MSG_DONTWAIT);
+        if (n <= 0) return;
+        for (long at = 0; at + (long)sizeof(struct nl_header) <= n;) {
+            const struct nl_header *h = (const void *)(buf + at);
+            if (h->len < sizeof *h || at + h->len > n) break;
+            const unsigned char *body = (const unsigned char *)(h + 1);
+            int index;
+            memcpy(&index, body + 4, 4);
+            if (quiet) {
+            } else if (h->type == RTM_NEWLINK || h->type == RTM_DELLINK) {
+                printf("%s: %s: %s %d\n", side, label, h->type == RTM_NEWLINK ? "link" : "link gone", index);
+            } else if ((h->type == RTM_NEWADDR || h->type == RTM_DELADDR) && body[0] == AF_INET) {
+                printf("%s: %s: %s %d\n", side, label, h->type == RTM_NEWADDR ? "address" : "address gone", index);
+            } else if ((h->type == RTM_NEWNEIGH || h->type == RTM_DELNEIGH) && body[0] == AF_INET) {
+                char line[160];
+                describe(body, (int)(h->len - sizeof *h), line, sizeof line);
+                printf("%s: %s: %s %s\n", side, label, h->type == RTM_NEWNEIGH ? "neighbour" : "neighbour gone", line);
+            }
+            at += (h->len + 3) & ~3u;
+        }
+    }
 }
 /* Asks for the neighbour `ip` of the device of `index`. */
 static void get(int fd, int index, const char *ip, const char *label) {
@@ -396,7 +410,7 @@ static void neighbour(int fd, unsigned short type, unsigned short flags, int ind
 static void child(int in, int out) {
     side = "B";
     if (unshare(CLONE_NEWNET) < 0) printf("B: unshare=%d\n", -errno);
-    int ctl = route_socket(0), links = route_socket(1), watch = route_socket(4);
+    int ctl = route_socket(0), links = route_socket(1), watch = route_socket(4), order = route_socket(1 | 4 | 0x10);
     int udp = -1, listener = -1;
     fflush(stdout);
     if (write(out, "r", 1) != 1) _exit(2);
@@ -412,6 +426,11 @@ static void child(int in, int out) {
         } else if (command == 's') {
             dump(ctl, B_INDEX, "vb's");
             heard(watch, "heard");
+        } else if (command == 'z') {
+            sequence(order, "order", 1);
+        } else if (command == 'q') {
+            sleep(2);
+            sequence(order, "order", 0);
         } else if (command == 'c') {
             carrier(links, B_INDEX);
         } else if (command == 'l') {
@@ -474,7 +493,7 @@ int main(int argc, char **argv) {
             printf("A: B gone\n");                                            \
     } while (0)
     printf("A: unshare=%ld\n", result(unshare(CLONE_NEWNET)));
-    int ctl = route_socket(0), links = route_socket(1), watch = route_socket(4);
+    int ctl = route_socket(0), links = route_socket(1), watch = route_socket(4), order = route_socket(1 | 4 | 0x10);
     struct body m = {0};
     const unsigned char mac_a[6] = {2, 0, 0, 0, 0, 0x0a}, mac_b[6] = {2, 0, 0, 0, 0, 0x0b};
     info(&m, A_INDEX, 0, 0);
@@ -581,12 +600,16 @@ int main(int argc, char **argv) {
     /* Down: va's go, and vb's but its permanent ones. */
     B_DOES("p");
     B_DOES("s");
+    B_DOES("z");
+    sequence(order, "order", 1);
     struct body d = {0};
     info(&d, A_INDEX, 0, IFF_UP);
     request(ctl, RTM_NEWLINK, 0, &d, "down va");
     dump(ctl, A_INDEX, "va's, down");
     heard(watch, "heard");
+    sequence(order, "order", 0);
     B_DOES("o");
+    B_DOES("q");
 
     /* Up again: a TCP connection, then broadcasts and a group. */
     set_up(ctl, A_INDEX, "up va");
@@ -628,6 +651,21 @@ int main(int argc, char **argv) {
     heard(watch, "heard");
     B_DOES("s");
     close(u);
+
+    /* The pair goes: va, down with a neighbour added since, takes its
+       addresses first; vb, up, is closed and takes its neighbours first. */
+    struct body down = {0};
+    info(&down, A_INDEX, 0, IFF_UP);
+    request(ctl, RTM_NEWLINK, 0, &down, "down va again");
+    neighbour(ctl, RTM_NEWNEIGH, NLM_F_CREATE | NLM_F_EXCL, A_INDEX, "10.77.0.50", NUD_PERMANENT, 0x50,
+              "add while down again");
+    B_DOES("z");
+    sequence(order, "order", 1);
+    struct body gone = {0};
+    info(&gone, A_INDEX, 0, 0);
+    request(ctl, RTM_DELLINK, 0, &gone, "delete va");
+    sequence(order, "order", 0);
+    B_DOES("q");
 
     fflush(stdout);
     close(to_b[1]);

@@ -901,7 +901,8 @@ impl Neighbour {
     /// unicast and multicast probes (6) sent, fails 3 seconds after its
     /// first; a delaying one, 5 seconds on (`delay_probe_time`), is
     /// reachable if it was confirmed meanwhile, else probes: its unicast
-    /// probe is answered, and it is reachable, or it fails after 3 of them.
+    /// probe is answered, and it is reachable, or it fails after 3 of them
+    /// (one `NTF_EXT_VALIDATED` is stale instead).
     /// Each change but to an incomplete one is told of, with its time; the
     /// probes sent so far count meanwhile.
     fn arp_timer(&mut self, now: u64) -> Vec<(u64, Self)> {
@@ -941,7 +942,11 @@ impl Neighbour {
                 return told;
             }
             self.probes = 3;
-            self.state = NUD_FAILED;
+            self.state = if self.flags & NTF_EXT_VALIDATED != 0 {
+                NUD_STALE
+            } else {
+                NUD_FAILED
+            };
             self.timer = false;
             self.updated = at;
             told.push((at, *self));
@@ -1464,10 +1469,14 @@ impl Addresses {
     /// The neighbours of the device of `index` flushed, as `neigh_ifdown`
     /// does when it goes down or away, or, `keep_permanent`, as
     /// `neigh_carrier_down` does when it loses its carrier, keeping the
-    /// permanent ones: told of with `RTM_DELNEIGH`, the newest first.
+    /// permanent ones and those `NTF_EXT_VALIDATED`: told of with
+    /// `RTM_DELNEIGH`, the newest first, as each was put at the head of the
+    /// device's list.
     pub(crate) fn flush_device(&mut self, index: i32, keep_permanent: bool) -> Vec<Event> {
         let (gone, kept) = self.neighbours.drain(..).partition::<Vec<_>, _>(|n| {
-            n.index == index && !(keep_permanent && n.state & NUD_PERMANENT != 0)
+            n.index == index
+                && !(keep_permanent
+                    && (n.state & NUD_PERMANENT != 0 || n.flags & NTF_EXT_VALIDATED != 0))
         });
         self.neighbours = kept;
         gone.into_iter()

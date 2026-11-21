@@ -653,7 +653,8 @@ fn switch(
         });
         // `__dev_notify_flags` tells of the change before `NETDEV_DOWN`
         // flushes the end's neighbours; the peer's go as the link watch
-        // finds its carrier gone, after it has told of that.
+        // finds its carrier gone, before it tells of that
+        // (`netif_state_change` runs `NETDEV_CHANGE` first).
         let own_list = super::device_changed4(network, index, false, false);
         let peer_was_running = peer.as_ref().is_some_and(|(n, i)| {
             n.devices()
@@ -669,17 +670,18 @@ fn switch(
         tell(own, network, notices, list);
         tell(own, network, notices, own_list);
         if let Some((n, i)) = &peer {
+            tell(own, n, notices, peer_list.unwrap_or_default());
             if peer_was_running {
                 let list = told(n, *i, RTM_NEWLINK, 0, false);
                 tell(own, n, notices, list);
             }
-            tell(own, n, notices, peer_list.unwrap_or_default());
         }
     }
 }
 /// Takes the devices of `gone`, each out of its namespace, away as
 /// `unregister_netdevice_many_notify` does: each up is closed first, told
-/// of with `IFF_UP` and `IFF_RUNNING` changed (`netif_close_many`), and
+/// of with `IFF_UP` and `IFF_RUNNING` changed (`netif_close_many`), its
+/// neighbours flushed, and
 /// only then is each told of, in their order, with `RTM_DELNETCONF` of
 /// its settings (`NETDEV_UNREGISTER`) and then `RTM_DELLINK`.
 fn unregister(
@@ -698,6 +700,9 @@ fn unregister(
                     v.carrier_down += 1;
                 }
                 let list = told_of(network, device, RTM_NEWLINK, CLOSED, false);
+                tell(own, network, notices, list);
+                // `NETDEV_DOWN`: its neighbours go (`arp_ifdown`).
+                let list = super::device_changed4(network, device.index, false, false);
                 tell(own, network, notices, list);
             }
         }
