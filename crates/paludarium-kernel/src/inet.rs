@@ -383,10 +383,29 @@ impl Network {
     /// it is up, to an address its local routes have, or the unspecified
     /// one, which goes to `127.0.0.1` or `::1`
     /// ([`crate::loopback::destination`]); else out through a veth end
-    /// that a unicast route of IPv4 goes through; else off the guest's
+    /// that a unicast or broadcast route of IPv4 goes through, as
+    /// `__mkroute_output` makes the route: of the broadcast type to a
+    /// broadcast route's address or the limited broadcast one, of the
+    /// multicast type to a group ([`Cast`]); else off the guest's
     /// networks, which only the first namespace has a route to.
-    /// `ENETUNREACH` where no route goes.
-    fn route(&self, to: SocketAddr, now: Option<u64>) -> Result<Dest, Errno> {
+    /// `ENETUNREACH` where no route goes. Before all that, a group or the
+    /// limited broadcast address from a source `from` of a veth end's goes
+    /// out through that end without a route, as `ip_route_output_key_hash_rcu`
+    /// takes the source's device for them.
+    fn route(&self, to: SocketAddr, from: Option<IpAddr>, now: Option<u64>) -> Result<Dest, Errno> {
+        if let (Some(IpAddr::V4(src)), IpAddr::V4(ip)) = (from.map(plain), to.ip())
+            && !src.is_unspecified()
+            && (ip.is_multicast() || ip.is_broadcast())
+            && let Some(index) = self.addresses_at(now).device_of4(src)
+            && index != crate::netdev::LOOPBACK_INDEX
+        {
+            let cast = if ip.is_broadcast() {
+                Cast::Broadcast
+            } else {
+                Cast::Multicast
+            };
+            return Ok(Dest::Veth(index, cast));
+        }
         let up = self.is_up();
         let local = match to.ip() {
             ip if ip.is_unspecified() => crate::loopback::destination(to),
@@ -397,13 +416,21 @@ impl Network {
             Some(_) if !up => Err(ENETUNREACH),
             Some(to) => Ok(Dest::Here(to)),
             None => {
+                use crate::interface::Kind;
                 if let IpAddr::V4(ip) = to.ip()
                     && let Ok(route) = self.addresses_at(now).lookup4(ip)
-                    && route.kind == crate::interface::Kind::Unicast
+                    && matches!(route.kind, Kind::Unicast | Kind::Broadcast)
                     && route.oif != crate::netdev::LOOPBACK_OIF
                     && let Ok(index) = i32::try_from(route.oif)
                 {
-                    return Ok(Dest::Veth(index));
+                    let cast = if route.kind == Kind::Broadcast || ip.is_broadcast() {
+                        Cast::Broadcast
+                    } else if ip.is_multicast() {
+                        Cast::Multicast
+                    } else {
+                        Cast::Unicast
+                    };
+                    return Ok(Dest::Veth(index, cast));
                 }
                 if self.isolated {
                     Err(ENETUNREACH)
@@ -447,9 +474,22 @@ impl Network {
             };
             (peer, rpf(&devices, index))
         };
-        let Some(there) = peer.network.upgrade() else {
+        // `arp_process` takes no request for a loopback address (with
+        // `route_localnet` off).
+        let Some(there) = peer.network.upgrade().filter(|_| !to.is_loopback()) else {
             return Reach::Unanswered;
         };
+        // A packet from no address (where no address fits, as
+        // `inet_select_addr` finds none): ARP asks from 0.0.0.0 too, which
+        // `arp_process` answers for any local address without a route,
+        // and the packet is a martian there (`ip_route_input_slow`).
+        if from.is_unspecified() {
+            return if there.addresses_at(now).local4(to) {
+                Reach::Dropped
+            } else {
+                Reach::Unanswered
+            };
+        }
         let their_rpf = rpf(&there.devices(), peer.index);
         let (arrives, back) = {
             let addresses = there.addresses_at(now);
@@ -988,7 +1028,17 @@ enum Dest {
     /// Off the guest's networks, to the host's.
     Away,
     /// Out through the namespace's veth end of this index.
-    Veth(i32),
+    Veth(i32, Cast),
+}
+/// The type of a route out through a veth end ([`Network::route`]), whose
+/// flags (`RTCF_BROADCAST`, `RTCF_MULTICAST`) TCP refuses
+/// (`tcp_v4_connect`: `ENETUNREACH`) and UDP takes only to a group, or
+/// with `SO_BROADCAST` (`EACCES`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Cast {
+    Unicast,
+    Broadcast,
+    Multicast,
 }
 /// What a packet out through a veth end finds ([`Network::reach`]).
 enum Reach {
@@ -996,6 +1046,8 @@ enum Reach {
     Answered(Arc<Network>),
     /// It comes to this namespace, and its answers go nowhere.
     OneWay(Arc<Network>),
+    /// ARP is answered, and the packet dropped where it comes.
+    Dropped,
     /// Nobody answers ARP for its destination.
     Unanswered,
 }
@@ -1538,10 +1590,12 @@ impl InetSocket {
                 Connection::Connecting => EALREADY,
                 Connection::Unconnected => {
                     let plain_to = SocketAddr::new(plain(address.ip()), address.port());
-                    let dest = self.network.route(plain_to, self.now())?;
+                    let dest = self
+                        .network
+                        .route(plain_to, s.bound.map(|b| b.ip()), self.now())?;
                     let to = match dest {
                         Dest::Here(to) => Some(to),
-                        Dest::Away | Dest::Veth(_) => None,
+                        Dest::Away | Dest::Veth(..) => None,
                     };
                     // The handshake's first segment goes out through the
                     // loopback, whatever answers it.
@@ -1551,7 +1605,12 @@ impl InetSocket {
                     let opened = match dest {
                         Dest::Here(to) => self.open_loopback(&mut s, to, &options)?,
                         Dest::Away => None,
-                        Dest::Veth(index) => {
+                        // `tcp_v4_connect` takes no broadcast or multicast
+                        // route.
+                        Dest::Veth(_, Cast::Broadcast | Cast::Multicast) => {
+                            return Err(ENETUNREACH);
+                        }
+                        Dest::Veth(index, Cast::Unicast) => {
                             match self.open_veth(&mut s, index, plain_to, &options)? {
                                 Some(stream) => Some(stream),
                                 // The far namespace answers with a reset.
@@ -1750,7 +1809,7 @@ impl InetSocket {
         if self.family == Family::V6 && options.v6_only && to.is_ipv4() {
             return Err(ENETUNREACH);
         }
-        match self.network.route(to, self.now())? {
+        match self.network.route(to, Some(bound.ip()), self.now())? {
             Dest::Here(to) => {
                 let from = self.datagram_source(&mut s, to, &options)?;
                 self.ports().connect(&self.this, from, Some(to));
@@ -1760,10 +1819,14 @@ impl InetSocket {
             // Out through a veth end, from the address its route leaves
             // from, which Linux's `__mkroute_output` takes from no
             // loopback address (`EINVAL`).
-            Dest::Veth(_) => {
+            Dest::Veth(_, cast) => {
                 let from = self.datagram_source(&mut s, to, &options)?;
                 if plain(from.ip()).is_loopback() {
                     return Err(Errno::EINVAL);
+                }
+                // `ip4_datagram_connect`.
+                if cast == Cast::Broadcast && !options.broadcast {
+                    return Err(Errno::EACCES);
                 }
                 self.ports().connect(&self.this, from, Some(to));
                 s.bound = Some(from);
@@ -1845,18 +1908,32 @@ impl InetSocket {
             None => Ok(()),
         };
         let plain_to = SocketAddr::new(plain(to.ip()), to.port());
-        let route = self.network.route(plain_to, self.now())?;
-        if let Dest::Veth(index) = route {
+        let route = self
+            .network
+            .route(plain_to, s.bound.map(|b| b.ip()), self.now())?;
+        if let Dest::Veth(index, cast) = route {
             if self.family == Family::V6 && options.v6_only {
                 return Err(ENETUNREACH);
+            }
+            // `udp_sendmsg`'s first check, then the route's source, then
+            // its type, then what a datagram holds (`__ip_append_data`).
+            if bytes.len() > 65_535 {
+                return Err(EMSGSIZE);
+            }
+            let from = self.datagram_source(&mut s, plain_to, &options)?;
+            if plain(from.ip()).is_loopback() {
+                return Err(Errno::EINVAL);
+            }
+            if cast == Cast::Broadcast && !options.broadcast {
+                return Err(Errno::EACCES);
             }
             if bytes.len() > 65_507 {
                 return Err(EMSGSIZE);
             }
             sendable(&mut s)?;
-            let from = self.datagram_source(&mut s, plain_to, &options)?;
-            if plain(from.ip()).is_loopback() {
-                return Err(Errno::EINVAL);
+            // A broadcast or multicast one reaches no one here.
+            if cast != Cast::Unicast {
+                return Ok(bytes.len());
             }
             let to_peer = s.peer == Some(plain_to);
             drop(s);
@@ -1865,8 +1942,9 @@ impl InetSocket {
                 Reach::Answered(there) => (there, true),
                 Reach::OneWay(there) => (there, false),
                 // Dropped once ARP gives up; ICMP's host unreachable that
-                // tells of it is no hard error (`__udp4_lib_err`).
-                Reach::Unanswered => return Ok(bytes.len()),
+                // tells of it is no hard error (`__udp4_lib_err`); or
+                // dropped where it comes.
+                Reach::Unanswered | Reach::Dropped => return Ok(bytes.len()),
             };
             let receiver = there.ports(true).receiver(plain_to, from);
             match receiver {
@@ -2475,7 +2553,7 @@ impl InetSocket {
             Reach::Answered(there) => {
                 return Ok(self.join(&there, s, (bound, from), to, options, false));
             }
-            Reach::OneWay(_) => (SYN_TIMEOUT, ETIMEDOUT),
+            Reach::OneWay(_) | Reach::Dropped => (SYN_TIMEOUT, ETIMEDOUT),
             Reach::Unanswered if self.network.is_up() => (ARP_TIMEOUT, EHOSTUNREACH),
             Reach::Unanswered => (SYN_TIMEOUT, ETIMEDOUT),
         };
@@ -4252,7 +4330,7 @@ mod tests {
         assert!(!at(2 * SECOND));
         assert!(
             network
-                .route(SocketAddr::new(IpAddr::V4(ip), 9), Some(3 * SECOND))
+                .route(SocketAddr::new(IpAddr::V4(ip), 9), None, Some(3 * SECOND))
                 .is_err()
         );
         // What the socket found goes to netlink first, in its order: the
