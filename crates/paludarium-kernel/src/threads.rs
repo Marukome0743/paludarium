@@ -1309,6 +1309,21 @@ impl ThreadGroup {
             .cloned()
             .unwrap_or_else(|| self.first_namespaces.clone())
     }
+    /// Thread `tid` no longer holds its mount namespace (Linux's
+    /// `exit_task_namespaces`, which puts its `nsproxy`): its entry keeps
+    /// the others, the PID namespace that still numbers it among them, and
+    /// takes the first mount namespace in its place.
+    pub(crate) fn leave_mount_namespace(&self, tid: u32) {
+        let mut all = self
+            .namespaces
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(own) = all.get_mut(&tid) {
+            let mut left = (**own).clone();
+            left.mnt = Arc::clone(&self.first_namespaces.mnt);
+            *own = Arc::new(left);
+        }
+    }
     pub(crate) fn set_namespaces(&self, tid: u32, namespaces: crate::namespaces::Namespaces) {
         self.namespaces
             .lock()
@@ -2138,6 +2153,13 @@ impl Kernel {
         };
         let ppid = self.processes.parent_of(self.process.pid);
         crate::perf::exit_thread(&self.processes.perf_events, &self.group, &who, ppid);
+        // exit_task_namespaces, before the exit is told (`exit_notify`): the
+        // task lets go of its mount namespace, and one that ends with it
+        // takes out its mounts as this task (`put_mnt_ns`), which fanotify's
+        // mount events name.
+        crate::fanotify::enter(thread.state.pid, thread.tid);
+        self.files.leave_mount_namespace();
+        self.group.leave_mount_namespace(thread.tid);
         // The group's exit keeps the peak its address space reached
         // (`do_exit`'s `setmax_mm_hiwater_rss` once the group is dead), under
         // the members' lock, so that no wait sees the exit before it.

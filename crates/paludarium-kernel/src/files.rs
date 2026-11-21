@@ -226,6 +226,28 @@ fn released_to_notifiers(
             notify.unmounted(device);
         }
     })));
+    mounts_to_fanotify(table, caches, crate::namespaces::FIRST_MOUNT_INODE);
+}
+
+/// Tells fanotify of the mounts that come into `table`, the mount
+/// namespace whose inode is `namespace`, go or move
+/// ([`crate::fanotify::Registry::mount_events`]), as Linux's `mnt_notify`
+/// does.
+pub(crate) fn mounts_to_fanotify(
+    table: &paludarium_vfs::MountTable,
+    caches: &Arc<crate::page_cache::PageCaches>,
+    namespace: u32,
+) {
+    caches.notify.fan.mount_namespace(u64::from(namespace));
+    let fan = Arc::downgrade(&caches.notify.fan);
+    table.set_mount_hook(Some(Arc::new(move |changes, ended| {
+        if let Some(fan) = fan.upgrade() {
+            fan.mount_events(u64::from(namespace), changes);
+            if ended {
+                fan.mount_namespace_ended(u64::from(namespace));
+            }
+        }
+    })));
 }
 impl Default for Files {
     fn default() -> Self {
@@ -508,8 +530,15 @@ impl Files {
     /// filesystem would keep showing it.
     /// Its mounts are the first mount namespace's.
     pub(crate) fn set_file_system(&mut self, fs: Arc<dyn FileSystem>) {
-        self.first_mounts = first_table(&fs, self.host.as_ref());
+        let old = std::mem::replace(&mut self.first_mounts, first_table(&fs, self.host.as_ref()));
         released_to_notifiers(&self.first_mounts, &self.caches);
+        // The first namespace goes on with the new table: the old one, as it
+        // goes, tells fanotify of nothing and does not end the namespace.
+        old.set_mount_hook(None);
+        self.caches
+            .notify
+            .fan
+            .mount_namespace_ended(u64::from(crate::namespaces::FIRST_MOUNT_INODE));
         *self.space.lock().unwrap_or_else(PoisonError::into_inner) =
             Space::new(fs, Arc::clone(&self.first_mounts), &self.caches);
         *self.root.lock().unwrap_or_else(PoisonError::into_inner) = None;
@@ -646,6 +675,23 @@ impl Files {
     pub(crate) fn release_home(&mut self) {
         self.home = Arc::default();
         self.root_pin = Arc::default();
+    }
+    /// An exiting task's `exit_task_namespaces`: it no longer sees the
+    /// files through its mount namespace's table, which the tasks that
+    /// share its working directory keep; it is left the first one's.
+    pub(crate) fn leave_mount_namespace(&mut self) {
+        let lower = Arc::clone(
+            &self
+                .space
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .lower,
+        );
+        self.space = Arc::new(Mutex::new(Space::new(
+            lower,
+            Arc::clone(&self.first_mounts),
+            &self.caches,
+        )));
     }
     /// Detaches this worker's table reference without closing a table still
     /// shared by live CLONE_FILES siblings; the last task to let go gets the
@@ -1937,10 +1983,14 @@ fn pseudo_fs(kind: u64) -> paludarium_host::FsStats {
     }
 }
 /// What `fstatfs` reports for the file `d` holds: an empty pseudo
-/// filesystem for a /proc file (procfs), a terminal (devpts), a pipe, a
-/// socket, a pidfd (pidfs) or another file of no type (Linux's anonymous
-/// inodes), else the statistics of the filesystem holding its path.
+/// filesystem for a namespace file (nsfs), a /proc file (procfs), a
+/// terminal (devpts), a pipe, a socket, a pidfd (pidfs) or another file of
+/// no type (Linux's anonymous inodes), else the statistics of the
+/// filesystem holding its path.
 fn descriptor_statfs(c: &Context<'_>, d: &Descriptor) -> Result<paludarium_host::FsStats, Errno> {
+    if is_namespace(d) {
+        return Ok(pseudo_fs(NSFS_MAGIC));
+    }
     if in_proc(&d.path) {
         return Ok(pseudo_fs(PROC_SUPER_MAGIC));
     }
@@ -4583,10 +4633,17 @@ fn path_statfs(c: &Context<'_>, p: &[u8]) -> Result<paludarium_host::FsStats, Er
                 .map_err(|_| Errno::ENOENT)?;
             descriptor_statfs(c, &d)?
         } else {
-            if generated_stat(c, p, true)?.is_none() {
-                c.files.fs().metadata(p, true)?;
+            match generated_stat(c, p, true)? {
+                // A namespace's link leads to its nsfs file.
+                Some((_, device, _)) if device == crate::namespaces::DEVICE => {
+                    pseudo_fs(NSFS_MAGIC)
+                }
+                Some(_) => pseudo_fs(PROC_SUPER_MAGIC),
+                None => {
+                    c.files.fs().metadata(p, true)?;
+                    pseudo_fs(PROC_SUPER_MAGIC)
+                }
             }
-            pseudo_fs(PROC_SUPER_MAGIC)
         }
     } else if let Some(name) = paludarium_vfs::normalize_path(p)
         .ok()
@@ -4810,6 +4867,7 @@ const DEVPTS_SUPER_MAGIC: u64 = 0x1cd1;
 const MQUEUE_MAGIC: u64 = 0x1980_0202;
 /// pidfs's `s_magic`, a pidfd's file system from Linux 6.9.
 const PID_FS_MAGIC: u64 = 0x5049_4446;
+const NSFS_MAGIC: u64 = 0x6e73_6673;
 /// The anonymous inodes' file system, which eventfds, epolls, timerfds,
 /// signalfds, inotify instances and the like are on.
 const ANON_INODE_FS_MAGIC: u64 = 0x0904_1934;

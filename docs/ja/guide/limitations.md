@@ -800,8 +800,8 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   ページテーブルをほかのときに解放したり残したりもします。`/dev/userfaultfd` と
   `/proc/sys/vm/unprivileged_userfaultfd` はなく、後者は 0 として扱います。
 - **fanotify の一部**：`FAN_PRE_ACCESS` は
-  `EOPNOTSUPP` です（ここのファイルシステムはどれも認めません）。マウントのイベント
-  （`FAN_MNT_ATTACH`、`FAN_MNT_DETACH`）と `FAN_FS_ERROR` は来ません。追い出せるマークも
+  `EOPNOTSUPP` です（ここのファイルシステムはどれも認めません）。`FAN_FS_ERROR` は
+  来ません。追い出せるマークも
   追い出しません。グループは、まだ溜まっている似たイベントのどれにもまとめます。Linux は
   ハッシュのバケットの最後の 128 個だけを見ます。ディレクトリが子を見ているかは fanotify の
   マークだけで決めます。Linux は inotify のものも数えます。ディスクリプタが持っていない
