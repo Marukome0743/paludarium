@@ -319,9 +319,10 @@ static void address6(int fd, unsigned short type, int index, const char *ip, int
 
 /* Adds (with NLM_F_EXCL) or removes an IPv6 route to `dst`/`prefix`
    through the device of `oif`, of metric `metric` (none for 0). */
+static unsigned char route_kind = 1;
 static void route6(int fd, unsigned short type, const char *dst, int prefix, int oif, unsigned metric, const char *label) {
     struct body b = {0};
-    const unsigned char rtm[12] = {AF_INET6, (unsigned char)prefix, 0, 0, 254, 3, 0, 1};
+    const unsigned char rtm[12] = {AF_INET6, (unsigned char)prefix, 0, 0, 254, 3, 0, route_kind};
     unsigned char in[16];
     inet_pton(AF_INET6, dst, in);
     raw(&b, rtm, sizeof rtm);
@@ -459,6 +460,10 @@ int main(int argc, char **argv) {
     set_up(ctl, 1003, "up vd");
     carrier(links, 1002);
     route6(ctl, RTM_NEWROUTE, "2001:db8:8::", 64, 1002, 0, "add 2001:db8:8::/64 dev vc");
+    /* An unreachable one needs IPv6 on the device it names too. */
+    route_kind = 7;
+    route6(ctl, RTM_NEWROUTE, "2001:db8:8::", 64, 1002, 0, "add an unreachable one dev vc");
+    route_kind = 1;
     dump(ctl, RTM_GETADDR, "addresses, vc");
     heard(watch, "heard");
     struct body g = {0};

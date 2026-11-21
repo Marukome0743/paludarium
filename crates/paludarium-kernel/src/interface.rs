@@ -2764,14 +2764,16 @@ impl Addresses {
                 .filter(|k| *k != Kind::Broadcast)
                 .ok_or(EOPNOTSUPP)?,
         };
-        if ask.oif != 0 && !ask.device {
+        // `fib6_nh_init`: a device named needs IPv6 (`in6_dev_get`), even
+        // for a rejecting route.
+        if ask.oif != 0 && (!ask.device || ask.ipv6_off.is_none()) {
             return Err(Errno::ENODEV);
         }
         if kind.error().is_none() {
             if ask.oif == 0 {
                 return Err(Errno::ENODEV);
             }
-            // `fib6_nh_init`: the device's IPv6, then whether it is up.
+            // Then that it is on, then whether it is up.
             match ask.ipv6_off {
                 None => return Err(Errno::ENODEV),
                 Some(true) => {
