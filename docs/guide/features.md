@@ -4863,7 +4863,9 @@ kernel.
   before `exit_notify`, and the events then name that task) takes out each of its
   mounts, as `umount_tree` takes them from its root: the mount below its
   root first, then each mount before those on it; then its marks go
-  (`fsnotify_mntns_delete`). A detached tree is in no namespace and tells nothing. Such an
+  (`fsnotify_mntns_delete` in `free_mnt_ns`, as in Linux master since
+  1a116222acdc; a kernel before that change removes them only as the last
+  passive reference goes, after an RCU grace period). A detached tree is in no namespace and tells nothing. Such an
   event has no descriptor and, after any pidfd's, a record of the mount's
   unique ID (`FAN_EVENT_INFO_TYPE_MNT`, the `statx` `STATX_MNT_ID_UNIQUE`
   one), and is never merged. A read takes whole events (`EINVAL`

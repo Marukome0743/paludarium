@@ -946,7 +946,7 @@ static int namespace_marks(int fan) {
    /proc/<pid>/ns/mnt and lets the child exit. Each of its mounts goes,
    those mountinfo shows and the one below its root, before the wait ends
    (exit_task_namespaces comes before exit_notify), each a FAN_MNT_DETACH
-   with the child's pid; then its mark is gone. */
+   with the child's pid. */
 static void show_namespace_exit(int fan) {
     int ready[2], go[2];
     if (pipe(ready) || pipe(go)) return;
@@ -986,9 +986,9 @@ static void show_namespace_exit(int fan) {
             at_ += m.event_len;
         }
     }
-    printf("child exit: mounts=%s detach=%d child's pid=%d namespace marks=%d\n",
+    printf("child exit: mounts=%s detach=%d child's pid=%d\n",
            events == listed + 1 ? "mountinfo's and the one below the root" : "other",
-           detach == events, from_child == events, namespace_marks(fan));
+           detach == events, from_child == events);
     close(ready[0]);
     close(ready[1]);
     close(go[0]);
@@ -1004,9 +1004,13 @@ static void show_namespace_exit(int fan) {
    FAN_MNT_DETACH alone. Once the mark is removed nothing more comes. A
    namespace OPEN_TREE_NAMESPACE makes, marked by its descriptor, takes out
    each of its mounts as its last descriptor closes (put_mnt_ns), the one
-   below its root first, and its mark goes with it; another namespace's
-   file takes no mark. A namespace that ends as a child exits does the
-   same, before the parent's wait ends, with the child's pid. */
+   below its root first; another namespace's file takes no mark. A
+   namespace that ends as a child exits does the same, before the parent's
+   wait ends, with the child's pid. When fdinfo stops showing an ended
+   namespace's mark depends on the kernel: Linux master removes it in
+   free_mnt_ns (1a116222acdc), and the release before that change removed
+   it only as the last passive reference went, after an RCU grace period,
+   so the count is printed only before the end. */
 static int case_mount_events(void) {
     make_base("mount-events");
     const char *dirs[] = {"a", "b", "c", "d", "e"};
@@ -1070,7 +1074,6 @@ static int case_mount_events(void) {
     printf("namespace marks=%d\n", namespace_marks(fan));
     close(ns);
     show_mount_events("namespace ended", fan);
-    printf("namespace marks=%d\n", namespace_marks(fan));
     show_namespace_exit(fan);
     close(fan);
     close(detach);
