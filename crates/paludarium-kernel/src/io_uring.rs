@@ -3,8 +3,8 @@
 //! `epoll_ctl` calls with), and the file transfers `IORING_OP_READ`,
 //! `_WRITE`, `_READV`, `_WRITEV` and `_FSYNC`. The others answer
 //! `EOPNOTSUPP`, as on a Linux built without them, and
-//! `IORING_REGISTER_PROBE` says so. No buffer or file is ever registered,
-//! so `IORING_OP_READ_FIXED` and `_WRITE_FIXED` are among the others.
+//! `IORING_REGISTER_PROBE` says so. `IORING_REGISTER_BUFFERS` registers
+//! the buffers `IORING_OP_READ_FIXED` and `_WRITE_FIXED` transfer with.
 //!
 //! The rings are pages the kernel shares with the mappings of the ring's
 //! descriptor ([`SharedPages`]). A request runs when `io_uring_enter` takes
@@ -92,15 +92,19 @@ const OP_NOP: u8 = 0;
 const OP_READV: u8 = 1;
 const OP_WRITEV: u8 = 2;
 const OP_FSYNC: u8 = 3;
+const OP_READ_FIXED: u8 = 4;
+const OP_WRITE_FIXED: u8 = 5;
 const OP_READ: u8 = 22;
 const OP_WRITE: u8 = 23;
 const OP_EPOLL_CTL: u8 = 29;
 /// The operations implemented.
-const OPS: [u8; 7] = [
+const OPS: [u8; 9] = [
     OP_NOP,
     OP_READV,
     OP_WRITEV,
     OP_FSYNC,
+    OP_READ_FIXED,
+    OP_WRITE_FIXED,
     OP_READ,
     OP_WRITE,
     OP_EPOLL_CTL,
@@ -128,7 +132,15 @@ const RW_ATTR_FLAG_PI: u64 = 1;
 /// `RWF_HIPRI`, polled I/O, which only an `IORING_SETUP_IOPOLL` ring does.
 const RWF_HIPRI: u32 = 1;
 
+const REGISTER_BUFFERS: u64 = 0;
+const UNREGISTER_BUFFERS: u64 = 1;
 const REGISTER_PROBE: u64 = 8;
+/// `IORING_MAX_REG_BUFFERS`.
+const MAX_REG_BUFFERS: u64 = 1 << 14;
+/// The largest buffer one may register (`io_validate_user_buf_range`).
+const MAX_BUFFER: u64 = 1 << 30;
+/// `CAP_IPC_LOCK`, which spares a ring's buffers from RLIMIT_MEMLOCK.
+const CAP_IPC_LOCK: u64 = 1 << 14;
 /// `IORING_REGISTER_LAST` of Linux 6.12, after `_CLONE_BUFFERS`.
 const REGISTER_LAST: u64 = 31;
 const REGISTER_USE_REGISTERED_RING: u64 = 1 << 31;
@@ -140,6 +152,9 @@ const ECANCELED: Errno = Errno(125);
 const EOPNOTSUPP: Errno = Errno(95);
 const EEXIST: Errno = Errno(17);
 const ENOBUFS: Errno = Errno(105);
+const ENXIO: Errno = Errno(6);
+const EBUSY: Errno = Errno(16);
+const EOVERFLOW: Errno = Errno(75);
 
 /// The pages of a ring, which a mapping cannot reach past: a page past
 /// them raises `SIGBUS`, as Linux inserts only the ring's pages.
@@ -189,6 +204,29 @@ pub(crate) struct Ring {
     /// submit at once take entries one after another, never the same ones.
     submitting: Mutex<()>,
     state: Mutex<State>,
+    /// Who its registered buffers charge (`ctx->user`): the user that made
+    /// it, unless it had `CAP_IPC_LOCK`.
+    charged: Option<(Arc<crate::memfd::SecretPages>, u32)>,
+    /// The registered buffers, once `IORING_REGISTER_BUFFERS` registered
+    /// them (`ctx->buf_table`).
+    buffers: Mutex<Option<Buffers>>,
+}
+
+/// A ring's registered buffers: each slot's address and length, or none
+/// for a slot registered empty, and the pages they charge, which they give
+/// back as they go.
+struct Buffers {
+    slots: Vec<Option<(u64, u64)>>,
+    charged: Option<(Arc<crate::memfd::SecretPages>, u32)>,
+    pages: u64,
+}
+
+impl Drop for Buffers {
+    fn drop(&mut self) {
+        if let Some((pages, user)) = &self.charged {
+            pages.release(*user, self.pages);
+        }
+    }
 }
 
 #[derive(Default)]
@@ -240,6 +278,10 @@ struct Transfer {
     fixed: bool,
     write: bool,
     vectored: bool,
+    /// `IORING_OP_READ_FIXED` or `_WRITE_FIXED`: the buffer is within the
+    /// registered one of index `buf_index`.
+    registered: bool,
+    buf_index: u16,
     /// `IOSQE_BUFFER_SELECT`: a provided buffer, of which there are none.
     select: bool,
     offset: u64,
@@ -360,7 +402,10 @@ impl Ring {
                 return fail(request, EOPNOTSUPP);
             }
         }
-        let transfer = matches!(opcode, OP_READ | OP_WRITE | OP_READV | OP_WRITEV);
+        let transfer = matches!(
+            opcode,
+            OP_READ | OP_WRITE | OP_READV | OP_WRITEV | OP_READ_FIXED | OP_WRITE_FIXED
+        );
         // Only the transfers take a priority (`ioprio`).
         if OPS.contains(&opcode) && !transfer && u16::from_le_bytes([sqe[2], sqe[3]]) != 0 {
             return fail(request, Errno::EINVAL);
@@ -372,11 +417,13 @@ impl Ring {
         let int_at = |at: usize| u32_at(sqe, at) as i32;
         let fixed = flags & IOSQE_FIXED_FILE != 0;
         request.work = match opcode {
-            OP_READ | OP_WRITE | OP_READV | OP_WRITEV => Work::Transfer(Box::new(Transfer {
+            _ if transfer => Work::Transfer(Box::new(Transfer {
                 fd: int_at(4),
                 fixed,
-                write: matches!(opcode, OP_WRITE | OP_WRITEV),
+                write: matches!(opcode, OP_WRITE | OP_WRITEV | OP_WRITE_FIXED),
                 vectored: matches!(opcode, OP_READV | OP_WRITEV),
+                registered: matches!(opcode, OP_READ_FIXED | OP_WRITE_FIXED),
+                buf_index: u16::from_le_bytes([sqe[40], sqe[41]]),
                 select: flags & IOSQE_BUFFER_SELECT != 0,
                 offset: u64_at(sqe, 8),
                 addr: u64_at(sqe, 16),
@@ -458,7 +505,8 @@ fn prepare_memory(c: &Context<'_>, request: &mut Request, addr: u64) {
 /// the buffer (`import_ubuf`: the length cut to `MAX_RW_COUNT`, in the
 /// user half, `EFAULT`) or vector (`__import_iovec`: `EINVAL`, `EFAULT`).
 /// A request that selects a buffer imports none, but a vectored one must
-/// have one vector (`EINVAL`) that can be read (`EFAULT`).
+/// have one vector (`EINVAL`) that can be read (`EFAULT`), and one in a
+/// registered buffer is looked for at issue (`io_prep_read_fixed`).
 ///
 /// The attributes are Linux 6.14's, which the kernel the differential
 /// tests run on has; Linux 6.12 does not look at those fields.
@@ -486,6 +534,9 @@ fn prepare_transfer(c: &Context<'_>, transfer: &mut Transfer) -> Result<(), Errn
             transfer.metadata = true;
         }
         _ => return Err(Errno::EINVAL),
+    }
+    if transfer.registered {
+        return Ok(());
     }
     if transfer.select {
         if transfer.vectored {
@@ -523,8 +574,9 @@ fn file_of(c: &Context<'_>, fd: i32, fixed: bool) -> Result<Arc<dyn FileHandle>,
     Ok(file)
 }
 
-/// Linux's `io_read` and `io_write`, run inline: the file, a provided
-/// buffer for a read that selects one (`ENOBUFS`, as none is ever
+/// Linux's `io_read` and `io_write`, run inline: the file, the registered
+/// buffer of `IORING_OP_READ_FIXED` and `_WRITE_FIXED`
+/// ([`Ring::registered`]), a provided buffer for a read that selects one (`ENOBUFS`, as none is ever
 /// provided), then `io_rw_init_file` (the access mode, `EBADF`; the flags,
 /// `kiocb_set_rw_flags`; polled I/O, `EINVAL` on a ring without
 /// `IORING_SETUP_IOPOLL`; protection information, `EINVAL`), then the
@@ -532,8 +584,15 @@ fn file_of(c: &Context<'_>, fd: i32, fixed: bool) -> Result<Arc<dyn FileHandle>,
 /// write ran, its watches hear of it as `io_req_io_end` tells them:
 /// `IN_ACCESS` for a read that did not fail, `IN_MODIFY` for any write, no
 /// bytes too.
-fn transfer(c: &mut Context<'_>, transfer: &Transfer) -> Result<u64, Errno> {
+fn transfer(c: &mut Context<'_>, ring: &Ring, transfer: &Transfer) -> Result<u64, Errno> {
     let file = file_of(c, transfer.fd, transfer.fixed)?;
+    let within;
+    let segments = if transfer.registered {
+        within = [ring.registered(transfer.buf_index, transfer.addr, transfer.len)?];
+        &within[..]
+    } else {
+        &transfer.segments[..]
+    };
     if transfer.select {
         return Err(ENOBUFS);
     }
@@ -544,14 +603,8 @@ fn transfer(c: &mut Context<'_>, transfer: &Transfer) -> Result<u64, Errno> {
     if flags & RWF_HIPRI != 0 || transfer.metadata {
         return Err(Errno::EINVAL);
     }
-    let result = crate::files::ring_transfer(
-        c,
-        &file,
-        transfer.write,
-        &transfer.segments,
-        transfer.offset,
-        flags,
-    )?;
+    let result =
+        crate::files::ring_transfer(c, &file, transfer.write, segments, transfer.offset, flags)?;
     let fd = transfer.fd as u64;
     if transfer.write {
         crate::files::notify_descriptor(c, fd, crate::inotify::MODIFY);
@@ -562,7 +615,7 @@ fn transfer(c: &mut Context<'_>, transfer: &Transfer) -> Result<u64, Errno> {
 }
 
 /// Runs a request and gives its result.
-fn run(c: &mut Context<'_>, work: &Work) -> i32 {
+fn run(c: &mut Context<'_>, ring: &Ring, work: &Work) -> i32 {
     let result = |r: Result<u64, Errno>| r.map_or_else(|e| -e.0, |v| v as i32);
     match work {
         &Work::Nop(result) => result,
@@ -578,7 +631,7 @@ fn run(c: &mut Context<'_>, work: &Work) -> i32 {
                 Err(e) => -e.0,
             }
         }
-        Work::Transfer(work) => result(transfer(c, work)),
+        Work::Transfer(work) => result(transfer(c, ring, work)),
         // `io_fsync`: `vfs_fsync_range`, `EINVAL` for a file without
         // `fsync`; nothing is cached, so the range and `IORING_FSYNC_DATASYNC`
         // change nothing.
@@ -604,7 +657,7 @@ fn complete(c: &mut Context<'_>, ring: &Ring, chain: Vec<Request>) {
         } else if cancelled {
             -ECANCELED.0
         } else {
-            let res = run(c, &request.work);
+            let res = run(c, ring, &request.work);
             if res < 0 && request.flags & IOSQE_IO_HARDLINK == 0 {
                 cancelled = true;
             }
@@ -782,6 +835,13 @@ fn setup(c: &mut Context<'_>, entries: u32, params: u64) -> Result<u32, Errno> {
         submitter: (flags & SETUP_SINGLE_ISSUER != 0).then_some(c.tid),
         submitting: Mutex::default(),
         state: Mutex::default(),
+        charged: (!c.process.credentials.capable(CAP_IPC_LOCK)).then(|| {
+            (
+                Arc::clone(&c.processes.secret_pages),
+                c.process.credentials.uid,
+            )
+        }),
+        buffers: Mutex::default(),
     };
     ring.store_u32(SQ_RING_MASK, sq_entries - 1);
     ring.store_u32(CQ_RING_MASK, cq_entries - 1);
@@ -1019,9 +1079,114 @@ fn register(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
     if ring.submitter.is_some_and(|tid| tid != c.tid) {
         return Err(EEXIST);
     }
-    if opcode != REGISTER_PROBE {
+    match opcode {
+        REGISTER_PROBE => probe(c, a),
+        REGISTER_BUFFERS if a[2] == 0 => Err(Errno::EFAULT),
+        REGISTER_BUFFERS => register_buffers(c, ring, a[2], a[3] as u32),
+        UNREGISTER_BUFFERS if a[2] != 0 || a[3] as u32 != 0 => Err(Errno::EINVAL),
+        UNREGISTER_BUFFERS => ring
+            .buffers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+            .map(|_| 0)
+            .ok_or(ENXIO),
+        _ => Err(Errno::EINVAL),
+    }
+}
+
+/// `IORING_REGISTER_BUFFERS`, as Linux's `io_sqe_buffers_register`: none
+/// registered yet (`EBUSY`), 1 to `IORING_MAX_REG_BUFFERS` of them
+/// (`EINVAL`), then each `iovec` in turn (`EFAULT`, `EINVAL` for a negative
+/// length), as `io_sqe_buffer_register` takes it:
+///
+/// - A null address with no length registers an empty slot; one with a
+///   length is `EFAULT`.
+/// - No length or more than 1 GiB is `EFAULT`, and an end past the address
+///   space `EOVERFLOW` (`io_validate_user_buf_range`).
+/// - Its pages must be writable (`EFAULT`, as `pin_user_pages_fast` with
+///   `FOLL_WRITE`).
+/// - They charge the ring's user, within RLIMIT_MEMLOCK (`ENOMEM`), unless
+///   the ring's maker had `CAP_IPC_LOCK` (`io_buffer_account_pin`).
+///
+/// A failure registers none of them.
+fn register_buffers(c: &mut Context<'_>, ring: &Ring, arg: u64, count: u32) -> Result<u64, Errno> {
+    let mut registered = ring.buffers.lock().unwrap_or_else(PoisonError::into_inner);
+    if registered.is_some() {
+        return Err(EBUSY);
+    }
+    if count == 0 || u64::from(count) > MAX_REG_BUFFERS {
         return Err(Errno::EINVAL);
     }
+    let mut buffers = Buffers {
+        slots: Vec::with_capacity(count as usize),
+        charged: ring.charged.clone(),
+        pages: 0,
+    };
+    let limit = c.processes.soft_limit(c.process.pid, 8) >> 12;
+    for index in 0..u64::from(count) {
+        let mut iovec = [0; 16];
+        c.mem
+            .read(GuestAddr(arg + 16 * index), &mut iovec)
+            .map_err(|_| Errno::EFAULT)?;
+        let (base, len) = (u64_at(&iovec, 0), u64_at(&iovec, 8));
+        if (len as i64) < 0 {
+            return Err(Errno::EINVAL);
+        }
+        if base == 0 {
+            if len != 0 {
+                return Err(Errno::EFAULT);
+            }
+            buffers.slots.push(None);
+            continue;
+        }
+        if len > MAX_BUFFER || len == 0 {
+            return Err(Errno::EFAULT);
+        }
+        // The end, page-aligned, must not wrap, as `io_pin_pages` checks
+        // again for the end of the last page.
+        if base.checked_add(len.next_multiple_of(4096)).is_none()
+            || base.checked_add(len + 4095).is_none()
+        {
+            return Err(EOVERFLOW);
+        }
+        c.mem
+            .check_write(GuestAddr(base), len as usize)
+            .map_err(|_| Errno::EFAULT)?;
+        let pages = (base % 4096 + len).div_ceil(4096);
+        if let Some((charged, user)) = &buffers.charged
+            && !charged.charge(*user, pages, limit)
+        {
+            return Err(Errno::ENOMEM);
+        }
+        buffers.pages += pages;
+        buffers.slots.push(Some((base, len)));
+    }
+    *registered = Some(buffers);
+    Ok(0)
+}
+
+impl Ring {
+    /// The `len` bytes at `addr` of a request's registered buffer `index`,
+    /// as `io_import_reg_buf` finds them: none registered there, a range
+    /// that wraps or leaves the buffer, or more than `MAX_RW_COUNT`, is
+    /// `EFAULT` (`validate_fixed_range`).
+    fn registered(&self, index: u16, addr: u64, len: u32) -> Result<(u64, usize), Errno> {
+        let buffers = self.buffers.lock().unwrap_or_else(PoisonError::into_inner);
+        let (base, size) = buffers
+            .as_ref()
+            .and_then(|buffers| buffers.slots.get(usize::from(index)).copied().flatten())
+            .ok_or(Errno::EFAULT)?;
+        let end = addr.checked_add(u64::from(len)).ok_or(Errno::EFAULT)?;
+        if addr < base || end > base + size || len as usize > crate::files::MAX_RW_COUNT {
+            return Err(Errno::EFAULT);
+        }
+        Ok((addr, len as usize))
+    }
+}
+
+/// `IORING_REGISTER_PROBE`: what each operation is, and whether it runs.
+fn probe(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
     // struct io_uring_probe: last_op, ops_len, then 14 reserved bytes, then
     // an io_uring_probe_op of 8 bytes for each operation.
     let count = (a[3] as u32).min(u32::from(OP_LAST));

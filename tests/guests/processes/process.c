@@ -8384,13 +8384,90 @@ static int io_uring_transfers_case(void) {
     signal(SIGXFSZ, SIG_DFL);
     ut_events(ifd, "events");
 
-    /* The probe reports the transfers. (Linux also reports READ_FIXED and
-       WRITE_FIXED, which the emulator does not run.) */
+    /* Registered buffers: IORING_REGISTER_BUFFERS's checks, then
+       READ_FIXED and WRITE_FIXED within a buffer. */
+    char *page = mmap(NULL, 3 * 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (page == MAP_FAILED || munmap(page + 2 * 4096, 4096) ||
+        mprotect(page + 4096, 4096, PROT_READ))
+        return 88;
+    int ffd = open("fixed", O_RDWR | O_CREAT, 0600);
+    if (ffd < 0) return 89;
+    sqe = ut_entry(4, ffd, 0, page, 1);
+    ut_run("read-fixed-unregistered");
+    uring_show("unregister-none", syscall(427, ut.fd, 1, NULL, 0));
+    struct iovec bufs[2];
+    uring_show("register-null", syscall(427, ut.fd, 0, NULL, 1));
+    uring_show("register-zero", syscall(427, ut.fd, 0, bufs, 0));
+    uring_show("register-too-many", syscall(427, ut.fd, 0, bufs, 16385));
+    struct {
+        const char *label;
+        void *base;
+        size_t len;
+    } bad[] = {
+        {"register-null-base", NULL, 1},
+        {"register-no-length", page, 0},
+        {"register-huge", page, (1UL << 30) + 1},
+        {"register-negative", page, (size_t)-1},
+        {"register-wraps", (void *)-4096L, 4096},
+        {"register-read-only", page + 4096, 4096},
+        {"register-unmapped", page + 2 * 4096, 4096},
+    };
+    for (unsigned i = 0; i < sizeof bad / sizeof *bad; i++) {
+        bufs[0] = (struct iovec){bad[i].base, bad[i].len};
+        uring_show(bad[i].label, syscall(427, ut.fd, 0, bufs, 1));
+    }
+    bufs[0] = (struct iovec){page, 4096};
+    bufs[1] = (struct iovec){page + 2 * 4096, 1};
+    uring_show("register-second-bad", syscall(427, ut.fd, 0, bufs, 2));
+    uring_show("unregister-after-failure", syscall(427, ut.fd, 1, NULL, 0));
+    bufs[1] = (struct iovec){NULL, 0};
+    uring_show("register", syscall(427, ut.fd, 0, bufs, 2));
+    uring_show("register-again", syscall(427, ut.fd, 0, bufs, 2));
+    memcpy(page + 16, "fixed", 5);
+    ut_entry(5, ffd, 0, page + 16, 5);
+    ut_run("write-fixed");
+    ut_entry(4, ffd, 1, page + 128, 4);
+    ut_run("read-fixed");
+    printf("read-fixed: %.4s\n", page + 128);
+    struct {
+        const char *label;
+        char *addr;
+        unsigned len;
+        unsigned short index;
+    } outside[] = {
+        {"fixed-before", page - 1, 1, 0},
+        {"fixed-past-end", page + 4095, 2, 0},
+        {"fixed-too-long", page, 4097, 0},
+        {"fixed-empty-slot", page, 1, 1},
+        {"fixed-no-slot", page, 1, 2},
+    };
+    for (unsigned i = 0; i < sizeof outside / sizeof *outside; i++) {
+        sqe = ut_entry(4, ffd, 0, outside[i].addr, outside[i].len);
+        memcpy(sqe + 40, &outside[i].index, 2);
+        ut_run(outside[i].label);
+    }
+    sqe = ut_entry(4, 999, 0, page, 1);
+    sqe[40] = 5;
+    ut_run("fixed-badf-first");
+    sqe = ut_entry(4, ffd, 0, page, 1);
+    sqe[1] = 1 << 5;
+    ut_run("fixed-select");
+    uring_show("unregister-arg", syscall(427, ut.fd, 1, bufs, 0));
+    uring_show("unregister-count", syscall(427, ut.fd, 1, NULL, 1));
+    uring_show("unregister", syscall(427, ut.fd, 1, NULL, 0));
+    uring_show("unregister-again", syscall(427, ut.fd, 1, NULL, 0));
+    ut_entry(4, ffd, 1, page + 128, 4);
+    ut_run("read-fixed-gone");
+    close(ffd);
+    unlink("fixed");
+    munmap(page, 2 * 4096);
+
+    /* The probe says which operations run. */
     unsigned char probe[16 + 8 * 64];
     memset(probe, 0, sizeof probe);
     syscall(427, ut.fd, 8, probe, 64);
     printf("probe:");
-    const int ops[] = {1, 2, 3, 22, 23};
+    const int ops[] = {1, 2, 3, 4, 5, 22, 23};
     for (unsigned i = 0; i < sizeof ops / sizeof *ops; i++)
         printf(" %d=%d", ops[i], probe[16 + 8 * ops[i] + 2] & 1);
     printf("\n");

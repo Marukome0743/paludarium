@@ -399,13 +399,18 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   が書いたエントリを読み込んで使うことはできません。Linux は読み込みます。テーブルそのものは
   Linux と同じに読み返せます。
 - **io_uring の一部**：実行するのは `IORING_OP_NOP`、`IORING_OP_EPOLL_CTL`、
-  `IORING_OP_READ`、`_WRITE`、`_READV`、`_WRITEV`、`_FSYNC` だけで、ほかの操作は
-  `EOPNOTSUPP` で完了します。バッファーを登録できないので、`IORING_OP_READ_FIXED` と
-  `_WRITE_FIXED` もそのうちです。setup のフラグ `IORING_SETUP_IOPOLL`、`_SQPOLL`、
+  `IORING_OP_READ`、`_WRITE`、`_READV`、`_WRITEV`、`_FSYNC`、`_READ_FIXED`、`_WRITE_FIXED`
+  だけで、ほかの操作は `EOPNOTSUPP` で完了します。setup のフラグ `IORING_SETUP_IOPOLL`、`_SQPOLL`、
   `_SQ_AFF`、`_ATTACH_WQ`、`_R_DISABLED`、`_SQE128`、`_CQE32`、`_NO_MMAP`、
-  `_REGISTERED_FD_ONLY` は `EINVAL` です。`io_uring_register` は `IORING_REGISTER_PROBE`
-  だけで（ほかは `EINVAL`）、リングの記述子、ファイル、バッファー、パーソナリティは登録
-  できません。リングは共有でしかマップできず（`MAP_PRIVATE` は `EINVAL`）、`poll` と `epoll` は
+  `_REGISTERED_FD_ONLY` は `EINVAL` です。`io_uring_register` は `IORING_REGISTER_PROBE`、
+  `IORING_REGISTER_BUFFERS`、`IORING_UNREGISTER_BUFFERS` だけで（ほかは `EINVAL`）、リングの
+  記述子、ファイル、パーソナリティは登録できず、バッファーの更新やタグもありません。登録した
+  バッファーのページは固定されません。固定バッファーの転送は、そのときそのアドレスにマップ
+  されているメモリを動かすので、バッファーを外したり読み出し専用にしたりすると `EFAULT` で
+  失敗し、リングを共有するプロセスは自分のメモリを動かします。Linux は固定したページを
+  動かします。ディスクのファイルの共有マッピングも登録できます（Linux の長期の固定は
+  `EFAULT` で断ります）。ヒュージページは 4 KiB のページごとに RLIMIT_MEMLOCK を数えます
+  （Linux は 1 回だけ数えます）。リングは共有でしかマップできず（`MAP_PRIVATE` は `EINVAL`）、`poll` と `epoll` は
   その記述子を見張れません。要求はすべて `io_uring_enter` の中で完了するので、ある数より多くの
   完了を待つと、シグナルかタイムアウトでしか終わりません。機能は Linux 6.12 のものなので、
   リングの記述子は登録できないのに `IORING_FEAT_REG_REG_RING` を、待ちの `min_wait_usec` は何も
@@ -453,8 +458,8 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
     `-ENOENT` です。ここではローダーのコピーがそのページの唯一の内容だからです。
   - `memfd_secret` のページのフォールトは、フォールトしたプロセスの最後のシステムコールの
     ときの `RLIMIT_MEMLOCK` で決めます（システムコールの前は、作ったプロセスのものです）。
-    数えるのは `memfd_secret` のファイルのページだけです。Linux のユーザーの `locked_vm` は、
-    `io_uring` のバッファなども数えます。ページをフォールトのときに数える変更
+    数えるのは `memfd_secret` のファイルのページと `io_uring` の登録したバッファーだけです。
+    Linux のユーザーの `locked_vm` は、`perf` のバッファなども数えます。ページをフォールトのときに数える変更
     （97d34aa65c29「mm/secretmem: properly account locked pages」）のないカーネルは、
     代わりにマッピングをロックしたものとして数えます。上限を超えると `mmap` が `EAGAIN` で、
     そのマッピングの `MS_INVALIDATE` の `msync` は `EBUSY` です。ここでは、変更のある

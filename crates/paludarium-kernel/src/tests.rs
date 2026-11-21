@@ -4577,7 +4577,7 @@ mod io_uring {
         // An operation 6.12 lacks, then one it has but is not implemented:
         // each ends the submission after itself.
         push(&mut f, &r, 0, &sqe(200, 1));
-        push(&mut f, &r, 1, &sqe(4, 2));
+        push(&mut f, &r, 1, &sqe(6, 2));
         push(&mut f, &r, 2, &sqe(0, 3));
         assert_eq!(f.ret(426, &[r.fd, 3, 0, 0]), 1);
         assert_eq!(f.ret(426, &[r.fd, 2, 0, 0]), 1);
@@ -4684,10 +4684,11 @@ mod io_uring {
         let supported: Vec<u64> = (0..58)
             .filter(|op| u32_at(&f, probe + 16 + 8 * op) >> 16 & 1 == 1)
             .collect();
-        assert_eq!(supported, [0, 1, 2, 3, 22, 23, 29]);
-        // A probe that is not zeroed, another operation, another file.
+        assert_eq!(supported, [0, 1, 2, 3, 4, 5, 22, 23, 29]);
+        // A probe that is not zeroed, buffers without an argument, another
+        // operation, another file.
         assert_eq!(f.ret(427, &[r.fd, 8, probe, 1]), errno(Errno::EINVAL));
-        assert_eq!(f.ret(427, &[r.fd, 0, 0, 0]), errno(Errno::EINVAL));
+        assert_eq!(f.ret(427, &[r.fd, 0, 0, 0]), errno(Errno::EFAULT));
         assert_eq!(f.ret(427, &[r.fd, 31, 0, 0]), errno(Errno::EINVAL));
         assert_eq!(f.ret(427, &[0, 8, probe, 1]), errno(Errno(95)));
     }
@@ -4837,6 +4838,114 @@ mod io_uring {
         assert_eq!(one(&mut f, &r, &rw(WRITE, writer, 5, buf, 4)), 4);
         assert_eq!(one(&mut f, &r, &rw(READ, reader, HERE, buf + 8, 8)), 4);
         assert_eq!(bytes(&f, buf + 8, 4), b"pipe");
+    }
+
+    const READ_FIXED: u8 = 4;
+    const WRITE_FIXED: u8 = 5;
+    const ENXIO: Errno = Errno(6);
+    const EBUSY: Errno = Errno(16);
+    const EOVERFLOW: Errno = Errno(75);
+
+    /// `iovec`s of `(base, len)` at `at`.
+    fn iovecs(f: &Fixture, at: u64, buffers: &[(u64, u64)]) {
+        for (i, &(base, len)) in buffers.iter().enumerate() {
+            let entry = at + 16 * i as u64;
+            f.mem.write_u64(GuestAddr(entry), base).unwrap();
+            f.mem.write_u64(GuestAddr(entry + 8), len).unwrap();
+        }
+    }
+
+    fn fixed(opcode: u8, fd: u64, offset: u64, addr: u64, len: u32, index: u16) -> [u8; 64] {
+        let mut e = rw(opcode, fd, offset, addr, len);
+        e[40..42].copy_from_slice(&index.to_le_bytes());
+        e
+    }
+
+    #[test]
+    fn registered_buffers_transfer_within_themselves() {
+        let mut f = fixture();
+        let r = ring(&mut f);
+        let (vec, buf) = (DATA + 0x100, DATA + 0x800);
+        f.mem.write(GuestAddr(DATA), b"/a\0").unwrap();
+        let fd = f.ret(2, &[DATA, 0o102, 0o600]);
+        // Unregistered: a fixed transfer finds no buffer.
+        assert_eq!(one(&mut f, &r, &fixed(READ_FIXED, fd, 0, buf, 1, 0)), -14);
+        assert_eq!(f.ret(427, &[r.fd, 1, 0, 0]), errno(ENXIO));
+        // The registration's own checks.
+        assert_eq!(f.ret(427, &[r.fd, 0, 0, 1]), errno(Errno::EFAULT));
+        assert_eq!(f.ret(427, &[r.fd, 0, vec, 0]), errno(Errno::EINVAL));
+        assert_eq!(f.ret(427, &[r.fd, 0, vec, 16385]), errno(Errno::EINVAL));
+        for (buffer, e) in [
+            ((0, 1), Errno::EFAULT),
+            ((buf, 0), Errno::EFAULT),
+            ((buf, (1 << 30) + 1), Errno::EFAULT),
+            ((buf, -1i64 as u64), Errno::EINVAL),
+            ((-4096i64 as u64, 4096), EOVERFLOW),
+            ((0x40_0000, 4096), Errno::EFAULT),
+        ] {
+            iovecs(&f, vec, &[buffer]);
+            assert_eq!(f.ret(427, &[r.fd, 0, vec, 1]), errno(e), "{buffer:x?}");
+        }
+        // A failure registers none; then one buffer and an empty slot.
+        iovecs(&f, vec, &[(buf, 0x100), (0x40_0000, 1)]);
+        assert_eq!(f.ret(427, &[r.fd, 0, vec, 2]), errno(Errno::EFAULT));
+        assert_eq!(f.ret(427, &[r.fd, 1, 0, 0]), errno(ENXIO));
+        iovecs(&f, vec, &[(buf, 0x100), (0, 0)]);
+        assert_eq!(f.ret(427, &[r.fd, 0, vec, 2]), 0);
+        assert_eq!(f.ret(427, &[r.fd, 0, vec, 2]), errno(EBUSY));
+        // Within the buffer, at any address in it.
+        f.mem.write(GuestAddr(buf + 0x10), b"fixed").unwrap();
+        let w = fixed(WRITE_FIXED, fd, 0, buf + 0x10, 5, 0);
+        assert_eq!(one(&mut f, &r, &w), 5);
+        let rd = fixed(READ_FIXED, fd, 1, buf + 0x80, 4, 0);
+        assert_eq!(one(&mut f, &r, &rd), 4);
+        assert_eq!(bytes(&f, buf + 0x80, 4), b"ixed");
+        // Outside it, past its end, the empty slot, a slot past the last.
+        for (addr, len, index) in [
+            (buf - 1, 1, 0),
+            (buf + 0xff, 2, 0),
+            (buf, 0x101, 0),
+            (buf, 1, 1),
+            (buf, 1, 2),
+        ] {
+            let e = fixed(READ_FIXED, fd, 0, addr, len, index);
+            assert_eq!(one(&mut f, &r, &e), -14, "{addr:x} {len} {index}");
+        }
+        // The file comes first; no buffer is selected.
+        assert_eq!(one(&mut f, &r, &fixed(READ_FIXED, 99, 0, buf, 1, 5)), -9);
+        let mut select = fixed(READ_FIXED, fd, 0, buf, 1, 0);
+        select[1] = 1 << 5;
+        assert_eq!(one(&mut f, &r, &select), -95);
+        // Unregistering takes arguments of none, then they are gone.
+        assert_eq!(f.ret(427, &[r.fd, 1, vec, 0]), errno(Errno::EINVAL));
+        assert_eq!(f.ret(427, &[r.fd, 1, 0, 1]), errno(Errno::EINVAL));
+        assert_eq!(f.ret(427, &[r.fd, 1, 0, 0]), 0);
+        assert_eq!(one(&mut f, &r, &rd), -14);
+    }
+
+    #[test]
+    fn registered_buffers_charge_memlock_until_they_go() {
+        let mut f = fixture();
+        // RLIMIT_MEMLOCK of one page, for a user without CAP_IPC_LOCK.
+        f.mem.write_u64(GuestAddr(DATA), 4096).unwrap();
+        f.mem.write_u64(GuestAddr(DATA + 8), 4096).unwrap();
+        assert_eq!(f.ret(160, &[8, DATA]), 0);
+        assert_eq!(f.ret(105, &[1000]), 0);
+        let r = ring(&mut f);
+        let (vec, buf) = (DATA + 0x100, DATA + 0x800);
+        // Two pages: past the limit.
+        iovecs(&f, vec, &[(buf + 0x7ff, 2)]);
+        assert_eq!(f.ret(427, &[r.fd, 0, vec, 1]), errno(Errno::ENOMEM));
+        iovecs(&f, vec, &[(buf, 0x10), (buf + 0x100, 0x10)]);
+        assert_eq!(f.ret(427, &[r.fd, 0, vec, 2]), errno(Errno::ENOMEM));
+        iovecs(&f, vec, &[(buf, 0x10)]);
+        assert_eq!(f.ret(427, &[r.fd, 0, vec, 1]), 0);
+        // Another ring of the user finds the page taken until it goes.
+        let other = ring(&mut f);
+        assert_eq!(f.ret(427, &[other.fd, 0, vec, 1]), errno(Errno::ENOMEM));
+        assert_eq!(f.ret(427, &[r.fd, 1, 0, 0]), 0);
+        assert_eq!(f.ret(427, &[other.fd, 0, vec, 1]), 0);
+        assert_eq!(f.ret(3, &[other.fd]), 0);
     }
 }
 

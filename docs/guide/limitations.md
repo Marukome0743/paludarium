@@ -467,14 +467,22 @@ verified.
   `SIGILL`), so an entry that `modify_ldt` writes cannot be loaded and used,
   where Linux loads it. The table itself reads back as Linux's.
 - **io_uring, in part**: only `IORING_OP_NOP`, `IORING_OP_EPOLL_CTL`,
-  `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV` and `_FSYNC` run; the
-  other operations complete with `EOPNOTSUPP`, `IORING_OP_READ_FIXED` and
-  `_WRITE_FIXED` among them, as no buffer can be registered. The setup flags
+  `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV`, `_FSYNC`, `_READ_FIXED`
+  and `_WRITE_FIXED` run; the other operations complete with `EOPNOTSUPP`.
+  The setup flags
   `IORING_SETUP_IOPOLL`, `_SQPOLL`, `_SQ_AFF`, `_ATTACH_WQ`, `_R_DISABLED`,
   `_SQE128`, `_CQE32`, `_NO_MMAP` and `_REGISTERED_FD_ONLY` give `EINVAL`,
-  and `io_uring_register` has only `IORING_REGISTER_PROBE` (the others give
-  `EINVAL`), so no ring descriptor, file, buffer or personality can be
-  registered. A ring maps only shared (`MAP_PRIVATE` gives `EINVAL`), and
+  and `io_uring_register` has only `IORING_REGISTER_PROBE`,
+  `IORING_REGISTER_BUFFERS` and `IORING_UNREGISTER_BUFFERS` (the others give
+  `EINVAL`), so no ring descriptor, file or personality can be registered,
+  and buffers cannot be updated or given tags. A registered buffer's pages
+  are not pinned: a fixed transfer moves the memory at its address as that
+  is mapped then, so it fails with `EFAULT` once the buffer is unmapped or
+  made read-only, and a process that shares the ring moves its own memory.
+  Linux moves the pages it pinned. A shared mapping of a disk file can be
+  registered, where Linux's long-term pin refuses it (`EFAULT`), and a huge
+  page charges RLIMIT_MEMLOCK for each of its 4 KiB pages, where Linux
+  charges it once. A ring maps only shared (`MAP_PRIVATE` gives `EINVAL`), and
   `poll` and `epoll` cannot watch its descriptor. As every request completes
   in `io_uring_enter`, a wait for more completions than there are ends only
   by a signal or its timeout. The features are Linux 6.12's, so
@@ -530,8 +538,9 @@ verified.
     the only one the page has here.
   - A fault of a `memfd_secret` page takes the faulting process's
     `RLIMIT_MEMLOCK` as of its last system call (its creator's before
-    one), and the pages count only `memfd_secret` files, where Linux's
-    `locked_vm` of a user also counts its `io_uring` buffers and the like.
+    one), and the pages count only `memfd_secret` files and `io_uring`'s
+    registered buffers, where Linux's `locked_vm` of a user also counts
+    `perf`'s buffers and the like.
     Kernels without the change that counts them as they are faulted in
     (97d34aa65c29, "mm/secretmem: properly account locked pages") count
     its mappings as locked instead: `mmap` gives `EAGAIN` past the limit,

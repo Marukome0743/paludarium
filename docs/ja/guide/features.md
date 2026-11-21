@@ -1416,7 +1416,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
 
 - io_uring は Linux 6.12 のもので、操作は `IORING_OP_NOP`、`IORING_OP_EPOLL_CTL`（libuv が
   `epoll_ctl` をまとめるのに使います）と、ファイルの転送 `IORING_OP_READ`、`_WRITE`、
-  `_READV`、`_WRITEV`、`_FSYNC` です。ほかの操作は、それらなしでビルドした Linux と同じく
+  `_READV`、`_WRITEV`、`_FSYNC`、`_READ_FIXED`、`_WRITE_FIXED` です。ほかの操作は、それらなしでビルドした Linux と同じく
   `EOPNOTSUPP` で完了し、`IORING_REGISTER_PROBE` もこれらだけを報告します。リングの大きさ、オフセット、機能は Linux が返すものと同じで、記述子の `mmap` で
   見えます。要求は `io_uring_enter` が取り出すときに実行されるので、呼び出しが戻るときには
   完了がキューにあります。リンク、成功時に完了を省くもの、キューがいっぱいのあいだ保たれる
@@ -1435,6 +1435,21 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   差分テストのカーネルにある Linux 6.14 のもので、保護情報だけです。保護情報を受け付ける
   ファイルはないので `EINVAL` になります。`IORING_OP_FSYNC` が受け付けるフラグは
   `IORING_FSYNC_DATASYNC` だけです。
+
+- `IORING_REGISTER_BUFFERS` は、Linux の `io_sqe_buffers_register` と同じくリングの
+  バッファーを登録します。調べる順は次のとおりです。
+  - まだ登録していないこと（`EBUSY`）と、1 から 16384 個であること（`EINVAL`）。
+  - それぞれの `iovec`（`EFAULT`。長さが負なら `EINVAL`）。長さのない null は空のスロットです。
+  - 長さが 1 バイトから 1 GiB であること（`EFAULT`）と、終わりがアドレス空間を越えないこと
+    （`EOVERFLOW`）。
+  - 書き込めるページであること（`EFAULT`）。
+  - RLIMIT_MEMLOCK の空き（`ENOMEM`）。ユーザーのほかのリングと `memfd_secret` のページと
+    共有です。リングを作ったときに `CAP_IPC_LOCK` があれば数えません。
+
+  失敗すると何も登録しません。`IORING_UNREGISTER_BUFFERS` は引数を取らず（`EINVAL`）、
+  登録がなければ `ENXIO` です。`IORING_OP_READ_FIXED` と `_WRITE_FIXED` は、ファイルを
+  見つけたあと、`buf_index` が指すバッファーの中で転送します。そこにバッファーがないか、
+  範囲がはみ出せば `EFAULT` です。
 
 - Linux のネイティブな非同期 I/O（libaio が包む呼び出し）は `fs/aio.c` のものです。
   `io_setup` はイベント数を CPU ごとに少なくとも 4 にして 2 倍にし（`0x8000000 / 32` を

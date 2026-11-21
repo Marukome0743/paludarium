@@ -1591,8 +1591,8 @@ kernel.
 
 - io_uring is Linux 6.12's with these operations: `IORING_OP_NOP`,
   `IORING_OP_EPOLL_CTL` (which libuv batches its `epoll_ctl` calls with), and
-  the file transfers `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV` and
-  `_FSYNC`. The other operations complete with `EOPNOTSUPP`, as on a Linux
+  the file transfers `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV`,
+  `_FSYNC`, `_READ_FIXED` and `_WRITE_FIXED`. The other operations complete with `EOPNOTSUPP`, as on a Linux
   built without them, and `IORING_REGISTER_PROBE` reports only these. The
   rings are the sizes, offsets and features Linux gives, and `mmap` of the
   descriptor shows them. A request runs while `io_uring_enter` takes it, so
@@ -1617,6 +1617,23 @@ kernel.
   differential tests' kernel has: only protection information, which no
   file here takes (`EINVAL`). `IORING_OP_FSYNC` takes only
   `IORING_FSYNC_DATASYNC`.
+
+- `IORING_REGISTER_BUFFERS` registers a ring's buffers as Linux's
+  `io_sqe_buffers_register` does. It checks in this order:
+  - none registered yet (`EBUSY`), and 1 to 16384 of them (`EINVAL`);
+  - then each `iovec` (`EFAULT`, `EINVAL` for a negative length); a null
+    one with no length is an empty slot;
+  - a length of 1 byte to 1 GiB (`EFAULT`), and no end past the address
+    space (`EOVERFLOW`);
+  - writable pages (`EFAULT`);
+  - room under RLIMIT_MEMLOCK (`ENOMEM`), shared with the user's other
+    rings and `memfd_secret` pages, unless the ring's maker had
+    `CAP_IPC_LOCK`.
+
+  A failure registers none of them. `IORING_UNREGISTER_BUFFERS` takes no
+  argument (`EINVAL`) and needs buffers (`ENXIO`). `IORING_OP_READ_FIXED` and
+  `_WRITE_FIXED` move bytes within the buffer `buf_index` names, after the
+  file is found: no buffer there, or a range that leaves it, is `EFAULT`.
 
 - Linux's native asynchronous I/O (the calls libaio wraps) is `fs/aio.c`'s.
   `io_setup` makes the number of events at least four for each CPU and
