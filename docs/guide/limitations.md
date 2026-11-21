@@ -517,9 +517,10 @@ verified.
     differentially tested, as natively it would poison the host's memory.
   - `process_madvise` takes for the caller's own memory only the advice
     `madvise` takes, and another process's ranges are only checked to be
-    mapped, but for `MADV_COLLAPSE`. It refuses advice Linux does not know before any range
-    (`EINVAL`), as Linux master does; the CI's kernel checks it with each
-    range, so with no ranges, or only empty ones, it gives 0 there.
+    mapped, but for `MADV_COLLAPSE`. It refuses advice Linux does not know
+    before any range (`EINVAL`), as Linux master does; the CI's kernel
+    checks it with each range, so with no ranges, or only empty ones, it
+    gives 0 there.
   - A fatal signal other than SIGKILL marks a process as dying for
     `process_mrelease` as it is sent even when the only thread that does
     not block it already has a signal pending and is not running, or is
