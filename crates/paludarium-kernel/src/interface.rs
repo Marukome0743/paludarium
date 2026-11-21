@@ -1060,7 +1060,7 @@ pub(crate) struct Addresses {
     /// the monotonic clock: a netlink request's, which a device going
     /// tells its addresses' lifetimes by.
     seen: u64,
-    /// The loopback's neighbours, the oldest first.
+    /// The neighbours of the loopback and of each veth end, the oldest first.
     neighbours: Vec<Neighbour>,
     /// The proxy entries of the namespace, the oldest first.
     proxies: Vec<Proxy>,
