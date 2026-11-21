@@ -1457,7 +1457,8 @@ impl Kernel {
             blocks_sigtrap: thread.state.signal_mask & SIGTRAP != 0,
         };
         // The `sigtrap` of an event that overflowed, for the thread.
-        for signal in perf::overflow(&self.processes.perf_events, &self.group, &task) {
+        let per_tick = self.processes.sysctls.perf_max_samples_per_tick();
+        for signal in perf::overflow(&self.processes.perf_events, &self.group, &task, per_tick) {
             signals::queue(&mut thread.state, signal);
         }
     }
