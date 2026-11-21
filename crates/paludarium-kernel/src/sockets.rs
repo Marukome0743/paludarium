@@ -1587,7 +1587,7 @@ fn receive_with(
     // SO_RCVTIMEO bounds the whole call, its later waits too.
     let wait = deadline(c, file, true)?;
     let mut received = crate::files::wait_for_read_until(c, file, dontwait, wait, || {
-        socket.receive(bytes, message, peek)
+        socket.receive_dontwait(bytes, message, peek, dontwait)
     })?;
     // A peek returns what it found, as unix_stream_read_generic does.
     let target = if flags & MSG_WAITALL != 0 {
@@ -1829,6 +1829,13 @@ const SO_DOMAIN: u32 = 39;
 const SO_PEEK_OFF: u32 = 42;
 const SO_BUSY_POLL: u32 = 46;
 const SO_INCOMING_CPU: u32 = 49;
+/// `SO_GET_FILTER`, which is `SO_ATTACH_FILTER` when set.
+const SO_GET_FILTER: u32 = 26;
+/// `SO_DETACH_FILTER`, which is `SO_DETACH_BPF` too.
+const SO_DETACH_FILTER: u32 = 27;
+const SO_LOCK_FILTER: u32 = 44;
+const SO_BPF_EXTENSIONS: u32 = 48;
+const SO_ATTACH_BPF: u32 = 50;
 /// `net.core.wmem_default` and `rmem_default`, a socket's buffers at first.
 const DEFAULT_BUFFER: i32 = 212_992;
 /// `net.core.wmem_max` and `rmem_max`, the most `SO_SNDBUF` takes.
@@ -2034,6 +2041,58 @@ fn set_option(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
             .map_err(|_| Errno::EFAULT)?,
     );
     let on = value != 0;
+    // The filter options, as `sk_setsockopt` and net/core/filter.c take
+    // them: a lock that `SO_LOCK_FILTER` sets keeps the filter as it is.
+    match name {
+        SO_ATTACH_BPF => {
+            if len != 4 {
+                return Err(Errno::EINVAL);
+            }
+            if socket.lock_sides()[socket.side].filter_locked {
+                return Err(Errno::EPERM);
+            }
+            // The descriptor is looked up outside the sides' lock, which is
+            // then checked again: sk_setsockopt holds the socket's lock
+            // throughout, so no SO_LOCK_FILTER comes in between.
+            let program = crate::bpf_prog::socket_filter(c, value.cast_unsigned())?;
+            let mut sides = socket.lock_sides();
+            let own = &mut sides[socket.side];
+            if own.filter_locked {
+                return Err(Errno::EPERM);
+            }
+            // __sk_filter_charge: the new filter is charged before the old
+            // is given back, against net.core.optmem_max.
+            let held = own.filter.as_ref().map_or(0, |f| f.program.filter_size());
+            let size = program.filter_size();
+            if size > MAX_CONTROL || held + size >= MAX_CONTROL {
+                return Err(Errno::ENOMEM);
+            }
+            own.filter = Some(Filter {
+                program,
+                socket: socket.unix().map_or_else(Weak::new, |u| Arc::downgrade(&u)),
+                owner: socket.owner(),
+            });
+            return Ok(0);
+        }
+        SO_DETACH_FILTER => {
+            let mut sides = socket.lock_sides();
+            let own = &mut sides[socket.side];
+            if own.filter_locked {
+                return Err(Errno::EPERM);
+            }
+            return own.filter.take().map(|_| 0).ok_or(Errno(2)); // ENOENT
+        }
+        SO_LOCK_FILTER => {
+            let mut sides = socket.lock_sides();
+            let own = &mut sides[socket.side];
+            if own.filter_locked && !on {
+                return Err(Errno::EPERM);
+            }
+            own.filter_locked = on;
+            return Ok(0);
+        }
+        _ => {}
+    }
     if name == SO_PASSCRED {
         socket.lock_sides()[socket.side].pass_credentials = on;
         return Ok(0);
@@ -2216,6 +2275,17 @@ fn get_option(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
         SO_PEEK_OFF => int(socket.lock_sides()[socket.side].peek_offset),
         SO_BUSY_POLL => int(options.busy_poll),
         SO_INCOMING_CPU => int(options.incoming_cpu),
+        // sk_get_filter: no filter is 0 blocks; one attached with
+        // SO_ATTACH_BPF has no classic program to give (EACCES).
+        SO_GET_FILTER => {
+            if socket.lock_sides()[socket.side].filter.is_some() {
+                return Err(Errno::EACCES);
+            }
+            Vec::new()
+        }
+        SO_LOCK_FILTER => int(socket.lock_sides()[socket.side].filter_locked.into()),
+        // bpf_tell_extensions: SKF_AD_MAX.
+        SO_BPF_EXTENSIONS => int(64),
         _ => return Err(Errno(92)),
     };
     let len = value.len().min(len.cast_unsigned() as usize);
@@ -2419,6 +2489,32 @@ impl Received {
         }
     }
 }
+/// A side's socket filter: the program, the socket it runs for
+/// (`skb->sk`) and that socket's owner (`sk_uid`), as `SO_ATTACH_BPF` found
+/// them.
+#[derive(Clone)]
+struct Filter {
+    program: Arc<crate::bpf_prog::Program>,
+    socket: Weak<crate::unix::UnixSocket>,
+    owner: u32,
+}
+impl Pair {
+    /// Runs `filter`, if there is one, on a message of `buf` from
+    /// `sender`, outside the sides' lock: the bytes kept, or `None`.
+    fn filter(&self, filter: Option<Filter>, buf: &[u8], sender: Sender) -> Option<usize> {
+        let Some(filter) = filter else {
+            return Some(buf.len());
+        };
+        let mut kernel = crate::bpf_prog::Receiving {
+            host: self.clock.get(),
+            uid: sender.uid,
+            gid: sender.gid,
+            socket: filter.socket.upgrade(),
+            owner: filter.owner,
+        };
+        crate::bpf_prog::sk_filter(&filter.program, buf, &mut kernel)
+    }
+}
 /// Whether a side takes credentials, as Linux's `unix_may_passcred`:
 /// `SO_PASSCRED` or `SO_PASSPIDFD`.
 fn passes(side: &Side) -> bool {
@@ -2426,6 +2522,11 @@ fn passes(side: &Side) -> bool {
 }
 #[derive(Default)]
 struct Side {
+    /// The socket filter attached to this side's socket (`sk_filter`,
+    /// `SO_ATTACH_BPF`).
+    filter: Option<Filter>,
+    /// `SOCK_FILTER_LOCKED` (`SO_LOCK_FILTER`).
+    filter_locked: bool,
     /// The inode of the end on this side, which the other end's peer is
     /// (`UNIX_DIAG_PEER`).
     inode: u64,
@@ -3084,6 +3185,17 @@ impl SocketPairEnd {
         message: bool,
         peek: bool,
     ) -> Result<Received, Errno> {
+        self.receive_dontwait(buf, message, peek, false)
+    }
+    /// [`Self::receive`], with `MSG_DONTWAIT` (`dontwait`), which a
+    /// datagram socket's read tells apart from one that waits.
+    pub(crate) fn receive_dontwait(
+        &self,
+        buf: &mut [u8],
+        message: bool,
+        peek: bool,
+        dontwait: bool,
+    ) -> Result<Received, Errno> {
         // An unconnected AF_UNIX socket reads nothing: a stream's
         // `unix_stream_read_generic` is EINVAL, a packet socket's
         // `unix_seqpacket_recvmsg` ENOTCONN.
@@ -3115,7 +3227,7 @@ impl SocketPairEnd {
             return Ok(Received::default());
         }
         let result = if self.pair.messages() {
-            self.read_message(buf, peek)
+            self.read_message(buf, peek, dontwait)
         } else {
             self.read_stream(buf, peek, None)
         };
@@ -3335,8 +3447,8 @@ impl SocketPairEnd {
     /// Linux's `scm_fp_dup`; from `SO_PEEK_OFF` it starts that far in,
     /// past whole messages, as `__skb_try_recv_from_queue`, and the length
     /// it gives is what is left of the message from there.
-    fn read_message(&self, buf: &mut [u8], peek: bool) -> Result<Received, Errno> {
-        let nonblocking = self.flags() & NONBLOCK != 0;
+    fn read_message(&self, buf: &mut [u8], peek: bool, dontwait: bool) -> Result<Received, Errno> {
+        let nonblocking = dontwait || self.flags() & NONBLOCK != 0;
         let mut sides = self
             .pair
             .sides
@@ -3389,8 +3501,12 @@ impl SocketPairEnd {
         let message = if peek { None } else { own.writes.pop_front() };
         let Some(message) = message else {
             // A datagram socket has no end of file from its peer: only its
-            // own SHUT_RD ends a blocking read, and a nonblocking one still
-            // finds nothing.
+            // own SHUT_RD ends a blocking read, as __skb_wait_for_more_packets
+            // stops waiting at RCV_SHUTDOWN with no error. A read that does
+            // not wait (O_NONBLOCK or MSG_DONTWAIT: no timeout) still finds
+            // nothing, EAGAIN from __skb_try_recv_datagram, which
+            // unix_dgram_recvmsg turns into an end of file only for
+            // SOCK_SEQPACKET.
             return if datagram {
                 if own.read_shutdown && !nonblocking {
                     Ok(Received::default())
@@ -4163,15 +4279,21 @@ impl SocketPairEnd {
     /// A datagram `sender` sent joins this end's queue, unless reading is
     /// shut down (`EPIPE`), it passes descriptors this end refuses
     /// (`SO_PASSRIGHTS`, `EPERM`), more than `limit` messages wait, or the
-    /// bytes waiting leave no room for it (`EAGAIN`).
+    /// bytes waiting leave no room for it (`EAGAIN`). Of `buf`, the first
+    /// `keep` bytes join, which this end's filter left
+    /// ([`Self::filtered`]); the sender is charged for all of them, as a
+    /// trimmed `sk_buff` keeps its `truesize`.
     pub(crate) fn enqueue(
         &self,
         sender: &SocketPairEnd,
         buf: &[u8],
+        keep: usize,
         passed: &mut Passed,
         from: Sender,
         limit: Option<usize>,
     ) -> Result<usize, Errno> {
+        let charge = truesize(buf.len());
+        let (whole, buf) = (buf.len(), &buf[..keep.min(buf.len())]);
         let address = sender.unix().map(|socket| socket.address());
         // As Linux's unix_maybe_add_creds: either socket passing them.
         let sender_passes = sender.passes_any();
@@ -4204,7 +4326,7 @@ impl SocketPairEnd {
             peeked: false,
             sent: self.pair.sent_at(own),
             from: address,
-            charge: Some(sender.charge(truesize(buf.len()))),
+            charge: Some(sender.charge(charge)),
         });
         drop(sides);
         if sockets {
@@ -4212,7 +4334,14 @@ impl SocketPairEnd {
         }
         self.pair.hub.changed();
         self.notify(self.side, Reason::In);
-        Ok(buf.len())
+        Ok(whole)
+    }
+    /// `sk_filter` of a message `sender` sends to this end: the bytes of
+    /// `buf` its filter keeps, all of them with none attached, or `None`
+    /// when it drops the message.
+    pub(crate) fn filtered(&self, buf: &[u8], sender: Sender) -> Option<usize> {
+        let filter = self.lock_sides()[self.side].filter.clone();
+        self.pair.filter(filter, buf, sender)
     }
     /// The most bytes a stream write puts in one part, as Linux's
     /// `unix_stream_sendmsg` sizes its buffers: half the send buffer less 64
@@ -4313,6 +4442,74 @@ impl SocketPairEnd {
         if self.pair.messages() && buf.len() > self.max_datagram() {
             return Err(Errno(90));
         }
+        if self.pair.messages() {
+            // sock_alloc_send_pskb: this side's shutdown, then its send
+            // buffer. The peer's shutdown of reading and its close are this
+            // side's shutdown of writing too, as unix_shutdown and
+            // unix_release_sock give a packet socket's peer SEND_SHUTDOWN.
+            // A message goes whole or not at all, and an empty one is a
+            // message too. It takes of the sender's send buffer what a
+            // datagram does, which bounds it, not the peer's unread bytes.
+            if sides[self.side].write_shutdown
+                || sides[1 - self.side].closed
+                || sides[1 - self.side].read_shutdown
+            {
+                return Err(Errno(32));
+            }
+            let full = self.sent.load(Ordering::SeqCst) >= self.send_buffer();
+            NO_ROOM.set(full);
+            if full {
+                return Err(Errno::EAGAIN);
+            }
+            // sk_filter: a message it drops is sent as far as the sender
+            // knows, and one it trims keeps the bytes it says. It runs
+            // outside the lock, after which the peer is checked again, as
+            // unix_dgram_sendmsg checks `other` once it holds its lock.
+            let filter = sides[1 - self.side].filter.clone();
+            let mut keep = buf.len();
+            if filter.is_some() {
+                drop(sides);
+                // A dropped message wakes nobody: given as though a read
+                // waited, so that the caller sends no notice for it.
+                let Some(kept) = self.pair.filter(filter, buf, sender) else {
+                    return Ok((buf.len(), true));
+                };
+                keep = kept;
+                sides = self
+                    .pair
+                    .sides
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+            }
+            if sides[1 - self.side].closed || sides[1 - self.side].read_shutdown {
+                return Err(Errno(32));
+            }
+            let peer = &mut sides[1 - self.side];
+            // As unix_dgram_sendmsg, past the peer's shutdown.
+            if !passed.is_empty() && peer.refuses_rights {
+                return Err(Errno::EPERM);
+            }
+            let kept = &buf[..keep];
+            peer.bytes
+                .try_reserve(kept.len())
+                .map_err(|_| Errno::ENOMEM)?;
+            peer.writes.try_reserve(1).map_err(|_| Errno::ENOMEM)?;
+            peer.input_epoch = peer.input_epoch.wrapping_add(1);
+            peer.bytes.extend(kept.iter().copied());
+            peer.writes.push_back(Write {
+                len: kept.len(),
+                passed: std::mem::take(passed),
+                piece: Piece::Data,
+                credentials,
+                peeked: false,
+                sent: self.pair.sent_at(peer),
+                from: from.clone(),
+                // A trimmed sk_buff keeps its truesize.
+                charge: Some(self.charge(truesize(buf.len()))),
+            });
+            self.pair.hub.changed();
+            return Ok((buf.len(), false));
+        }
         if sides[self.side].write_shutdown
             || sides[1 - self.side].closed
             || sides[1 - self.side].read_shutdown
@@ -4320,38 +4517,6 @@ impl SocketPairEnd {
             return Err(Errno(32));
         }
         let peer = &mut sides[1 - self.side];
-        if self.pair.messages() {
-            // A message goes whole or not at all, and an empty one is a
-            // message too. It takes of the sender's send buffer what a
-            // datagram does, which bounds it, not the peer's unread bytes.
-            let full = self.sent.load(Ordering::SeqCst) >= self.send_buffer();
-            NO_ROOM.set(full);
-            if full {
-                return Err(Errno::EAGAIN);
-            }
-            // As unix_dgram_sendmsg, past the peer's shutdown.
-            if !passed.is_empty() && peer.refuses_rights {
-                return Err(Errno::EPERM);
-            }
-            peer.bytes
-                .try_reserve(buf.len())
-                .map_err(|_| Errno::ENOMEM)?;
-            peer.writes.try_reserve(1).map_err(|_| Errno::ENOMEM)?;
-            peer.input_epoch = peer.input_epoch.wrapping_add(1);
-            peer.bytes.extend(buf.iter().copied());
-            peer.writes.push_back(Write {
-                len: buf.len(),
-                passed: std::mem::take(passed),
-                piece: Piece::Data,
-                credentials,
-                peeked: false,
-                sent: self.pair.sent_at(peer),
-                from: from.clone(),
-                charge: Some(self.charge(truesize(buf.len()))),
-            });
-            self.pair.hub.changed();
-            return Ok((buf.len(), false));
-        }
         // A pipe takes what its capacity has room for. A stream socket
         // sends part by part while its send buffer has room, as Linux's
         // unix_stream_sendmsg, each part charged to it; the peer's unread
