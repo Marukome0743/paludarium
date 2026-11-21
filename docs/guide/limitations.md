@@ -124,16 +124,17 @@ verified.
   leader ended with `exit` before the last of its threads shows the last
   thread's status, where Linux shows the leader's. In `stat`, page faults,
   resident memory, the start time are 0, so `ps` shows no `RSS`, and its `STIME` and
-  `START` are the boot time in `/proc/stat`. `/proc/stat` counts no CPU time,
-  interrupts or context switches, and lists no interrupt numbers. A thread's `stat` gives its process's CPU time, and
+  `START` are the boot time in `/proc/stat`. `/proc/stat` counts all CPU time as
+  user time, as `getrusage` does, each thread's to the CPU it was on at its
+  system calls, and none as idle; it counts no interrupts or softirqs, and
+  as context switches only the times threads went to sleep, as nothing
+  preempts a guest thread. A thread's `stat` gives its process's CPU time, and
   another process's thread is `S (sleeping)` in every wait, where Linux
   shows some waits it cannot interrupt as `D (disk sleep)`. A thread shows another process
   what it published at its last system call or signal check, so a mask
   changed only for the length of a call (`rt_sigsuspend`, `ppoll`) is seen
   only while the thread is stopped in it. `meminfo` shows the fixed 4 GiB that `sysinfo` reports, with nothing
-  used. A generated file's `stat` gives its length as its size
-  (`mountinfo`, `status`, `stat`, `loadavg` and the like), where Linux's
-  seq files are of size 0; `maps`, `smaps` and `fdinfo` are 0 as on Linux.
+  used.
 - **Roots of their own, in part**: `chroot` into the generated `/proc` or
   `/dev` (or a directory in them) gives `EINVAL`, where Linux makes it the
   root. `mount` mounts no `proc` filesystem and nothing on `/proc` or
@@ -357,15 +358,16 @@ verified.
 - **BPF, maps and socket filters on AF_UNIX sockets only**: `bpf` makes
   arrays, hashes, LRU hashes, longest-prefix-match tries, queues, stacks,
   bloom filters, and arrays and hashes of maps, and loads socket filters,
-  and nothing else. A socket filter runs only attached with
-  `SO_ATTACH_BPF` to an AF_UNIX datagram or packet socket. A classic
-  filter (`SO_ATTACH_FILTER`) and an internet socket are `ENOPROTOOPT`.
+  and nothing else. A socket filter, attached with `SO_ATTACH_BPF` or a
+  classic one with `SO_ATTACH_FILTER`, runs only on an AF_UNIX datagram
+  or packet socket; on an internet socket the options are `ENOPROTOOPT`.
   No JIT compiles a program: the interpreter runs it. Of the helpers'
   values, the processor is 0, a network namespace's cookie is 1 (the
   initial one's) in every namespace, the boot and coarse clocks are the
   monotonic one, and `CLOCK_TAI` is the real time. A program is charged to
   its socket as though Linux's rewrites made it 16 times longer, so
-  `SO_ATTACH_BPF` is `ENOMEM` sooner than on Linux for a long one.
+  `SO_ATTACH_BPF` is `ENOMEM` sooner than on Linux for a long one; a
+  classic filter is charged what Linux charges for it.
   Every other program type is
   `EINVAL`, as on a kernel built without it. The verifier refuses, where
   Linux may take them, with a log line of its own ("paludarium: ... are
@@ -394,7 +396,10 @@ verified.
   Where master and the test machines' Linux 7.0 decide differently, it
   refuses: master takes a larger stack where its JIT can, makes a number
   of a pointer that any operator is applied to, and takes an exit for
-  unwinding. It has
+  unwinding. It checks every instruction's fields (the "uses reserved
+  fields" errors) before it walks any path, in master's order; Linux 7.0
+  checks them only when a path reaches the instruction, so for a program
+  wrong in more than one way it may give another error first. It has
   only a privileged loader's rules (pointers may leak, the stack may be
   read before it is written, no Spectre sanitizing), so a loader without
   `CAP_PERFMON` gets `EPERM` once the type is known. With no BTF objects
@@ -466,19 +471,37 @@ verified.
   register (`mov` to `%ds`, `%fs` and the like stops a program with
   `SIGILL`), so an entry that `modify_ldt` writes cannot be loaded and used,
   where Linux loads it. The table itself reads back as Linux's.
-- **io_uring, in part**: only `IORING_OP_NOP` and `IORING_OP_EPOLL_CTL`
-  run; the other operations complete with `EOPNOTSUPP`. The setup flags
+- **io_uring, in part**: only `IORING_OP_NOP`, `IORING_OP_EPOLL_CTL`,
+  `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV`, `_FSYNC`, `_READ_FIXED`
+  and `_WRITE_FIXED` run; the other operations complete with `EOPNOTSUPP`.
+  The setup flags
   `IORING_SETUP_IOPOLL`, `_SQPOLL`, `_SQ_AFF`, `_ATTACH_WQ`, `_R_DISABLED`,
   `_SQE128`, `_CQE32`, `_NO_MMAP` and `_REGISTERED_FD_ONLY` give `EINVAL`,
-  and `io_uring_register` has only `IORING_REGISTER_PROBE` (the others give
-  `EINVAL`), so no ring descriptor, file, buffer or personality can be
-  registered. A ring maps only shared (`MAP_PRIVATE` gives `EINVAL`), and
+  and `io_uring_register` has only `IORING_REGISTER_PROBE`,
+  `IORING_REGISTER_BUFFERS` and `IORING_UNREGISTER_BUFFERS` (the others give
+  `EINVAL`), so no ring descriptor, file or personality can be registered,
+  and buffers cannot be updated or given tags. A registered buffer's pages
+  are not pinned: a fixed transfer moves the memory at its address as that
+  is mapped then, so it fails with `EFAULT` once the buffer is unmapped or
+  made read-only, and a process that shares the ring moves its own memory.
+  Linux moves the pages it pinned. A shared mapping of a disk file can be
+  registered, where Linux's long-term pin refuses it (`EFAULT`), and a huge
+  page charges RLIMIT_MEMLOCK for each of its 4 KiB pages, where Linux
+  charges it once. A ring maps only shared (`MAP_PRIVATE` gives `EINVAL`), and
   `poll` and `epoll` cannot watch its descriptor. As every request completes
   in `io_uring_enter`, a wait for more completions than there are ends only
   by a signal or its timeout. The features are Linux 6.12's, so
   `IORING_FEAT_REG_REG_RING` is reported though no ring descriptor can be
   registered, and `IORING_FEAT_MIN_TIMEOUT` though a wait's `min_wait_usec`
-  changes nothing (no request is ever in flight).
+  changes nothing (no request is ever in flight). A transfer that would
+  wait for its file does not: Linux keeps it in flight until the file is
+  ready (a pipe, a socket or an eventfd with nothing to read, or a full
+  pipe, even with `O_NONBLOCK`), and the emulator completes it with
+  `EAGAIN`. A
+  terminal's read waits in `io_uring_enter`. A file that is never read
+  (an epoll instance, a ring) fails with `EINVAL` at once, where Linux
+  first waits for it to be ready. As no buffer can be provided, a read with
+  `IOSQE_BUFFER_SELECT` completes with `ENOBUFS`.
 - **Native AIO, in part**: every read, write and sync runs as `io_submit`
   takes it, as Linux's buffered I/O does; one of a file opened with
   `O_DIRECT` does not run in the background as on Linux, and a sync's event
@@ -501,13 +524,26 @@ verified.
     `RWF_NOWAIT` and `RWF_DONTCACHE` as ext4's does, whatever its own file
     system, and only ext4, xfs, btrfs and f2fs are told apart on a Linux
     host (any other file system takes neither).
-  - `madvise` refuses (`EINVAL`) `MADV_COLLAPSE`, `MADV_HWPOISON` and
-    `MADV_SOFT_OFFLINE`, which Linux takes.
+  - `MADV_COLLAPSE` refuses shmem's and files' mappings (`EINVAL`), which
+    Linux collapses by the rules of shmem and of read-only files, and a
+    collapsed extent stays 512 ordinary pages, so `/proc/<pid>/smaps` shows
+    no `AnonHugePages` for it. Whether an extent has a page table is taken
+    as whether a page of it has an entry or a marker. Linux can also fail a
+    collapse for want of a free huge page (`ENOMEM`) or for a page in use
+    (`EAGAIN`), which never happens here.
+  - With `CAP_SYS_ADMIN`, `MADV_HWPOISON` refuses (`EIO`) a page of a file
+    or of shared memory, which Linux poisons in the page cache, for every
+    mapping and for the file. Of a page `fork` shares it poisons only the
+    caller's entry, where Linux unmaps it from every process. The zero page
+    gives `EBUSY` each time, where Linux marks the machine's zero page
+    poisoned at the first. Nothing of the advice with `CAP_SYS_ADMIN` is
+    differentially tested, as natively it would poison the host's memory.
   - `process_madvise` takes for the caller's own memory only the advice
     `madvise` takes, and another process's ranges are only checked to be
-    mapped. It refuses advice Linux does not know before any range
-    (`EINVAL`), as Linux master does; the CI's kernel checks it with each
-    range, so with no ranges, or only empty ones, it gives 0 there.
+    mapped, but for `MADV_COLLAPSE`. It refuses advice Linux does not know
+    before any range (`EINVAL`), as Linux master does; the CI's kernel
+    checks it with each range, so with no ranges, or only empty ones, it
+    gives 0 there.
   - A fatal signal other than SIGKILL marks a process as dying for
     `process_mrelease` as it is sent even when the only thread that does
     not block it already has a signal pending and is not running, or is
@@ -520,8 +556,9 @@ verified.
     the only one the page has here.
   - A fault of a `memfd_secret` page takes the faulting process's
     `RLIMIT_MEMLOCK` as of its last system call (its creator's before
-    one), and the pages count only `memfd_secret` files, where Linux's
-    `locked_vm` of a user also counts its `io_uring` buffers and the like.
+    one), and the pages count only `memfd_secret` files and `io_uring`'s
+    registered buffers, where Linux's `locked_vm` of a user also counts
+    `perf`'s buffers and the like.
     Kernels without the change that counts them as they are faulted in
     (97d34aa65c29, "mm/secretmem: properly account locked pages") count
     its mappings as locked instead: `mmap` gives `EAGAIN` past the limit,
@@ -880,8 +917,10 @@ verified.
   takes it in, at its next system call or within 10 ms of a wait, where
   Linux's `signalfd_notify` wakes the file as the signal is sent; an
   `epoll_wait` that does not wait can come before it.
-- **inotify, in part**: `IN_UNMOUNT` is never sent, nor the `IN_IGNORED`
-  after it, when `umount2` takes away the mount of a watched file. `/proc/self/fdinfo` lists an epoll's files by
+- **inotify, in part**: when a superblock goes, an instance's watches
+  hear `IN_UNMOUNT` the newest watch first, where Linux takes the files the
+  newest first that any instance began to watch, so the orders can differ
+  when instances watch the same files. `/proc/self/fdinfo` lists an epoll's files by
   descriptor where Linux's order follows the files' addresses, and numbers
   eventfds within the emulator, where Linux's `eventfd-id` counts the whole
   system's. Changes the host makes to a mounted directory are not seen, and
@@ -912,9 +951,7 @@ verified.
   touched the 2 MiB around it here, as when Linux has no page table there,
   which Linux may also have freed or kept otherwise. There is no `/dev/userfaultfd` and no
   `/proc/sys/vm/unprivileged_userfaultfd`, which is taken as 0.
-- **fanotify, in part**: `io_uring` has no read operation here to ask
-  `FAN_ACCESS_PERM` for.
-  `FAN_PRE_ACCESS` is `EOPNOTSUPP` (no file system here allows it),
+- **fanotify, in part**: `FAN_PRE_ACCESS` is `EOPNOTSUPP` (no file system here allows it),
   and mount events (`FAN_MNT_ATTACH`, `FAN_MNT_DETACH`) and `FAN_FS_ERROR`
   never come. An evictable mark is never evicted. A group merges an event
   into any like it still queued, where Linux looks only at the last 128 of
@@ -922,7 +959,9 @@ verified.
   fanotify marks alone, where Linux's counts inotify's too. A file a
   descriptor does not hold (a program exec runs) is opened again by the path
   it had, which fails once it is gone, and a FIFO's or device's read or
-  write is told of without its directory and name.
+  write is told of without its directory and name. A tmpfs superblock that
+  goes keeps the marks on its files and on itself, where Linux's
+  `fsnotify_sb_delete` removes them.
 - **Namespaces**: a user namespace has no `projid_map` and no
   `user.max_*` limits; its map files check a write with the credentials
   the file was opened with, where Linux also takes the writer's for the

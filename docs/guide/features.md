@@ -982,7 +982,27 @@ kernel.
   `mremap`, and go with `munmap`. `MADV_GUARD_REMOVE` takes them out,
   leaving pages without contents. Sealed memory whose pages may not be
   discarded takes none (`EPERM`), and the rings of AIO and `io_uring`,
-  which Linux maps `VM_DONTEXPAND`, take neither advice (`EINVAL`). Other
+  which Linux maps `VM_DONTEXPAND`, take neither advice (`EINVAL`).
+  `MADV_COLLAPSE` collapses private anonymous memory as Linux's
+  `madvise_collapse` does, VMA by VMA: a VMA no page of which was written,
+  one with `MADV_NOHUGEPAGE`, one with no room for an aligned 2 MiB extent,
+  and shared memory and file mappings refuse it (`EINVAL`), and a range
+  with no whole aligned extent then succeeds. Each whole extent becomes a
+  huge page that holds every page of it, so `mincore` and the resident
+  counts show all 2 MiB, unless no page of it was touched (no page table)
+  or it has a guard, a poison or a uffd-wp marker (`EINVAL`, once the other
+  extents are done), or it lies in a range a `userfaultfd` registered and
+  has an empty page (`EBUSY`, at once). `MADV_HWPOISON` and
+  `MADV_SOFT_OFFLINE` check the range's arguments, then `CAP_SYS_ADMIN`
+  (`EPERM`), before the address limit or any mapping. With it each page in
+  turn is brought in by reading it: `EFAULT` for a page no mapping holds,
+  that may not be read or that cannot be brought in, `EHWPOISON` for a
+  poisoned one. `MADV_SOFT_OFFLINE` then leaves the page as it is, as
+  moving it to another shows nothing, but the zero page gives
+  `ENOTRECOVERABLE`. `MADV_HWPOISON` poisons a private page of the
+  process's own: its contents go, the caller gets SIGBUS (`BUS_MCEERR_AR`,
+  at the first page) at once, and the page is then poisoned as
+  `UFFDIO_POISON` poisons one (below). The zero page gives `EBUSY`. Other
   advice gives `EINVAL`.
 
 - `process_madvise` advises each range of its iovecs in turn, of the caller's
@@ -991,7 +1011,8 @@ kernel.
   bytes of the ranges before the first that fails, or that one's error.
   Another process's memory takes only `MADV_COLD`, `MADV_PAGEOUT`,
   `MADV_WILLNEED` and `MADV_COLLAPSE` (`EINVAL`), with `CAP_SYS_NICE`
-  (`EPERM`), and its ranges need only be mapped (`ENOMEM`). The checks come
+  (`EPERM`), and its ranges need only be mapped (`ENOMEM`), but
+  `MADV_COLLAPSE` collapses them as `madvise` would. The checks come
   in Linux's order: `flags`, the iovecs, the pidfd (`EBADF`, `ESRCH`), the
   caller's right to read the process (`EACCES`), then the advice.
 
@@ -1589,15 +1610,51 @@ kernel.
     ignores its failed unmap.
   - A child of `fork` keeps the seals; `exec` starts without any.
 
-- io_uring is Linux 6.12's with two operations, `IORING_OP_NOP` and
-  `IORING_OP_EPOLL_CTL` (which libuv batches its `epoll_ctl` calls with); the
-  other operations complete with `EOPNOTSUPP`, as on a Linux built without
-  them, and `IORING_REGISTER_PROBE` reports only those two. The rings are
-  the sizes, offsets and features Linux gives, and `mmap` of the descriptor
-  shows them. A request runs while `io_uring_enter` takes it, so its
-  completion is in the queue when the call returns; links, completions that
-  skip success, and completions kept while the queue is full
+- io_uring is Linux 6.12's with these operations: `IORING_OP_NOP`,
+  `IORING_OP_EPOLL_CTL` (which libuv batches its `epoll_ctl` calls with), and
+  the file transfers `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV`,
+  `_FSYNC`, `_READ_FIXED` and `_WRITE_FIXED`. The other operations complete with `EOPNOTSUPP`, as on a Linux
+  built without them, and `IORING_REGISTER_PROBE` reports only these. The
+  rings are the sizes, offsets and features Linux gives, and `mmap` of the
+  descriptor shows them. A request runs while `io_uring_enter` takes it, so
+  its completion is in the queue when the call returns; links, completions
+  that skip success, and completions kept while the queue is full
   (`IORING_FEAT_NODROP`) behave as on Linux.
+
+- A transfer is checked as Linux's `io_prep_rw` and `io_read` or
+  `io_write` check it, and fails at the same step. Its preparation takes the
+  priority, the attributes, and the buffer or vector, and an error there
+  ends the submission. Its issue completes with the error instead: the
+  descriptor (`EBADF`, also for `IOSQE_FIXED_FILE`), a provided buffer for
+  a read that selects one (`ENOBUFS`), the access mode, the `RWF_*` flags
+  (`RWF_HIPRI` is `EINVAL`), the range, a read's `FAN_ACCESS_PERM`, and a
+  file that cannot read or write (`EINVAL`, `EISDIR` for a directory). An
+  offset of -1 is the file's position, which moves past what was moved,
+  and a stream such as a pipe takes any offset. A read that did not fail
+  gives `IN_ACCESS`, and any write that reached the file `IN_MODIFY`, as
+  `io_req_io_end` tells them, even for no bytes. A buffered write with
+  `RWF_NOWAIT` that the file system cannot do without waiting is `EAGAIN`,
+  where AIO's is `EOPNOTSUPP`. The attributes are Linux 6.14's, which the
+  differential tests' kernel has: only protection information, which no
+  file here takes (`EINVAL`). `IORING_OP_FSYNC` takes only
+  `IORING_FSYNC_DATASYNC`.
+
+- `IORING_REGISTER_BUFFERS` registers a ring's buffers as Linux's
+  `io_sqe_buffers_register` does. It checks in this order:
+  - none registered yet (`EBUSY`), and 1 to 16384 of them (`EINVAL`);
+  - then each `iovec` (`EFAULT`, `EINVAL` for a negative length); a null
+    one with no length is an empty slot;
+  - a length of 1 byte to 1 GiB (`EFAULT`), and no end past the address
+    space (`EOVERFLOW`);
+  - writable pages (`EFAULT`);
+  - room under RLIMIT_MEMLOCK (`ENOMEM`), shared with the user's other
+    rings and `memfd_secret` pages, unless the ring's maker had
+    `CAP_IPC_LOCK`.
+
+  A failure registers none of them. `IORING_UNREGISTER_BUFFERS` takes no
+  argument (`EINVAL`) and needs buffers (`ENXIO`). `IORING_OP_READ_FIXED` and
+  `_WRITE_FIXED` move bytes within the buffer `buf_index` names, after the
+  file is found: no buffer there, or a range that leaves it, is `EFAULT`.
 
 - Linux's native asynchronous I/O (the calls libaio wraps) is `fs/aio.c`'s.
   `io_setup` makes the number of events at least four for each CPU and
@@ -3644,12 +3701,18 @@ kernel.
   nothing else used, no swap and no huge pages; and the monotonic clock's
   uptime with no idle time.
 
-- `/proc/stat` is in the format of Linux's `show_stat`: a `cpu` line and one
-  for each CPU `sched_getaffinity` reports, every time 0 as `/proc/uptime`
-  counts no idle time; `intr 0`, `ctxt 0`; `btime`, the real-time clock less
-  the monotonic one in seconds, so `ps` finds the boot time; `processes`, the
-  IDs handed out; `procs_running 1`, `procs_blocked 0`; and a `softirq` line
-  of zeros.
+- `/proc/stat` is in the format of Linux's `show_stat`.
+  - A `cpu` line and one for each CPU `sched_getaffinity` reports give, in
+    clock ticks, the CPU time every thread has run, the reaped processes'
+    included, so the counts only grow. A thread's time between two system
+    calls counts to the CPU it was on at the first. It is all user time, as
+    in `getrusage` and `times`, and the other times are 0, idle too, as
+    `/proc/uptime` counts no idle time.
+  - `intr 0`; `ctxt`, the times threads went to sleep; `btime`, the
+    real-time clock less the monotonic one in seconds, so `ps` finds the boot
+    time; `processes`, the IDs handed out; `procs_running`, the threads
+    running as `/proc/<pid>/stat` shows them (`R`), the reader included;
+    `procs_blocked 0`; and a `softirq` line of zeros.
 
 - `/proc/sysvipc` holds `msg`, `sem` and `shm`, listed in that order, each in
   the format of Linux's `sysvipc_*_proc_show` on a 64-bit kernel.
@@ -3672,7 +3735,9 @@ kernel.
 
 - These system files (`loadavg`, `meminfo`, `stat`, `uptime` and
   `sysvipc`'s) are of size 0, as Linux's `proc_create` makes them, and a
-  read goes on to the end of what they hold.
+  read goes on to the end of what they hold. So is every file of a process's
+  or a thread's directory (`stat` and `fstat` alike), as Linux's
+  `proc_pid_make_inode` leaves it, whatever its reads give.
 
 - Root may open these system files for writing, but a write gives `EIO`,
   as Linux's `pde_write` gives for a file without a write operation. A
@@ -3680,7 +3745,8 @@ kernel.
 
 - `/proc/self/maps` lists the VMAs in Linux's format, with adjacent mappings
   merged and split as Linux does: the range, the protection, `s` or `p`, the
-  offset in the file, the file's device and inode as `stat` gives them, and
+  offset in the file, the file's device and inode as `stat` gives them (the
+  device as glibc's `major` and `minor` take it apart), and
   the name in Linux's column: the file's path, with a newline in it as
   `\012`, followed by a space and `(deleted)` once nothing names it, `/memfd:<name> (deleted)`,
   `/dev/zero (deleted)` for shared anonymous memory, `[heap]` or `[stack]`.
@@ -4448,7 +4514,8 @@ kernel.
   does. See [limitations](./limitations) for what is not there.
 
 - `BPF_PROG_LOAD` loads socket filters (`BPF_PROG_TYPE_SOCKET_FILTER`),
-  which a verifier checks as Linux's does; nothing runs them yet. It checks
+  which a verifier checks as Linux's does, and an interpreter runs them on
+  AF_UNIX sockets they are attached to (below). It checks
   its arguments as Linux's `bpf_prog_load` does, in master's order and with
   its errors: the log's arguments first (a buffer without a size or a size
   without a buffer, a buffer without a level, an unknown level, `EINVAL`;
@@ -4543,7 +4610,8 @@ kernel.
   helper "invalid func %s#%d" (`EINVAL`).
 
 - A socket filter attaches to an AF_UNIX `SOCK_DGRAM` or `SOCK_SEQPACKET`
-  socket with `SO_ATTACH_BPF` and runs on each message sent to it, as
+  socket with `SO_ATTACH_BPF`, or a classic one with `SO_ATTACH_FILTER`
+  (below), and runs on each message sent to it, as
   Linux's `sk_filter` and `unix_dgram_sendmsg`. Before the receiver's
   checks, but after the sender's own shutdown and send buffer, it decides
   the message's fate: 0 drops it, and the send still gives its length;
@@ -4564,8 +4632,39 @@ kernel.
   - `SO_LOCK_FILTER` keeps the filter as it is (`EPERM`) until the socket
     goes, and it cannot be unlocked.
   - `SO_GET_FILTER` gives 0 blocks with no filter and `EACCES` for one
-    attached with `SO_ATTACH_BPF`.
+    attached with `SO_ATTACH_BPF`. For a classic one it gives the
+    instructions as attached and their number in `*len`, in blocks: a
+    `*len` of 0 only asks for it, and one short of it is `EINVAL`.
   - `SO_BPF_EXTENSIONS` gives 64 (`SKF_AD_MAX`).
+
+- A classic filter (`SO_ATTACH_FILTER`, a `struct sock_fprog`; `EINVAL`
+  for another size) is checked as Linux's `bpf_check_classic` checks it
+  and converted as `bpf_convert_filter` converts it, instruction for
+  instruction, and the interpreter runs what it converts to.
+  - It is `EINVAL` for no instructions or more than 4096, a code Linux
+    does not know, a division or remainder by a constant 0, a constant
+    shift of 32 or more, a scratch word past the 16th or one read where
+    some path has not written it, a jump past the end, an ancillary load
+    Linux does not know, and a last instruction that does not return. It
+    is `EFAULT` for instructions that cannot be read, and `EPERM` on a
+    locked socket.
+  - The conversion is `EINVAL` for a jump that the converted program's
+    16-bit offset cannot hold, and for any jump placed past its 32,767th
+    instruction, as Linux's first pass, which takes every target to be at
+    0, refuses it. The socket is charged the converted program's size, as
+    on Linux (`ENOMEM`).
+  - The accumulator and X are 32 bits, and the jumps compare them
+    unsigned. A division or remainder by an X of 0 returns 0, and a shift
+    by X takes its count modulo 32.
+  - A load of the message gives its bytes big-endian, and returns 0 where
+    they are past its end. A negative offset from `SKF_NET_OFF` on reads
+    from the network header, the message's start; one from the MAC header
+    (`SKF_LL_OFF`), which an AF_UNIX message has not set, returns 0.
+  - The ancillary loads are those of an AF_UNIX message. The protocol,
+    packet type, mark, queue, hash, VLAN fields and payload offset are 0.
+    The interface index and hardware type return the accumulator as it
+    is, since there is no device. The netlink attribute searches are
+    Linux's `nla_find`, and give 0 for a message in pages.
 
 - The log (`log_level`, `log_buf`, `log_size`) gets the line that says
   why a program was refused, in 7.0's words where the two kernels word it
@@ -4690,7 +4789,12 @@ kernel.
   it, or the unlinked name it last had), and `IN_ISDIR` marks a
   directory's (not with `IN_DELETE_SELF` or `IN_MOVE_SELF`, as Linux
   leaves it out). `IN_ONESHOT` removes the watch after its first event, with
-  `IN_IGNORED`. Each instance queues its events, merging one into the same
+  `IN_IGNORED`. When a tmpfs's superblock goes with its last mount (a bind
+  mount left keeps it, and a detached one goes with the last file open on
+  it), each watch on one of its files hears `IN_UNMOUNT`, with `IN_ISDIR`
+  for a directory, whatever it asked for, then goes with `IN_IGNORED`, as
+  Linux's `fsnotify_sb_delete` ends them; an instance's watches go the
+  newest first. Each instance queues its events, merging one into the same
   event (descriptor, mask and name) just before it unless that one is
   `IN_IGNORED` or a move, and after 16384 queues one `IN_Q_OVERFLOW` (with
   descriptor -1) until it is read. A read gives as many whole

@@ -185,7 +185,8 @@ mod linux {
             // CAP_SYS_ADMIN and which make namespaces (msg an IPC namespace of
             // its own, for its counts, and sysvipc-proc IPC and PID namespaces,
             // for its IDs and PIDs), the fanotify cases, whose groups and
-            // marks need CAP_SYS_ADMIN, the userfaultfd cases, whose files take
+            // marks need CAP_SYS_ADMIN, the inotify-unmount case, which mounts
+            // a tmpfs in a mount namespace of its own, the userfaultfd cases, whose files take
             // the kernel's faults too (CAP_SYS_PTRACE), the perf cases, whose
             // events of the kernel and of CPUs need CAP_PERFMON (and the
             // throttle case writes a sysctl), the bpf cases, whose
@@ -269,6 +270,7 @@ mod linux {
                     | "fanotify-pidfd"
                     | "fanotify-unprivileged"
                     | "fanotify-mounts"
+                    | "inotify-unmount"
                     | "fanotify-perm"
                     | "fanotify-access-perm"
                     | "fanotify-open-exec"
@@ -317,6 +319,8 @@ mod linux {
                     | "bpf-prog-maps"
                     | "bpf-prog-context"
                     | "bpf-prog-attach"
+                    | "bpf-prog-corpus"
+                    | "bpf-prog-classic"
                     | "keys-calls"
                     | "keys-keyrings"
                     | "keys-threads"
@@ -580,6 +584,7 @@ mod linux {
         processes_personality_layout => ("personality-layout","process"),
         processes_landlock => ("landlock","process"),
         processes_madvise_advice => ("madvise-advice","process"),
+        processes_madvise_collapse => ("madvise-collapse","process"),
         processes_madvise_fork => ("madvise-fork","process"),
         processes_madvise_remove => ("madvise-remove","process"),
         processes_lock_state => ("lock-state","process"),
@@ -666,6 +671,8 @@ mod linux {
         bpf_prog_maps => ("bpf-prog-maps","bpf-prog"),
         bpf_prog_context => ("bpf-prog-context","bpf-prog"),
         bpf_prog_attach => ("bpf-prog-attach","bpf-prog"),
+        bpf_prog_corpus => ("bpf-prog-corpus","bpf-prog"),
+        bpf_prog_classic => ("bpf-prog-classic","bpf-prog"),
         inotify_calls => ("inotify-calls","inotify"),
         inotify_directory => ("inotify-directory","inotify"),
         inotify_files => ("inotify-files","inotify"),
@@ -686,6 +693,7 @@ mod linux {
         inotify_exec_order => ("inotify-exec-order","inotify"),
         inotify_handles => ("inotify-handles","inotify"),
         inotify_open_handles => ("inotify-open-handles","inotify"),
+        inotify_unmount => ("inotify-unmount","inotify"),
         fanotify_init => ("fanotify-init","fanotify"),
         fanotify_marks => ("fanotify-marks","fanotify"),
         fanotify_events => ("fanotify-events","fanotify"),
@@ -959,6 +967,8 @@ mod linux {
         processes_proc_syscall => ("proc-syscall","process"),
         processes_proc_at_read => ("proc-at-read","process"),
         processes_proc_own_at_read => ("proc-own-at-read","process"),
+        processes_proc_sizes => ("proc-sizes","process"),
+        processes_proc_stat_counters => ("proc-stat-counters","process"),
         processes_proc_stat_exit_code => ("proc-stat-exit-code","process"),
         processes_proc_fd_links => ("proc-fd-links","process"),
         processes_modify_ldt => ("modify-ldt","process"),
@@ -969,6 +979,7 @@ mod linux {
         processes_cpu_timer_others => ("cpu-timer-others","process"),
         processes_mprotect_checks => ("mprotect-checks","process"),
         processes_io_uring => ("io-uring","process"),
+        processes_io_uring_transfers => ("io-uring-transfers","process"),
         vfork_exit => ("vfork-exit","process"),
         processes_exec => ("exec","process"),
         exec_thread => ("exec-thread","process"),

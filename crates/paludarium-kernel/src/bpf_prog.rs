@@ -667,28 +667,94 @@ impl Program {
             loads: &self.loads,
         };
         let result = crate::bpf_interp::run(&program, packet, kernel);
-        debug_assert!(result.is_ok(), "a verified program faulted");
+        // The fuzz targets build without debug assertions.
+        assert!(
+            !cfg!(any(debug_assertions, feature = "fuzzing")) || result.is_ok(),
+            "a verified program faulted"
+        );
         result.map_or(0, |r0| r0 as u32)
     }
 }
 
+/// `bpf_prog_size`: what a program of `insns` instructions takes, and what
+/// a socket is charged for it as its filter.
+pub(crate) fn prog_size(insns: usize) -> u64 {
+    PROG_HEADER + INSN_SIZE * insns as u64
+}
+
+/// A socket's filter (`sk_filter->prog`): a program `SO_ATTACH_BPF` gave,
+/// or a classic one `SO_ATTACH_FILTER` gave, converted.
+#[derive(Clone)]
+pub(crate) enum Attached {
+    Program(Arc<Program>),
+    Classic(Arc<crate::bpf_classic::Classic>),
+}
+
+impl Attached {
+    /// What the socket is charged for it (`sk_filter_charge`).
+    pub(crate) fn filter_size(&self) -> u64 {
+        match self {
+            Attached::Program(p) => p.filter_size(),
+            Attached::Classic(c) => c.filter_size(),
+        }
+    }
+
+    /// The classic program as given (`orig_prog`), which a program
+    /// `SO_ATTACH_BPF` gave has none of.
+    pub(crate) fn classic(&self) -> Option<&crate::bpf_classic::Classic> {
+        match self {
+            Attached::Program(_) => None,
+            Attached::Classic(c) => Some(c),
+        }
+    }
+
+    fn run(
+        &self,
+        packet: &crate::bpf_interp::Packet<'_>,
+        kernel: &mut dyn crate::bpf_interp::Kernel,
+    ) -> u32 {
+        let classic = match self {
+            Attached::Program(p) => return p.run(packet, kernel),
+            Attached::Classic(c) => c,
+        };
+        let program = crate::bpf_interp::Program {
+            insns: &classic.insns,
+            maps: &[],
+            loads: &BTreeMap::new(),
+        };
+        let result = crate::bpf_interp::run(&program, packet, kernel);
+        assert!(
+            !cfg!(any(debug_assertions, feature = "fuzzing")) || result.is_ok(),
+            "a converted classic program faulted"
+        );
+        result.map_or(0, |r0| r0 as u32)
+    }
+}
+
+/// `sizeof(struct skb_shared_info)` on x86-64, at the end of every skb head.
+pub(crate) const SKB_SHARED_INFO: usize = 320;
 /// `SKB_MAX_ALLOC` on x86-64: four pages less `skb_shared_info`, the most
 /// an AF_UNIX datagram keeps in its linear part.
-const SKB_MAX_ALLOC: usize = 4 * 4096 - 320;
+const SKB_MAX_ALLOC: usize = 4 * 4096 - SKB_SHARED_INFO;
 /// `MAX_SKB_FRAGS` pages, the most of a datagram in pages.
 const MAX_SKB_FRAGS_SIZE: usize = 17 * 4096;
 
-/// How many of an AF_UNIX message's `len` bytes are in its linear part, as
-/// `unix_dgram_sendmsg` sizes it: all of them up to [`SKB_MAX_ALLOC`], else
-/// the rest after whole pages.
-fn unix_linear(len: usize) -> usize {
+/// How many of an AF_UNIX datagram's `len` bytes `unix_dgram_sendmsg` puts
+/// in page fragments: none up to [`SKB_MAX_ALLOC`], else what is past it in
+/// whole pages, at most [`MAX_SKB_FRAGS_SIZE`] of them.
+pub(crate) fn unix_paged(len: usize) -> usize {
     if len <= SKB_MAX_ALLOC {
-        return len;
+        return 0;
     }
-    let paged = (len - SKB_MAX_ALLOC)
+    (len - SKB_MAX_ALLOC)
         .min(MAX_SKB_FRAGS_SIZE)
-        .next_multiple_of(4096);
-    len.saturating_sub(paged)
+        .next_multiple_of(4096)
+}
+
+/// How many of an AF_UNIX message's `len` bytes are in its linear part:
+/// what [`unix_paged`] leaves.
+fn unix_linear(len: usize) -> usize {
+    len.saturating_sub(unix_paged(len))
 }
 
 /// The kernel around a socket filter as an AF_UNIX send runs it
@@ -752,7 +818,7 @@ impl crate::bpf_interp::Kernel for Receiving<'_> {
 /// how many of its bytes the receiving socket keeps, or `None` when the
 /// filter drops it.
 pub(crate) fn sk_filter(
-    program: &Program,
+    program: &Attached,
     buf: &[u8],
     kernel: &mut Receiving<'_>,
 ) -> Option<usize> {
@@ -900,6 +966,23 @@ mod tests {
         // SK_REUSEPORT (21) needs CAP_BPF only.
         assert!(!net_admin(21) && !perfmon(21));
         assert!(perfmon(kind::KPROBE) && perfmon(kind::EXT) && !perfmon(kind::XDP));
+    }
+
+    #[test]
+    fn a_datagram_s_linear_part_is_what_its_pages_leave() {
+        // As `truesize` counts the same datagrams: whole, then past
+        // SKB_MAX_ALLOC the rest after whole pages, at most 17 of them.
+        let expected = [
+            (0, 0),
+            (16064, 16064),
+            (16065, 11969),
+            (85696, 16064),
+            (85697, 16065),
+            (212_960, 143_328),
+        ];
+        for (len, linear) in expected {
+            assert_eq!(unix_linear(len), linear, "{len} bytes");
+        }
     }
 
     #[test]

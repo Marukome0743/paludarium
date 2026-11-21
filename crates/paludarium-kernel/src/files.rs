@@ -207,8 +207,10 @@ impl Space {
 }
 /// Tells the machine's fanotify of each mount of `table`, and of every
 /// table copied from it, that is freed ([`crate::fanotify::Registry::unmounted`]),
-/// as Linux's `cleanup_mnt` calls `fsnotify_vfsmount_delete`.
-fn released_to_fanotify(
+/// as Linux's `cleanup_mnt` calls `fsnotify_vfsmount_delete`, and its
+/// inotify of each superblock that goes ([`crate::inotify::Notifier::unmounted`]),
+/// as `generic_shutdown_super` calls `fsnotify_sb_delete`.
+fn released_to_notifiers(
     table: &paludarium_vfs::MountTable,
     caches: &Arc<crate::page_cache::PageCaches>,
 ) {
@@ -216,6 +218,12 @@ fn released_to_fanotify(
     table.set_release_hook(Some(Arc::new(move |id| {
         if let Some(fan) = fan.upgrade() {
             fan.unmounted(id);
+        }
+    })));
+    let notify = Arc::downgrade(&caches.notify);
+    table.set_superblock_hook(Some(Arc::new(move |device| {
+        if let Some(notify) = notify.upgrade() {
+            notify.unmounted(device);
         }
     })));
 }
@@ -226,7 +234,7 @@ impl Default for Files {
         let caches = Arc::default();
         let lower: Arc<dyn FileSystem> = Arc::new(fs);
         let first_mounts = first_table(&lower, None);
-        released_to_fanotify(&first_mounts, &caches);
+        released_to_notifiers(&first_mounts, &caches);
         Self {
             readiness: Arc::default(),
             terminal_size: None,
@@ -501,7 +509,7 @@ impl Files {
     /// Its mounts are the first mount namespace's.
     pub(crate) fn set_file_system(&mut self, fs: Arc<dyn FileSystem>) {
         self.first_mounts = first_table(&fs, self.host.as_ref());
-        released_to_fanotify(&self.first_mounts, &self.caches);
+        released_to_notifiers(&self.first_mounts, &self.caches);
         *self.space.lock().unwrap_or_else(PoisonError::into_inner) =
             Space::new(fs, Arc::clone(&self.first_mounts), &self.caches);
         *self.root.lock().unwrap_or_else(PoisonError::into_inner) = None;
@@ -1791,20 +1799,21 @@ fn looked_up(
 /// finds it: what the path at `ptr` names (the last symbolic link itself
 /// without `follow`), a directory with `directory` (ENOTDIR), and one the
 /// caller may read (EACCES); by its device and inode, with its file
-/// system (`f_type`).
+/// system (`f_type`) and whether it is a directory.
 pub(crate) fn watched(
     c: &Context<'_>,
     ptr: u64,
     follow: bool,
     directory: bool,
-) -> Result<(crate::page_cache::Key, u64), Errno> {
+) -> Result<(crate::page_cache::Key, u64, bool), Errno> {
     let (p, _) = looked_up(c, (-100i32) as u64, ptr, follow)?;
     let (stat, device, kind) = named(c, &p, follow)?;
-    if directory && stat.mode & 0o170000 != 0o040000 {
+    let is_directory = stat.mode & 0o170000 == 0o040000;
+    if directory && !is_directory {
         return Err(Errno::ENOTDIR);
     }
     crate::permissions::permission(&c.process.credentials, &stat, 4)?;
-    Ok(((device, stat.inode), kind))
+    Ok(((device, stat.inode), kind, is_directory))
 }
 /// What `fanotify_mark` marks (`fanotify_find_path`): the file the path at
 /// `ptr` names from `dir` (the last symbolic link itself without `follow`, a
@@ -2706,17 +2715,14 @@ fn positioned(
     }
     Ok(file)
 }
-/// Where reads of a regular file stop: at its size, but for `maps`,
-/// `smaps`, `pagemap`, `io` and /proc's system-wide files, which say 0 as
-/// Linux's /proc does and end where their `read` does.
+/// Where reads of a regular file stop: at its size, but for /proc's files,
+/// which say 0 as Linux's do and end where their `read` does.
 fn read_limit(file: &Arc<dyn FileHandle>, metadata: &FileStat) -> u64 {
     if file.as_any().is_some_and(|file| {
         file.is::<crate::proc::PagemapFile>()
             || crate::sysctl::is_file(file)
             || crate::seq::is_file(file)
-            || file
-                .downcast_ref::<crate::proc::GeneratedFile>()
-                .is_some_and(crate::proc::GeneratedFile::is_entry)
+            || file.is::<crate::proc::GeneratedFile>()
     }) {
         u64::MAX
     } else {
@@ -3549,6 +3555,109 @@ pub(crate) fn aio_transfer(
         aio_read(c, file, segments, offset, flags)
     };
     result.map_or_else(|e| -i64::from(e.0), |count| count as i64)
+}
+
+/// An io_uring read or write of `segments` with the `RWF_*` `flags` that
+/// `kiocb_set_rw_flags` took, as Linux's `__io_read` and `io_write` go on
+/// from there. The outer error is one from before the file's `read_iter`
+/// or `write_iter`, the inner result what that gives.
+///
+/// - A buffered write the file system cannot do without waiting, with
+///   `RWF_NOWAIT`, is `EAGAIN` (no `FOP_BUFFER_WASYNC`, and the request
+///   may not wait).
+/// - An `offset` of -1 is the file's position, which moves past what was
+///   moved (an appending write's starts at the end), as
+///   `io_kiocb_update_pos` and `kiocb_done` do. A stream has none.
+/// - `rw_verify_area`: `EINVAL` for a negative offset, or an end past the
+///   largest. Then a read's `FAN_ACCESS_PERM`, for no bytes too.
+/// - The operation: a directory reads `EISDIR` (`generic_read_dir`), and a
+///   file with no read or write `EINVAL`.
+/// - A file that would wait (a pipe, a socket, an eventfd) does not:
+///   Linux keeps the request in flight until the file is ready, and the
+///   emulator completes it with `EAGAIN`.
+pub(crate) fn ring_transfer(
+    c: &mut Context<'_>,
+    file: &Arc<dyn FileHandle>,
+    write: bool,
+    segments: &[(u64, usize)],
+    offset: u64,
+    flags: u32,
+) -> Result<Result<u64, Errno>, Errno> {
+    if write && refuses_nowait_write(file, flags)? {
+        return Err(Errno::EAGAIN);
+    }
+    let positioned = aio_positioned(file);
+    let current = offset == u64::MAX;
+    let at = match (current, positioned) {
+        (true, true) => Some(file.seek(0, 1)?),
+        (true, false) => None,
+        (false, _) => Some(offset),
+    };
+    let total = segments
+        .iter()
+        .map(|&(_, length)| length as u64)
+        .sum::<u64>();
+    if let Some(at) = at
+        && ((at as i64) < 0 || (at as i64).checked_add(total as i64).is_none())
+    {
+        return Err(Errno::EINVAL);
+    }
+    if !write {
+        access_permission(c, file)?;
+    }
+    ring_operation(file, write)?;
+    let transfer = |c: &mut Context<'_>, at: u64, flags: u32| {
+        if write {
+            aio_write(c, file, segments, at, flags)
+        } else {
+            aio_read(c, file, segments, at, flags)
+        }
+    };
+    Ok(match at {
+        Some(at) if positioned && current => {
+            let metadata = file.stat()?;
+            let appends = (file.flags() & O_APPEND != 0 || flags & RWF_APPEND != 0)
+                && flags & RWF_NOAPPEND == 0
+                && metadata.mode & S_IFMT == S_IFREG;
+            let start = if write && appends { metadata.size } else { at };
+            let result = transfer(c, start, flags);
+            if let Ok(count) = result {
+                file.seek((start + count) as i64, 0)?;
+            }
+            result
+        }
+        Some(at) if positioned => transfer(c, at, flags),
+        _ => transfer(c, 0, flags | RWF_NOWAIT),
+    })
+}
+
+/// Whether `file` has the read (or with `write`, the write) an io_uring
+/// request needs, `read_iter` or `read` as Linux's `io_iter_do_read` and
+/// `io_write` look for them: a directory's `read` is `EISDIR`, and an
+/// epoll instance, an io_uring ring, a pidfd and a secret memfd have
+/// neither (`EINVAL`); an inotify instance, a signalfd and a timerfd only
+/// read.
+fn ring_operation(file: &Arc<dyn FileHandle>, write: bool) -> Result<(), Errno> {
+    if !write && file.stat()?.mode & S_IFMT == 0o040000 {
+        return Err(Errno::EISDIR);
+    }
+    if cannot_read_or_write(file) {
+        return Err(Errno::EINVAL);
+    }
+    let Some(any) = file.as_any() else {
+        return Ok(());
+    };
+    if any.is::<crate::epoll::EpollInstance>()
+        || any.is::<crate::io_uring::Ring>()
+        || any.is::<crate::processes::PidFd>()
+        || (write
+            && (any.is::<crate::inotify::Instance>()
+                || any.is::<crate::signalfd::SignalFile>()
+                || any.is::<crate::timerfd::TimerFile>()))
+    {
+        return Err(Errno::EINVAL);
+    }
+    Ok(())
 }
 
 /// Checks that the first `len` bytes of `segments` can be written.
@@ -4535,10 +4644,10 @@ pub(crate) fn mount_id_in(fs: &dyn FileSystem, device: u64, path: &[u8]) -> u64 
     if path.first() == Some(&b'/') && !generated(path) && fs.device(path) == device {
         return fs.mount_id(path);
     }
-    fs.mounts()
-        .iter()
-        .find(|m| m.device == device)
-        .map_or(20 + (device & 0xff | (device >> 12) & !0xff), |m| m.id)
+    fs.mounts().iter().find(|m| m.device == device).map_or(
+        20 + u64::from(paludarium_types::device_numbers(device).1),
+        |m| m.id,
+    )
 }
 /// `struct statx` with what [`encode_stat`] gives a `struct stat`: the basic
 /// fields, no birth time, and the mount's number as the device minor.
@@ -4557,12 +4666,7 @@ fn encode_statx(s: FileStat, device: u64, block_size: u32) -> Result<[u8; 256], 
     b[112..120].copy_from_slice(&seconds.to_le_bytes());
     b[120..124].copy_from_slice(&(nanos as u32).to_le_bytes());
     // Linux's encoding of a device number into its major and minor.
-    let split = |device: u64| {
-        (
-            ((device >> 8) & 0xfff) as u32,
-            ((device & 0xff) | ((device >> 12) & !0xff)) as u32,
-        )
-    };
+    let split = paludarium_types::device_numbers;
     let (rdev_major, rdev_minor) = split(s.rdev);
     b[128..132].copy_from_slice(&rdev_major.to_le_bytes());
     b[132..136].copy_from_slice(&rdev_minor.to_le_bytes());
@@ -4903,7 +5007,7 @@ fn accessed(c: &Context<'_>, n: u64, a: [u64; 6], result: &Result<u64, Errno>) {
 /// Tells the inotify watches of `mask` on the open file of descriptor `fd`
 /// (`fsnotify_file`). A pipe, a socket or another file no path opened has
 /// none, as Linux's pseudo files are `FMODE_NONOTIFY`.
-fn notify_descriptor(c: &Context<'_>, fd: u64, mask: u32) {
+pub(crate) fn notify_descriptor(c: &Context<'_>, fd: u64, mask: u32) {
     let Ok(d) = c.files.descriptor(fd) else {
         return;
     };
@@ -8498,10 +8602,10 @@ fn other_generated_stat(
     path: &[u8],
     follow: bool,
 ) -> Option<(FileStat, u64, u32)> {
-    if let Some(mountinfo) = crate::proc::mount_table(path) {
-        let length = crate::proc::render(&c.files.fs().mounts(), mountinfo, &c.files.root()).len();
+    // Of size 0, as Linux's seq files are, whatever their reads give.
+    if crate::proc::mount_table(path).is_some() {
         return Some((
-            own_stat(c, crate::proc::stat(length)),
+            own_stat(c, crate::proc::stat(0)),
             device(c, path),
             SMALL_BLOCK_SIZE,
         ));
@@ -8570,31 +8674,16 @@ fn other_generated_stat(
             c.files.descriptor(u64::from(n)).ok()?;
             crate::proc::stat(0)
         }
-        // Sized as another process's are, from what its threads published
-        // ([`tasks::content`]), as their reads are made.
+        // Of size 0, as another process's are and Linux's.
         crate::proc::OwnEntry::Status
         | crate::proc::OwnEntry::Stat
-        | crate::proc::OwnEntry::Cmdline
-        | crate::proc::OwnEntry::Environ
-        | crate::proc::OwnEntry::Comm => {
-            let task_entry = own_at_read(entry)?;
-            let path = crate::proc::TaskPath {
-                pid: c.process.pid,
-                tid: None,
-                entry: task_entry,
-            };
-            let task = tasks::find(c, &path).ok()?;
-            let length = tasks::content(c, &task, task_entry).map_or(0, |content| content.len());
-            match task_entry {
-                // 0644, which its owner may open for writing, as Linux's.
-                crate::proc::TaskEntry::Comm => FileStat {
-                    mode: 0o100_644,
-                    ..crate::proc::stat(length)
-                },
-                crate::proc::TaskEntry::Environ => crate::proc::private_stat(length),
-                _ => crate::proc::stat(length),
-            }
-        }
+        | crate::proc::OwnEntry::Cmdline => crate::proc::stat(0),
+        // 0644, which its owner may open for writing, as Linux's.
+        crate::proc::OwnEntry::Comm => FileStat {
+            mode: 0o100_644,
+            ..crate::proc::stat(0)
+        },
+        crate::proc::OwnEntry::Environ => crate::proc::private_stat(0),
         crate::proc::OwnEntry::Exe | crate::proc::OwnEntry::Cwd | crate::proc::OwnEntry::Root => {
             return None;
         }
@@ -8756,12 +8845,11 @@ fn epoll_fdinfo(
             .find(|d| Arc::ptr_eq(&d.file, &file))
             .map_or(0, |d| descriptor_device_in(fs, d));
         // `new_encode_dev` undone, then `MKDEV`.
-        let major = (device >> 8) & 0xfff;
-        let minor = (device & 0xff) | ((device >> 12) & !0xff);
+        let (major, minor) = paludarium_types::device_numbers(device);
         out.extend_from_slice(
             format!(
                 "tfd: {fd:8} events: {events:8x} data: {data:16x}  pos:{pos} ino:{ino:x} sdev:{:x}\n",
-                major << 20 | minor
+                u64::from(major) << 20 | u64::from(minor)
             )
             .as_bytes(),
         );
@@ -8793,7 +8881,8 @@ fn system_file(
                 cpus: crate::syscalls::active_cpus(c),
                 boot_time: boot / 1_000_000_000,
                 forks,
-                running: 1,
+                running: c.processes.running_tasks(c.tid),
+                times: c.processes.cpu_times(),
             })
         }
         crate::proc::SystemEntry::Uptime => crate::proc::render_uptime(
