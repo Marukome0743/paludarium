@@ -2706,17 +2706,14 @@ fn positioned(
     }
     Ok(file)
 }
-/// Where reads of a regular file stop: at its size, but for `maps`,
-/// `smaps`, `pagemap`, `io` and /proc's system-wide files, which say 0 as
-/// Linux's /proc does and end where their `read` does.
+/// Where reads of a regular file stop: at its size, but for /proc's files,
+/// which say 0 as Linux's do and end where their `read` does.
 fn read_limit(file: &Arc<dyn FileHandle>, metadata: &FileStat) -> u64 {
     if file.as_any().is_some_and(|file| {
         file.is::<crate::proc::PagemapFile>()
             || crate::sysctl::is_file(file)
             || crate::seq::is_file(file)
-            || file
-                .downcast_ref::<crate::proc::GeneratedFile>()
-                .is_some_and(crate::proc::GeneratedFile::is_entry)
+            || file.is::<crate::proc::GeneratedFile>()
     }) {
         u64::MAX
     } else {
@@ -4535,10 +4532,10 @@ pub(crate) fn mount_id_in(fs: &dyn FileSystem, device: u64, path: &[u8]) -> u64 
     if path.first() == Some(&b'/') && !generated(path) && fs.device(path) == device {
         return fs.mount_id(path);
     }
-    fs.mounts()
-        .iter()
-        .find(|m| m.device == device)
-        .map_or(20 + (device & 0xff | (device >> 12) & !0xff), |m| m.id)
+    fs.mounts().iter().find(|m| m.device == device).map_or(
+        20 + u64::from(paludarium_types::device_numbers(device).1),
+        |m| m.id,
+    )
 }
 /// `struct statx` with what [`encode_stat`] gives a `struct stat`: the basic
 /// fields, no birth time, and the mount's number as the device minor.
@@ -4557,12 +4554,7 @@ fn encode_statx(s: FileStat, device: u64, block_size: u32) -> Result<[u8; 256], 
     b[112..120].copy_from_slice(&seconds.to_le_bytes());
     b[120..124].copy_from_slice(&(nanos as u32).to_le_bytes());
     // Linux's encoding of a device number into its major and minor.
-    let split = |device: u64| {
-        (
-            ((device >> 8) & 0xfff) as u32,
-            ((device & 0xff) | ((device >> 12) & !0xff)) as u32,
-        )
-    };
+    let split = paludarium_types::device_numbers;
     let (rdev_major, rdev_minor) = split(s.rdev);
     b[128..132].copy_from_slice(&rdev_major.to_le_bytes());
     b[132..136].copy_from_slice(&rdev_minor.to_le_bytes());
@@ -8498,10 +8490,10 @@ fn other_generated_stat(
     path: &[u8],
     follow: bool,
 ) -> Option<(FileStat, u64, u32)> {
-    if let Some(mountinfo) = crate::proc::mount_table(path) {
-        let length = crate::proc::render(&c.files.fs().mounts(), mountinfo, &c.files.root()).len();
+    // Of size 0, as Linux's seq files are, whatever their reads give.
+    if crate::proc::mount_table(path).is_some() {
         return Some((
-            own_stat(c, crate::proc::stat(length)),
+            own_stat(c, crate::proc::stat(0)),
             device(c, path),
             SMALL_BLOCK_SIZE,
         ));
@@ -8570,31 +8562,16 @@ fn other_generated_stat(
             c.files.descriptor(u64::from(n)).ok()?;
             crate::proc::stat(0)
         }
-        // Sized as another process's are, from what its threads published
-        // ([`tasks::content`]), as their reads are made.
+        // Of size 0, as another process's are and Linux's.
         crate::proc::OwnEntry::Status
         | crate::proc::OwnEntry::Stat
-        | crate::proc::OwnEntry::Cmdline
-        | crate::proc::OwnEntry::Environ
-        | crate::proc::OwnEntry::Comm => {
-            let task_entry = own_at_read(entry)?;
-            let path = crate::proc::TaskPath {
-                pid: c.process.pid,
-                tid: None,
-                entry: task_entry,
-            };
-            let task = tasks::find(c, &path).ok()?;
-            let length = tasks::content(c, &task, task_entry).map_or(0, |content| content.len());
-            match task_entry {
-                // 0644, which its owner may open for writing, as Linux's.
-                crate::proc::TaskEntry::Comm => FileStat {
-                    mode: 0o100_644,
-                    ..crate::proc::stat(length)
-                },
-                crate::proc::TaskEntry::Environ => crate::proc::private_stat(length),
-                _ => crate::proc::stat(length),
-            }
-        }
+        | crate::proc::OwnEntry::Cmdline => crate::proc::stat(0),
+        // 0644, which its owner may open for writing, as Linux's.
+        crate::proc::OwnEntry::Comm => FileStat {
+            mode: 0o100_644,
+            ..crate::proc::stat(0)
+        },
+        crate::proc::OwnEntry::Environ => crate::proc::private_stat(0),
         crate::proc::OwnEntry::Exe | crate::proc::OwnEntry::Cwd | crate::proc::OwnEntry::Root => {
             return None;
         }
@@ -8756,12 +8733,11 @@ fn epoll_fdinfo(
             .find(|d| Arc::ptr_eq(&d.file, &file))
             .map_or(0, |d| descriptor_device_in(fs, d));
         // `new_encode_dev` undone, then `MKDEV`.
-        let major = (device >> 8) & 0xfff;
-        let minor = (device & 0xff) | ((device >> 12) & !0xff);
+        let (major, minor) = paludarium_types::device_numbers(device);
         out.extend_from_slice(
             format!(
                 "tfd: {fd:8} events: {events:8x} data: {data:16x}  pos:{pos} ino:{ino:x} sdev:{:x}\n",
-                major << 20 | minor
+                u64::from(major) << 20 | u64::from(minor)
             )
             .as_bytes(),
         );
