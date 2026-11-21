@@ -131,6 +131,8 @@ const FSYNC_DATASYNC: u32 = 1;
 const RW_ATTR_FLAG_PI: u64 = 1;
 /// `RWF_HIPRI`, polled I/O, which only an `IORING_SETUP_IOPOLL` ring does.
 const RWF_HIPRI: u32 = 1;
+/// `RWF_NOWAIT`: the request may not wait.
+const RWF_NOWAIT: u32 = 8;
 
 const REGISTER_BUFFERS: u64 = 0;
 const UNREGISTER_BUFFERS: u64 = 1;
@@ -606,7 +608,11 @@ fn transfer(c: &mut Context<'_>, ring: &Ring, transfer: &Transfer) -> Result<u64
     let result =
         crate::files::ring_transfer(c, &file, transfer.write, segments, transfer.offset, flags)?;
     let fd = transfer.fd as u64;
-    if transfer.write {
+    // A write that would wait completes with `EAGAIN` here, where Linux
+    // keeps it in flight and its watches hear of it only once it ends;
+    // one that asked for `RWF_NOWAIT` ends at once, and they hear of it.
+    let waited = result == Err(Errno::EAGAIN) && flags & RWF_NOWAIT == 0;
+    if transfer.write && !waited {
         crate::files::notify_descriptor(c, fd, crate::inotify::MODIFY);
     } else if result.is_ok() {
         crate::files::notify_descriptor(c, fd, crate::inotify::ACCESS);

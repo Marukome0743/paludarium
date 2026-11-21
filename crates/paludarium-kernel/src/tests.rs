@@ -4924,6 +4924,29 @@ mod io_uring {
     }
 
     #[test]
+    fn a_write_that_would_wait_is_heard_of_only_with_nowait() {
+        let mut f = fixture();
+        let r = ring(&mut f);
+        f.mem.write(GuestAddr(DATA), b"/tmp/q\0").unwrap();
+        assert_eq!(f.ret(133, &[DATA, 0o010644, 0]), 0);
+        // A FIFO of one page, full.
+        let fifo = f.ret(2, &[DATA, 0o4002, 0]);
+        assert_eq!(f.ret(72, &[fifo, 1031, 4096]), 4096);
+        assert_eq!(f.ret(1, &[fifo, DATA + 0x800, 4096]), 4096);
+        let ifd = f.ret(294, &[0o4000]);
+        assert!(f.ret(254, &[ifd, DATA, 2]) < 1024);
+        // Linux keeps it in flight: no event yet.
+        assert_eq!(one(&mut f, &r, &rw(WRITE, fifo, HERE, DATA, 1)), -11);
+        assert_eq!(f.ret(0, &[ifd, DATA + 0x100, 64]), errno(Errno::EAGAIN));
+        // With RWF_NOWAIT it ends, and IN_MODIFY says so.
+        let mut nowait = rw(WRITE, fifo, HERE, DATA, 1);
+        nowait[28] = 8;
+        assert_eq!(one(&mut f, &r, &nowait), -11);
+        assert_eq!(f.ret(0, &[ifd, DATA + 0x100, 64]), 16);
+        assert_eq!(u32_at(&f, DATA + 0x104), 2);
+    }
+
+    #[test]
     fn registered_buffers_charge_memlock_until_they_go() {
         let mut f = fixture();
         // RLIMIT_MEMLOCK of one page, for a user without CAP_IPC_LOCK.
