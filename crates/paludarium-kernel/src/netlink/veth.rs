@@ -628,7 +628,8 @@ fn switch(
         });
         if peer_up && let Some((n, i)) = &peer {
             change(n, *i, |v| carrier(v, true));
-            super::device_changed4(n, *i, true, true);
+            let list = super::device_changed4(n, *i, true, true);
+            tell(own, n, notices, list);
         }
         let list = told(network, index, RTM_NEWLINK, IFF_UP, false);
         tell(own, network, notices, list);
@@ -650,22 +651,29 @@ fn switch(
             v.up = false;
             carrier(v, false);
         });
-        super::device_changed4(network, index, false, false);
+        // `__dev_notify_flags` tells of the change before `NETDEV_DOWN`
+        // flushes the end's neighbours; the peer's go as the link watch
+        // finds its carrier gone, after it has told of that.
+        let own_list = super::device_changed4(network, index, false, false);
         let peer_was_running = peer.as_ref().is_some_and(|(n, i)| {
             n.devices()
                 .by_index(*i)
                 .and_then(|d| d.veth.as_ref())
                 .is_some_and(|v| v.up && v.oper_up)
         });
-        if let Some((n, i)) = &peer {
+        let peer_list = peer.as_ref().map(|(n, i)| {
             change(n, *i, |v| carrier(v, false));
-            super::device_changed4(n, *i, true, false);
-        }
+            super::device_changed4(n, *i, true, false)
+        });
         let list = told(network, index, RTM_NEWLINK, told_change, false);
         tell(own, network, notices, list);
-        if peer_was_running && let Some((n, i)) = &peer {
-            let list = told(n, *i, RTM_NEWLINK, 0, false);
-            tell(own, n, notices, list);
+        tell(own, network, notices, own_list);
+        if let Some((n, i)) = &peer {
+            if peer_was_running {
+                let list = told(n, *i, RTM_NEWLINK, 0, false);
+                tell(own, n, notices, list);
+            }
+            tell(own, n, notices, peer_list.unwrap_or_default());
         }
     }
 }
