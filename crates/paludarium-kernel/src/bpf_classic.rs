@@ -147,7 +147,7 @@ fn allowed(code: u16) -> bool {
 /// Whether `k` of a `BPF_LD | BPF_ABS` is an ancillary load Linux knows
 /// (`bpf_anc_helper`).
 fn ancillary(k: u32) -> bool {
-    k.wrapping_sub(AD_OFF) <= ad::VLAN_TPID && k.wrapping_sub(AD_OFF) % 4 == 0
+    k.wrapping_sub(AD_OFF) <= ad::VLAN_TPID && k.wrapping_sub(AD_OFF).is_multiple_of(4)
 }
 
 /// `bpf_check_basics_ok` and `bpf_check_classic`: EINVAL for no

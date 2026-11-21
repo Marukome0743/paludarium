@@ -1829,8 +1829,10 @@ const SO_DOMAIN: u32 = 39;
 const SO_PEEK_OFF: u32 = 42;
 const SO_BUSY_POLL: u32 = 46;
 const SO_INCOMING_CPU: u32 = 49;
-/// `SO_GET_FILTER`, which is `SO_ATTACH_FILTER` when set: a classic filter.
-const SO_GET_FILTER: u32 = 26;
+/// `SO_ATTACH_FILTER`, a classic filter, and `SO_GET_FILTER`, which gets
+/// it: one number, set and got.
+const SO_ATTACH_FILTER: u32 = 26;
+const SO_GET_FILTER: u32 = SO_ATTACH_FILTER;
 /// `SO_DETACH_FILTER`, which is `SO_DETACH_BPF` too.
 const SO_DETACH_FILTER: u32 = 27;
 const SO_LOCK_FILTER: u32 = 44;
@@ -2060,7 +2062,7 @@ fn set_option(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
         // SO_ATTACH_FILTER: copy_bpf_fprog_from_user takes a struct
         // sock_fprog, a length and the instructions' address, and
         // __get_filter copies them and converts them.
-        SO_GET_FILTER => {
+        SO_ATTACH_FILTER => {
             if len != 16 {
                 return Err(Errno::EINVAL);
             }
