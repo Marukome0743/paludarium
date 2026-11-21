@@ -7169,7 +7169,9 @@ static long ps_field(const char *path, int n) {
     }
     return atol(at);
 }
-/* /proc/uptime in clock ticks. */
+/* /proc/uptime in clock ticks, from its seconds and hundredths as they
+   are written: no floating point, whose rounding could make it a tick
+   less than a start time read before it. */
 static long ps_uptime(void) {
     char text[64];
     int fd = open("/proc/uptime", O_RDONLY);
@@ -7178,7 +7180,10 @@ static long ps_uptime(void) {
     close(fd);
     if (got <= 0) return -1;
     text[got] = 0;
-    return (long)(strtod(text, NULL) * 100);
+    char *dot;
+    long seconds = strtol(text, &dot, 10);
+    if (*dot != '.' || dot[1] < '0' || dot[1] > '9' || dot[2] < '0' || dot[2] > '9') return -1;
+    return seconds * 100 + (dot[1] - '0') * 10 + (dot[2] - '0');
 }
 /* Whether `start` is at most `now` and within 30 s of it (0 is a start
    in the first tick since boot, as paludarium's is the emulator's start). */
@@ -7243,13 +7248,6 @@ static int proc_stat_counts_case(const char *self) {
     printf("children at first: %ld\n", ps_field("/proc/self/stat", 11));
     ps_process_start = ps_field("/proc/self/stat", 22);
     printf("start: recent=%d\n", ps_recent(ps_process_start, ps_uptime()));
-    {
-        /* DIAGNOSTIC, to be removed: the raw values on this host. */
-        struct timespec boot;
-        clock_gettime(CLOCK_BOOTTIME, &boot);
-        printf("diag: start=%ld uptime=%ld boottime=%ld\n", ps_process_start, ps_uptime(),
-               (long)boot.tv_sec * 100 + boot.tv_nsec / 10000000);
-    }
 
     long rusage = pf_get(RUSAGE_SELF);
     long before = ps_field("/proc/self/stat", 10);
