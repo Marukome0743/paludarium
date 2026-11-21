@@ -932,13 +932,14 @@ verified.
   namespace has no interface but its loopback and the veth ends requests
   make. A veth end takes IPv4 addresses and routes, and TCP and UDP go
   across a pair to an address of the peer's namespace; it takes IPv6
-  addresses and makes its link-local one and its routes, but no IPv6
-  neighbour or proxy entry, no IPv6 route a request adds, no route
-  through a gateway and no IPv6 route lookup in through it (`RTA_IIF`),
-  each `EOPNOTSUPP`; and no IPv6 traffic goes through it (`ENETUNREACH`).
-  Its duplicate address detection sends no probe, finds no duplicate and
-  ends 2 seconds after it begins, where Linux's ends 1 to 2 seconds on
-  after a random delay; its link-local address is always made from its
+  addresses, makes its link-local one and its routes, and takes IPv6
+  routes a request adds without a gateway, but no IPv6 neighbour or proxy
+  entry, no route through a gateway and no IPv6 route lookup in through
+  it (`RTA_IIF`), each `EOPNOTSUPP`; and no IPv6 traffic goes through it
+  (`ENETUNREACH`). Its duplicate address detection sends no probe, finds
+  no duplicate and ends 1.5 seconds after it begins (half of
+  `rtr_solicit_delay`, then a probe and a retransmit time), where Linux's
+  ends 1 to 2 seconds on after a random delay; its link-local address is always made from its
   Ethernet address (EUI-64, `addr_gen_mode` 0), and IPv6 sends no router
   solicitation nor MLD report. Traffic through
   an end moves no counters; a namespace forwards nothing
@@ -1011,8 +1012,7 @@ verified.
   of `ipv6/conf/<device>`, where Linux's has none, as it has no IPv6
   (it makes no IPv6 address, as Linux's does not).
   A
-  route goes through `lo`, a veth end (IPv4 without a gateway, or IPv6's
-  own of an end) or rejects: IPv6 gateways, multipath routes,
+  route goes through `lo`, a veth end (without a gateway) or rejects: IPv6 gateways, multipath routes,
   encapsulations, nexthop objects, realms, expiries, source prefixes, router preferences
   and the anycast, multicast and NAT kinds (and broadcast for IPv6) are
   `EOPNOTSUPP`, and so are policy rules (`RTM_NEWRULE`), so no lookup

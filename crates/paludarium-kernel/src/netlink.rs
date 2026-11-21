@@ -4848,14 +4848,9 @@ fn change_route(
     if unsupported {
         return Err(EOPNOTSUPP);
     }
-    // An IPv6 route a request adds goes through `lo` alone here, not
-    // through a veth end (whose own routes come and go with it).
-    if v6 && add && oif != 0 && oif != LOOPBACK_OIF && network.has_device(oif) {
-        return Err(EOPNOTSUPP);
-    }
     // Whether the device named is up, or else `lo`, which IPv6's routes
-    // and the gateways go through.
-    let up = if !v6 && oif != 0 {
+    // without one and the gateways go through.
+    let up = if oif != 0 {
         device_state(network, oif).is_some_and(|(_, up)| up)
     } else {
         network.is_up()
@@ -4878,6 +4873,7 @@ fn change_route(
             metric: priority,
             prefsrc: ip(prefsrc),
             oif,
+            device: network.has_device(oif),
             request: header.flags,
             metrics: converted,
         };

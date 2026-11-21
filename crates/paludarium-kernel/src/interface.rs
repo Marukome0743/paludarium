@@ -68,11 +68,12 @@ const TOS_LEGACY: u8 = 0x1c;
 pub(crate) const KERNEL_LO: u8 = 1;
 /// `IFAPROT_KERNEL_LL`: the kernel made a device's link-local address.
 pub(crate) const KERNEL_LL: u8 = 3;
-/// How long duplicate address detection takes: its one probe
-/// (`dad_transmits`) and a retransmit time after it (1 second), after a
-/// random delay of up to `rtr_solicit_delay` (1 second), which is taken
-/// whole here.
-pub(crate) const DAD_TIME: u64 = 2 * SECOND;
+/// How long duplicate address detection takes (`addrconf_dad_kick`,
+/// `addrconf_dad_work`): a random delay of up to `rtr_solicit_delay` (1
+/// second), taken here as half of it, then its one probe
+/// (`dad_transmits`) and a retransmit time after it (1 second): 1.5
+/// seconds, where Linux's take 1 to 2.
+pub(crate) const DAD_TIME: u64 = SECOND + SECOND / 2;
 /// The tables Linux has by name (`RT_TABLE_*`).
 pub(crate) const TABLE_DEFAULT: u32 = 253;
 pub(crate) const TABLE_MAIN: u32 = 254;
@@ -1051,6 +1052,8 @@ pub(crate) struct Ask6 {
     pub metric: u32,
     pub prefsrc: Option<Ipv6Addr>,
     pub oif: u32,
+    /// Whether the namespace has a device of `oif`.
+    pub device: bool,
     pub request: u16,
     /// Its metrics to add, or the error converting them gave, which comes
     /// once its table is made; a removal does not look at them.
@@ -2048,7 +2051,7 @@ impl Addresses {
     }
     /// The IPv6 address at `i` changed to `new`'s flags, lifetimes and
     /// protocol, and its priority where `new` names one, as
-    /// `inet6_addr_modify` does, and told of. Its prefix route, while
+    /// `inet6_addr_modify` does, and told of unless it is tentative. Its prefix route, while
     /// `up`, follows (`modify_prefix_route`): one of another metric goes
     /// and comes again of the new one, and one of the same takes its
     /// lifetime; none, or none it had, is made. One that no longer asks for
@@ -2066,7 +2069,12 @@ impl Addresses {
             address.priority = new.priority;
         }
         let changed = address.clone();
-        let mut events = vec![Event::NewAddr6(changed.clone(), false)];
+        // `inet6_addr_modify` tells of it only once its duplicate address
+        // detection is done.
+        let mut events = Vec::new();
+        if changed.dad.is_none() {
+            events.push(Event::NewAddr6(changed.clone(), false));
+        }
         if changed.flags & NO_PREFIX_ROUTE == 0 {
             let found = had
                 .then(|| {
@@ -2218,7 +2226,8 @@ impl Addresses {
                 }
                 if a.life.reached(a.life.preferred, now) && a.flags & DEPRECATED == 0 {
                     a.flags |= DEPRECATED;
-                    events.push(Event::NewAddr6(a.clone(), false));
+                    let tentative = a.dad.is_some();
+                    events.push(Event::NewAddr6(a.clone(), tentative));
                 }
             }
             i += 1;
@@ -2751,7 +2760,7 @@ impl Addresses {
                 .filter(|k| *k != Kind::Broadcast)
                 .ok_or(EOPNOTSUPP)?,
         };
-        if ask.oif != 0 && ask.oif != LOOPBACK_OIF {
+        if ask.oif != 0 && !ask.device {
             return Err(Errno::ENODEV);
         }
         if kind.error().is_none() {
@@ -2767,9 +2776,16 @@ impl Addresses {
         {
             return Err(extack::message(Errno::EINVAL, "Invalid source address"));
         }
+        // Through the device asked, `lo` or a veth end (`fib6_nh_init`),
+        // `RTNH_F_LINKDOWN` where it has no carrier; a rejecting one's is
+        // `lo` (`ip6_route_info_create`).
+        let oif = if kind.error().is_none() {
+            ask.oif
+        } else {
+            LOOPBACK_OIF
+        };
         let route = Route6 {
-            // A rejecting one's is `lo` too (`ip6_route_info_create`).
-            oif: LOOPBACK_OIF,
+            oif,
             table,
             dst: Ipv6Addr::from(u128::from(ask.dst) & mask6(ask.len)),
             len: ask.len,
@@ -2783,7 +2799,9 @@ impl Addresses {
             prefsrc: ask.prefsrc,
             metrics,
             expires: None,
-            linkdown: false,
+            linkdown: kind.error().is_none()
+                && kind != Kind::Local
+                && self.no_carrier.contains(&oif),
         };
         let flags = self.insert6(route, Some(ask.request))?;
         Ok(vec![Event::NewRoute6(route, flags)])
@@ -3599,6 +3617,7 @@ mod tests {
             metric,
             prefsrc: None,
             oif: 1,
+            device: true,
             request: 0x600,
             metrics: Ok(NO_METRICS),
         };

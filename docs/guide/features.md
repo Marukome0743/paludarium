@@ -2404,11 +2404,14 @@ kernel.
     with its prefix route while it is up. A new address is tentative while
     duplicate address detection checks it (unless `IFA_F_NODAD`, or the
     end's and `all`'s `accept_dad` are below 1), which begins once the
-    end is up with its carrier and ends 2 seconds on; then it is told of
-    again, as it is, with its local route. A link-local one is told of
+    end is up with its carrier and ends 1.5 seconds on; then it is told of
+    again, as it is, with its local route; a change while it is checked is
+    not told of (`inet6_addr_modify`). A link-local one is told of
     only then. An end with IPv6 off (`disable_ipv6`) or an MTU below 1280
     has none. An end's IPv6 routes but its local ones are
     `RTNH_F_LINKDOWN` while it is up without its carrier, as IPv4's are.
+    `RTM_NEWROUTE` adds an IPv6 route through an end without a gateway
+    (`ENETDOWN` while it is down), which goes with it as it goes down.
     Going down, or away, it loses its IPv6 routes, told of in the order of
     a dump, then its addresses (`addrconf_ifdown`).
   - **Netconf of veth ends:** each end's settings

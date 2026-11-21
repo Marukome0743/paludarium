@@ -55,6 +55,7 @@
 #define RTM_DELROUTE 25
 #define RTM_GETROUTE 26
 #define NLM_F_DUMP 0x300
+#define NLM_F_REPLACE 0x100
 #define RTA_DST 1
 #define RTA_OIF 4
 #define RTA_PRIORITY 6
@@ -314,18 +315,29 @@ static void address6(int fd, unsigned short type, int index, const char *ip, int
     usleep(200000);
 }
 
-/* Adds an IPv6 route to `dst`/`prefix` through `lo` of metric `metric`
-   with NLM_F_EXCL. */
-static void route6(int fd, const char *dst, int prefix, unsigned metric, const char *label) {
+/* Adds (with NLM_F_EXCL) or removes an IPv6 route to `dst`/`prefix`
+   through the device of `oif`, of metric `metric` (none for 0). */
+static void route6(int fd, unsigned short type, const char *dst, int prefix, int oif, unsigned metric, const char *label) {
     struct body b = {0};
     const unsigned char rtm[12] = {AF_INET6, (unsigned char)prefix, 0, 0, 254, 3, 0, 1};
     unsigned char in[16];
     inet_pton(AF_INET6, dst, in);
     raw(&b, rtm, sizeof rtm);
     put(&b, RTA_DST, in, 16);
-    put32(&b, RTA_OIF, 1);
-    put32(&b, RTA_PRIORITY, metric);
-    request(fd, RTM_NEWROUTE, NLM_F_CREATE | NLM_F_EXCL, &b, label);
+    put32(&b, RTA_OIF, (unsigned)oif);
+    if (metric) put32(&b, RTA_PRIORITY, metric);
+    request(fd, type, type == RTM_NEWROUTE ? NLM_F_CREATE | NLM_F_EXCL : 0, &b, label);
+}
+/* Changes the IPv6 address `ip`/`prefix` of the device of `index` with
+   NLM_F_REPLACE. */
+static void replace6(int fd, int index, const char *ip, int prefix, const char *label) {
+    struct body b = {0};
+    const unsigned char m[8] = {AF_INET6, (unsigned char)prefix, 0, 0, (unsigned char)index, (unsigned char)(index >> 8), 0, 0};
+    unsigned char in[16];
+    inet_pton(AF_INET6, ip, in);
+    raw(&b, m, sizeof m);
+    put(&b, IFA_LOCAL, in, 16);
+    request(fd, RTM_NEWADDR, NLM_F_CREATE | NLM_F_REPLACE, &b, label);
 }
 
 int main(int argc, char **argv) {
@@ -371,12 +383,23 @@ int main(int argc, char **argv) {
     heard(watch, "heard");
     /* NLM_F_EXCL finds the end's route of the same metric, whatever its
        device. */
-    route6(ctl, "2001:db8:9::", 64, 256, "add va's prefix through lo");
+    route6(ctl, RTM_NEWROUTE, "2001:db8:9::", 64, 1, 256, "add va's prefix through lo");
+    /* Routes a request adds through the ends, of no gateway. */
+    route6(ctl, RTM_NEWROUTE, "2001:db8:5::", 64, A_INDEX, 0, "add 2001:db8:5::/64 dev va");
+    route6(ctl, RTM_NEWROUTE, "2001:db8:7::", 64, B_INDEX, 0, "add 2001:db8:7::/64 dev vb");
+    route6(ctl, RTM_NEWROUTE, "2001:db8:7::", 64, A_INDEX, 0, "add it dev va");
+    route6(ctl, RTM_DELROUTE, "2001:db8:7::", 64, B_INDEX, 0, "delete it dev vb");
+    route6(ctl, RTM_DELROUTE, "2001:db8:7::", 64, B_INDEX, 0, "delete it dev vb again");
+    route6(ctl, RTM_NEWROUTE, "2001:db8:7::", 64, 1234, 0, "add one through no device");
+    dump(ctl, RTM_GETROUTE, "routes, requested");
+    heard(watch, "heard");
 
     address6(ctl, RTM_NEWADDR, A_INDEX, "2001:db8::1", 64, 0, "add 2001:db8::1/64");
     address6(ctl, RTM_NEWADDR, A_INDEX, "2001:db8:1::1", 64, IFA_F_NODAD, "add 2001:db8:1::1/64 nodad");
     address6(ctl, RTM_NEWADDR, A_INDEX, "2001:db8:2::1", 128, IFA_F_NODAD, "add 2001:db8:2::1/128 nodad");
     address6(ctl, RTM_NEWADDR, A_INDEX, "2001:db8::1", 64, 0, "add it again");
+    /* Changed while it is checked, it stays tentative. */
+    replace6(ctl, A_INDEX, "2001:db8::1", 64, "replace it");
     dump(ctl, RTM_GETADDR, "addresses, added");
     dump(ctl, RTM_GETROUTE, "routes, added");
     heard(watch, "heard");
@@ -392,6 +415,7 @@ int main(int argc, char **argv) {
     struct body d = {0};
     info(&d, A_INDEX, 0, IFF_UP);
     request(ctl, RTM_NEWLINK, 0, &d, "down va");
+    route6(ctl, RTM_NEWROUTE, "2001:db8:6::", 64, A_INDEX, 0, "add 2001:db8:6::/64 dev va, down");
     dump(ctl, RTM_GETADDR, "addresses, va down");
     dump(ctl, RTM_GETROUTE, "routes, va down");
     heard(watch, "heard");
