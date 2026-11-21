@@ -626,18 +626,15 @@ impl Emitter<'_, '_> {
     /// The four 16-bit lanes of `v`, lane `n` taken from the lane that
     /// bits `2n` and `2n + 1` of `imm` name.
     fn shuffle_words(&mut self, v: Value, imm: u8) -> Value {
-        let mut out = None;
+        let mut out = self.constant(0);
         for n in 0..4 {
             let k = i64::from((imm >> (n * 2)) & 3);
             let lane = self.b.ins().ushr_imm_s(v, k * 16);
             let lane = self.b.ins().band_imm_s(lane, 0xffff);
             let lane = self.b.ins().ishl_imm_s(lane, i64::from(n) * 16);
-            out = Some(match out {
-                None => lane,
-                Some(o) => self.b.ins().bor(o, lane),
-            });
+            out = self.b.ins().bor(out, lane);
         }
-        out.expect("four lanes")
+        out
     }
 
     /// Each `bits`-wide lane of `a` and `b`: all ones where they are
