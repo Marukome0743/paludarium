@@ -1049,9 +1049,10 @@ verified.
   Notifications go out for the link, its IPv6 information, addresses,
   routes, neighbours and namespace IDs alone, not for the other groups;
   IPv4's routes through `lo` go without one when it goes down, as on
-  Linux. Traffic makes a neighbour through UDP and TCP's handshakes alone,
-  which are the only packets paludarium sends through `lo` (a TCP handshake
-  retried into a full backlog makes none of its answer), and none times
+  Linux. Traffic makes a neighbour through UDP, TCP's handshakes and ICMP's
+  port unreachable back alone, which are the only packets paludarium sends
+  through `lo` or a veth end (a TCP handshake retried into a full backlog
+  makes none of its answer), and none times
   out (`gc_thresh1` is never reached). A dump gives a family's neighbours
   the newest first, where Linux gives them in the order of its hash
   table, which a random key sets. Proxy entries of one hash bucket come
