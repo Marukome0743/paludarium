@@ -1,7 +1,10 @@
-//! io_uring, as Linux 6.12's (`io_uring/`) with two operations:
-//! `IORING_OP_NOP` and `IORING_OP_EPOLL_CTL`, the one libuv batches its
-//! `epoll_ctl` calls with. The others answer `EOPNOTSUPP`, as on a Linux
-//! built without them, and `IORING_REGISTER_PROBE` says so.
+//! io_uring, as Linux 6.12's (`io_uring/`) with these operations:
+//! `IORING_OP_NOP`, `IORING_OP_EPOLL_CTL` (the one libuv batches its
+//! `epoll_ctl` calls with), and the file transfers `IORING_OP_READ`,
+//! `_WRITE`, `_READV`, `_WRITEV` and `_FSYNC`. The others answer
+//! `EOPNOTSUPP`, as on a Linux built without them, and
+//! `IORING_REGISTER_PROBE` says so. No buffer or file is ever registered,
+//! so `IORING_OP_READ_FIXED` and `_WRITE_FIXED` are among the others.
 //!
 //! The rings are pages the kernel shares with the mappings of the ring's
 //! descriptor ([`SharedPages`]). A request runs when `io_uring_enter` takes
@@ -86,11 +89,27 @@ const OFF_CQ_RING: u64 = 0x0800_0000;
 const OFF_SQES: u64 = 0x1000_0000;
 
 const OP_NOP: u8 = 0;
+const OP_READV: u8 = 1;
+const OP_WRITEV: u8 = 2;
+const OP_FSYNC: u8 = 3;
+const OP_READ: u8 = 22;
+const OP_WRITE: u8 = 23;
 const OP_EPOLL_CTL: u8 = 29;
+/// The operations implemented.
+const OPS: [u8; 7] = [
+    OP_NOP,
+    OP_READV,
+    OP_WRITEV,
+    OP_FSYNC,
+    OP_READ,
+    OP_WRITE,
+    OP_EPOLL_CTL,
+];
 /// `IORING_OP_LAST` of Linux 6.12, after `IORING_OP_LISTEN`.
 const OP_LAST: u8 = 58;
 
 /// `IOSQE_*`: what every operation takes, then what only some do.
+const IOSQE_FIXED_FILE: u8 = 1 << 0;
 const IOSQE_IO_DRAIN: u8 = 1 << 1;
 const IOSQE_IO_LINK: u8 = 1 << 2;
 const IOSQE_IO_HARDLINK: u8 = 1 << 3;
@@ -102,6 +121,12 @@ const SQE_VALID_FLAGS: u8 =
 const LINK_FLAGS: u8 = IOSQE_IO_LINK | IOSQE_IO_HARDLINK;
 /// `IORING_NOP_INJECT_RESULT`: the NOP completes with its `len`.
 const NOP_INJECT_RESULT: u32 = 1;
+/// `IORING_FSYNC_DATASYNC`, the only flag of `IORING_OP_FSYNC`.
+const FSYNC_DATASYNC: u32 = 1;
+/// `IORING_RW_ATTR_FLAG_PI`, the only attribute of a read or write.
+const RW_ATTR_FLAG_PI: u64 = 1;
+/// `RWF_HIPRI`, polled I/O, which only an `IORING_SETUP_IOPOLL` ring does.
+const RWF_HIPRI: u32 = 1;
 
 const REGISTER_PROBE: u64 = 8;
 /// `IORING_REGISTER_LAST` of Linux 6.12, after `_CLONE_BUFFERS`.
@@ -114,6 +139,7 @@ const ETIME: Errno = Errno(62);
 const ECANCELED: Errno = Errno(125);
 const EOPNOTSUPP: Errno = Errno(95);
 const EEXIST: Errno = Errno(17);
+const ENOBUFS: Errno = Errno(105);
 
 /// The pages of a ring, which a mapping cannot reach past: a page past
 /// them raises `SIGBUS`, as Linux inserts only the ring's pages.
@@ -197,7 +223,37 @@ enum Work {
         fd: i32,
         event: (u32, u64),
     },
+    Transfer(Box<Transfer>),
+    Fsync {
+        fd: i32,
+        fixed: bool,
+    },
     None,
+}
+
+/// An `IORING_OP_READ`, `_WRITE`, `_READV` or `_WRITEV`: the entry's
+/// fields, then what its preparation found.
+struct Transfer {
+    fd: i32,
+    /// `IOSQE_FIXED_FILE`: `fd` indexes the registered files, of which
+    /// there are none.
+    fixed: bool,
+    write: bool,
+    vectored: bool,
+    /// `IOSQE_BUFFER_SELECT`: a provided buffer, of which there are none.
+    select: bool,
+    offset: u64,
+    addr: u64,
+    len: u32,
+    rw_flags: u32,
+    ioprio: u16,
+    attr_ptr: u64,
+    attr_type_mask: u64,
+    /// The buffers, as `io_import_rw_buffer` imported them.
+    segments: Vec<(u64, usize)>,
+    /// Protection information came with it (`REQ_F_HAS_METADATA`), which
+    /// no file here takes.
+    metadata: bool,
 }
 
 fn u32_at(bytes: &[u8], at: usize) -> u32 {
@@ -293,8 +349,8 @@ impl Ring {
             if flags & !SQE_VALID_FLAGS != 0 {
                 return fail(request, Errno::EINVAL);
             }
-            // Neither implemented operation selects a buffer.
-            if flags & IOSQE_BUFFER_SELECT != 0 {
+            // Only the reads select a buffer (`buffer_select`).
+            if flags & IOSQE_BUFFER_SELECT != 0 && !matches!(opcode, OP_READ | OP_READV) {
                 return fail(request, EOPNOTSUPP);
             }
             if flags & IOSQE_CQE_SKIP_SUCCESS != 0 {
@@ -304,9 +360,9 @@ impl Ring {
                 return fail(request, EOPNOTSUPP);
             }
         }
-        let implemented = matches!(opcode, OP_NOP | OP_EPOLL_CTL);
-        // Neither implemented operation takes a priority.
-        if implemented && u16::from_le_bytes([sqe[2], sqe[3]]) != 0 {
+        let transfer = matches!(opcode, OP_READ | OP_WRITE | OP_READV | OP_WRITEV);
+        // Only the transfers take a priority (`ioprio`).
+        if OPS.contains(&opcode) && !transfer && u16::from_le_bytes([sqe[2], sqe[3]]) != 0 {
             return fail(request, Errno::EINVAL);
         }
         // No personality is ever registered.
@@ -314,7 +370,38 @@ impl Ring {
             return fail(request, Errno::EINVAL);
         }
         let int_at = |at: usize| u32_at(sqe, at) as i32;
+        let fixed = flags & IOSQE_FIXED_FILE != 0;
         request.work = match opcode {
+            OP_READ | OP_WRITE | OP_READV | OP_WRITEV => Work::Transfer(Box::new(Transfer {
+                fd: int_at(4),
+                fixed,
+                write: matches!(opcode, OP_WRITE | OP_WRITEV),
+                vectored: matches!(opcode, OP_READV | OP_WRITEV),
+                select: flags & IOSQE_BUFFER_SELECT != 0,
+                offset: u64_at(sqe, 8),
+                addr: u64_at(sqe, 16),
+                len: u32_at(sqe, 24),
+                rw_flags: u32_at(sqe, 28),
+                ioprio: u16::from_le_bytes([sqe[2], sqe[3]]),
+                attr_ptr: u64_at(sqe, 48),
+                attr_type_mask: u64_at(sqe, 56),
+                segments: Vec::new(),
+                metadata: false,
+            })),
+            OP_FSYNC => {
+                // `io_fsync_prep`.
+                if u64_at(sqe, 16) != 0
+                    || u16::from_le_bytes([sqe[40], sqe[41]]) != 0
+                    || int_at(44) != 0
+                    || u32_at(sqe, 28) & !FSYNC_DATASYNC != 0
+                {
+                    return fail(request, Errno::EINVAL);
+                }
+                Work::Fsync {
+                    fd: int_at(4),
+                    fixed,
+                }
+            }
             OP_NOP => {
                 let nop_flags = u32_at(sqe, 28);
                 if nop_flags & !NOP_INJECT_RESULT != 0 {
@@ -343,25 +430,143 @@ impl Ring {
     }
 }
 
-/// Reads the event of an `IORING_OP_EPOLL_CTL` that has one, as its `prep`
-/// copies it: `EFAULT` fails the request.
-fn read_event(c: &Context<'_>, request: &mut Request, addr: u64) {
-    if let Work::EpollCtl { op, event, .. } = &mut request.work
-        && *op != 2
-    {
-        let mut bytes = [0; 12];
-        match c.mem.read(GuestAddr(addr), &mut bytes) {
-            Ok(()) => *event = crate::epoll::event_from(&bytes),
-            Err(_) => request.failed = Some(Errno::EFAULT),
+/// The rest of a request's `prep`, which reads the caller's memory: the
+/// event of an `IORING_OP_EPOLL_CTL` that has one (`EFAULT`), and a
+/// transfer's priority, attributes and buffers ([`prepare_transfer`]). Its
+/// error fails the request.
+fn prepare_memory(c: &Context<'_>, request: &mut Request, addr: u64) {
+    let result = match &mut request.work {
+        Work::EpollCtl { op, event, .. } if *op != 2 => {
+            let mut bytes = [0; 12];
+            c.mem
+                .read(GuestAddr(addr), &mut bytes)
+                .map(|()| *event = crate::epoll::event_from(&bytes))
+                .map_err(|_| Errno::EFAULT)
         }
+        Work::Transfer(transfer) => prepare_transfer(c, transfer),
+        _ => Ok(()),
+    };
+    if let Err(e) = result {
+        request.failed = Some(e);
     }
+}
+
+/// Linux's `io_prep_rw` and `io_prep_rwv`: the priority
+/// (`ioprio_check_cap`), the attributes (only protection information,
+/// whose `struct io_uring_attr_pi` is read, `EFAULT`, with its reserved
+/// field zero, `EINVAL`, and its buffer in the user half, `EFAULT`), then
+/// the buffer (`import_ubuf`: the length cut to `MAX_RW_COUNT`, in the
+/// user half, `EFAULT`) or vector (`__import_iovec`: `EINVAL`, `EFAULT`).
+/// A request that selects a buffer imports none, but a vectored one must
+/// have one vector (`EINVAL`) that can be read (`EFAULT`).
+///
+/// The attributes are Linux 6.14's, which the kernel the differential
+/// tests run on has; Linux 6.12 does not look at those fields.
+fn prepare_transfer(c: &Context<'_>, transfer: &mut Transfer) -> Result<(), Errno> {
+    if transfer.ioprio != 0 {
+        let caller = c.process.credentials.task_ids();
+        crate::scheduling::check_ioprio(
+            i32::from(transfer.ioprio),
+            caller.capable(crate::credentials::CAP_SYS_NICE)
+                || c.process.credentials.may_administer(),
+        )?;
+    }
+    match transfer.attr_type_mask {
+        0 => {}
+        RW_ATTR_FLAG_PI => {
+            let mut pi = [0; 32];
+            c.mem
+                .read(GuestAddr(transfer.attr_ptr), &mut pi)
+                .map_err(|_| Errno::EFAULT)?;
+            if u64_at(&pi, 24) != 0 {
+                return Err(Errno::EINVAL);
+            }
+            let len = u64::from(u32_at(&pi, 4)).min(crate::files::MAX_RW_COUNT as u64);
+            crate::sockets::access_ok_u64(u64_at(&pi, 8), len)?;
+            transfer.metadata = true;
+        }
+        _ => return Err(Errno::EINVAL),
+    }
+    if transfer.select {
+        if transfer.vectored {
+            if transfer.len != 1 {
+                return Err(Errno::EINVAL);
+            }
+            let mut iovec = [0; 16];
+            c.mem
+                .read(GuestAddr(transfer.addr), &mut iovec)
+                .map_err(|_| Errno::EFAULT)?;
+        }
+        return Ok(());
+    }
+    transfer.segments = if transfer.vectored {
+        crate::files::iovecs_checked(c.mem, transfer.addr, u64::from(transfer.len), |_, _| Ok(()))?
+    } else {
+        let len = u64::from(transfer.len).min(crate::files::MAX_RW_COUNT as u64);
+        crate::sockets::access_ok_u64(transfer.addr, len)?;
+        vec![(transfer.addr, len as usize)]
+    };
+    Ok(())
+}
+
+/// The file of a request, as `io_assign_file` finds it at issue: `EBADF`
+/// for a registered one (there are none), or for a descriptor `fget` does
+/// not find (an `O_PATH` one).
+fn file_of(c: &Context<'_>, fd: i32, fixed: bool) -> Result<Arc<dyn FileHandle>, Errno> {
+    if fixed || fd < 0 {
+        return Err(Errno::EBADF);
+    }
+    let file = c.files.descriptor(fd as u64)?.file;
+    if file.flags() & 0o10000000 != 0 {
+        return Err(Errno::EBADF);
+    }
+    Ok(file)
+}
+
+/// Linux's `io_read` and `io_write`, run inline: the file, a provided
+/// buffer for a read that selects one (`ENOBUFS`, as none is ever
+/// provided), then `io_rw_init_file` (the access mode, `EBADF`; the flags,
+/// `kiocb_set_rw_flags`; polled I/O, `EINVAL` on a ring without
+/// `IORING_SETUP_IOPOLL`; protection information, `EINVAL`), then the
+/// transfer ([`crate::files::ring_transfer`]). Once the file's own read or
+/// write ran, its watches hear of it as `io_req_io_end` tells them:
+/// `IN_ACCESS` for a read that did not fail, `IN_MODIFY` for any write, no
+/// bytes too.
+fn transfer(c: &mut Context<'_>, transfer: &Transfer) -> Result<u64, Errno> {
+    let file = file_of(c, transfer.fd, transfer.fixed)?;
+    if transfer.select {
+        return Err(ENOBUFS);
+    }
+    if file.flags() & 3 == if transfer.write { 0 } else { 1 } {
+        return Err(Errno::EBADF);
+    }
+    let flags = crate::files::kiocb_rw_flags(&file, transfer.rw_flags)?;
+    if flags & RWF_HIPRI != 0 || transfer.metadata {
+        return Err(Errno::EINVAL);
+    }
+    let result = crate::files::ring_transfer(
+        c,
+        &file,
+        transfer.write,
+        &transfer.segments,
+        transfer.offset,
+        flags,
+    )?;
+    let fd = transfer.fd as u64;
+    if transfer.write {
+        crate::files::notify_descriptor(c, fd, crate::inotify::MODIFY);
+    } else if result.is_ok() {
+        crate::files::notify_descriptor(c, fd, crate::inotify::ACCESS);
+    }
+    result
 }
 
 /// Runs a request and gives its result.
 fn run(c: &mut Context<'_>, work: &Work) -> i32 {
-    match *work {
-        Work::Nop(result) => result,
-        Work::EpollCtl {
+    let result = |r: Result<u64, Errno>| r.map_or_else(|e| -e.0, |v| v as i32);
+    match work {
+        &Work::Nop(result) => result,
+        &Work::EpollCtl {
             epfd,
             op,
             fd,
@@ -373,6 +578,14 @@ fn run(c: &mut Context<'_>, work: &Work) -> i32 {
                 Err(e) => -e.0,
             }
         }
+        Work::Transfer(work) => result(transfer(c, work)),
+        // `io_fsync`: `vfs_fsync_range`, `EINVAL` for a file without
+        // `fsync`; nothing is cached, so the range and `IORING_FSYNC_DATASYNC`
+        // change nothing.
+        &Work::Fsync { fd, fixed } => result(file_of(c, fd, fixed).and_then(|file| {
+            file.sync()?;
+            Ok(0)
+        })),
         Work::None => 0,
     }
 }
@@ -442,7 +655,7 @@ fn submit(c: &mut Context<'_>, ring: &Ring, wanted: u32) -> u32 {
         ring.sqes.load(u64::from(index) * SQE_BYTES, &mut sqe);
         let mut request = ring.prepare(&mut ring.state(), &sqe);
         if request.failed.is_none() {
-            read_event(c, &mut request, u64_at(&sqe, 16));
+            prepare_memory(c, &mut request, u64_at(&sqe, 16));
         }
         let failed = request.failed.is_some();
         let linked = request.flags & LINK_FLAGS != 0;
@@ -824,7 +1037,7 @@ fn register(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
     probe[1] = count as u8;
     for op in 0..count as usize {
         probe[16 + 8 * op] = op as u8;
-        if matches!(op as u8, OP_NOP | OP_EPOLL_CTL) {
+        if OPS.contains(&(op as u8)) {
             probe[16 + 8 * op + 2..16 + 8 * op + 4].copy_from_slice(&OP_SUPPORTED.to_le_bytes());
         }
     }

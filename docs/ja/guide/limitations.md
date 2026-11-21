@@ -398,8 +398,10 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   （`%ds` や `%fs` などへの `mov` は `SIGILL` でプログラムを止めます）。そのため `modify_ldt`
   が書いたエントリを読み込んで使うことはできません。Linux は読み込みます。テーブルそのものは
   Linux と同じに読み返せます。
-- **io_uring の一部**：実行するのは `IORING_OP_NOP` と `IORING_OP_EPOLL_CTL` だけで、ほかの
-  操作は `EOPNOTSUPP` で完了します。setup のフラグ `IORING_SETUP_IOPOLL`、`_SQPOLL`、
+- **io_uring の一部**：実行するのは `IORING_OP_NOP`、`IORING_OP_EPOLL_CTL`、
+  `IORING_OP_READ`、`_WRITE`、`_READV`、`_WRITEV`、`_FSYNC` だけで、ほかの操作は
+  `EOPNOTSUPP` で完了します。バッファーを登録できないので、`IORING_OP_READ_FIXED` と
+  `_WRITE_FIXED` もそのうちです。setup のフラグ `IORING_SETUP_IOPOLL`、`_SQPOLL`、
   `_SQ_AFF`、`_ATTACH_WQ`、`_R_DISABLED`、`_SQE128`、`_CQE32`、`_NO_MMAP`、
   `_REGISTERED_FD_ONLY` は `EINVAL` です。`io_uring_register` は `IORING_REGISTER_PROBE`
   だけで（ほかは `EINVAL`）、リングの記述子、ファイル、バッファー、パーソナリティは登録
@@ -408,6 +410,12 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   完了を待つと、シグナルかタイムアウトでしか終わりません。機能は Linux 6.12 のものなので、
   リングの記述子は登録できないのに `IORING_FEAT_REG_REG_RING` を、待ちの `min_wait_usec` は何も
   変えない（処理中の要求はありません）のに `IORING_FEAT_MIN_TIMEOUT` を報告します。
+  ファイルを待つことになる転送も待ちません。Linux はファイルの準備ができるまで要求を処理中に
+  しておきますが（読むもののないパイプ、ソケット、eventfd、いっぱいのパイプ。`O_NONBLOCK`
+  でも同じです）、エミュレーターは `EAGAIN` で完了させます。端末の読み出しは `io_uring_enter` の中で待ちます。
+  読めないファイル（epoll のインスタンス、リング）は、Linux が先に準備を待つところで、すぐに
+  `EINVAL` で失敗します。バッファーを提供できないので、`IOSQE_BUFFER_SELECT` の読み出しは
+  `ENOBUFS` で完了します。
 - **ネイティブ AIO の一部**：読み書きと同期は、Linux のバッファー付き I/O と同じく、
   どれも `io_submit` が取ったときに実行されます。`O_DIRECT` で開いたファイルのものも
   Linux のように裏では実行されず、同期のイベントは、Linux ではワーカーが少し後に入れるのに、
@@ -776,9 +784,7 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   ページテーブルがないときと同じく、動かし先を見る前に `ENOENT` です。Linux は
   ページテーブルをほかのときに解放したり残したりもします。`/dev/userfaultfd` と
   `/proc/sys/vm/unprivileged_userfaultfd` はなく、後者は 0 として扱います。
-- **fanotify の一部**：ここの `io_uring` には `FAN_ACCESS_PERM` を尋ねる読み出しの操作が
-  ありません。
-  `FAN_PRE_ACCESS` は
+- **fanotify の一部**：`FAN_PRE_ACCESS` は
   `EOPNOTSUPP` です（ここのファイルシステムはどれも認めません）。マウントのイベント
   （`FAN_MNT_ATTACH`、`FAN_MNT_DETACH`）と `FAN_FS_ERROR` は来ません。追い出せるマークも
   追い出しません。グループは、まだ溜まっている似たイベントのどれにもまとめます。Linux は

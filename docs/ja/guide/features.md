@@ -1414,13 +1414,27 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
     成功してマップされたまま残します。
   - `fork` の子は封印を受け継ぎ、`exec` のあとは何も封印されていません。
 
-- io_uring は、操作が `IORING_OP_NOP` と `IORING_OP_EPOLL_CTL`（libuv が `epoll_ctl` を
-  まとめるのに使います）の 2 つだけの Linux 6.12 のものです。ほかの操作は、それらなしで
-  ビルドした Linux と同じく `EOPNOTSUPP` で完了し、`IORING_REGISTER_PROBE` もその 2 つだけを
-  報告します。リングの大きさ、オフセット、機能は Linux が返すものと同じで、記述子の `mmap` で
+- io_uring は Linux 6.12 のもので、操作は `IORING_OP_NOP`、`IORING_OP_EPOLL_CTL`（libuv が
+  `epoll_ctl` をまとめるのに使います）と、ファイルの転送 `IORING_OP_READ`、`_WRITE`、
+  `_READV`、`_WRITEV`、`_FSYNC` です。ほかの操作は、それらなしでビルドした Linux と同じく
+  `EOPNOTSUPP` で完了し、`IORING_REGISTER_PROBE` もこれらだけを報告します。リングの大きさ、オフセット、機能は Linux が返すものと同じで、記述子の `mmap` で
   見えます。要求は `io_uring_enter` が取り出すときに実行されるので、呼び出しが戻るときには
   完了がキューにあります。リンク、成功時に完了を省くもの、キューがいっぱいのあいだ保たれる
   完了（`IORING_FEAT_NODROP`）は Linux と同じです。
+
+- 転送は Linux の `io_prep_rw` と `io_read` または `io_write` と同じ順に調べ、同じところで
+  失敗します。準備では優先度、属性、バッファーかベクターを調べ、そこでのエラーは投入を
+  終わらせます。実行で調べるものは、エラーで完了します。記述子（`EBADF`。`IOSQE_FIXED_FILE`
+  も）、バッファーを選ぶ読み出しの提供バッファー（`ENOBUFS`）、アクセスモード、`RWF_*`
+  フラグ（`RWF_HIPRI` は `EINVAL`）、範囲、読み出しの `FAN_ACCESS_PERM`、読み書きできない
+  ファイル（`EINVAL`。ディレクトリーは `EISDIR`）の順です。オフセット -1 はファイルの位置で、
+  位置は動かした分だけ進みます。パイプのようなストリームは、どのオフセットでも受け付けます。
+  失敗しなかった読み出しは `IN_ACCESS` を、ファイルまで届いた書き込みは `IN_MODIFY` を、
+  `io_req_io_end` と同じく 0 バイトでも起こします。ファイルシステムが待たずにできない
+  `RWF_NOWAIT` のバッファー付き書き込みは `EAGAIN` です（AIO では `EOPNOTSUPP`）。属性は、
+  差分テストのカーネルにある Linux 6.14 のもので、保護情報だけです。保護情報を受け付ける
+  ファイルはないので `EINVAL` になります。`IORING_OP_FSYNC` が受け付けるフラグは
+  `IORING_FSYNC_DATASYNC` だけです。
 
 - Linux のネイティブな非同期 I/O（libaio が包む呼び出し）は `fs/aio.c` のものです。
   `io_setup` はイベント数を CPU ごとに少なくとも 4 にして 2 倍にし（`0x8000000 / 32` を

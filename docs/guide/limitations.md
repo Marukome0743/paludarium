@@ -466,8 +466,10 @@ verified.
   register (`mov` to `%ds`, `%fs` and the like stops a program with
   `SIGILL`), so an entry that `modify_ldt` writes cannot be loaded and used,
   where Linux loads it. The table itself reads back as Linux's.
-- **io_uring, in part**: only `IORING_OP_NOP` and `IORING_OP_EPOLL_CTL`
-  run; the other operations complete with `EOPNOTSUPP`. The setup flags
+- **io_uring, in part**: only `IORING_OP_NOP`, `IORING_OP_EPOLL_CTL`,
+  `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV` and `_FSYNC` run; the
+  other operations complete with `EOPNOTSUPP`, `IORING_OP_READ_FIXED` and
+  `_WRITE_FIXED` among them, as no buffer can be registered. The setup flags
   `IORING_SETUP_IOPOLL`, `_SQPOLL`, `_SQ_AFF`, `_ATTACH_WQ`, `_R_DISABLED`,
   `_SQE128`, `_CQE32`, `_NO_MMAP` and `_REGISTERED_FD_ONLY` give `EINVAL`,
   and `io_uring_register` has only `IORING_REGISTER_PROBE` (the others give
@@ -478,7 +480,15 @@ verified.
   by a signal or its timeout. The features are Linux 6.12's, so
   `IORING_FEAT_REG_REG_RING` is reported though no ring descriptor can be
   registered, and `IORING_FEAT_MIN_TIMEOUT` though a wait's `min_wait_usec`
-  changes nothing (no request is ever in flight).
+  changes nothing (no request is ever in flight). A transfer that would
+  wait for its file does not: Linux keeps it in flight until the file is
+  ready (a pipe, a socket or an eventfd with nothing to read, or a full
+  pipe, even with `O_NONBLOCK`), and the emulator completes it with
+  `EAGAIN`. A
+  terminal's read waits in `io_uring_enter`. A file that is never read
+  (an epoll instance, a ring) fails with `EINVAL` at once, where Linux
+  first waits for it to be ready. As no buffer can be provided, a read with
+  `IOSQE_BUFFER_SELECT` completes with `ENOBUFS`.
 - **Native AIO, in part**: every read, write and sync runs as `io_submit`
   takes it, as Linux's buffered I/O does; one of a file opened with
   `O_DIRECT` does not run in the background as on Linux, and a sync's event
@@ -912,9 +922,7 @@ verified.
   touched the 2 MiB around it here, as when Linux has no page table there,
   which Linux may also have freed or kept otherwise. There is no `/dev/userfaultfd` and no
   `/proc/sys/vm/unprivileged_userfaultfd`, which is taken as 0.
-- **fanotify, in part**: `io_uring` has no read operation here to ask
-  `FAN_ACCESS_PERM` for.
-  `FAN_PRE_ACCESS` is `EOPNOTSUPP` (no file system here allows it),
+- **fanotify, in part**: `FAN_PRE_ACCESS` is `EOPNOTSUPP` (no file system here allows it),
   and mount events (`FAN_MNT_ATTACH`, `FAN_MNT_DETACH`) and `FAN_FS_ERROR`
   never come. An evictable mark is never evicted. A group merges an event
   into any like it still queued, where Linux looks only at the last 128 of

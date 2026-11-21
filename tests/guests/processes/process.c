@@ -8198,6 +8198,204 @@ static int io_uring_case(void) {
     return 0;
 }
 
+/* io_uring's file transfers, READ, WRITE, READV, WRITEV and FSYNC: an
+   offset or the file's position (-1), the errors of preparation and of
+   issue in Linux's order, and the inotify events a transfer gives, for no
+   bytes too. Nothing here waits: Linux would keep a read of an empty pipe
+   in flight. */
+static struct uring ut;
+
+static unsigned char *ut_entry(unsigned char opcode, int fd, long offset, const void *addr,
+                               unsigned len) {
+    unsigned char *sqe = uring_push(&ut, opcode, 1);
+    memcpy(sqe + 4, &fd, 4);
+    memcpy(sqe + 8, &offset, 8);
+    unsigned long a = (unsigned long)addr;
+    memcpy(sqe + 16, &a, 8);
+    memcpy(sqe + 24, &len, 4);
+    return sqe;
+}
+
+/* Submits the entry pushed last and prints its result and flags. */
+static void ut_run(const char *label) {
+    long r = uring_enter(ut.fd, 1, 1, 1, NULL, 0);
+    unsigned head = *u32p(ut.rings, 8);
+    unsigned tail = __atomic_load_n(u32p(ut.rings, 12), __ATOMIC_ACQUIRE);
+    printf("%s: enter=%ld", label, r);
+    for (; head != tail; head++) {
+        unsigned char *cqe = ut.rings + 64 + 16 * (head & (ut.cq_entries - 1));
+        int res;
+        unsigned flags;
+        memcpy(&res, cqe + 8, 4);
+        memcpy(&flags, cqe + 12, 4);
+        printf(" res=%d flags=%u", res, flags);
+    }
+    printf("\n");
+    __atomic_store_n(u32p(ut.rings, 8), head, __ATOMIC_RELEASE);
+}
+
+static void ut_events(int ifd, const char *label) {
+    char buf[256];
+    long n = read(ifd, buf, sizeof buf);
+    printf("%s:", label);
+    for (long at = 0; at + 16 <= n;) {
+        unsigned mask, len;
+        memcpy(&mask, buf + at + 4, 4);
+        memcpy(&len, buf + at + 12, 4);
+        printf(" %#x", mask);
+        at += 16 + len;
+    }
+    printf("\n");
+}
+
+static int io_uring_transfers_case(void) {
+    char dir[] = "/tmp/io-uring-transfers-XXXXXX";
+    if (!mkdtemp(dir) || chdir(dir)) return 80;
+    if (uring_open(&ut, 8)) return 81;
+    int fd = open("file", O_RDWR | O_CREAT, 0600);
+    if (fd < 0 || write(fd, "hello world", 11) != 11) return 82;
+    char got[64];
+    memset(got, 0, sizeof got);
+
+    /* At an offset the position stays; at -1 it moves. */
+    ut_entry(23, fd, 0, "HE", 2);
+    ut_run("write-at-0");
+    printf("position: %ld\n", (long)lseek(fd, 0, SEEK_CUR));
+    ut_entry(22, fd, 0, got, 5);
+    ut_run("read-at-0");
+    printf("read: %.5s\n", got);
+    lseek(fd, 6, SEEK_SET);
+    ut_entry(22, fd, -1, got, sizeof got);
+    ut_run("read-here");
+    printf("read: %.5s position: %ld\n", got, (long)lseek(fd, 0, SEEK_CUR));
+    struct iovec iov[2] = {{"!", 1}, {"?", 1}};
+    ut_entry(2, fd, -1, iov, 2);
+    ut_run("writev-here");
+    printf("position: %ld\n", (long)lseek(fd, 0, SEEK_CUR));
+    struct iovec back[2] = {{got, 1}, {got + 1, 1}};
+    ut_entry(1, fd, 11, back, 2);
+    ut_run("readv-at-11");
+    printf("readv: %.2s\n", got);
+    ut_entry(22, fd, 100, got, 5);
+    ut_run("read-past-end");
+    ut_entry(22, fd, -2, got, 5);
+    ut_run("read-negative");
+    ut_entry(22, fd, 0, got, 0);
+    ut_run("read-nothing");
+
+    /* An O_APPEND file's write at -1 starts at the end. */
+    int append = open("append", O_RDWR | O_CREAT | O_APPEND, 0600);
+    if (append < 0 || write(append, "ab", 2) != 2) return 83;
+    lseek(append, 0, SEEK_SET);
+    ut_entry(23, append, -1, "cd", 2);
+    ut_run("append-here");
+    printf("position: %ld\n", (long)lseek(append, 0, SEEK_CUR));
+    ut_entry(23, append, 0, "ef", 2);
+    ut_run("append-at-0");
+    printf("size: %ld\n", (long)lseek(append, 0, SEEK_END));
+
+    /* FSYNC, whose only flag is IORING_FSYNC_DATASYNC. */
+    ut_entry(3, fd, 0, NULL, 0);
+    ut_run("fsync");
+    unsigned char *sqe = ut_entry(3, fd, 0, NULL, 0);
+    sqe[28] = 1;
+    ut_run("fdatasync");
+    sqe = ut_entry(3, fd, 0, NULL, 0);
+    sqe[28] = 2;
+    ut_run("fsync-flag");
+    ut_entry(3, fd, 0, got, 0);
+    ut_run("fsync-addr");
+    sqe = ut_entry(3, fd, 0, NULL, 0);
+    sqe[2] = 1;
+    ut_run("fsync-ioprio");
+
+    /* The file at issue: none, a registered one, the access mode. */
+    int wronly = open("file", O_WRONLY);
+    ut_entry(22, 999, 0, got, 1);
+    ut_run("read-badf");
+    sqe = ut_entry(22, fd, 0, got, 1);
+    sqe[1] = 1;
+    ut_run("read-fixed-file");
+    ut_entry(22, wronly, 0, got, 1);
+    ut_run("read-wronly");
+    /* No buffer is provided, which a read finds before its access mode; a
+       write selects none. */
+    sqe = ut_entry(22, wronly, 0, NULL, 1);
+    sqe[1] = 1 << 5;
+    ut_run("read-select");
+    sqe = ut_entry(1, fd, 0, iov, 2);
+    sqe[1] = 1 << 5;
+    ut_run("readv-select-two");
+    sqe = ut_entry(23, fd, 0, NULL, 1);
+    sqe[1] = 1 << 5;
+    ut_run("write-select");
+    /* The flags, then the preparation. */
+    sqe = ut_entry(23, fd, 0, "x", 1);
+    *u32p(sqe, 28) = 0x200;
+    ut_run("write-unknown-flag");
+    sqe = ut_entry(23, fd, 0, "x", 1);
+    *u32p(sqe, 28) = 1;
+    ut_run("write-hipri");
+    ut_entry(23, fd, 0, (void *)(1UL << 63), 1);
+    ut_run("write-kernel-buffer");
+    ut_entry(2, fd, 0, (void *)8, 1);
+    ut_run("writev-bad-vector");
+    ut_entry(2, fd, 0, iov, 1025);
+    ut_run("writev-too-many");
+    sqe = ut_entry(23, fd, 0, "x", 1);
+    sqe[3] = 7 << 5;
+    ut_run("write-bad-ioprio");
+    /* A directory reads EISDIR. (An epoll instance or a ring would wait
+       on Linux until it is ready, then fail.) */
+    int dfd = open(".", O_RDONLY | O_DIRECTORY);
+    ut_entry(22, dfd, 0, got, 1);
+    ut_run("read-directory");
+
+    /* A pipe with something in it, at any offset. */
+    int ends[2];
+    if (pipe(ends)) return 84;
+    ut_entry(23, ends[1], 5, "pipe", 4);
+    ut_run("pipe-write");
+    memset(got, 0, sizeof got);
+    ut_entry(22, ends[0], -1, got, sizeof got);
+    ut_run("pipe-read");
+    printf("pipe: %s\n", got);
+
+    /* inotify: IN_ACCESS for a read that did not fail, IN_MODIFY for a
+       write, no bytes too. */
+    int ifd = (int)syscall(294, 04000);
+    if (ifd < 0 || syscall(254, ifd, "file", 3) < 0) return 85;
+    ut_entry(22, fd, 0, got, 0);
+    ut_run("watched-read-nothing");
+    ut_entry(22, fd, -2, got, 1);
+    ut_run("watched-read-negative");
+    ut_entry(23, fd, 0, "x", 0);
+    ut_run("watched-write-nothing");
+    ut_events(ifd, "events");
+
+    /* The probe says which operations run. */
+    unsigned char probe[16 + 8 * 64];
+    memset(probe, 0, sizeof probe);
+    syscall(427, ut.fd, 8, probe, 64);
+    printf("probe:");
+    const int ops[] = {1, 2, 3, 4, 5, 22, 23};
+    for (unsigned i = 0; i < sizeof ops / sizeof *ops; i++)
+        printf(" %d=%d", ops[i], probe[16 + 8 * ops[i] + 2] & 1);
+    printf("\n");
+    close(ifd);
+    close(ends[0]);
+    close(ends[1]);
+    close(dfd);
+    close(wronly);
+    close(append);
+    close(fd);
+    unlink("file");
+    unlink("append");
+    if (chdir("/")) return 86;
+    rmdir(dir);
+    return 0;
+}
+
 /* mprotect's checks in Linux's order, and the grows flags: the main stack
    grows down (as a MAP_GROWSDOWN mapping does, see grows_down_case), and
    nothing grows up on x86-64. */
@@ -33228,6 +33426,7 @@ int main(int argc, char **argv) {
     }
     if (!strcmp(mode, "mprotect-checks")) return mprotect_checks_case();
     if (!strcmp(mode, "io-uring")) return io_uring_case();
+    if (!strcmp(mode, "io-uring-transfers")) return io_uring_transfers_case();
     if (!strcmp(mode, "etxtbsy-run")) {
         /* Says it runs, then runs until its parent closes the pipe. */
         char c;
