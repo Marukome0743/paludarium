@@ -3002,17 +3002,17 @@ fn sys_madvise(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
 /// which change only the flags of the VMAs (`/proc/<pid>/smaps` shows
 /// them), as no page here depends on them; the discards `MADV_DONTNEED`,
 /// `MADV_DONTNEED_LOCKED` (which takes locked VMAs too) and `MADV_FREE`;
-/// and `MADV_POPULATE_READ` and `MADV_POPULATE_WRITE` ([`populate`]); and the flags `fork` and core
-/// dumps look at, `MADV_DONTFORK`, `MADV_DOFORK`, `MADV_WIPEONFORK`,
-/// `MADV_KEEPONFORK`, `MADV_DONTDUMP` and `MADV_DODUMP`
+/// and `MADV_POPULATE_READ` and `MADV_POPULATE_WRITE` ([`populate`]); and
+/// the flags `fork` and core dumps look at, `MADV_DONTFORK`, `MADV_DOFORK`,
+/// `MADV_WIPEONFORK`, `MADV_KEEPONFORK`, `MADV_DONTDUMP` and `MADV_DODUMP`
 /// ([`AddressSpace::advise_flags`]); and `MADV_REMOVE`, which frees shared
 /// memory as a hole punched in its file ([`remove`]); `MADV_COLLAPSE`,
 /// which collapses private anonymous memory as Linux does, but for the huge
 /// page itself ([`AddressSpace::collapse`]); and `MADV_HWPOISON` and
 /// `MADV_SOFT_OFFLINE` ([`inject_error`]), whose SIGBUS is left in
 /// `poisoned`. The others are rejected rather than ignored, so that a guest
-/// relying on one of them notices. Before a discard drops pages, `removing` is told its range,
-/// for the `userfaultfd` events (`userfaultfd_remove`).
+/// relying on one of them notices. Before a discard drops pages, `removing`
+/// is told its range, for the `userfaultfd` events (`userfaultfd_remove`).
 pub(crate) fn advise(
     mem: &AddressSpace,
     credentials: &credentials::Credentials,
