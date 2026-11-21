@@ -545,9 +545,10 @@ pub(crate) struct ProcessStat<'a> {
 }
 /// `/proc/<pid>/stat` as Linux's `do_task_stat` prints it: 52 fields, and
 /// 0 for what nothing measures (major faults and the scheduler's figures).
-/// A reader that may not see the task's memory gets 1 for `start_code` and `end_code` and 0 for `start_stack`,
-/// `wchan`, the addresses from `start_data` on and `exit_code`, as Linux
-/// hides them; without memory the addresses are all 0.
+/// A reader that may not see the task's memory gets 1 for `start_code`
+/// and `end_code` and 0 for `start_stack`, `wchan`, the addresses from
+/// `start_data` on and `exit_code`, as Linux hides them; without memory the
+/// addresses are all 0.
 pub(crate) fn render_stat(s: &ProcessStat<'_>) -> Vec<u8> {
     /// USER_HZ, the unit of the times, as on x86-64 Linux.
     const TICKS: u64 = 100;
