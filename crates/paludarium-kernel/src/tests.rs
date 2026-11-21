@@ -7459,8 +7459,10 @@ mod madvise_advice {
             assert_eq!(f.ret(28, &[AREA, 2 * PAGE, advice]), 0, "{advice}");
             assert_eq!(f.ret(28, &[AREA, 3 * PAGE, advice]), errno(Errno::ENOMEM));
         }
-        // Still refused: MADV_COLLAPSE and unknown advice.
-        for advice in [25, 26, 104] {
+        // MADV_COLLAPSE refuses a VMA with no room for a 2 MiB extent.
+        assert_eq!(f.ret(28, &[AREA, PAGE, 25]), errno(Errno::EINVAL));
+        // Unknown advice is refused.
+        for advice in [26, 104] {
             assert_eq!(
                 f.ret(28, &[AREA, PAGE, advice]),
                 errno(Errno::EINVAL),
