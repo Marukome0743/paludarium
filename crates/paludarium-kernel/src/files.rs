@@ -530,8 +530,15 @@ impl Files {
     /// filesystem would keep showing it.
     /// Its mounts are the first mount namespace's.
     pub(crate) fn set_file_system(&mut self, fs: Arc<dyn FileSystem>) {
-        self.first_mounts = first_table(&fs, self.host.as_ref());
+        let old = std::mem::replace(&mut self.first_mounts, first_table(&fs, self.host.as_ref()));
         released_to_notifiers(&self.first_mounts, &self.caches);
+        // The first namespace goes on with the new table: the old one, as it
+        // goes, tells fanotify of nothing and does not end the namespace.
+        old.set_mount_hook(None);
+        self.caches
+            .notify
+            .fan
+            .mount_namespace_ended(u64::from(crate::namespaces::FIRST_MOUNT_INODE));
         *self.space.lock().unwrap_or_else(PoisonError::into_inner) =
             Space::new(fs, Arc::clone(&self.first_mounts), &self.caches);
         *self.root.lock().unwrap_or_else(PoisonError::into_inner) = None;

@@ -749,6 +749,16 @@ fn a_mount_namespace_mark_hears_mounts_come_go_and_move() {
     assert_eq!(mount(&mut f, "none", "/tmp/m", "tmpfs", 0), 0);
     assert!(events(&mut f, fan).is_empty());
     assert_eq!(events(&mut f, pidfd).len(), 1);
+    // The first namespace goes on when its table is replaced: the old
+    // table's mounts are not told as gone, and the marks stay.
+    let fs = paludarium_vfs::MemFs::new();
+    let _ = <paludarium_vfs::MemFs as paludarium_vfs::HostFs>::mkdir(&fs, b"/tmp", 0o1777);
+    f.kernel.files.set_file_system(Arc::new(fs));
+    assert!(events(&mut f, detach).is_empty());
+    f.mkdir("/tmp/m");
+    assert_eq!(mount(&mut f, "none", "/tmp/m", "tmpfs", 0), 0);
+    assert_eq!(events(&mut f, pidfd).len(), 1);
+    assert!(events(&mut f, detach).is_empty());
 }
 
 #[test]
