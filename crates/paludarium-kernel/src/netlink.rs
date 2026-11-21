@@ -1409,7 +1409,7 @@ impl NetlinkSocket {
                         } else {
                             now_up
                         };
-                        veth::set_up(&self.network, &network, index, up, notices);
+                        veth::set_up(&self.network, &network, index, up, now, notices);
                     }
                     return Ok(false);
                 }
@@ -2626,9 +2626,8 @@ fn address_dump(
     if family != AF_INET6 {
         messages.extend(ipv4_messages(of, only, seq, port, now));
     }
-    // Only `lo` has IPv6 addresses here.
-    if family != AF_INET && only <= LOOPBACK_OIF {
-        messages.extend(ipv6_message(of, seq, port, now));
+    if family != AF_INET {
+        messages.extend(ipv6_message(of, only, seq, port, now));
     }
     if let Some((id, _)) = shown {
         messages = messages
@@ -3335,6 +3334,40 @@ fn device_state(network: &Network, index: u32) -> Option<(Vec<u8>, bool)> {
     };
     Some((name, up.unwrap_or_else(|| network.is_up())))
 }
+/// What IPv6 needs of the device of `index` of `network`: whether it is
+/// up, has its carrier, has IPv6 off (`disable_ipv6`, or an MTU below
+/// 1280), checks its
+/// addresses for duplicates (`accept_dad` of it or `all` at least 1, never
+/// on a loopback), and its Ethernet address; `None` for none.
+pub(crate) struct Dev6 {
+    pub up: bool,
+    pub carrier: bool,
+    pub off: bool,
+    pub dad: bool,
+    pub mac: [u8; 6],
+}
+pub(crate) fn ipv6_device(network: &Network, index: i32) -> Option<Dev6> {
+    let devices = network.devices();
+    let device = devices.by_index(index)?;
+    let Some(veth) = device.veth.as_ref() else {
+        return Some(Dev6 {
+            up: network.is_up(),
+            carrier: true,
+            off: device.conf6.disable_ipv6 != 0,
+            dad: false,
+            mac: [0; 6],
+        });
+    };
+    Some(Dev6 {
+        up: veth.up,
+        carrier: veth.carrier,
+        // One whose MTU is below IPv6's least (1280) has no IPv6
+        // (`ipv6_add_dev`).
+        off: device.conf6.disable_ipv6 != 0 || veth.mtu < 1280,
+        dad: device.conf6.accept_dad >= 1 || devices.all6.accept_dad >= 1,
+        mac: veth.mac,
+    })
+}
 /// The flags of `lo`, as `dev_get_flags`: `IFF_LOOPBACK`, with `IFF_UP`,
 /// `IFF_RUNNING` and `IFF_LOWER_UP` while it is up.
 fn link_flags(network: &Network) -> u32 {
@@ -3629,13 +3662,24 @@ fn ipv4_address(
         message(kind, flags, seq, port, &body)
     }
 }
-/// `RTM_NEWADDR` for each IPv6 address of `lo`, in its order, as
-/// `inet6_fill_ifaddr` gives them.
-fn ipv6_message(network: &Network, seq: u32, port: u32, now: u64) -> Vec<Vec<u8>> {
-    let addresses = network.addresses().v6.clone();
+/// `RTM_NEWADDR` for each IPv6 address, of the device of `index` or of
+/// every one for 0, as `inet6_fill_ifaddr` gives them: device by device,
+/// by index (`for_each_netdev_dump`), each's in its list's order.
+fn ipv6_message(network: &Network, index: u32, seq: u32, port: u32, now: u64) -> Vec<Vec<u8>> {
+    let mut addresses: Vec<_> = network
+        .addresses()
+        .v6
+        .iter()
+        .filter(|a| index == 0 || a.index.unsigned_abs() == index)
+        .cloned()
+        .collect();
+    addresses.sort_by_key(|a| a.index);
     addresses
         .iter()
-        .map(|address| ipv6_address(address, false, RTM_NEWADDR, NLM_F_MULTI, seq, port, now))
+        .map(|address| {
+            let tentative = address.dad.is_some();
+            ipv6_address(address, tentative, RTM_NEWADDR, NLM_F_MULTI, seq, port, now)
+        })
         .collect()
 }
 /// An IPv6 address's message of `kind`, with `flags`, `tentative` or not,
@@ -3657,7 +3701,7 @@ fn ipv6_address(
             address_flags as u8,
             address.scope(),
         ];
-        body.extend_from_slice(&LOOPBACK_OIF.to_le_bytes());
+        body.extend_from_slice(&address.index.to_le_bytes());
         attribute(&mut body, IFA_ADDRESS, &address.address.octets());
         if address.priority != 0 {
             attribute(&mut body, IFA_RT_PRIORITY, &address.priority.to_le_bytes());
@@ -3825,11 +3869,9 @@ fn change_address(
         if !network.has_device(index) {
             return Err(no_device());
         }
-        // Only `lo` has IPv6 addresses here, not a veth end.
-        if index != LOOPBACK_OIF {
-            return Err(EOPNOTSUPP);
-        }
-        return network.addresses().del_v6(ip, prefix, now);
+        return network
+            .addresses()
+            .del_v6(i32::try_from(index).unwrap_or(0), ip, prefix, now);
     }
     if bad_lifetimes {
         return Err(extack::message(
@@ -3837,19 +3879,16 @@ fn change_address(
             "ipv6: address lifetime invalid",
         ));
     }
-    if !network.has_device(index) {
+    let device = i32::try_from(index).unwrap_or(0);
+    let Some(dev) = ipv6_device(network, device) else {
         return Err(no_device());
-    }
-    // Only `lo` has IPv6 addresses here, not a veth end.
-    if index != LOOPBACK_OIF {
-        return Err(EOPNOTSUPP);
-    }
+    };
     let flags = flags & crate::interface::V6_ASKED;
     let mut addresses = network.addresses();
     let exists = addresses
         .v6
         .iter()
-        .find(|a| a.address == ip)
+        .find(|a| a.index == device && a.address == ip)
         .map(|a| a.prefix);
     // `inet6_addr_add` checks the request's prefix, `inet6_addr_modify`
     // the address's.
@@ -3869,7 +3908,7 @@ fn change_address(
         }
     }
     // `addrconf_add_dev`: a device with `disable_ipv6` takes no new one.
-    if exists.is_none() && network.ipv6_off() {
+    if exists.is_none() && dev.off {
         return Err(extack::message(
             Errno::EACCES,
             "ipv6: IPv6 is disabled on this device",
@@ -3888,10 +3927,20 @@ fn change_address(
         }
     }
     let mut new = crate::interface::V6::new(ip, prefix);
+    new.index = device;
     new.flags = flags;
     new.proto = proto;
     new.priority = priority;
-    addresses.add_v6(new, lifetimes, replace, up, now)
+    // A veth end checks it from when it is up with its carrier.
+    let dad = dev.dad.then(|| {
+        if dev.up && dev.carrier {
+            now + crate::interface::DAD_TIME
+        } else {
+            u64::MAX
+        }
+    });
+    let up = if device == LOOPBACK_INDEX { up } else { dev.up };
+    addresses.add_v6(new, lifetimes, replace, up, dad, now)
 }
 /// A table as an `rtmsg` holds it: one past 255 is `RT_TABLE_COMPAT`.
 fn table_byte(table: u32) -> u8 {
@@ -3977,7 +4026,7 @@ fn ipv6_route_of(
     }
     put_metrics(&mut body, &route.metrics);
     attribute(&mut body, RTA_PRIORITY, &route.metric.to_le_bytes());
-    attribute(&mut body, RTA_OIF, &LOOPBACK_OIF.to_le_bytes());
+    attribute(&mut body, RTA_OIF, &route.oif.to_le_bytes());
     let mut cache = [0; RTA_CACHEINFO_LEN];
     cache[8..12].copy_from_slice(&route_expires(route.expires, now).to_le_bytes());
     attribute(&mut body, RTA_CACHEINFO, &cache);
@@ -4795,6 +4844,11 @@ fn change_route(
         }
     }
     if unsupported {
+        return Err(EOPNOTSUPP);
+    }
+    // An IPv6 route a request adds goes through `lo` alone here, not
+    // through a veth end (whose own routes come and go with it).
+    if v6 && add && oif != 0 && oif != LOOPBACK_OIF && network.has_device(oif) {
         return Err(EOPNOTSUPP);
     }
     // Whether the device named is up, or else `lo`, which IPv6's routes
@@ -5774,6 +5828,8 @@ pub(crate) fn addresses_gone(network: &Network, index: i32) -> Vec<Notice> {
         let mut addresses = network.addresses();
         let (mut events, now) = addresses.device_gone4(index);
         events.extend(addresses.flush_device(index, false));
+        // IPv6's `NETDEV_UNREGISTER`: what a down end still has.
+        events.extend(addresses.device_down6(index));
         (events, now)
     };
     told(events, 0, 0, false, false, now)
@@ -5789,6 +5845,40 @@ pub(crate) fn device_up4(network: &Network, index: i32, carrier: bool) -> Vec<No
         addresses.device_up4(index)
     };
     told(events, 0, 0, false, false, 0)
+}
+/// What `network` tells of IPv6 as its veth end `index` comes up at
+/// `now`, with or without its `carrier`
+/// ([`crate::interface::Addresses::device_up6`]): nothing with IPv6 off
+/// on it (`disable_ipv6`).
+pub(crate) fn device_up6(network: &Network, index: i32, carrier: bool, now: u64) -> Vec<Notice> {
+    let Some(dev) = ipv6_device(network, index).filter(|d| !d.off) else {
+        return Vec::new();
+    };
+    let events = network
+        .addresses()
+        .device_up6(index, carrier, (dev.mac, dev.dad), now);
+    told(events, 0, 0, false, false, now)
+}
+/// What `network` tells of IPv6 as its veth end `index`, up, has its
+/// carrier at `now` ([`crate::interface::Addresses::link_ready6`]).
+pub(crate) fn link_ready6(network: &Network, index: i32, now: u64) -> Vec<Notice> {
+    let Some(dev) = ipv6_device(network, index).filter(|d| !d.off && d.up) else {
+        return Vec::new();
+    };
+    let events = network
+        .addresses()
+        .link_ready6(index, (dev.mac, dev.dad), now);
+    told(events, 0, 0, false, false, now)
+}
+/// What `network` tells of IPv6 as its veth end `index` goes down or
+/// away ([`crate::interface::Addresses::device_down6`]).
+pub(crate) fn device_down6(network: &Network, index: i32) -> Vec<Notice> {
+    let (events, now) = {
+        let mut addresses = network.addresses();
+        let events = addresses.device_down6(index);
+        (events, addresses.seen())
+    };
+    told(events, 0, 0, false, false, now)
 }
 /// `network`'s device of `index` goes down (`NETDEV_DOWN`), or, up, has
 /// its carrier or loses it (`NETDEV_CHANGE`): IPv4's routes tell nothing
@@ -7312,7 +7402,7 @@ mod tests {
         let network = Network::isolated(crate::users::first());
         // Down, a new namespace's loopback has no address.
         assert!(ipv4_messages(&network, 0, 1, 7, 0).is_empty());
-        assert!(ipv6_message(&network, 1, 7, 0).is_empty());
+        assert!(ipv6_message(&network, 0, 1, 7, 0).is_empty());
         let link = link_message(&network, 1, 7, NLM_F_MULTI, 0);
         assert_eq!(link.len() % 4, 0);
         let header = Header::read(&link);
@@ -7362,7 +7452,7 @@ mod tests {
         network.set_up(true, 0);
         let v4 = ipv4_messages(&network, 0, 2, 7, 0).concat();
         assert_eq!(&v4[16..24], &[2, 8, 0x80, 254, 1, 0, 0, 0]);
-        let v6 = ipv6_message(&network, 2, 7, 0).concat();
+        let v6 = ipv6_message(&network, 0, 2, 7, 0).concat();
         assert_eq!(&v6[16..24], &[10, 128, 0x80, 254, 1, 0, 0, 0]);
         assert_eq!(
             attributes(&v6[24..])[0],
@@ -7373,7 +7463,7 @@ mod tests {
         );
         network.set_up(false, 0);
         assert!(!ipv4_messages(&network, 0, 3, 7, 0).is_empty());
-        assert!(ipv6_message(&network, 3, 7, 0).is_empty());
+        assert!(ipv6_message(&network, 0, 3, 7, 0).is_empty());
     }
 
     #[test]
@@ -8066,7 +8156,7 @@ mod tests {
             payload
         };
         // The dump's message, but for its flags; any index finds it.
-        let dumped = ipv6_message(&network, 3, 7, 0).remove(0);
+        let dumped = ipv6_message(&network, 0, 3, 7, 0).remove(0);
         for (index, strict) in [(0, true), (1, true), (9, true), (9, false)] {
             let got = address_get(
                 &network,
@@ -8472,7 +8562,7 @@ mod tests {
         shown[8..12].copy_from_slice(&300u32.to_le_bytes());
         shown[12..].copy_from_slice(&300u32.to_le_bytes());
         assert_eq!(found(ours, IFA_CACHEINFO), Some(shown));
-        let v6 = ipv6_message(&network, 1, 7, 0);
+        let v6 = ipv6_message(&network, 0, 1, 7, 0);
         let nodad = v6.iter().find(|m| m[17] == 64).unwrap();
         assert_eq!(
             found(nodad, IFA_FLAGS),

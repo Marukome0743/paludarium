@@ -827,6 +827,7 @@ impl Network {
                         self,
                         index,
                         flags & IFF_UP != 0,
+                        now,
                         &mut notices,
                     );
                     crate::netlink::notify_link(self, notices);

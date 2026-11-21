@@ -2105,6 +2105,19 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
     取りません（`EACCES`）。端のアドレスにバインドしたソケット
     からのグループや限定ブロードキャストのアドレスへのものは、経路がなくてもその端から
     出ます（`ip_route_output_key_hash_rcu`）。
+  - **veth の端の IPv6:** キャリアのある上がった端は、`addrconf_dev_config` と同じく、
+    落ちるまでに一度だけ準備されます。マルチキャストの経路 `ff00::/8`（ローカルの表、
+    メトリック 256）、続けて接頭辞の経路 `fe80::/64` と、Ethernet のアドレスから作る
+    リンクローカルのアドレス（EUI-64、`IFAPROT_KERNEL_LL`）です。上がるときには、まず
+    持っている永続のアドレスそれぞれの接頭辞の経路を作ります。`RTM_NEWADDR` と
+    `RTM_DELADDR` は `lo` のもの（下）と同じく端のアドレスを足し、消し、端が上がって
+    いる間は接頭辞の経路も作ります。新しいアドレスは、重複アドレス検出が調べる間は仮
+    （tentative）です（`IFA_F_NODAD` のものと、端と `all` の `accept_dad` がどちらも 1
+    より小さいときは除きます）。検出は端がキャリアとともに上がってから始まり、2 秒後に
+    終わります。そのとき改めてそのままのアドレスと、ローカルの経路を伝えます。リンク
+    ローカルのものは、そのときだけ伝えます。IPv6 を切った（`disable_ipv6`）端と MTU が
+    1280 より小さい端には、どれもありません。落ちるかなくなると、IPv6 の経路をダンプの
+    順に伝えて失い、続けてアドレスを失います（`addrconf_ifdown`）。
   - **veth の端の netconf:** それぞれの端の設定は、その名前空間に伝えます（`RTNLGRP_IPV4_NETCONF`、
     `RTNLGRP_IPV6_NETCONF`。`inetdev_init`、`ipv6_add_dev` とその後始末が伝えるのと
     同じです）。増えるときは IPv4 の、それから IPv6 の設定のすべての `RTM_NEWNETCONF` を
@@ -3076,7 +3089,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
 - `/proc/sys/net` には、Linux の `net/ipv4/devinet.c` と `net/ipv6/addrconf.c` が `all`、
   `default`、デバイスごと（`lo` と veth の端）に持つのと同じく、開いたプロセスのネットワーク名前空間の
   設定があります。`ipv4/ip_forward`、`ipv4/conf/<デバイス>/forwarding` と `rp_filter`、
-  `ipv6/conf/<デバイス>/disable_ipv6` と `forwarding` です。ファイルとディレクトリは、
+  `ipv6/conf/<デバイス>/accept_dad`、`disable_ipv6`、`forwarding` です。ファイルとディレクトリは、
   ネットワーク名前空間を持つユーザー名前空間の root のもので、ファイルは 0644 です。
   書き込みで開けるのは、root と、その名前空間への `CAP_NET_ADMIN` を持つものです
   （`net_ctl_permissions`。開けなければ `EACCES`、書き込みのときに書けなければ

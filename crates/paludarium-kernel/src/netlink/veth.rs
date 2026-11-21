@@ -575,18 +575,21 @@ pub(crate) fn set_up(
     network: &Arc<Network>,
     index: i32,
     up: bool,
+    now: u64,
     notices: &mut Vec<Notice>,
 ) {
-    switch(own, network, index, up, IFF_UP, notices);
+    switch(own, network, index, up, IFF_UP, now, notices);
 }
 /// [`set_up`], telling of the end itself with `told_change`: `IFF_UP`
-/// for `dev_change_flags`, [`CLOSED`] for the `netif_close` of a move.
+/// for `dev_change_flags`, [`CLOSED`] for the `netif_close` of a move; at
+/// `now`, which a duplicate address detection starting counts from.
 fn switch(
     own: &Arc<Network>,
     network: &Arc<Network>,
     index: i32,
     up: bool,
     told_change: u32,
+    now: u64,
     notices: &mut Vec<Notice>,
 ) {
     let was = network
@@ -636,6 +639,14 @@ fn switch(
         // `NETDEV_UP`, after `__dev_notify_flags` has told of the change.
         let list = super::device_up4(network, index, peer_up);
         tell(own, network, notices, list);
+        // IPv6's `NETDEV_UP`, then the peer's, ready with its carrier as
+        // the link watch finds it.
+        let list = super::device_up6(network, index, peer_up, now);
+        tell(own, network, notices, list);
+        if peer_up && let Some((n, i)) = &peer {
+            let list = super::link_ready6(n, *i, now);
+            tell(own, n, notices, list);
+        }
         if peer_up {
             change(network, index, |v| v.oper_up = true);
             let list = told(network, index, RTM_NEWLINK, 0, false);
@@ -669,6 +680,9 @@ fn switch(
         let list = told(network, index, RTM_NEWLINK, told_change, false);
         tell(own, network, notices, list);
         tell(own, network, notices, own_list);
+        // IPv6's `addrconf_ifdown`.
+        let list = super::device_down6(network, index);
+        tell(own, network, notices, list);
         if let Some((n, i)) = &peer {
             tell(own, n, notices, peer_list.unwrap_or_default());
             if peer_was_running {
@@ -701,8 +715,11 @@ fn unregister(
                 }
                 let list = told_of(network, device, RTM_NEWLINK, CLOSED, false);
                 tell(own, network, notices, list);
-                // `NETDEV_DOWN`: its neighbours go (`arp_ifdown`).
+                // `NETDEV_DOWN`: its neighbours go (`arp_ifdown`), and
+                // IPv6's routes and addresses (`addrconf_ifdown`).
                 let list = super::device_changed4(network, device.index, false, false);
+                tell(own, network, notices, list);
+                let list = super::device_down6(network, device.index);
                 tell(own, network, notices, list);
             }
         }
@@ -855,7 +872,7 @@ pub(super) fn move_to(
             devices.index_for(0)?
         }
     };
-    switch(own, network, index, false, CLOSED, notices);
+    switch(own, network, index, false, CLOSED, 0, notices);
     let Some(mut device) = network.devices().by_index(index).cloned() else {
         return Err(super::ENODEV);
     };
@@ -1145,13 +1162,13 @@ mod tests {
         );
         // Up alone, no carrier; with the peer, both have it, then run.
         let mut notices = Vec::new();
-        set_up(&network, &network, 1000, true, &mut notices);
+        set_up(&network, &network, 1000, true, 0, &mut notices);
         assert_eq!(
             heard(&notices),
             [(RTM_NEWLINK, 1000, down | IFF_UP, IFF_UP)]
         );
         let mut notices = Vec::new();
-        set_up(&network, &network, 1001, true, &mut notices);
+        set_up(&network, &network, 1001, true, 0, &mut notices);
         let lower = down | IFF_UP | IFF_LOWER_UP;
         assert_eq!(
             heard(&notices),
@@ -1165,7 +1182,7 @@ mod tests {
         assert_eq!(u32::from(flags), (lower | IFF_RUNNING) & 0xffff);
         // Down: both lose the carrier, the peer told of as it finds it.
         let mut notices = Vec::new();
-        set_up(&network, &network, 1000, false, &mut notices);
+        set_up(&network, &network, 1000, false, 0, &mut notices);
         assert_eq!(
             heard(&notices),
             [
@@ -1290,7 +1307,7 @@ mod tests {
         let b = Arc::new(Network::isolated(crate::users::first()));
         let (made, _) = create(&a, &pair(b"va", 1000, b"vb", 1001, &[]));
         assert_eq!(made, Ok(Some(())));
-        set_up(&a, &a, 1001, true, &mut Vec::new());
+        set_up(&a, &a, 1001, true, 0, &mut Vec::new());
         let mut notices = Vec::new();
         move_to(&a, &a, 1001, &b, &mut notices).unwrap();
         let down = IFF_BROADCAST | IFF_MULTICAST;

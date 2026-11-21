@@ -931,10 +931,16 @@ verified.
   where Linux gives them to root of the process's own when it maps one. A network
   namespace has no interface but its loopback and the veth ends requests
   make. A veth end takes IPv4 addresses and routes, and TCP and UDP go
-  across a pair to an address of the peer's namespace, but no IPv6
-  address (it makes no link-local one as it comes up, where Linux does),
-  no IPv6 neighbour or proxy entry, no route through a gateway and no IPv6
-  route lookup in through it (`RTA_IIF`), each `EOPNOTSUPP`. Traffic through
+  across a pair to an address of the peer's namespace; it takes IPv6
+  addresses and makes its link-local one and its routes, but no IPv6
+  neighbour or proxy entry, no IPv6 route a request adds, no route
+  through a gateway and no IPv6 route lookup in through it (`RTA_IIF`),
+  each `EOPNOTSUPP`; and no IPv6 traffic goes through it (`ENETUNREACH`).
+  Its duplicate address detection sends no probe, finds no duplicate and
+  ends 2 seconds after it begins, where Linux's ends 1 to 2 seconds on
+  after a random delay; its link-local address is always made from its
+  Ethernet address (EUI-64, `addr_gen_mode` 0), and IPv6 sends no router
+  solicitation nor MLD report. Traffic through
   an end moves no counters; a namespace forwards nothing
   on to another; and a broadcast or multicast destination through an end
   reaches no one. ICMP's port unreachable is not rate limited
@@ -1002,9 +1008,11 @@ verified.
   the settings that have no file (proxy ARP and NDP, multicast and
   broadcast forwarding, ignoring routes with their link down) as 0, as
   Linux is built. A veth end whose MTU is below 1280 still has the files
-  of `ipv6/conf/<device>`, where Linux's has none, as it has no IPv6.
+  of `ipv6/conf/<device>`, where Linux's has none, as it has no IPv6
+  (it makes no IPv6 address, as Linux's does not).
   A
-  route goes through `lo`, a veth end (IPv4, without a gateway) or rejects: IPv6 gateways, multipath routes,
+  route goes through `lo`, a veth end (IPv4 without a gateway, or IPv6's
+  own of an end) or rejects: IPv6 gateways, multipath routes,
   encapsulations, nexthop objects, realms, expiries, source prefixes, router preferences
   and the anycast, multicast and NAT kinds (and broadcast for IPv6) are
   `EOPNOTSUPP`, and so are policy rules (`RTM_NEWRULE`), so no lookup
@@ -1031,9 +1039,9 @@ verified.
   Linux does from 7.3; before it, one that has already run out. No
   temporary addresses are made for `IFA_F_MANAGETEMPADDR`, and
   `IFA_F_MCAUTOJOIN` joins no group. A peer address is
-  not a point-to-point one, and an IPv6 address is never tentative, where
-  Linux's is until its duplicate address detection work, which ends at
-  once on a loopback, has run. A connection or datagram to an address of
+  not a point-to-point one, and an IPv6 address of `lo` is never
+  tentative, where Linux's is until its duplicate address detection work,
+  which ends at once on a loopback, has run. A connection or datagram to an address of
   the namespace's own, of `lo` or a veth end, while `lo` is down is
   `ENETUNREACH`, where Linux's goes out and is
   dropped, and so is one to an IPv6 address in a prefix that is not one

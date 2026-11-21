@@ -2394,6 +2394,21 @@ kernel.
     limited broadcast address from a socket bound to an end's address
     needs no route: it goes out through that end
     (`ip_route_output_key_hash_rcu`).
+  - **IPv6 of veth ends:** an end up with its carrier is made ready as
+    `addrconf_dev_config` does, once until it goes down: the multicast
+    route `ff00::/8` (local table, metric 256), then the prefix route
+    `fe80::/64` and its link-local address from its Ethernet address
+    (EUI-64, `IFAPROT_KERNEL_LL`). Coming up, it first gives the prefix
+    route of each permanent address it has. `RTM_NEWADDR` and
+    `RTM_DELADDR` add and remove an end's addresses as `lo`'s (below),
+    with its prefix route while it is up. A new address is tentative while
+    duplicate address detection checks it (unless `IFA_F_NODAD`, or the
+    end's and `all`'s `accept_dad` are below 1), which begins once the
+    end is up with its carrier and ends 2 seconds on; then it is told of
+    again, as it is, with its local route. A link-local one is told of
+    only then. An end with IPv6 off (`disable_ipv6`) or an MTU below 1280
+    has none. Going down, or away, it loses its IPv6 routes, told of in
+    the order of a dump, then its addresses (`addrconf_ifdown`).
   - **Netconf of veth ends:** each end's settings
     are told of in its namespace (`RTNLGRP_IPV4_NETCONF`,
     `RTNLGRP_IPV6_NETCONF`, as `inetdev_init`, `ipv6_add_dev` and their
@@ -3539,7 +3554,7 @@ kernel.
   Linux's `net/ipv4/devinet.c` and `net/ipv6/addrconf.c` keep them for
   `all`, `default` and each device (`lo` and the veth ends): `ipv4/ip_forward`,
   `ipv4/conf/<device>/forwarding` and `rp_filter`, and
-  `ipv6/conf/<device>/disable_ipv6` and `forwarding`. They and their
+  `ipv6/conf/<device>/accept_dad`, `disable_ipv6` and `forwarding`. They and their
   directories belong to the root of the user namespace that owns the
   network namespace; the files are 0644, which root and whoever has
   `CAP_NET_ADMIN` over that namespace may open to write
