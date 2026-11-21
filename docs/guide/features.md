@@ -982,7 +982,27 @@ kernel.
   `mremap`, and go with `munmap`. `MADV_GUARD_REMOVE` takes them out,
   leaving pages without contents. Sealed memory whose pages may not be
   discarded takes none (`EPERM`), and the rings of AIO and `io_uring`,
-  which Linux maps `VM_DONTEXPAND`, take neither advice (`EINVAL`). Other
+  which Linux maps `VM_DONTEXPAND`, take neither advice (`EINVAL`).
+  `MADV_COLLAPSE` collapses private anonymous memory as Linux's
+  `madvise_collapse` does, VMA by VMA: a VMA no page of which was written,
+  one with `MADV_NOHUGEPAGE`, one with no room for an aligned 2 MiB extent,
+  and shared memory and file mappings refuse it (`EINVAL`), and a range
+  with no whole aligned extent then succeeds. Each whole extent becomes a
+  huge page that holds every page of it, so `mincore` and the resident
+  counts show all 2 MiB, unless no page of it was touched (no page table)
+  or it has a guard, a poison or a uffd-wp marker (`EINVAL`, once the other
+  extents are done), or it lies in a range a `userfaultfd` registered and
+  has an empty page (`EBUSY`, at once). `MADV_HWPOISON` and
+  `MADV_SOFT_OFFLINE` check the range's arguments, then `CAP_SYS_ADMIN`
+  (`EPERM`), before the address limit or any mapping. With it each page in
+  turn is brought in by reading it: `EFAULT` for a page no mapping holds,
+  that may not be read or that cannot be brought in, `EHWPOISON` for a
+  poisoned one. `MADV_SOFT_OFFLINE` then leaves the page as it is, as
+  moving it to another shows nothing, but the zero page gives
+  `ENOTRECOVERABLE`. `MADV_HWPOISON` poisons a private page of the
+  process's own: its contents go, the caller gets SIGBUS (`BUS_MCEERR_AR`,
+  at the first page) at once, and the page is then poisoned as
+  `UFFDIO_POISON` poisons one (below). The zero page gives `EBUSY`. Other
   advice gives `EINVAL`.
 
 - `process_madvise` advises each range of its iovecs in turn, of the caller's
@@ -991,7 +1011,8 @@ kernel.
   bytes of the ranges before the first that fails, or that one's error.
   Another process's memory takes only `MADV_COLD`, `MADV_PAGEOUT`,
   `MADV_WILLNEED` and `MADV_COLLAPSE` (`EINVAL`), with `CAP_SYS_NICE`
-  (`EPERM`), and its ranges need only be mapped (`ENOMEM`). The checks come
+  (`EPERM`), and its ranges need only be mapped (`ENOMEM`), but
+  `MADV_COLLAPSE` collapses them as `madvise` would. The checks come
   in Linux's order: `flags`, the iovecs, the pidfd (`EBADF`, `ESRCH`), the
   caller's right to read the process (`EACCES`), then the advice.
 
@@ -1589,15 +1610,51 @@ kernel.
     ignores its failed unmap.
   - A child of `fork` keeps the seals; `exec` starts without any.
 
-- io_uring is Linux 6.12's with two operations, `IORING_OP_NOP` and
-  `IORING_OP_EPOLL_CTL` (which libuv batches its `epoll_ctl` calls with); the
-  other operations complete with `EOPNOTSUPP`, as on a Linux built without
-  them, and `IORING_REGISTER_PROBE` reports only those two. The rings are
-  the sizes, offsets and features Linux gives, and `mmap` of the descriptor
-  shows them. A request runs while `io_uring_enter` takes it, so its
-  completion is in the queue when the call returns; links, completions that
-  skip success, and completions kept while the queue is full
+- io_uring is Linux 6.12's with these operations: `IORING_OP_NOP`,
+  `IORING_OP_EPOLL_CTL` (which libuv batches its `epoll_ctl` calls with), and
+  the file transfers `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV`,
+  `_FSYNC`, `_READ_FIXED` and `_WRITE_FIXED`. The other operations complete with `EOPNOTSUPP`, as on a Linux
+  built without them, and `IORING_REGISTER_PROBE` reports only these. The
+  rings are the sizes, offsets and features Linux gives, and `mmap` of the
+  descriptor shows them. A request runs while `io_uring_enter` takes it, so
+  its completion is in the queue when the call returns; links, completions
+  that skip success, and completions kept while the queue is full
   (`IORING_FEAT_NODROP`) behave as on Linux.
+
+- A transfer is checked as Linux's `io_prep_rw` and `io_read` or
+  `io_write` check it, and fails at the same step. Its preparation takes the
+  priority, the attributes, and the buffer or vector, and an error there
+  ends the submission. Its issue completes with the error instead: the
+  descriptor (`EBADF`, also for `IOSQE_FIXED_FILE`), a provided buffer for
+  a read that selects one (`ENOBUFS`), the access mode, the `RWF_*` flags
+  (`RWF_HIPRI` is `EINVAL`), the range, a read's `FAN_ACCESS_PERM`, and a
+  file that cannot read or write (`EINVAL`, `EISDIR` for a directory). An
+  offset of -1 is the file's position, which moves past what was moved,
+  and a stream such as a pipe takes any offset. A read that did not fail
+  gives `IN_ACCESS`, and any write that reached the file `IN_MODIFY`, as
+  `io_req_io_end` tells them, even for no bytes. A buffered write with
+  `RWF_NOWAIT` that the file system cannot do without waiting is `EAGAIN`,
+  where AIO's is `EOPNOTSUPP`. The attributes are Linux 6.14's, which the
+  differential tests' kernel has: only protection information, which no
+  file here takes (`EINVAL`). `IORING_OP_FSYNC` takes only
+  `IORING_FSYNC_DATASYNC`.
+
+- `IORING_REGISTER_BUFFERS` registers a ring's buffers as Linux's
+  `io_sqe_buffers_register` does. It checks in this order:
+  - none registered yet (`EBUSY`), and 1 to 16384 of them (`EINVAL`);
+  - then each `iovec` (`EFAULT`, `EINVAL` for a negative length); a null
+    one with no length is an empty slot;
+  - a length of 1 byte to 1 GiB (`EFAULT`), and no end past the address
+    space (`EOVERFLOW`);
+  - writable pages (`EFAULT`);
+  - room under RLIMIT_MEMLOCK (`ENOMEM`), shared with the user's other
+    rings and `memfd_secret` pages, unless the ring's maker had
+    `CAP_IPC_LOCK`.
+
+  A failure registers none of them. `IORING_UNREGISTER_BUFFERS` takes no
+  argument (`EINVAL`) and needs buffers (`ENXIO`). `IORING_OP_READ_FIXED` and
+  `_WRITE_FIXED` move bytes within the buffer `buf_index` names, after the
+  file is found: no buffer there, or a range that leaves it, is `EFAULT`.
 
 - Linux's native asynchronous I/O (the calls libaio wraps) is `fs/aio.c`'s.
   `io_setup` makes the number of events at least four for each CPU and
@@ -2661,9 +2718,9 @@ kernel.
     makes) every address of its prefix; IPv6 binds only to its addresses.
     Before IPv4 has a local table, a socket binds to any IPv4 address, as
     Linux's `inet_addr_type` takes each as broadcast then.
-  - **Neighbours:** `RTM_GETNEIGH` dumps the loopback's neighbours (those
-    its traffic makes, as the notifications below tell, and those requests
-    add) as
+  - **Neighbours:** `RTM_GETNEIGH` dumps the neighbours of the loopback
+    and the veth ends (those traffic makes, as the notifications and the
+    veth ends' neighbours below tell, and those requests add) as
     `neigh_dump_info` does, each an `RTM_NEWNEIGH` like the `RTM_DELNEIGH`
     that tells of it as it goes: ARP's (IPv4's) and then neighbour
     discovery's (IPv6's) for `AF_UNSPEC`, the one family's for `AF_INET`
@@ -2671,30 +2728,34 @@ kernel.
     are `NTF_PROXY` asks for the proxy entries instead, in the order of
     their hash's buckets (`pneigh_hash`), the newest first in each.
     `NDA_IFINDEX` and `NDA_MASTER` narrow a dump, and mark each message
-    `NLM_F_DUMP_FILTERED`: `lo`'s index, 1, and a master of -1 (no master)
-    keep the neighbours (and of the proxy entries, `lo`'s alone for the
-    index), and any other shows none. Strictly, as
+    `NLM_F_DUMP_FILTERED`: a device's index keeps its neighbours alone, a
+    master of -1 (no master) keeps them all (and of the proxy entries,
+    `lo`'s alone for its index), and any other master shows none. Strictly, as
     `neigh_valid_dump_req` checks, an `ndmsg` that is short or has
     padding, an index, a state, a type or a flag but `NTF_PROXY`, and any
     other attribute, are `EINVAL`; unchecked, a dump whose attributes
     break `nda_policy` is not narrowed. An `AF_MCTP` dump shows no
     neighbours (`EINVAL` for a short `ndmsg`, as `mctp_rtm_getneigh`).
     Without a dump, as `neigh_get`, the request names one neighbour by its
-    family, key (`NDA_DST`) and `lo`'s index, and the answer counts the
+    family, key (`NDA_DST`) and its device's index, and the answer counts the
     reference the lookup holds. It is `EINVAL` without the key (told of
     with `NLMSGERR_ATTR_MISS_TYPE`), with another attribute, a key of
     another length, no device, or padding, a state, a type or a flag but
     `NTF_PROXY`; `EAFNOSUPPORT` for a family but IPv4's and IPv6's;
-    `ENODEV` for another device; and `ENOENT` for a neighbour `lo` has
-    not, and for a proxy entry neither for the device asked nor for none.
-  - **Neighbour changes:** `RTM_NEWNEIGH` adds or changes one of `lo`'s
-    neighbours and `RTM_DELNEIGH` removes one, as `neigh_add` and
+    `ENODEV` for a device the namespace has not; `EOPNOTSUPP` for an IPv6
+    neighbour or a proxy entry of a veth end; and `ENOENT` for a neighbour
+    the device has not, and for a proxy entry neither for the device asked
+    nor for none.
+  - **Neighbour changes:** `RTM_NEWNEIGH` adds or changes one of the
+    neighbours of `lo` or of a veth end (below) and `RTM_DELNEIGH` removes
+    one, as `neigh_add` and
     `neigh_delete` do, with `CAP_NET_ADMIN`. They check in Linux's order:
     `nda_policy`, not strictly, for an addition, and a short `ndmsg`; no
-    `NDA_DST` (`EINVAL`); another device (`ENODEV`), and to add, a
-    link-layer address shorter than `lo`'s six bytes (`EINVAL`); a family
-    but IPv4's and IPv6's (`EAFNOSUPPORT`); a key shorter than the family's
-    (`EINVAL`). IPv4's neighbour of a loopback is keyed by `0.0.0.0`
+    `NDA_DST` (`EINVAL`); a device the namespace has not (`ENODEV`), and
+    to add, a link-layer address shorter than the device's six bytes
+    (`EINVAL`); a family but IPv4's and IPv6's (`EAFNOSUPPORT`); a key
+    shorter than the family's (`EINVAL`); and for a veth end, an IPv6
+    neighbour or a proxy entry (`EOPNOTSUPP`). IPv4's neighbour of a loopback is keyed by `0.0.0.0`
     whatever is asked, as `arp_constructor` keys it: a request for another
     key makes or changes that one with `NLM_F_CREATE` (`ENOENT` without),
     and removing it is `ENOENT`. An existing one with `NLM_F_EXCL` is
@@ -2721,12 +2782,39 @@ kernel.
     for its own device to remove (`ENOENT`). Without `NTF_PROXY`, a request
     without a device is `EINVAL`. `lo` going down takes its neighbours and
     proxy entries, as `neigh_ifdown` does, but not those of no device.
+  - **Neighbours of veth ends:** a veth end has IPv4's neighbours,
+    resolved by ARP as `arp_constructor`, `neigh_event_send`,
+    `arp_process` and `neigh_timer_handler` do. Each is keyed by the
+    address asked, of the type `inet_addr_type` gives that address as it
+    is made (`RTN_BROADCAST` while the namespace has no local table): a
+    group's is `NUD_NOARP` with the group's Ethernet address
+    (`ip_eth_mc_map`), a broadcast address's `NUD_NOARP` with the
+    broadcast one, and any other `NUD_NONE`, as a request that then fails
+    leaves it. A packet out through an end, of TCP's handshake, UDP or
+    ICMP's port unreachable back, takes its next hop's neighbour: a valid
+    one's address, which the peer takes only if it is its own; a stale one
+    delays; any other asks ARP, its unicast probes (3) and first probe
+    counted, and is reachable at once at the peer's address when the
+    peer answers, while the peer learns the sender, stale at its address
+    (`neigh_event_ns`); unanswered, it is incomplete and fails 3 seconds
+    later, its 6 probes sent. A delaying one probes 5 seconds on
+    (`NUD_PROBE`) and is reachable once the peer answers, or fails after 3
+    probes. Each of these changes but to incomplete and to delaying is
+    told to `RTNLGRP_NEIGH`, the timers' as a netlink socket of the
+    namespace next reads, polls or writes. A request with `NTF_USE` or
+    `NTF_MANAGED` asks ARP as a packet does, from the address
+    `inet_select_addr` picks on the end (`arp_solicit`). An end going down takes its
+    neighbours, each told of with `RTM_DELNEIGH` after its
+    `RTM_NEWLINK`; its peer losing its carrier, all but the permanent
+    ones (`neigh_carrier_down`); and an end that goes or moves away, all.
   - **Neighbour tables:** an `RTM_GETNEIGHTBL` dump, as
     `neightbl_dump_info`, gives each table the family names (ARP's and
     neighbour discovery's for `AF_UNSPEC`, none for another family) with
     its name, garbage collection's interval and thresholds, its
-    configuration, statistics and default parameters, then `lo`'s
-    parameters, which count its neighbours' references. Strictly, an
+    configuration, statistics and default parameters, then each device's
+    parameters, the newest first, which count its neighbours' references:
+    ARP's of the veth ends and `lo` (`inetdev_init`), neighbour
+    discovery's of `lo`. Strictly, an
     `ndtmsg` short, with padding or with attributes after it is `EINVAL`
     (`neightbl_valid_dump_info`).
   - **Notifications:** a socket is a member of the groups `bind` names
@@ -3593,12 +3681,18 @@ kernel.
   nothing else used, no swap and no huge pages; and the monotonic clock's
   uptime with no idle time.
 
-- `/proc/stat` is in the format of Linux's `show_stat`: a `cpu` line and one
-  for each CPU `sched_getaffinity` reports, every time 0 as `/proc/uptime`
-  counts no idle time; `intr 0`, `ctxt 0`; `btime`, the real-time clock less
-  the monotonic one in seconds, so `ps` finds the boot time; `processes`, the
-  IDs handed out; `procs_running 1`, `procs_blocked 0`; and a `softirq` line
-  of zeros.
+- `/proc/stat` is in the format of Linux's `show_stat`.
+  - A `cpu` line and one for each CPU `sched_getaffinity` reports give, in
+    clock ticks, the CPU time every thread has run, the reaped processes'
+    included, so the counts only grow. A thread's time between two system
+    calls counts to the CPU it was on at the first. It is all user time, as
+    in `getrusage` and `times`, and the other times are 0, idle too, as
+    `/proc/uptime` counts no idle time.
+  - `intr 0`; `ctxt`, the times threads went to sleep; `btime`, the
+    real-time clock less the monotonic one in seconds, so `ps` finds the boot
+    time; `processes`, the IDs handed out; `procs_running`, the threads
+    running as `/proc/<pid>/stat` shows them (`R`), the reader included;
+    `procs_blocked 0`; and a `softirq` line of zeros.
 
 - `/proc/sysvipc` holds `msg`, `sem` and `shm`, listed in that order, each in
   the format of Linux's `sysvipc_*_proc_show` on a 64-bit kernel.
@@ -4498,7 +4592,8 @@ kernel.
   helper "invalid func %s#%d" (`EINVAL`).
 
 - A socket filter attaches to an AF_UNIX `SOCK_DGRAM` or `SOCK_SEQPACKET`
-  socket with `SO_ATTACH_BPF` and runs on each message sent to it, as
+  socket with `SO_ATTACH_BPF`, or a classic one with `SO_ATTACH_FILTER`
+  (below), and runs on each message sent to it, as
   Linux's `sk_filter` and `unix_dgram_sendmsg`. Before the receiver's
   checks, but after the sender's own shutdown and send buffer, it decides
   the message's fate: 0 drops it, and the send still gives its length;
@@ -4519,8 +4614,39 @@ kernel.
   - `SO_LOCK_FILTER` keeps the filter as it is (`EPERM`) until the socket
     goes, and it cannot be unlocked.
   - `SO_GET_FILTER` gives 0 blocks with no filter and `EACCES` for one
-    attached with `SO_ATTACH_BPF`.
+    attached with `SO_ATTACH_BPF`. For a classic one it gives the
+    instructions as attached and their number in `*len`, in blocks: a
+    `*len` of 0 only asks for it, and one short of it is `EINVAL`.
   - `SO_BPF_EXTENSIONS` gives 64 (`SKF_AD_MAX`).
+
+- A classic filter (`SO_ATTACH_FILTER`, a `struct sock_fprog`; `EINVAL`
+  for another size) is checked as Linux's `bpf_check_classic` checks it
+  and converted as `bpf_convert_filter` converts it, instruction for
+  instruction, and the interpreter runs what it converts to.
+  - It is `EINVAL` for no instructions or more than 4096, a code Linux
+    does not know, a division or remainder by a constant 0, a constant
+    shift of 32 or more, a scratch word past the 16th or one read where
+    some path has not written it, a jump past the end, an ancillary load
+    Linux does not know, and a last instruction that does not return. It
+    is `EFAULT` for instructions that cannot be read, and `EPERM` on a
+    locked socket.
+  - The conversion is `EINVAL` for a jump that the converted program's
+    16-bit offset cannot hold, and for any jump placed past its 32,767th
+    instruction, as Linux's first pass, which takes every target to be at
+    0, refuses it. The socket is charged the converted program's size, as
+    on Linux (`ENOMEM`).
+  - The accumulator and X are 32 bits, and the jumps compare them
+    unsigned. A division or remainder by an X of 0 returns 0, and a shift
+    by X takes its count modulo 32.
+  - A load of the message gives its bytes big-endian, and returns 0 where
+    they are past its end. A negative offset from `SKF_NET_OFF` on reads
+    from the network header, the message's start; one from the MAC header
+    (`SKF_LL_OFF`), which an AF_UNIX message has not set, returns 0.
+  - The ancillary loads are those of an AF_UNIX message. The protocol,
+    packet type, mark, queue, hash, VLAN fields and payload offset are 0.
+    The interface index and hardware type return the accumulator as it
+    is, since there is no device. The netlink attribute searches are
+    Linux's `nla_find`, and give 0 for a message in pages.
 
 - The log (`log_level`, `log_buf`, `log_size`) gets the line that says
   why a program was refused, in 7.0's words where the two kernels word it
