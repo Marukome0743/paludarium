@@ -1054,6 +1054,10 @@ pub(crate) struct Ask6 {
     pub oif: u32,
     /// Whether the namespace has a device of `oif`.
     pub device: bool,
+    /// That device's IPv6 (`inet6_dev`): `None` where it has none (a veth
+    /// end made with an MTU below 1280), else whether it is off
+    /// (`disable_ipv6`).
+    pub ipv6_off: Option<bool>,
     pub request: u16,
     /// Its metrics to add, or the error converting them gave, which comes
     /// once its table is made; a removal does not look at them.
@@ -2767,6 +2771,17 @@ impl Addresses {
             if ask.oif == 0 {
                 return Err(Errno::ENODEV);
             }
+            // `fib6_nh_init`: the device's IPv6, then whether it is up.
+            match ask.ipv6_off {
+                None => return Err(Errno::ENODEV),
+                Some(true) => {
+                    return Err(extack::message(
+                        Errno::EACCES,
+                        "IPv6 is disabled on nexthop device",
+                    ));
+                }
+                Some(false) => {}
+            }
             if !up {
                 return Err(extack::message(ENETDOWN, "Nexthop device is not up"));
             }
@@ -3618,6 +3633,7 @@ mod tests {
             prefsrc: None,
             oif: 1,
             device: true,
+            ipv6_off: Some(false),
             request: 0x600,
             metrics: Ok(NO_METRICS),
         };

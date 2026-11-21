@@ -1198,6 +1198,16 @@ impl NetFile {
                                 change == crate::netconf::Change::On,
                                 now,
                             );
+                        } else {
+                            // A veth end's, as `dev_disable_change` calls
+                            // `addrconf_notify` with `NETDEV_DOWN` or
+                            // `NETDEV_UP`.
+                            crate::netlink::set_ipv6_on(
+                                &self.network,
+                                index,
+                                change == crate::netconf::Change::On,
+                                now,
+                            );
                         }
                     }
                 }

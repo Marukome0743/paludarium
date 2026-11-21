@@ -2411,7 +2411,11 @@ kernel.
     has none. An end's IPv6 routes but its local ones are
     `RTNH_F_LINKDOWN` while it is up without its carrier, as IPv4's are.
     `RTM_NEWROUTE` adds an IPv6 route through an end without a gateway
-    (`ENETDOWN` while it is down), which goes with it as it goes down.
+    (`fib6_nh_init`: `ENODEV` for one without IPv6, an MTU below 1280,
+    `EACCES` for one with it off, then `ENETDOWN` while it is down), which
+    goes with it as it goes down. Turning `disable_ipv6` on for an end
+    takes its IPv6 routes and addresses as going down does; off again,
+    while it is up, makes them as coming up does (`dev_disable_change`).
     Going down, or away, it loses its IPv6 routes, told of in the order of
     a dump, then its addresses (`addrconf_ifdown`).
   - **Netconf of veth ends:** each end's settings

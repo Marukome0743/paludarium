@@ -3340,6 +3340,11 @@ fn device_state(network: &Network, index: u32) -> Option<(Vec<u8>, bool)> {
 /// addresses for duplicates (`accept_dad` of it or `all` at least 1, never
 /// on a loopback), and its Ethernet address; `None` for none.
 pub(crate) struct Dev6 {
+    /// Whether it has IPv6 (`inet6_dev`) at all: not a veth end made with
+    /// an MTU below 1280.
+    pub has: bool,
+    /// Whether that is off (`disable_ipv6`).
+    pub disabled: bool,
     pub up: bool,
     pub carrier: bool,
     pub off: bool,
@@ -3351,6 +3356,8 @@ pub(crate) fn ipv6_device(network: &Network, index: i32) -> Option<Dev6> {
     let device = devices.by_index(index)?;
     let Some(veth) = device.veth.as_ref() else {
         return Some(Dev6 {
+            has: true,
+            disabled: device.conf6.disable_ipv6 != 0,
             up: network.is_up(),
             carrier: true,
             off: device.conf6.disable_ipv6 != 0,
@@ -3359,6 +3366,8 @@ pub(crate) fn ipv6_device(network: &Network, index: i32) -> Option<Dev6> {
         });
     };
     Some(Dev6 {
+        has: veth.mtu >= 1280,
+        disabled: device.conf6.disable_ipv6 != 0,
         up: veth.up,
         carrier: veth.carrier,
         // One whose MTU is below IPv6's least (1280) has no IPv6
@@ -4874,6 +4883,11 @@ fn change_route(
             prefsrc: ip(prefsrc),
             oif,
             device: network.has_device(oif),
+            ipv6_off: i32::try_from(oif)
+                .ok()
+                .and_then(|i| ipv6_device(network, i))
+                .filter(|d| d.has)
+                .map(|d| d.disabled),
             request: header.flags,
             metrics: converted,
         };
@@ -5867,6 +5881,21 @@ pub(crate) fn link_ready6(network: &Network, index: i32, now: u64) -> Vec<Notice
         .addresses()
         .link_ready6(index, (dev.mac, dev.dad), now);
     told(events, 0, 0, false, false, now)
+}
+/// Turns IPv6 of `network`'s veth end `index` off or `on` at `now`, as a
+/// change of its `disable_ipv6` does (`dev_disable_change`): off, it loses
+/// its IPv6 routes and addresses as when it goes down; on, while it is up,
+/// it is made ready again as when it comes up; and tells netlink's members.
+pub(crate) fn set_ipv6_on(network: &Network, index: i32, on: bool, now: u64) {
+    let notices = if on {
+        match ipv6_device(network, index) {
+            Some(dev) if dev.up => device_up6(network, index, dev.carrier, now),
+            _ => Vec::new(),
+        }
+    } else {
+        device_down6(network, index)
+    };
+    notify(network, notices, None);
 }
 /// What `network` tells of IPv6 as its veth end `index` goes down or
 /// away ([`crate::interface::Addresses::device_down6`]).

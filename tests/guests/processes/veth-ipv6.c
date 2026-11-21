@@ -7,7 +7,9 @@
    done (vb's is not checked, as its accept_dad is 0). An address added is
    tentative too, unless IFA_F_NODAD; removing
    one takes its routes; an end that goes down takes its addresses and
-   routes, and comes up with its link-local one again. The addresses and
+   routes, and comes up with its link-local one again. IPv6 turned off
+   on an end takes them too, and on again makes them; an end whose MTU is
+   below 1280 has none. The addresses and
    routes are dumped (IPv6's, of the ends), and what RTNLGRP_IPV6_IFADDR
    and RTNLGRP_IPV6_ROUTE hear is shown in its order. */
 #define _GNU_SOURCE
@@ -237,7 +239,7 @@ static int describe(const struct nl_header *h, char *line, size_t size) {
             a += (alen + 3) & ~3;
         }
         /* The ends' alone. */
-        if (oif != A_INDEX && oif != B_INDEX) return 0;
+        if (oif < A_INDEX) return 0;
         unsigned flags;
         memcpy(&flags, body + 8, 4);
         snprintf(line, size, "%s table=%u type=%u proto=%u scope=%u flags=0x%x %s/%u dev=%d metric=%u",
@@ -271,7 +273,7 @@ static void dump(int fd, unsigned short type, const char *label) {
             int index;
             memcpy(&index, body + 4, 4);
             /* Of the ends alone. */
-            if (describe(h, line, sizeof line) && (h->type != RTM_NEWADDR || index == A_INDEX || index == B_INDEX))
+            if (describe(h, line, sizeof line) && (h->type != RTM_NEWADDR || index >= A_INDEX))
                 printf("%s: %s: %s\n", side, label, line);
             at += (h->len + 3) & ~3u;
         }
@@ -292,7 +294,7 @@ static void heard(int watch, const char *label) {
             int index;
             memcpy(&index, body + 4, 4);
             if (describe(h, line, sizeof line) &&
-                (h->type == RTM_NEWROUTE || h->type == RTM_DELROUTE || index == A_INDEX || index == B_INDEX))
+                (h->type == RTM_NEWROUTE || h->type == RTM_DELROUTE || index >= A_INDEX))
                 printf("%s: %s: %s\n", side, label, line);
             at += (h->len + 3) & ~3u;
         }
@@ -424,6 +426,40 @@ int main(int argc, char **argv) {
     sleep(3);
     dump(ctl, RTM_GETADDR, "addresses, up again");
     dump(ctl, RTM_GETROUTE, "routes, up again");
+    heard(watch, "heard");
+    /* IPv6 off on vb: it loses its routes and addresses, and takes no
+       route; on again, it is ready again. */
+    int off = open("/proc/sys/net/ipv6/conf/vb/disable_ipv6", O_WRONLY);
+    printf("A: vb's disable_ipv6=%ld\n", result(off < 0 ? off : write(off, "1", 1)));
+    heard(watch, "heard");
+    route6(ctl, RTM_NEWROUTE, "2001:db8:8::", 64, B_INDEX, 0, "add 2001:db8:8::/64 dev vb, off");
+    printf("A: vb's disable_ipv6 again=%ld\n", result(off < 0 ? off : pwrite(off, "0", 1, 0)));
+    if (off >= 0) close(off);
+    usleep(200000);
+    dump(ctl, RTM_GETADDR, "addresses, vb on again");
+    heard(watch, "heard");
+    /* A pair whose MTU is below 1280 has no IPv6. */
+    struct body small = {0};
+    unsigned mtu = 1000;
+    info(&small, 1002, 0, 0);
+    put(&small, IFLA_IFNAME, "vc", 3);
+    put32(&small, 4, mtu);
+    size_t link2 = begin(&small, IFLA_LINKINFO);
+    put(&small, IFLA_INFO_KIND, "veth", 5);
+    size_t data2 = begin(&small, IFLA_INFO_DATA);
+    size_t peer2 = begin(&small, VETH_INFO_PEER);
+    info(&small, 1003, 0, 0);
+    put(&small, IFLA_IFNAME, "vd", 3);
+    put32(&small, 4, mtu);
+    end(&small, peer2);
+    end(&small, data2);
+    end(&small, link2);
+    request(ctl, RTM_NEWLINK, NLM_F_CREATE | NLM_F_EXCL, &small, "make vc and vd of MTU 1000");
+    set_up(ctl, 1002, "up vc");
+    set_up(ctl, 1003, "up vd");
+    carrier(links, 1002);
+    route6(ctl, RTM_NEWROUTE, "2001:db8:8::", 64, 1002, 0, "add 2001:db8:8::/64 dev vc");
+    dump(ctl, RTM_GETADDR, "addresses, vc");
     heard(watch, "heard");
     struct body g = {0};
     info(&g, B_INDEX, 0, 0);
