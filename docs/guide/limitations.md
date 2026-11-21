@@ -945,10 +945,11 @@ verified.
   3 seconds after each connect, where Linux's attempts made while the
   neighbour is resolving fail together. An end's neighbour is answered or
   not as the peer would answer when it begins to resolve or to delay,
-  where Linux asks again with each probe; one `NTF_USE` or `NTF_MANAGED`
-  makes incomplete sends no ARP and fails 3 seconds on; no traffic confirms
-  one (`dst_confirm`), so a delaying one is always probed; and the
-  neighbour table dump gives no veth end's parameters. The addresses of an end that goes tell
+  where Linux asks again with each probe, and so a packet waiting for one
+  never goes once it is answered later; `NTF_MANAGED` ones are never
+  probed again; no traffic confirms one (`dst_confirm`, `MSG_CONFIRM`), so
+  a delaying one is always probed; and the neighbour table dump gives no
+  veth end's IPv6 parameters. The addresses of an end that goes tell
   their lifetimes as of the last netlink request, read or poll in its
   namespace, where Linux takes the time it goes. Making one takes
   only a name, an address and an MTU for each end (`EOPNOTSUPP` for the

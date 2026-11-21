@@ -13,7 +13,8 @@
    An end that goes down takes its neighbours with it, and its peer, whose
    carrier goes, all but its permanent ones. Up again, a TCP connection
    makes them as a datagram does; a broadcast or a group makes one that
-   needs no ARP. Each change is told of to RTNLGRP_NEIGH, in its order
+   needs no ARP, and NTF_USE asks ARP as a packet does. ARP's table has
+   each device's parameters. Each change is told of to RTNLGRP_NEIGH, in its order
    with the links' and addresses' as the peer's carrier goes and as the
    pair goes. Only IPv4's are shown, as the
    ends make IPv6's of their own as they come up. The two processes take
@@ -40,6 +41,11 @@
 #define RTM_DELLINK 17
 #define RTM_DELADDR 21
 #define RTM_NEWNEIGH 28
+#define RTM_GETNEIGHTBL 66
+#define NDTA_PARMS 6
+#define NDTPA_IFINDEX 1
+#define NDTPA_REFCNT 2
+#define NTF_USE 0x01
 #define RTM_DELNEIGH 29
 #define RTM_GETNEIGH 30
 #define NLM_F_DUMP 0x300
@@ -399,6 +405,63 @@ static void neighbour(int fd, unsigned short type, unsigned short flags, int ind
     }
     request(fd, type, flags, &b, label);
 }
+/* Asks ARP for the neighbour `ip` of the device of `index` with NTF_USE. */
+static void use(int fd, int index, const char *ip, const char *label) {
+    struct body b = {0};
+    struct ndmsg_ n = {.family = AF_INET, .index = index, .flags = NTF_USE};
+    struct in_addr in;
+    inet_pton(AF_INET, ip, &in);
+    raw(&b, &n, sizeof n);
+    put(&b, NDA_DST, &in, 4);
+    request(fd, RTM_NEWNEIGH, NLM_F_CREATE, &b, label);
+}
+/* Dumps ARP's table: each set of parameters, of a device or the table's,
+   with its references. */
+static void tables(int fd, const char *label) {
+    static unsigned char buf[65536];
+    struct {
+        struct nl_header h;
+        unsigned char family, pad[3];
+    } ask = {{sizeof ask, RTM_GETNEIGHTBL, NLM_F_REQUEST | NLM_F_DUMP, ++seq, 0}, AF_INET, {0}};
+    struct nl_address kernel = {.family = AF_NETLINK};
+    sendto(fd, &ask, sizeof ask, 0, (void *)&kernel, sizeof kernel);
+    for (;;) {
+        struct pollfd ready = {.fd = fd, .events = POLLIN};
+        if (poll(&ready, 1, 2000) <= 0) break;
+        long n = recv(fd, buf, sizeof buf, 0);
+        if (n <= 0) break;
+        for (long at = 0; at + (long)sizeof(struct nl_header) <= n;) {
+            const struct nl_header *h = (const void *)(buf + at);
+            if (h->len < sizeof *h || at + h->len > n) break;
+            if (h->type == 3 || h->type == 2) return;
+            const unsigned char *body = (const unsigned char *)(h + 1);
+            int len = (int)(h->len - sizeof *h);
+            for (int a = 4; a + 4 <= len;) {
+                unsigned short alen, kind;
+                memcpy(&alen, body + a, 2);
+                memcpy(&kind, body + a + 2, 2);
+                if (alen < 4 || a + alen > len) break;
+                if ((kind & 0x3fff) == NDTA_PARMS) {
+                    int index = 0;
+                    unsigned refs = 0;
+                    for (int p = a + 4; p + 4 <= a + alen;) {
+                        unsigned short plen, pkind;
+                        memcpy(&plen, body + p, 2);
+                        memcpy(&pkind, body + p + 2, 2);
+                        if (plen < 4 || p + plen > a + alen) break;
+                        if (pkind == NDTPA_IFINDEX) memcpy(&index, body + p + 4, 4);
+                        if (pkind == NDTPA_REFCNT) memcpy(&refs, body + p + 4, 4);
+                        p += (plen + 3) & ~3;
+                    }
+                    printf("%s: %s: dev=%d refs=%u\n", side, label, index, refs);
+                }
+                a += (alen + 3) & ~3;
+            }
+            at += (h->len + 3) & ~3u;
+        }
+    }
+    printf("%s: %s: no end\n", side, label);
+}
 #define NUD_INCOMPLETE 0x01
 #define NUD_REACHABLE 0x02
 #define NUD_STALE 0x04
@@ -555,6 +618,7 @@ int main(int argc, char **argv) {
         neighbour(ctl, RTM_DELNEIGH, 0, A_INDEX, *ip, 0, 0, "delete");
     dump(ctl, A_INDEX, "va's, after");
     heard(watch, "heard");
+    tables(ctl, "arp table");
 
     /* Traffic: A to B and back. */
     int u = socket(AF_INET, SOCK_DGRAM, 0);
@@ -618,6 +682,13 @@ int main(int argc, char **argv) {
     dump(ctl, A_INDEX, "va's, up again");
     heard(watch, "heard");
     B_DOES("s");
+    /* NTF_USE asks ARP, as a packet does. */
+    use(ctl, A_INDEX, "10.77.0.2", "use B's");
+    use(ctl, A_INDEX, "10.77.0.8", "use nobody's");
+    get(ctl, A_INDEX, "10.77.0.2", "used B's");
+    get(ctl, A_INDEX, "10.77.0.8", "used nobody's");
+    heard(watch, "heard");
+    B_DOES("s");
     B_DOES("l");
     int c = socket(AF_INET, SOCK_STREAM, 0);
     to = at("10.77.0.2", 5000);
@@ -632,6 +703,7 @@ int main(int argc, char **argv) {
     B_DOES("s");
     B_DOES("w");
     B_DOES("s");
+    get(ctl, A_INDEX, "10.77.0.8", "used nobody's later");
     dump(ctl, A_INDEX, "va's, connected later");
     heard(watch, "heard");
     int on = 1;

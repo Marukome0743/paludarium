@@ -5415,22 +5415,22 @@ fn neighbour_get(
     Ok(neighbour_message(n, RTM_NEWNEIGH, 0, (seq, port), 1, now))
 }
 /// The parameters of a neighbour table (`struct neigh_parms`), as
-/// `neightbl_fill_parms` puts them in `NDTA_PARMS`: `lo`'s (`device`),
-/// which each of its neighbours of the family holds a reference to
-/// (`refs`), or the table's own. Each is the table's default, as Linux
+/// `neightbl_fill_parms` puts them in `NDTA_PARMS`: a device's (`lo` or a
+/// veth end, by its index), which each of its neighbours of the family
+/// holds a reference to (`refs`), or the table's own. Each is the table's default, as Linux
 /// starts them (`arp_tbl` and `nd_tbl`): their reachable time is the base
 /// one, where Linux's is a random one from half of it to one and a half
 /// times it (`neigh_rand_reach_time`); the queue's length in packets is
 /// its bytes over `SKB_TRUESIZE(ETH_FRAME_LEN)`, 2090 bytes on x86-64.
-fn neighbour_parms(body: &mut Vec<u8>, v6: bool, device: bool, refs: u32) {
+fn neighbour_parms(body: &mut Vec<u8>, v6: bool, device: Option<i32>, refs: u32) {
     const QUEUE_LEN_BYTES: u32 = 212_992;
     let mut nest = Vec::new();
     let u32_attribute =
         |nest: &mut Vec<u8>, kind: u16, value: u32| attribute(nest, kind, &value.to_le_bytes());
     let msecs =
         |nest: &mut Vec<u8>, kind: u16, value: u64| attribute(nest, kind, &value.to_le_bytes());
-    if device {
-        u32_attribute(&mut nest, 1, 1);
+    if let Some(index) = device {
+        attribute(&mut nest, 1, &index.to_le_bytes());
     }
     // NDTPA_REFCNT, NDTPA_QUEUE_LENBYTES, NDTPA_QUEUE_LEN,
     // NDTPA_PROXY_QLEN, NDTPA_APP_PROBES, NDTPA_UCAST_PROBES,
@@ -5470,8 +5470,9 @@ fn neighbour_parms(body: &mut Vec<u8>, v6: bool, device: bool, refs: u32) {
 /// A neighbour table dump (`RTM_GETNEIGHTBL`), as `neightbl_dump_info`:
 /// for each table the family names, ARP's (IPv4's) and then neighbour
 /// discovery's (IPv6's) for `AF_UNSPEC`, none for another family, the
-/// table (`neightbl_fill_info`) and then `lo`'s parameters
-/// (`neightbl_fill_param_info`), the device the namespace has. Strictly,
+/// table (`neightbl_fill_info`) and then each device's parameters
+/// (`neightbl_fill_param_info`), the newest first: for ARP's, the veth
+/// ends' and `lo`'s; for neighbour discovery's, `lo`'s alone. Strictly,
 /// `EINVAL` for an `ndtmsg` short, with padding, or with attributes
 /// (`neightbl_valid_dump_info`). A table counts the namespace's
 /// neighbours, and its statistics are all 0, where Linux counts every
@@ -5505,6 +5506,15 @@ fn neighbour_tables(
             ));
         }
     }
+    // The veth ends, in the order they came to the namespace.
+    let ends: Vec<i32> = {
+        let devices = network.devices();
+        devices
+            .order()
+            .into_iter()
+            .filter(|&i| devices.by_index(i).is_some_and(|d| d.veth.is_some()))
+            .collect()
+    };
     let addresses = network.addresses();
     let since = u32::try_from(now / 1_000_000).unwrap_or(u32::MAX);
     let mut messages = Vec::new();
@@ -5516,7 +5526,7 @@ fn neighbour_tables(
         let refs = addresses
             .neighbours()
             .iter()
-            .filter(|n| n.index == LOOPBACK_INDEX && n.ip.is_ipv6() == v6)
+            .filter(|n| n.ip.is_ipv6() == v6)
             .count();
         let refs = u32::try_from(refs).unwrap_or(u32::MAX);
         let mut body = vec![family, 0, 0, 0];
@@ -5543,16 +5553,32 @@ fn neighbour_tables(
         attribute(&mut body, 5, &config);
         // `struct ndt_stats`.
         attribute(&mut body, 7, &[0; 88]);
-        neighbour_parms(&mut body, v6, false, 1);
+        neighbour_parms(&mut body, v6, None, 1);
         messages.push(message(RTM_NEWNEIGHTBL, NLM_F_MULTI, seq, port, &body));
-        let mut body = vec![family, 0, 0, 0];
-        attribute(
-            &mut body,
-            1,
-            if v6 { b"ndisc_cache\0" } else { b"arp_cache\0" },
-        );
-        neighbour_parms(&mut body, v6, true, 1 + refs);
-        messages.push(message(RTM_NEWNEIGHTBL, NLM_F_MULTI, seq, port, &body));
+        // Each device's, the newest first, as `neigh_parms_alloc` puts each
+        // right after the table's: IPv4's of the veth ends too
+        // (`inetdev_init`), IPv6's of `lo` alone here.
+        let devices: Vec<i32> = if v6 {
+            vec![LOOPBACK_INDEX]
+        } else {
+            ends.iter().rev().copied().chain([LOOPBACK_INDEX]).collect()
+        };
+        for index in devices {
+            let refs = addresses
+                .neighbours()
+                .iter()
+                .filter(|n| n.index == index && n.ip.is_ipv6() == v6)
+                .count();
+            let refs = u32::try_from(refs).unwrap_or(u32::MAX);
+            let mut body = vec![family, 0, 0, 0];
+            attribute(
+                &mut body,
+                1,
+                if v6 { b"ndisc_cache\0" } else { b"arp_cache\0" },
+            );
+            neighbour_parms(&mut body, v6, Some(index), 1 + refs);
+            messages.push(message(RTM_NEWNEIGHTBL, NLM_F_MULTI, seq, port, &body));
+        }
     }
     Ok(messages)
 }
@@ -5688,7 +5714,18 @@ fn change_neighbour(
             request: header.flags,
         };
         // What a change tells goes even when it then fails.
-        Ok(addresses.add_neighbour(index, ask, now))
+        let (events, result) = addresses.add_neighbour(index, ask, now);
+        drop(addresses);
+        // On a veth end, one used is resolved by ARP.
+        let using = flags & (crate::interface::NTF_USE | crate::interface::NTF_MANAGED) != 0;
+        if veth
+            && using
+            && result.is_ok()
+            && let core::net::IpAddr::V4(to) = ip
+        {
+            network.arp_resolve(index, to, now);
+        }
+        Ok((events, result))
     })();
     result.unwrap_or_else(|e| (Vec::new(), Err(e)))
 }

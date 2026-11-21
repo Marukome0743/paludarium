@@ -465,48 +465,15 @@ impl Network {
         let (IpAddr::V4(from), IpAddr::V4(to)) = (plain(from), plain(to)) else {
             return Reach::Unanswered;
         };
-        let rpf = |devices: &crate::netdev::Devices, index: i32| {
-            devices
-                .by_index(index)
-                .map_or(0, |d| d.conf4.rp_filter)
-                .max(devices.all4.rp_filter)
+        let Some(Arp {
+            peer,
+            answer,
+            own_mac,
+            own_rpf,
+        }) = self.arp(index, from, to, now)
+        else {
+            return Reach::Unanswered;
         };
-        let (peer, own_rpf, own_mac) = {
-            let devices = self.devices();
-            let Some(veth) = devices.by_index(index).and_then(|d| d.veth.as_ref()) else {
-                return Reach::Unanswered;
-            };
-            let peer = veth
-                .peer
-                .clone()
-                .filter(|_| veth.carrier)
-                .and_then(|p| p.network.upgrade().map(|n| (n, p.index)));
-            (peer, rpf(&devices, index), veth.mac)
-        };
-        // Who answers ARP for `to`: `arp_process` takes no request for a
-        // loopback address (with `route_localnet` off), and asks the
-        // route in from `from`, which a request from 0.0.0.0 skips.
-        let peer = peer.and_then(|(there, at)| {
-            let (mac, their_rpf) = {
-                let devices = there.devices();
-                let mac = devices
-                    .by_index(at)
-                    .and_then(|d| d.veth.as_ref())
-                    .map(|v| v.mac)?;
-                (mac, rpf(&devices, at))
-            };
-            Some((there, at, mac, their_rpf))
-        });
-        let answer = peer.as_ref().and_then(|(there, at, mac, their_rpf)| {
-            let addresses = there.addresses_at(now);
-            let answers = !to.is_loopback()
-                && addresses.local4(to)
-                && (from.is_unspecified()
-                    || addresses
-                        .validate_source4_on(from, 0, 0, *their_rpf, *at)
-                        .is_ok());
-            answers.then_some(*mac)
-        });
         let at = now.unwrap_or(0);
         let (lladdr, asked, events) = self.addresses_at(now).arp_output(index, to, answer, at);
         self.later(events);
@@ -560,6 +527,96 @@ impl Network {
             Reach::Answered(there)
         } else {
             Reach::OneWay(there)
+        }
+    }
+    /// What ARP finds out through this namespace's veth end `index` for
+    /// `to`, asked from `from`: the peer, if the end has its carrier,
+    /// with its namespace, index, Ethernet address and reverse path
+    /// filtering; the address of the peer's that answers, if it does, as
+    /// `arp_process` takes no request for a loopback address (with
+    /// `route_localnet` off) and asks the route in from `from`, which a
+    /// request from 0.0.0.0 skips; and the end's own address and reverse
+    /// path filtering. `None` for no such end.
+    fn arp(&self, index: i32, from: Ipv4Addr, to: Ipv4Addr, now: Option<u64>) -> Option<Arp> {
+        let rpf = |devices: &crate::netdev::Devices, index: i32| {
+            devices
+                .by_index(index)
+                .map_or(0, |d| d.conf4.rp_filter)
+                .max(devices.all4.rp_filter)
+        };
+        let (peer, own_rpf, own_mac) = {
+            let devices = self.devices();
+            let veth = devices.by_index(index).and_then(|d| d.veth.as_ref())?;
+            let peer = veth
+                .peer
+                .clone()
+                .filter(|_| veth.carrier)
+                .and_then(|p| p.network.upgrade().map(|n| (n, p.index)));
+            (peer, rpf(&devices, index), veth.mac)
+        };
+        let peer = peer.and_then(|(there, at)| {
+            let (mac, their_rpf) = {
+                let devices = there.devices();
+                let mac = devices
+                    .by_index(at)
+                    .and_then(|d| d.veth.as_ref())
+                    .map(|v| v.mac)?;
+                (mac, rpf(&devices, at))
+            };
+            Some((there, at, mac, their_rpf))
+        });
+        let answer = peer.as_ref().and_then(|(there, at, mac, their_rpf)| {
+            let addresses = there.addresses_at(now);
+            let answers = !to.is_loopback()
+                && addresses.local4(to)
+                && (from.is_unspecified()
+                    || addresses
+                        .validate_source4_on(from, 0, 0, *their_rpf, *at)
+                        .is_ok());
+            answers.then_some(*mac)
+        });
+        Some(Arp {
+            peer,
+            answer,
+            own_mac,
+            own_rpf,
+        })
+    }
+    /// A request with `NTF_USE` or `NTF_MANAGED` resolves the neighbour
+    /// `to` of the veth end `index` at `now` (`neigh_event_send`): its
+    /// probe goes without a packet, from the address `inet_select_addr`
+    /// picks on the end for link scope (`arp_solicit`), and an answer
+    /// makes it reachable, and teaches the peer, as a packet's does
+    /// ([`Self::reach`]); each told of once the request is done.
+    pub(crate) fn arp_resolve(&self, index: i32, to: Ipv4Addr, now: u64) {
+        let from = {
+            let order = self.devices().order();
+            self.addresses()
+                .select4(index, Some(to), crate::interface::SCOPE_LINK, &order)
+                .unwrap_or(Ipv4Addr::UNSPECIFIED)
+        };
+        let Some(Arp {
+            peer,
+            answer,
+            own_mac,
+            ..
+        }) = self.arp(index, from, to, Some(now))
+        else {
+            return;
+        };
+        let (_, asked, events) = self
+            .addresses_at(Some(now))
+            .arp_output(index, to, answer, now);
+        self.later(events);
+        if asked
+            && answer.is_some()
+            && !from.is_unspecified()
+            && let Some((there, peer_index, ..)) = &peer
+        {
+            let events = there
+                .addresses_at(Some(now))
+                .arp_learn(*peer_index, from, own_mac, now);
+            there.later(events);
         }
     }
     /// The peer of this namespace's veth end `index` answers what came
@@ -1129,6 +1186,13 @@ enum Reach {
     Dropped,
     /// Nobody answers ARP for its destination.
     Unanswered,
+}
+/// What ARP finds out through a veth end ([`Network::arp`]).
+struct Arp {
+    peer: Option<(Arc<Network>, i32, [u8; 6], i32)>,
+    answer: Option<[u8; 6]>,
+    own_mac: [u8; 6],
+    own_rpf: i32,
 }
 /// What a handshake found.
 enum Knock {

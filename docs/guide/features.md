@@ -2744,7 +2744,9 @@ kernel.
     (`NUD_PROBE`) and is reachable once the peer answers, or fails after 3
     probes. Each of these changes but to incomplete and to delaying is
     told to `RTNLGRP_NEIGH`, the timers' as a netlink socket of the
-    namespace next reads, polls or writes. An end going down takes its
+    namespace next reads, polls or writes. A request with `NTF_USE` or
+    `NTF_MANAGED` asks ARP as a packet does, from the address
+    `inet_select_addr` picks on the end (`arp_solicit`). An end going down takes its
     neighbours, each told of with `RTM_DELNEIGH` after its
     `RTM_NEWLINK`; its peer losing its carrier, all but the permanent
     ones (`neigh_carrier_down`); and an end that goes or moves away, all.
@@ -2752,8 +2754,10 @@ kernel.
     `neightbl_dump_info`, gives each table the family names (ARP's and
     neighbour discovery's for `AF_UNSPEC`, none for another family) with
     its name, garbage collection's interval and thresholds, its
-    configuration, statistics and default parameters, then `lo`'s
-    parameters, which count its neighbours' references. Strictly, an
+    configuration, statistics and default parameters, then each device's
+    parameters, the newest first, which count its neighbours' references:
+    ARP's of the veth ends and `lo` (`inetdev_init`), neighbour
+    discovery's of `lo`. Strictly, an
     `ndtmsg` short, with padding or with attributes after it is `EINVAL`
     (`neightbl_valid_dump_info`).
   - **Notifications:** a socket is a member of the groups `bind` names
