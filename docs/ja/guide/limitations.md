@@ -403,12 +403,15 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   null のセレクタは `%fs` と `%gs` のベースを消しますが、Zen 2 より前の AMD の CPU は
   ベースを残します。
 - **io_uring の一部**：実行するのは `IORING_OP_NOP`、`IORING_OP_EPOLL_CTL`、
-  `IORING_OP_READ`、`_WRITE`、`_READV`、`_WRITEV`、`_FSYNC`、`_READ_FIXED`、`_WRITE_FIXED`
-  だけで、ほかの操作は `EOPNOTSUPP` で完了します。setup のフラグ `IORING_SETUP_IOPOLL`、`_SQPOLL`、
+  `IORING_OP_READ`、`_WRITE`、`_READV`、`_WRITEV`、`_FSYNC`、`_READ_FIXED`、`_WRITE_FIXED`、
+  `IORING_OP_FILES_UPDATE` だけで、ほかの操作は `EOPNOTSUPP` で完了します。setup のフラグ `IORING_SETUP_IOPOLL`、`_SQPOLL`、
   `_SQ_AFF`、`_ATTACH_WQ`、`_R_DISABLED`、`_SQE128`、`_CQE32`、`_NO_MMAP`、
   `_REGISTERED_FD_ONLY` は `EINVAL` です。`io_uring_register` は `IORING_REGISTER_PROBE`、
-  `IORING_REGISTER_BUFFERS`、`IORING_UNREGISTER_BUFFERS` だけで（ほかは `EINVAL`）、リングの
-  記述子、ファイル、パーソナリティは登録できず、バッファーの更新やタグもありません。登録した
+  `IORING_REGISTER_BUFFERS`、`IORING_UNREGISTER_BUFFERS`、`IORING_REGISTER_FILES`、
+  `IORING_UNREGISTER_FILES`、`IORING_REGISTER_FILES_UPDATE`、
+  `IORING_REGISTER_FILE_ALLOC_RANGE` だけです（ほかは `EINVAL`）。そのため、リングの記述子と
+  パーソナリティは登録できず、バッファーは更新できません。タグを付ける
+  `IORING_REGISTER_FILES2` と `_BUFFERS2` でファイルやバッファーを登録することもできません。登録した
   バッファーのページは固定されません。固定バッファーの転送は、そのときそのアドレスにマップ
   されているメモリを動かすので、バッファーを外したり読み出し専用にしたりすると `EFAULT` で
   失敗し、リングを共有するプロセスは自分のメモリを動かします。Linux は固定したページを

@@ -477,15 +477,20 @@ verified.
   Linux reloads them in every thread of the address space. A null selector
   clears the `%fs` or `%gs` base, where AMD's CPUs before Zen 2 keep it.
 - **io_uring, in part**: only `IORING_OP_NOP`, `IORING_OP_EPOLL_CTL`,
-  `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV`, `_FSYNC`, `_READ_FIXED`
-  and `_WRITE_FIXED` run; the other operations complete with `EOPNOTSUPP`.
+  `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV`, `_FSYNC`, `_READ_FIXED`,
+  `_WRITE_FIXED` and `IORING_OP_FILES_UPDATE` run; the other operations
+  complete with `EOPNOTSUPP`.
   The setup flags
   `IORING_SETUP_IOPOLL`, `_SQPOLL`, `_SQ_AFF`, `_ATTACH_WQ`, `_R_DISABLED`,
   `_SQE128`, `_CQE32`, `_NO_MMAP` and `_REGISTERED_FD_ONLY` give `EINVAL`,
   and `io_uring_register` has only `IORING_REGISTER_PROBE`,
-  `IORING_REGISTER_BUFFERS` and `IORING_UNREGISTER_BUFFERS` (the others give
-  `EINVAL`), so no ring descriptor, file or personality can be registered,
-  and buffers cannot be updated or given tags. A registered buffer's pages
+  `IORING_REGISTER_BUFFERS`, `IORING_UNREGISTER_BUFFERS`,
+  `IORING_REGISTER_FILES`, `IORING_UNREGISTER_FILES`,
+  `IORING_REGISTER_FILES_UPDATE` and `IORING_REGISTER_FILE_ALLOC_RANGE`
+  (the others give `EINVAL`). So no ring descriptor or personality can be
+  registered, buffers cannot be updated, and neither files nor buffers can
+  be registered with `IORING_REGISTER_FILES2` or `_BUFFERS2`, which give
+  them tags. A registered buffer's pages
   are not pinned: a fixed transfer moves the memory at its address as that
   is mapped then, so it fails with `EFAULT` once the buffer is unmapped or
   made read-only, and a process that shares the ring moves its own memory.
