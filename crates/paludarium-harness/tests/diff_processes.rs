@@ -322,6 +322,7 @@ mod linux {
                     | "bpf-lpm"
                     | "bpf-maps"
                     | "bpf-prog-load"
+                    | "bpf-mmap"
                     | "bpf-prog-verify"
                     | "bpf-prog-maps"
                     | "bpf-prog-context"
@@ -706,6 +707,7 @@ mod linux {
         bpf_lpm => ("bpf-lpm","bpf"),
         bpf_maps => ("bpf-maps","bpf"),
         bpf_prog_load => ("bpf-prog-load","bpf"),
+        bpf_mmap => ("bpf-mmap","bpf"),
         bpf_prog_verify => ("bpf-prog-verify","bpf-prog"),
         bpf_prog_maps => ("bpf-prog-maps","bpf-prog"),
         bpf_prog_context => ("bpf-prog-context","bpf-prog"),

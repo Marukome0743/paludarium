@@ -4680,7 +4680,22 @@ kernel.
   (`sysinfo`'s 4 GiB), checked as `vmalloc` checks it, is `ENOMEM`. Its
   fdinfo has `map_type`, `key_size`, `value_size`, `max_entries`,
   `map_flags`, `map_extra`, `memlock` (that memory), `map_id` and
-  `frozen`. A `BPF_MAP_TYPE_LRU_HASH` is a hash that, when full, gives up
+  `frozen`. An array made with `BPF_F_MMAPABLE` maps with `mmap`, as
+  Linux's `bpf_map_mmap` and `array_map_mmap` map it: a shared mapping of
+  its values, each `value_size` rounded up to 8 bytes from the last, that
+  shows what the system calls and programs read and write. It reaches no
+  further than the values, rounded up to a page (`EINVAL`). Another map
+  type is the kernel's `ENOTSUPP` (524), and an array without the flag
+  `EINVAL`; so is a private mapping, or a shared one of a descriptor open
+  only for reading, while one of a descriptor open only for writing is
+  `EACCES` and one that executes `EPERM`. A mapping that writes may not be
+  of a frozen map (`EPERM`) or of one made with `BPF_F_RDONLY_PROG`
+  (`EACCES`), and while one lasts, a child's copy included,
+  `BPF_MAP_FREEZE` is `EBUSY`. The VMA, which `/proc/<pid>/maps` names
+  `anon_inode:bpf-map`, is `VM_DONTEXPAND`, `VM_DONTDUMP` and
+  `VM_MIXEDMAP`, never executes, and never writes unless it was mapped to
+  (`mprotect` gives `EACCES`); it keeps the map after the map's
+  descriptors close. A `BPF_MAP_TYPE_LRU_HASH` is a hash that, when full, gives up
   a key for a new one instead of `E2BIG`, as Linux's `bpf_lru_list.c`
   chooses it: its elements move between the free, active and inactive
   lists and a CPU's local free and pending lists, so that the key that
@@ -4905,7 +4920,8 @@ kernel.
   -1 gives 0. An atomic in 32 bits changes the lower half of a slot with
   the source's lower half and compares R0's, and the old value comes back
   zero-extended; no other access to a map's value comes between its read
-  and its write. A load-acquire comes back zero-extended, and a
+  and its write, a mapping's write to a mappable array's value included.
+  A load-acquire comes back zero-extended, and a
   store-release writes the source's lower bytes. A `BPF_LD_ABS` or
   `BPF_LD_IND` loads big-endian, as Linux's `bpf_gen_ld_abs` rewrites it
   into a call of `bpf_skb_load_helper_8`, `_16` or `_32`: its offset is
