@@ -280,6 +280,7 @@ mod linux {
                     | "fanotify-open-exec"
                     | "fanotify-aio-perm"
                     | "fanotify-exec-perm"
+                    | "fanotify-drop-caches"
                     | "fanotify-merge-window"
                     | "fanotify-superblock-marks"
                     | "userfaultfd-calls"
@@ -482,6 +483,22 @@ mod linux {
                 config
             };
             let host = Arc::new(RecordingHost::new());
+            // Its files must be on a host's file system, as the native run's
+            // /tmp is, whose inodes go once nothing uses them (a tmpfs keeps
+            // its own): a host directory of its own is the guest's /tmp, as
+            // the files tests' is.
+            let mut config = config;
+            let host_tmp = (mode == "fanotify-drop-caches").then(|| {
+                let dir =
+                    std::env::temp_dir().join(format!("paludarium-{mode}-{}", std::process::id()));
+                std::fs::create_dir_all(&dir).unwrap();
+                config.mounts.push(paludarium::Mount {
+                    host: dir.clone(),
+                    guest: b"/tmp".to_vec(),
+                });
+                host.mount_host_directories();
+                dir
+            });
             // Their timers and limits wait for CPU time, which the virtual
             // clock does not pass, and the perf cases' clocks count it.
             if matches!(
@@ -509,6 +526,9 @@ mod linux {
                 status,
                 elapsed: start.elapsed(),
             };
+            if let Some(dir) = host_tmp {
+                let _ = std::fs::remove_dir_all(dir);
+            }
             println!(
                 "{mode}: native {:?} {:?}, emulated {:?} {:?}; stop {:?}",
                 native.status,
@@ -723,6 +743,7 @@ mod linux {
         fanotify_open_exec => ("fanotify-open-exec","fanotify"),
         fanotify_aio_perm => ("fanotify-aio-perm","fanotify"),
         fanotify_exec_perm => ("fanotify-exec-perm","fanotify"),
+        fanotify_drop_caches => ("fanotify-drop-caches","fanotify"),
         fanotify_merge_window => ("fanotify-merge-window","fanotify"),
         fanotify_superblock_marks => ("fanotify-superblock-marks","fanotify"),
         userfaultfd_calls => ("userfaultfd-calls","userfaultfd"),
