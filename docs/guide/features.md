@@ -4666,6 +4666,14 @@ kernel.
   license (`EFAULT`), a device to bind to (`EINVAL`), and the type: any but
   a socket filter is `EINVAL`, as on a kernel built without it. The name
   comes last, as a map's (`EINVAL`).
+  With `BPF_F_STRICT_ALIGNMENT`, and without `BPF_F_ANY_ALIGNMENT`, the
+  verifier requires every access to be aligned to its size, as Linux's
+  `check_ptr_alignment` does: through the context ("misaligned context
+  access off %s+%d+%d size %d"), a map's value ("misaligned value
+  access ..."), a lookup's result before its null check, and a scalar
+  ("misaligned access ...", checked before the access is refused), all
+  `EACCES`. The stack, and every `BPF_ATOMIC`, is aligned whatever the
+  flags.
 
 - The verifier (`kernel/bpf/verifier.c`) takes a program only if both of
   the kernels the tests know take it, master and 7.0, and rejects what
@@ -4714,11 +4722,12 @@ kernel.
   map has `BPF_F_RDONLY_PROG` and not read when it has
   `BPF_F_WRONLY_PROG` (`EACCES`). The program keeps the maps it uses.
 
-- `BPF_ATOMIC` changes 4 or 8 bytes of the stack or of a map's value in
-  one step, as Linux's `check_atomic` checks it: add, or, and and xor,
-  each with or without `BPF_FETCH`, `BPF_XCHG` and `BPF_CMPXCHG`. Another
-  operation is "BPF_ATOMIC uses invalid atomic opcode %02x" and another
-  size "invalid atomic operand size" (`EINVAL`). The source and
+- `BPF_ATOMIC`'s read-modify-write operations change 4 or 8 bytes of the
+  stack or of a map's value in one step, as Linux's `check_atomic` checks
+  them: add, or, and and xor, each with or without `BPF_FETCH`,
+  `BPF_XCHG` and `BPF_CMPXCHG`. Another operation is "BPF_ATOMIC uses
+  invalid atomic opcode %02x", and another size for these
+  "invalid atomic operand size" (`EINVAL`). The source and
   destination registers, and R0 for `BPF_CMPXCHG`, must be written; the
   context is "BPF_ATOMIC stores into R%d ctx is not allowed" (`EACCES`).
   The register the old value goes to, the source with `BPF_FETCH` and R0
@@ -4726,6 +4735,12 @@ kernel.
   destination, which then reads through a scalar. The memory is read,
   then written, aligned to the size whatever the program's flags, and a
   stack slot written so holds bytes, even where a pointer was spilled.
+  `BPF_LOAD_ACQ` and `BPF_STORE_REL`, of any size, are checked as a load
+  and a store are, aligned whatever the flags, and refused through the
+  context ("BPF_ATOMIC loads from R%d ctx is not allowed",
+  "BPF_ATOMIC stores into R%d ctx is not allowed", `EACCES`): a load as
+  soon as its source is read, before its access is checked, as master and
+  the test machines' 7.0 refuse it, and a store after its access.
 
 - The context, R1 as a program starts, is the packet's `struct
   __sk_buff`, read and written as Linux lets a socket filter: its 4-byte
@@ -4768,7 +4783,8 @@ kernel.
   -1 gives 0. An atomic in 32 bits changes the lower half of a slot with
   the source's lower half and compares R0's, and the old value comes back
   zero-extended; no other access to a map's value comes between its read
-  and its write. The context is the message's `__sk_buff`: its `len`, `cb[]`
+  and its write. A load-acquire comes back zero-extended, and a
+  store-release writes the source's lower bytes. The context is the message's `__sk_buff`: its `len`, `cb[]`
   from 0 and 0 for the fields an AF_UNIX message does not set.
   `bpf_skb_load_bytes` reads the message, and its relative form reads it
   from the network header, its start, where there is no MAC header

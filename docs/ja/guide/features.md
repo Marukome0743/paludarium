@@ -4044,6 +4044,12 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   （`EFAULT`）、結び付けるデバイス（`EINVAL`）、そして型です。ソケットフィルター以外の型は、
   それを組み込まずにビルドしたカーネルと同じく `EINVAL` です。名前は、マップと同じく最後に
   確かめます（`EINVAL`）。
+  `BPF_F_STRICT_ALIGNMENT` があり `BPF_F_ANY_ALIGNMENT` がないとき、検証器は Linux の
+  `check_ptr_alignment` と同じく、どのアクセスも大きさに揃っていることを求めます。
+  コンテキスト（"misaligned context access off %s+%d+%d size %d"）、マップの値
+  （"misaligned value access ..."）、null を確かめる前のルックアップの結果、スカラー
+  （"misaligned access ..."。アクセスを断る前に確かめます）を通したアクセスで、どれも
+  `EACCES` です。スタックと `BPF_ATOMIC` は、フラグにかかわらず揃っていなければなりません。
 
 - 検証器（`kernel/bpf/verifier.c`）は、テストが知る二つのカーネル、master と 7.0 の
   どちらも受け入れるプログラムだけを受け入れ、どちらかが断るものは断ります。最初に構造を
@@ -4082,10 +4088,11 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   収まり（"invalid access to map value"、`EACCES`）、マップが `BPF_F_RDONLY_PROG` なら書けず、
   `BPF_F_WRONLY_PROG` なら読めません（`EACCES`）。プログラムは使うマップを持ち続けます。
 
-- `BPF_ATOMIC` は、スタックかマップの値の 4 バイトか 8 バイトを一度に変えます。確かめ方は
-  Linux の `check_atomic` と同じです。加算、OR、AND、XOR（それぞれ `BPF_FETCH` ありとなし）、
-  `BPF_XCHG`、`BPF_CMPXCHG` を受け付けます。ほかの演算は "BPF_ATOMIC uses invalid atomic
-  opcode %02x"、ほかの大きさは "invalid atomic operand size" です（`EINVAL`）。ソースと
+- `BPF_ATOMIC` の読み出し・変更・書き込みの演算は、スタックかマップの値の 4 バイトか
+  8 バイトを一度に変えます。確かめ方は Linux の `check_atomic` と同じです。加算、OR、AND、
+  XOR（それぞれ `BPF_FETCH` ありとなし）、`BPF_XCHG`、`BPF_CMPXCHG` を受け付けます。ほかの
+  演算は "BPF_ATOMIC uses invalid atomic opcode %02x"、これらのほかの大きさは "invalid atomic
+  operand size" です（`EINVAL`）。ソースと
   デスティネーションのレジスタ、`BPF_CMPXCHG` では R0 も、書かれていなければなりません。
   コンテキストへは "BPF_ATOMIC stores into R%d ctx is not allowed" です（`EACCES`）。古い値を
   受け取るレジスタ（`BPF_FETCH` ではソース、`BPF_CMPXCHG` では R0）は、その時点から値の
@@ -4093,6 +4100,11 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   読むことになります。メモリは読んでから書き、プログラムのフラグにかかわらず大きさに揃って
   いなければなりません。こうして書いたスタックのスロットは、ポインタを退避していたところでも、
   ただのバイトになります。
+  `BPF_LOAD_ACQ` と `BPF_STORE_REL` は、どの大きさでも、ロードとストアと同じに確かめ、
+  フラグにかかわらず揃っていなければなりません。コンテキストを通したものは断ります
+  （"BPF_ATOMIC loads from R%d ctx is not allowed"、"BPF_ATOMIC stores into R%d ctx is not
+  allowed"、`EACCES`）。ロードは、master とテストのマシンの 7.0 と同じく、ソースを読んだ
+  すぐあと、アクセスを確かめる前に断ります。ストアはアクセスを確かめたあとに断ります。
 
 - コンテキストは、プログラムが始まるときの R1 で、パケットの `struct __sk_buff` です。
   Linux がソケットフィルターに許すとおりに読み書きできます。4 バイトのフィールドは、
@@ -4126,7 +4138,8 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   レジスタによる除算は 0 で、剰余は被除数のままです。-1 による符号付き除算は符号を反転し、
   符号付き剰余は 0 です。32 ビットのアトミック演算は、スロットの下半分をソースの下半分で変え、
   R0 の下半分と比べます。古い値はゼロ拡張して返ります。マップの値への読みと書きの間に、
-  その値へのほかのアクセスは入りません。コンテキストはメッセージの `__sk_buff` です。`len`、0 から始まる
+  その値へのほかのアクセスは入りません。ロードアクワイアはゼロ拡張して返り、ストアリリースは
+  ソースの下位のバイトを書きます。コンテキストはメッセージの `__sk_buff` です。`len`、0 から始まる
   `cb[]` があり、AF_UNIX のメッセージが設定しないフィールドは 0 です。
   `bpf_skb_load_bytes` はメッセージを読み、相対形はネットワークヘッダ（メッセージの先頭）
   から読みます。MAC ヘッダはありません（`EFAULT`）。プログラムが更新するマップは、
