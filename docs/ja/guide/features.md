@@ -1460,19 +1460,31 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
     成功してマップされたまま残します。
   - `fork` の子は封印を受け継ぎ、`exec` のあとは何も封印されていません。
 
-- io_uring は Linux 6.12 のもので、操作は `IORING_OP_NOP`、`IORING_OP_EPOLL_CTL`（libuv が
+- io_uring は Linux 6.12 のものですが、登録したファイル、バッファーのグループ、NOP の
+  フラグは、差分テストを走らせるカーネルである Linux 7.0 のもの（`io_uring/rsrc.c`、
+  `kbuf.c`、`nop.c`。NOP の `IOSQE_FIXED_FILE` は master のもの）です。操作は `IORING_OP_NOP`、`IORING_OP_EPOLL_CTL`（libuv が
   `epoll_ctl` をまとめるのに使います）と、ファイルの転送 `IORING_OP_READ`、`_WRITE`、
-  `_READV`、`_WRITEV`、`_FSYNC`、`_READ_FIXED`、`_WRITE_FIXED`、それに `IORING_OP_FILES_UPDATE` です。ほかの操作は、それらなしでビルドした Linux と同じく
+  `_READV`、`_WRITEV`、`_FSYNC`、`_READ_FIXED`、`_WRITE_FIXED`、`IORING_OP_FILES_UPDATE`、
+  それに `IORING_OP_PROVIDE_BUFFERS` と `_REMOVE_BUFFERS` です。ほかの操作は、それらなしでビルドした Linux と同じく
   `EOPNOTSUPP` で完了し、`IORING_REGISTER_PROBE` もこれらだけを報告します。リングの大きさ、オフセット、機能は Linux が返すものと同じで、記述子の `mmap` で
   見えます。要求は `io_uring_enter` が取り出すときに実行されるので、呼び出しが戻るときには
   完了がキューにあります。リンク、成功時に完了を省くもの、キューがいっぱいのあいだ保たれる
-  完了（`IORING_FEAT_NODROP`）は Linux と同じです。
+  完了（`IORING_FEAT_NODROP`）は Linux と同じです。一度の投入の完了は、Linux が投稿する
+  ように、その要求をすべて実行してから入ります（`io_submit_flush_completions`）。
+
+- `IORING_OP_NOP` は、`io_nop_prep` と `io_nop` と同じく Linux 7.0 のフラグを取ります。
+  `IORING_NOP_INJECT_RESULT` は `len` を結果にして完了させます。`IORING_NOP_FILE` は
+  `fd` のファイルを、`IORING_NOP_FIXED_FILE` があれば登録したものを探し、
+  `IORING_NOP_FIXED_BUFFER` は登録したバッファー `buf_index` を探します。これは Linux
+  master と同じで、`IOSQE_FIXED_FILE` でも登録したファイルを指します。ファイルが見つからない
+  NOP は `EBADF` で、バッファーが見つからない NOP は `EFAULT` で完了します。32 バイトの完了を持つリングはないので `IORING_NOP_CQE32`
+  は `EINVAL` で、知らないフラグも `EINVAL` です。
 
 - 転送は Linux の `io_prep_rw` と `io_read` または `io_write` と同じ順に調べ、同じところで
   失敗します。準備では優先度、属性、バッファーかベクターを調べ、そこでのエラーは投入を
   終わらせます。実行で調べるものは、エラーで完了します。ファイル（記述子がなければ `EBADF`。
   `IOSQE_FIXED_FILE` では、登録したファイルのスロットが空なら `EBADF`）、バッファーを選ぶ
-  読み出しの提供バッファー（`ENOBUFS`）、アクセスモード、`RWF_*`
+  読み出しのバッファー（`ENOBUFS`。次にユーザー空間を越えるものは `EFAULT`）、アクセスモード、`RWF_*`
   フラグ（`RWF_HIPRI` は `EINVAL`）、範囲、読み出しの `FAN_ACCESS_PERM`、読み書きできない
   ファイル（`EINVAL`。ディレクトリーは `EISDIR`）の順です。オフセット -1 はファイルの位置で、
   位置は動かした分だけ進みます。パイプのようなストリームは、どのオフセットでも受け付けます。
@@ -1522,6 +1534,46 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   - `IORING_REGISTER_FILE_ALLOC_RANGE` はその範囲を決めます。引数が要り、数は取らず
     （`EINVAL`）、それから範囲を読みます（`EFAULT`。`EOVERFLOW`。登録したファイルを越える
     範囲は `EINVAL`）。ファイルを登録すると、範囲はそのすべてになります。
+  - `IORING_REGISTER_FILES2` と `IORING_REGISTER_FILES_UPDATE2` は、Linux 7.0 の
+    `io_register_rsrc` と `io_register_rsrc_update` と同じく、スロットごとにタグを付けて
+    ファイルを登録し、更新します。引数はその大きさで（`EINVAL`）、読めて（`EFAULT`）、数が
+    あり予約欄が 0 でなければなりません（`EINVAL`）。唯一のフラグ
+    `IORING_RSRC_REGISTER_SPARSE` は空のスロットを登録し、記述子を取りません（`EINVAL`）。
+    記述子なしの登録も同じです。タグはそれぞれ記述子より先に読み（`EFAULT`）、タグには
+    ファイルが要ります（空にするスロットや飛ばすスロットには `EINVAL`）。タグ付きのファイルを
+    何も持たなくなると、つまりスロットが空になったかファイルの登録が外れると（最後のスロット
+    から）、タグを `user_data` に、0 を結果にした完了がすぐに入ります。スロットを空にした
+    投入の完了より先ですが、その投入の要求がファイルを持っていればそれらの後です。失敗した
+    登録はタグを投稿しません。
+
+- リングはバッファーのグループを保ち、`IOSQE_BUFFER_SELECT` の読み出しは `buf_group` が
+  指すグループからその 1 つを選びます。Linux の `io_uring/kbuf.c` と同じです。読み出しは
+  長さの分まで（長さがなければバッファー全体）で、完了のフラグには `IORING_CQE_F_BUFFER` と、
+  上位 16 ビットにバッファーの ID が入ります。グループに残りがないか、グループがなければ
+  `ENOBUFS` です。
+  - `IORING_OP_PROVIDE_BUFFERS` はグループの終わりにバッファーを加え（グループがなければ
+    作ります）、ID は `off` からです。`IORING_OP_REMOVE_BUFFERS` は初めから指定の数まで
+    取り除き（グループがなければ `ENOENT`）、取り除いた数を返します。エントリーは
+    `io_provide_buffers_prep` と `io_remove_buffers_prep` と同じく調べます（`E2BIG`、
+    `EINVAL`、`EOVERFLOW`、ユーザー空間を越えるバッファーは `EFAULT`）。1 つのグループは
+    65535 個までです（1 つも加えられなければ `EOVERFLOW`）。読み出しは、選んだ時点で
+    バッファーを使い終えます。そのあと失敗しても同じです。
+  - `IORING_REGISTER_PBUF_RING` は、`io_register_pbuf_ring` と同じくグループのバッファーの
+    リングを登録します。予約バイト、未知のフラグ、65536 未満の 2 の累乗でないエントリー数は
+    `EINVAL`、そこにリングかバッファーのあるグループがあれば `EEXIST` です。リングは
+    プログラムのメモリにあり、ページ境界にあって（`EINVAL`）、一周せず（`EOVERFLOW`）、
+    書き込めること（`EFAULT`）が要ります。`IOU_PBUF_RING_MMAP` ではカーネルがページを用意し、
+    リングの記述子を `IORING_OFF_PBUF_RING` とグループの ID のオフセットで `mmap` すると
+    見えます（そのページのないグループは `ENOMEM`）。そのページは、登録バッファーと同じく
+    RLIMIT_MEMLOCK に数えます。`IORING_UNREGISTER_PBUF_RING` はリングを外し（`ENOENT`。
+    提供バッファーなら `EINVAL`）、`IORING_REGISTER_PBUF_STATUS` はその head を返します。
+  - 読み出しは、tail がそこになければリングの head のバッファーを取ります。通常のファイルの
+    ようにポーリングできないファイルは、読み出しが選んだ時点でバッファーを使い、読み出しが
+    そのあとどうなっても同じです。パイプやソケットは、読み出しが失敗しなかったときに使い、
+    失敗すればバッファーはリングに残ります。`IOU_PBUF_RING_INC` では、読み出しは読んだ
+    バイトの分だけ使い（ポーリングできないファイルでは求めたバイトの分）、バッファーの
+    アドレスと長さをその先へ進めます。バッファーが残っているあいだ、完了には
+    `IORING_CQE_F_BUF_MORE` が付きます。
 
 - Linux のネイティブな非同期 I/O（libaio が包む呼び出し）は `fs/aio.c` のものです。
   `io_setup` はイベント数を CPU ごとに少なくとも 4 にして 2 倍にし（`0x8000000 / 32` を

@@ -1027,6 +1027,7 @@ mod linux {
         processes_io_uring => ("io-uring","process"),
         processes_io_uring_transfers => ("io-uring-transfers","process"),
         processes_io_uring_files => ("io-uring-files","process"),
+        processes_io_uring_buffers => ("io-uring-buffers","process"),
         vfork_exit => ("vfork-exit","process"),
         processes_exec => ("exec","process"),
         exec_thread => ("exec-thread","process"),
