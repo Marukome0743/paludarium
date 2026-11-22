@@ -13960,6 +13960,83 @@ static int proc_at_read_case(const char *self) {
     return 0;
 }
 
+/* The leader-exit-status case: a process whose leader ends with exit
+   before its other thread has, once that thread ends too, the status Linux's
+   synchronize_group_exit gives it: the last thread's own exit code, or the
+   group's for exit_group or a fatal signal. While the thread runs, its stat
+   shows the leader as a zombie with the leader's own exit_code (5 << 8),
+   and the zombie's stat and the wait show the process's status. */
+static int les_go[2], les_variant;
+static void *les_worker(void *unused) {
+    (void)unused;
+    char c;
+    if (read(les_go[0], &c, 1) != 1) syscall(SYS_exit, 99);
+    if (les_variant == 0) syscall(SYS_exit, 7);
+    if (les_variant == 1) syscall(SYS_exit_group, 9);
+    for (;;) pause();
+}
+
+/* The state and exit_code (field 52) of /proc/<pid>/stat, -1 if unread. */
+static int les_stat(pid_t pid, char *state) {
+    char path[64], buffer[4096];
+    snprintf(path, sizeof path, "/proc/%d/stat", (int)pid);
+    long n = proc_read(path, buffer, sizeof buffer - 1);
+    if (n <= 0) return -1;
+    buffer[n] = 0;
+    char *s = strrchr(buffer, ')');
+    if (!s || !s[1]) return -1;
+    s += 2;
+    *state = *s;
+    for (int i = 0; i < 49 && s; i++) {
+        s = strchr(s, ' ');
+        if (s) s++;
+    }
+    return s ? atoi(s) : -1;
+}
+
+static int leader_exit_status_case(void) {
+    static const char *names[] = {"exit", "exit_group", "sigkill"};
+    for (les_variant = 0; les_variant < 3; les_variant++) {
+        if (pipe(les_go) < 0) return 1;
+        fflush(stdout);
+        pid_t kid = fork();
+        if (kid < 0) return 2;
+        if (kid == 0) {
+            pthread_t worker;
+            if (pthread_create(&worker, NULL, les_worker, NULL)) _exit(98);
+            syscall(SYS_exit, 5);
+        }
+        /* Until the leader is a zombie, for at most 5 s. */
+        char state = '?';
+        int during = -1;
+        for (int i = 0; i < 500 && state != 'Z'; i++) {
+            during = les_stat(kid, &state);
+            if (state != 'Z') nanosleep(&(struct timespec){0, 10000000}, NULL);
+        }
+        if (state != 'Z') {
+            kill(kid, SIGKILL);
+            waitpid(kid, NULL, 0);
+            return 4;
+        }
+        if (les_variant == 2)
+            kill(kid, SIGKILL);
+        else if (write(les_go[1], "g", 1) != 1)
+            return 3;
+        siginfo_t info;
+        memset(&info, 0, sizeof info);
+        waitid(P_PID, kid, &info, WEXITED | WNOWAIT);
+        char zombie_state = '?';
+        int zombie = les_stat(kid, &zombie_state);
+        int status = 0;
+        waitpid(kid, &status, 0);
+        close(les_go[0]);
+        close(les_go[1]);
+        printf("%s: running state=%c exit_code=%d; zombie state=%c exit_code=%d; wait=%#x\n",
+               names[les_variant], state, during, zombie_state, zombie, status);
+    }
+    return 0;
+}
+
 /* The loadavg-running case: /proc/loadavg's running count, as Linux's
    nr_running(), counts the threads that can run: with two threads spinning
    besides the reader, at least 3, and no more than the live tasks; and
@@ -34457,6 +34534,7 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "proc-sizes")) return proc_sizes_case();
     if (!strcmp(mode, "proc-stat-counters")) return proc_stat_counters_case();
     if (!strcmp(mode, "loadavg-running")) return loadavg_running_case();
+    if (!strcmp(mode, "leader-exit-status")) return leader_exit_status_case();
     if (!strcmp(mode, "proc-stat-exit-code")) return proc_stat_exit_code_case();
     if (!strcmp(mode, "proc-fd-links")) return proc_fd_links_case();
     if (!strcmp(mode, "modify-ldt")) return ldt_case(self);
