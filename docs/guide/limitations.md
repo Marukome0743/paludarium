@@ -535,11 +535,19 @@ verified.
     `RWF_NOWAIT` and `RWF_DONTCACHE` as ext4's does, whatever its own file
     system, and only ext4, xfs, btrfs and f2fs are told apart on a Linux
     host (any other file system takes neither).
-  - `MADV_COLLAPSE` refuses shmem's and files' mappings (`EINVAL`), which
-    Linux collapses by the rules of shmem and of read-only files, and a
-    collapsed extent stays 512 ordinary pages, so `/proc/<pid>/smaps` shows
-    no `AnonHugePages` for it. Whether an extent has a page table is taken
-    as whether a page of it has an entry or a marker. Linux can also fail a
+  - `MADV_COLLAPSE` refuses a regular file's mappings (`EINVAL`). Linux's
+    rules for them changed after v6.12, which collapses only a file nobody
+    has open for writing (`READ_ONLY_THP_FOR_FS`), where later kernels take
+    any file on a file system with large folios. The result also depends
+    on the host's page cache: pages not read in yet, and dirty ones, which
+    are written back once and are otherwise `EAGAIN`. A collapsed extent
+    stays 512 ordinary pages, so `/proc/<pid>/smaps` shows no
+    `AnonHugePages` or `ShmemPmdMapped` for it. Whether an extent of
+    private anonymous memory has a page table is taken as whether a page of
+    it has an entry or a marker. For shmem only the collapsing VMA's own
+    `userfaultfd` registration counts, where Linux refuses holes if any VMA
+    of the file, in any process, is registered for missing pages, and
+    sysfs's `shmem_enabled` is taken as never `deny`. Linux can also fail a
     collapse for want of a free huge page (`ENOMEM`) or for a page in use
     (`EAGAIN`), which never happens here.
   - With `CAP_SYS_ADMIN`, `MADV_HWPOISON` refuses (`EIO`) a page of a file
@@ -798,7 +806,9 @@ verified.
   `nodev` and `nosuid` are enforced, and so are a tmpfs mount's `size`,
   `nr_blocks` and `nr_inodes`, but not for what a mapping writes (a write
   fault past the size is no `SIGBUS`, and the pages go back to the file
-  whatever its size), and its extended attributes take none of the inodes'
+  whatever its size; nor are the pages a fault brings into a tmpfs file
+  or a memfd counted in its blocks, which only `MADV_COLLAPSE` charges
+  for the holes it fills), and its extended attributes take none of the inodes'
   room (`ENOSPC` from `setxattr` past it, as `shmem_xattr_handler_set`
   counts them, does not happen); the root from start-up has no limit but
   `fallocate`'s, the memory reported. Not enforced either are the atime
