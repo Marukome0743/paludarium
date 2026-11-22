@@ -321,7 +321,11 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   0、ネットワーク名前空間のクッキーはどの名前空間でも 1（最初のもの）、起動時からの時計と
   粗い時計は単調時計、`CLOCK_TAI` は実時間です。プログラムは、Linux の書き換えで 16 倍に
   長くなったものとしてソケットに課金されます。そのため長いプログラムの `SO_ATTACH_BPF` は、
-  Linux より早く `ENOMEM` になります。古典的なフィルターは Linux と同じだけ課金されます。ほかの
+  Linux より早く `ENOMEM` になります。古典的なフィルターは Linux と同じだけ課金されます。
+  fdinfo のプログラムのメモリ（`memlock`）は、長いプログラムではまだ Linux と同じでは
+  ありません。読み込んだ命令の数で数えますが、Linux では書き換え（除算、コンテキストの
+  アクセス、`BPF_LD_ABS` など）で命令が増え、ページがもう 1 つ要ることがあります
+  （`bpf_prog_realloc`）。ほかの
   プログラムの型は、それを組み込まずにビルドしたカーネルと同じく `EINVAL` です。検証器は、
   Linux が受け入れるかもしれない次のものを、自分の行（"paludarium: ... are not verified
   yet"、`EINVAL`。ヘルパーの呼び出しの行は "unknown func %s#%d" で始まり、libbpf と
@@ -332,7 +336,7 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   ヘルパーの大きさ、0 とわからないスカラーを渡す `bpf_get_netns_cookie`、bpf から bpf への
   呼び出しと kfunc、コンテキストのソケット（`__sk_buff.sk`）とマップ自身のフィールド
   （`struct bpf_map`）、`fd_array` からのマップと `excl_prog_hash` を付けて作ったマップ、BTF ID と
-  関数の `BPF_LD_IMM64`、`BPF_LD_ABS` と `BPF_LD_IND`、`may_goto`、
+  関数の `BPF_LD_IMM64`、`may_goto`、
   間接ジャンプ、オフセットの決まらないポインタ、条件ジャンプのあるプログラムの
   `BPF_F_TEST_REG_INVARIANTS` です。後ろ向きの辺は Linux の行（"back-edge from insn %d to
   %d"）で断ります。Linux は特権のある読み込み手からの有限のループを受け入れます。スカラーは、
