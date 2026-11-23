@@ -334,6 +334,7 @@ mod linux {
                     | "bpf-prog-acqrel"
                     | "bpf-prog-ldabs"
                     | "bpf-prog-calls"
+                    | "bpf-prog-rewrites"
                     | "keys-calls"
                     | "keys-keyrings"
                     | "keys-threads"
@@ -724,6 +725,7 @@ mod linux {
         bpf_prog_acqrel => ("bpf-prog-acqrel","bpf-prog"),
         bpf_prog_ldabs => ("bpf-prog-ldabs","bpf-prog"),
         bpf_prog_calls => ("bpf-prog-calls","bpf-prog"),
+        bpf_prog_rewrites => ("bpf-prog-rewrites","bpf-prog"),
         inotify_calls => ("inotify-calls","inotify"),
         dnotify_calls => ("dnotify-calls","inotify"),
         dnotify_events => ("dnotify-events","inotify"),
