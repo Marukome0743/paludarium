@@ -26,6 +26,11 @@ fn on_bpffs(c: &Context<'_>, p: &[u8], follow: bool) -> Option<paludarium_vfs::M
         .filter(|at| at.kind == "bpf")
 }
 
+/// Whether the path at `p` is in a BPF file system.
+pub(crate) fn holds(c: &Context<'_>, p: &[u8], follow: bool) -> bool {
+    on_bpffs(c, p, follow).is_some()
+}
+
 /// `p`'s directory and its last name.
 fn split(p: &[u8]) -> (Vec<u8>, &[u8]) {
     let p = p.strip_suffix(b"/").unwrap_or(p);
@@ -36,14 +41,24 @@ fn split(p: &[u8]) -> (Vec<u8>, &[u8]) {
     }
 }
 
-/// `bpf_lookup`: in a BPF file system's directory, a name with a dot
-/// that is not there is `EPERM`, as it keeps such names for itself.
+/// `bpf_lookup`: in a BPF file system's directory with any mode bits
+/// (`S_IALLUGO`, whoever looks), a name with a dot that is not there is
+/// `EPERM`, as it keeps such names for itself.
 pub(crate) fn lookup(c: &Context<'_>, p: &[u8]) -> Result<(), Errno> {
     let (dir, name) = split(p);
     if name == b"." || name == b".." || !name.contains(&b'.') {
         return Ok(());
     }
     if c.files.fs().metadata(p, false).is_ok() || on_bpffs(c, &dir, true).is_none() {
+        return Ok(());
+    }
+    // A directory of mode 0 takes the name as any other, and one not
+    // there is the walk's own error (`ENOENT`), before any lookup in it.
+    if c.files
+        .fs()
+        .metadata(&dir, true)
+        .map_or(true, |d| d.mode & 0o7777 == 0)
+    {
         return Ok(());
     }
     // The walk to the directory comes first: a directory the thread may
