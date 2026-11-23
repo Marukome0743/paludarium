@@ -334,12 +334,63 @@ mod real_console {
         subprocess("6");
     }
     #[test]
+    fn real_console_closed_streams() {
+        subprocess("7");
+    }
+    /// The host's standard streams on handles that have been closed: a
+    /// read of the input is its end and a write is `EBADF`, which `std` no
+    /// longer turns into success. The process's own handles come back
+    /// before the results are checked, so that libtest can report them.
+    fn closed_streams(kinds: [u32; 3], original: [Handle; 3]) {
+        use crate::Host as _;
+        let mut read = std::ptr::null_mut();
+        let mut write = std::ptr::null_mut();
+        // SAFETY: pipe outputs are live host-owned pointer buffers, and each
+        // handle is closed once, here.
+        unsafe {
+            assert_ne!(
+                CreatePipe(&mut read, &mut write, std::ptr::null_mut(), 0),
+                0
+            );
+            CloseHandle(read);
+            CloseHandle(write);
+        }
+        for (index, kind) in kinds.iter().enumerate() {
+            assert_ne!(
+                // SAFETY: only this isolated test process gets closed handles.
+                unsafe { SetStdHandle(*kind, if index == 0 { read } else { write }) },
+                0
+            );
+        }
+        let host = crate::NativeHost::new();
+        let mut buffer = [0u8; 4];
+        let results = (
+            host.read_stdin(&mut buffer),
+            host.write_stdout(b"x"),
+            host.write_stderr(b"x"),
+        );
+        for (kind, handle) in kinds.iter().zip(original) {
+            // SAFETY: gives back the standard handles the process had.
+            assert_ne!(unsafe { SetStdHandle(*kind, handle) }, 0);
+        }
+        assert_eq!(results, (Ok(0), Err(Errno::EBADF), Err(Errno::EBADF)));
+    }
+    #[test]
     fn real_console_child() {
         let Ok(case) = std::env::var("PALUDARIUM_WINDOWS_CONSOLE_CASE") else {
             subprocess("0");
             return;
         };
         let case: usize = case.parse().unwrap();
+        let kinds = [(-10_i32) as u32, (-11_i32) as u32, (-12_i32) as u32];
+        // The standard handles libtest writes its report to once the test
+        // returns, after the fixture's console handles have closed.
+        // SAFETY: reads the process's standard handles; no guest data.
+        let original = kinds.map(|kind| unsafe { GetStdHandle(kind) });
+        if case == 7 {
+            closed_streams(kinds, original);
+            return;
+        }
         // SAFETY: this test runs in its own process; console ownership is local.
         unsafe {
             FreeConsole();
@@ -347,7 +398,6 @@ mod real_console {
         }
         let input = console("CONIN$").unwrap();
         let output = console("CONOUT$").unwrap();
-        let kinds = [(-10_i32) as u32, (-11_i32) as u32, (-12_i32) as u32];
         for (index, kind) in kinds.iter().enumerate() {
             assert_ne!(
                 // SAFETY: all fixture handles remain live throughout the test.
@@ -381,10 +431,11 @@ mod real_console {
             assert!(info.columns > 0 && info.rows > 0);
         }
         assert_eq!((mode(input.0).unwrap(), mode(output.0).unwrap()), before);
-        for (index, kind) in kinds.iter().enumerate() {
+        for (kind, handle) in kinds.iter().zip(original) {
             assert_ne!(
-                // SAFETY: reset borrowed standard handles to the live fixture.
-                unsafe { SetStdHandle(*kind, if index == 0 { input.0 } else { output.0 }) },
+                // SAFETY: gives back the standard handles the process had,
+                // which it still owns, before the fixture's handles close.
+                unsafe { SetStdHandle(*kind, handle) },
                 0
             );
         }

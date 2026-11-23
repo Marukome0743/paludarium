@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "toolchain": "nightly-2026-11-15",
+  "toolchain": "nightly-2026-11-22",
   "target": "x86_64-unknown-linux-musl",
   "aube": {"repository": "https://github.com/aubepkg/aube", "tag": "v2.10.1", "revision": "429af5d24c98789e396db75724907f6a08fda2a6", "lock_sha256": "75055cdf053072c7ec6ae38a79110cc0c9b7b103dde3c26c93db60db0d83ee88", "primer": "empty file, outside unmodified source tree"},
   "ripgrep": {"repository": "https://github.com/BurntSushi/ripgrep", "tag": "16.0.0", "revision": "669cb4c755db20b26c3af3d923c042ae224c7496", "lock_sha256": "4216c9689e2f80812a51abde30731dbbf5f36d404fda3945bb50f10973336361"},
