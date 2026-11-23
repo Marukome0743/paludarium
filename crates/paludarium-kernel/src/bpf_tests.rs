@@ -1484,6 +1484,65 @@ fn a_map_maps_only_as_linux_s_bpf_map_mmap_lets_it() {
     assert_eq!(try_map(wo, PROT_READ), errno(Errno::EACCES));
 }
 
+/// A mapping that replaces a writable mapping of a map (`MAP_FIXED`)
+/// closes it, so only the new one holds a freeze off.
+#[test]
+fn a_fixed_mapping_over_a_writable_one_closes_it() {
+    const MAP_FIXED: u64 = 0x10;
+    let (mut k, mut t, m) = setup();
+    k.enter_thread(t.tid);
+    let fd = make(&mut k, &mut t, &m, map(ARRAY, 4, 8, 4, F_MMAPABLE));
+    let rw = PROT_READ | PROT_WRITE;
+    let at = mmap(&mut k, &mut t, &m, [fd, PAGE_SIZE, rw, MAP_SHARED, 0]);
+    assert!(at < u64::MAX - 4095, "mmap: {at:#x}");
+    // A writable one over it: still one.
+    let fixed = syscall(
+        &mut k,
+        &mut t,
+        &m,
+        MMAP,
+        [at, PAGE_SIZE, rw, MAP_SHARED | MAP_FIXED, fd, 0],
+    );
+    assert_eq!(fixed, at);
+    assert_eq!(
+        elem(&mut k, &mut t, &m, MAP_FREEZE, fd, None, None),
+        errno(Errno(16))
+    );
+    // A read-only one over that: none.
+    let fixed = syscall(
+        &mut k,
+        &mut t,
+        &m,
+        MMAP,
+        [at, PAGE_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED, fd, 0],
+    );
+    assert_eq!(fixed, at);
+    assert_eq!(elem(&mut k, &mut t, &m, MAP_FREEZE, fd, None, None), 0);
+}
+
+/// What `mmap` undoes a mapping with when its `MADV_DONTDUMP` fails: an
+/// unmap of the address space itself, which closes the VMA as `munmap`'s
+/// does (`PageSource::closed`), so the map counts it no more.
+#[test]
+fn an_unmap_of_the_space_closes_a_writable_mapping() {
+    let (mut k, mut t, m) = setup();
+    k.enter_thread(t.tid);
+    let fd = make(&mut k, &mut t, &m, map(ARRAY, 4, 8, 4, F_MMAPABLE));
+    let at = mmap(
+        &mut k,
+        &mut t,
+        &m,
+        [fd, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, 0],
+    );
+    assert!(at < u64::MAX - 4095, "mmap: {at:#x}");
+    assert_eq!(
+        elem(&mut k, &mut t, &m, MAP_FREEZE, fd, None, None),
+        errno(Errno(16))
+    );
+    m.unmap_shared(GuestAddr(at), PAGE_SIZE).unwrap();
+    assert_eq!(elem(&mut k, &mut t, &m, MAP_FREEZE, fd, None, None), 0);
+}
+
 const OBJ_PIN: u64 = 6;
 const OBJ_GET: u64 = 7;
 const F_PATH_FD: u32 = 1 << 14;

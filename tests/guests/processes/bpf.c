@@ -1624,6 +1624,11 @@ static void vma(const char *name, void *at) {
     fflush(stdout);
 }
 
+/* The binary's own path, which the harness gives after the mode (as
+   process.c takes it), else the one it was started with: bpf-mmap's child
+   execs it. */
+static const char *self_path = "";
+
 static int case_mmap(void) {
     /* 300 values of 12 bytes, 16 apart: 4800 bytes, two pages. */
     int fd = make(TYPE_ARRAY, 4, 12, 300, F_MMAPABLE);
@@ -1719,6 +1724,38 @@ static int case_mmap(void) {
     close(plain);
     close(hash);
     close(prog_ro);
+
+    /* A writable mapping goes with the space an execve replaces: the
+       child execs, says so from the new program and waits there while
+       the freeze is tried, so its exit cannot be what let it go. */
+    int exec_map = make(TYPE_ARRAY, 4, 12, 300, F_MMAPABLE);
+    int exec_ready[2], exec_go[2];
+    if (pipe(exec_ready) || pipe(exec_go)) return 1;
+    pid_t execed = fork();
+    if (execed == 0) {
+        if (mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, exec_map, 0) == MAP_FAILED) _exit(1);
+        char ready[16], go[16];
+        snprintf(ready, sizeof ready, "%d", exec_ready[1]);
+        snprintf(go, sizeof go, "%d", exec_go[0]);
+        char *again[] = { "bpf", "bpf-exit", (char *)self_path, ready, go, NULL };
+        execv(self_path, again);
+        _exit(2);
+    }
+    close(exec_ready[1]);
+    close(exec_go[0]);
+    char exec_byte;
+    if (read(exec_ready[0], &exec_byte, 1) != 1) {
+        int failed;
+        waitpid(execed, &failed, 0);
+        say("exec failed, child %d", WEXITSTATUS(failed));
+        return 1;
+    }
+    long exec_freeze = freeze_map(exec_map);
+    if (write(exec_go[1], "x", 1) != 1) return 1;
+    int exec_status;
+    waitpid(execed, &exec_status, 0);
+    say("freeze while the execed child runs %ld, child %d", exec_freeze, WEXITSTATUS(exec_status));
+    close(exec_map);
     return 0;
 }
 
@@ -1915,6 +1952,7 @@ static int case_pin(void) {
 
 int main(int argc, char **argv) {
     const char *mode = argc > 1 ? argv[1] : "";
+    self_path = argc > 2 ? argv[2] : argv[0];
     alarm(20);
     if (!strcmp(mode, "bpf-calls")) return case_calls();
     if (!strcmp(mode, "bpf-elements")) return case_elements();
@@ -1928,6 +1966,13 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "bpf-maps")) return case_maps();
     if (!strcmp(mode, "bpf-prog-load")) return case_prog_load();
     if (!strcmp(mode, "bpf-mmap")) return case_mmap();
+    /* What bpf-mmap's child execs: it says it runs on the descriptor
+       after its path, then waits on the next. */
+    if (!strcmp(mode, "bpf-exit")) {
+        char c;
+        if (argc < 5 || write(atoi(argv[3]), "x", 1) != 1 || read(atoi(argv[4]), &c, 1) != 1) return 3;
+        return 0;
+    }
     if (!strcmp(mode, "bpf-pin")) return case_pin();
     return 2;
 }
