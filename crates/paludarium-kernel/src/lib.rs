@@ -36,6 +36,8 @@ mod bpf_verifier;
 mod devices;
 mod epoll;
 mod events;
+#[cfg(test)]
+mod extack_tests;
 mod fanotify;
 mod fasync;
 mod fifo;
