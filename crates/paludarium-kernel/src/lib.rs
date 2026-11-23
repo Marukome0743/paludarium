@@ -60,6 +60,8 @@ mod netconf;
 mod netdev;
 mod netlink;
 pub use inet::{InvalidRule, NetworkPolicy};
+#[cfg(test)]
+mod context_tests;
 mod futex;
 mod memfd;
 mod mempolicy;
