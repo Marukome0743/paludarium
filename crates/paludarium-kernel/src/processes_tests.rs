@@ -7015,6 +7015,148 @@ mod proc_other {
             Err(Errno::ENOENT.to_syscall_return())
         );
     }
+    /// A task with no memory left has its files but its directory owned by
+    /// root, as Linux's `task_dump_owner` before 7.2 (commit 6b1c66c9) found
+    /// no `mm`: the kernel of the CI runners. So a reader of the task's own
+    /// user may no longer open `environ` (0400), `EACCES` before its
+    /// missing memory (`ESRCH`), while `maps` (0444) opens and reads
+    /// nothing; the directory (0555) stays the task's.
+    #[test]
+    fn a_task_without_memory_has_its_files_owned_by_root() {
+        let (mut k, mut t, m) = setup();
+        assert_eq!(
+            syscall(&mut k, &mut t, &m, 117, [1000, 1000, 1000, 0, 0, 0]),
+            0
+        );
+        // Dumpable again after the change of IDs (PR_SET_DUMPABLE), so a
+        // task with memory owns its files.
+        assert_eq!(syscall(&mut k, &mut t, &m, 157, [4, 1, 0, 0, 0, 0]), 0);
+        let owner = |k: &mut Kernel, t: &mut Thread, path: &str| {
+            m.write(GuestAddr(DATA), format!("{path}\0").as_bytes())
+                .unwrap();
+            assert_eq!(
+                syscall(k, t, &m, 4, [DATA, DATA + 512, 0, 0, 0, 0]),
+                0,
+                "{path}"
+            );
+            let mut uid = [0; 4];
+            m.read(GuestAddr(DATA + 512 + 28), &mut uid).unwrap();
+            u32::from_le_bytes(uid)
+        };
+        let eacces = Err(Errno::EACCES.to_syscall_return());
+        // A gone leader: its process runs on with another thread.
+        let (leader, lt, _lm) = fork(&mut k, &mut t, &m);
+        let pid = lt.tid;
+        assert_eq!(owner(&mut k, &mut t, &format!("/proc/{pid}/environ")), 1000);
+        assert!(read(&mut k, &mut t, &m, &format!("/proc/{pid}/environ")).is_ok());
+        leader.group.register(42, Arc::new(SignalInbox::default()));
+        leader.abandon_thread(pid);
+        // A zombie process.
+        let (mut zombie, zt, zm) = fork(&mut k, &mut t, &m);
+        finish(&mut zombie, &zt, &zm, ExitStatus::Exited(0));
+        for dir in [
+            format!("/proc/{pid}"),
+            format!("/proc/{pid}/task/{pid}"),
+            format!("/proc/{}", zt.tid),
+        ] {
+            assert_eq!(owner(&mut k, &mut t, &dir), 1000, "{dir}");
+            for file in ["environ", "auxv", "pagemap", "maps", "status"] {
+                assert_eq!(
+                    owner(&mut k, &mut t, &format!("{dir}/{file}")),
+                    0,
+                    "{dir}/{file}"
+                );
+            }
+            for file in ["environ", "auxv", "pagemap"] {
+                let path = format!("{dir}/{file}");
+                assert_eq!(read(&mut k, &mut t, &m, &path), eacces, "{path}");
+            }
+            assert_eq!(
+                read(&mut k, &mut t, &m, &format!("{dir}/maps")),
+                Ok(Vec::new())
+            );
+        }
+    }
+    /// A leader that ended before its process's other threads has, as
+    /// Linux's zombie leader after `exit_mm`, `exit_files` and `exit_fs`,
+    /// no memory, descriptors or directories in its process's directory or
+    /// its own under `task`, while its process runs on.
+    #[test]
+    fn a_leader_that_ended_first_has_no_memory_descriptors_or_directories() {
+        let (mut k, mut t, m) = setup();
+        let (child, ct, _cm) = fork(&mut k, &mut t, &m);
+        let pid = ct.tid;
+        let link = |k: &mut Kernel, t: &mut Thread, path: &str| {
+            m.write(GuestAddr(DATA), format!("{path}\0").as_bytes())
+                .unwrap();
+            syscall(k, t, &m, 89, [DATA, DATA + 1024, 256, 0, 0, 0])
+        };
+        // While it runs, its process's directory shows what it holds.
+        assert!(
+            !read(&mut k, &mut t, &m, &format!("/proc/{pid}/maps"))
+                .unwrap()
+                .is_empty()
+        );
+        assert!(link(&mut k, &mut t, &format!("/proc/{pid}/cwd")) < 1 << 20);
+        child.group.register(42, Arc::new(SignalInbox::default()));
+        child.abandon_thread(pid);
+        let enoent = Errno::ENOENT.to_syscall_return();
+        for dir in [format!("/proc/{pid}"), format!("/proc/{pid}/task/{pid}")] {
+            let stat = fields(&read(&mut k, &mut t, &m, &format!("{dir}/stat")).unwrap());
+            assert_eq!(stat[0], "Z", "{dir}");
+            // No mappings (vsize, rss), and no code or stack.
+            assert_eq!(&stat[20..22], ["0", "0"], "{dir}");
+            assert_eq!(&stat[23..26], ["0", "0", "0"], "{dir}");
+            assert_eq!(
+                read(&mut k, &mut t, &m, &format!("{dir}/maps")),
+                Ok(Vec::new())
+            );
+            assert_eq!(
+                read(&mut k, &mut t, &m, &format!("{dir}/cmdline")),
+                Ok(Vec::new())
+            );
+            assert_eq!(
+                read(&mut k, &mut t, &m, &format!("{dir}/environ")),
+                Err(Errno(3).to_syscall_return())
+            );
+            assert_eq!(link(&mut k, &mut t, &format!("{dir}/cwd")), enoent, "{dir}");
+            assert_eq!(
+                link(&mut k, &mut t, &format!("{dir}/root")),
+                enoent,
+                "{dir}"
+            );
+            assert_eq!(
+                link(&mut k, &mut t, &format!("{dir}/fd/0")),
+                enoent,
+                "{dir}"
+            );
+            assert_eq!(
+                link(&mut k, &mut t, &format!("{dir}/ns/net")),
+                enoent,
+                "{dir}"
+            );
+            // Its PID and user namespaces come from its PID and credentials.
+            assert!(
+                link(&mut k, &mut t, &format!("{dir}/ns/user")) < 1 << 20,
+                "{dir}"
+            );
+            assert!(
+                link(&mut k, &mut t, &format!("{dir}/ns/pid")) < 1 << 20,
+                "{dir}"
+            );
+            let status = read(&mut k, &mut t, &m, &format!("{dir}/status")).unwrap();
+            let status = String::from_utf8(status).unwrap();
+            assert!(status.contains("\nFDSize:\t0\n"), "{status}");
+            assert!(
+                !status.contains("\nVmRSS:") && !status.contains("\nUmask:"),
+                "{status}"
+            );
+            assert_eq!(
+                read(&mut k, &mut t, &m, &format!("{dir}/statm")).unwrap(),
+                b"0 0 0 0 0 0 0\n"
+            );
+        }
+    }
 }
 /// A new task's kernel entry is its parent's in the call that made it, as
 /// Linux's `copy_thread` copies `pt_regs`: what `/proc/<pid>/syscall` of a
