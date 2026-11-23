@@ -23569,6 +23569,59 @@ static int sem_case(void) {
     return 0;
 }
 
+/* F_SETFL on files whose other flags are fixed: an epoll instance, a
+   Landlock ruleset, an io_uring, /dev/mqueue, and /proc's own directory, a
+   generated file, seq files, pagemap, clear_refs and a sysctl. Linux's
+   setfl keeps O_NONBLOCK in f_flags as for any file, so F_GETFL shows it
+   set and then cleared, and every other flag stays as the open left it. */
+static void setfl_kind(const char *name, int fd) {
+    if (fd < 0) {
+        printf("%s: errno=%d\n", name, errno);
+        return;
+    }
+    int before = fcntl(fd, F_GETFL);
+    int set = fcntl(fd, F_SETFL, before | O_NONBLOCK);
+    int on = fcntl(fd, F_GETFL);
+    int cleared = fcntl(fd, F_SETFL, on & ~O_NONBLOCK);
+    int off = fcntl(fd, F_GETFL);
+    printf("%s: set=%d nonblock=%d kept=%d cleared=%d off=%d same=%d\n", name, set, !!(on & O_NONBLOCK),
+           (on & ~O_NONBLOCK) == before, cleared, !!(off & O_NONBLOCK), off == before);
+    close(fd);
+}
+/* An open's O_NONBLOCK stays in f_flags too, as F_GETFL shows. */
+static void opened_nonblock(const char *name, int fd) {
+    if (fd < 0) {
+        printf("%s opened: errno=%d\n", name, errno);
+        return;
+    }
+    printf("%s opened: nonblock=%d\n", name, !!(fcntl(fd, F_GETFL) & O_NONBLOCK));
+    close(fd);
+}
+static int setfl_kinds_case(void) {
+    setfl_kind("epoll", epoll_create1(0));
+    uint64_t handled = 1; /* LANDLOCK_ACCESS_FS_EXECUTE */
+    setfl_kind("landlock", (int)syscall(444, &handled, sizeof handled, 0));
+    unsigned char p[120];
+    memset(p, 0, sizeof p);
+    setfl_kind("io_uring", (int)uring_setup(2, p));
+    setfl_kind("mqueue-root", open("/dev/mqueue", O_RDONLY | O_DIRECTORY));
+    setfl_kind("proc-pid", open("/proc/self", O_RDONLY | O_DIRECTORY));
+    setfl_kind("proc-status", open("/proc/self/status", O_RDONLY));
+    setfl_kind("proc-maps", open("/proc/self/maps", O_RDONLY));
+    setfl_kind("sysvipc-msg", open("/proc/sysvipc/msg", O_RDONLY));
+    setfl_kind("pagemap", open("/proc/self/pagemap", O_RDONLY));
+    setfl_kind("clear-refs", open("/proc/self/clear_refs", O_WRONLY));
+    setfl_kind("sysctl", open("/proc/sys/kernel/perf_event_paranoid", O_RDONLY));
+    opened_nonblock("mqueue-root", open("/dev/mqueue", O_RDONLY | O_DIRECTORY | O_NONBLOCK));
+    opened_nonblock("proc-maps", open("/proc/self/maps", O_RDONLY | O_NONBLOCK));
+    opened_nonblock("proc-status", open("/proc/self/status", O_RDONLY | O_NONBLOCK));
+    opened_nonblock("pagemap", open("/proc/self/pagemap", O_RDONLY | O_NONBLOCK));
+    opened_nonblock("clear-refs", open("/proc/self/clear_refs", O_WRONLY | O_NONBLOCK));
+    opened_nonblock("sysvipc-msg", open("/proc/sysvipc/msg", O_RDONLY | O_NONBLOCK));
+    opened_nonblock("sysctl", open("/proc/sys/kernel/perf_event_paranoid", O_RDONLY | O_NONBLOCK));
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc >= 1 && !strncmp(argv[0], "./interp", 8)) return script_show(argc, argv);
     if (argc < 3) return 99;
@@ -36421,6 +36474,7 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "moves")) return moves_case();
     if (!strcmp(mode, "trees")) return trees_case();
     if (!strcmp(mode, "contexts")) return contexts_case();
+    if (!strcmp(mode, "setfl-kinds")) return setfl_kinds_case();
     if (!strcmp(mode, "setattrs")) return setattrs_case();
     if (!strcmp(mode, "mount-flags")) return mount_flags_case(self);
     if (!strcmp(mode, "listings")) return listings_case();
