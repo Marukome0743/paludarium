@@ -1673,7 +1673,7 @@ kernel.
   number, mode 0600 without a file type, and the maker's `fsuid` and
   `fsgid`. A request runs while `io_uring_enter` takes it, so
   its completion is in the queue when the call returns, unless it waits for
-  task work (below); links, completions
+  its file or for task work (below); links, completions
   that skip success, and completions kept while the queue is full
   (`IORING_FEAT_NODROP`) behave as on Linux. The completions of one
   submission go in once all its requests ran, as Linux posts them
@@ -1693,6 +1693,30 @@ kernel.
   With `IORING_SETUP_TASKRUN_FLAG`, `IORING_SQ_TASKRUN` shows that some
   waits. A link whose request fails with `IOSQE_CQE_SKIP_SUCCESS` cancels
   the rest without their completions (`REQ_F_SKIP_LINK_CQES`).
+
+- A transfer that would wait for its file waits, as Linux's
+  `io_arm_poll_handler` makes it: a read of a pipe, a socket or an eventfd
+  with nothing to read, or a write to a full pipe, even with `O_NONBLOCK`.
+  `RWF_NOWAIT` ends it with `EAGAIN` instead. The rest of its link waits
+  for it. As with any transfer, one that moves fewer bytes than it asked
+  for fails its link (`__io_complete_rw_common`), though its completion
+  has the count.
+  - Once the file is ready, the request runs again as task work of the
+    thread that submitted it (`io_poll_task_func`), even when a thread of
+    another process made the file ready. If that thread made it ready
+    itself, the request is done as the call that did so returns.
+  - Work another thread adds ends that thread's interruptible wait as a
+    signal would (`TIF_NOTIFY_SIGNAL`). With no signal to deliver, the call
+    runs again as Linux's `arch_do_signal_or_restart` restarts it: a
+    blocking `read` again, `nanosleep` for the rest of its time through
+    `restart_syscall`. A call that gives `EINTR` to a signal, such as
+    `epoll_wait`, gives it. A wait in `io_uring_enter` runs the work and
+    goes on waiting.
+  - With `IORING_SETUP_DEFER_TASKRUN`, the work waits for the ring's own
+    wait and interrupts no call.
+  - A read that chose a provided buffer keeps it while it waits
+    (`REQ_F_BUFFER_SELECTED`). A ring's buffer stays at the ring's head and
+    is chosen again as the read goes on.
 
 - `IORING_OP_NOP` takes Linux 7.0's flags, as `io_nop_prep` and `io_nop`
   do. `IORING_NOP_INJECT_RESULT` completes it with its `len`.
