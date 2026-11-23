@@ -940,6 +940,223 @@ fn a_use_made_between_an_evictions_look_and_its_removal_keeps_the_mark() {
     let _ = std::fs::remove_dir_all(&host);
 }
 
+/// A host directory whose opens of one path run `during` between the
+/// open's lookup and its return, as another thread's eviction may.
+struct Midway {
+    inner: paludarium_host::NativeFs,
+    path: Vec<u8>,
+    during: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+}
+
+impl paludarium_vfs::HostFs for Midway {
+    fn open(
+        &self,
+        path: &[u8],
+        flags: u32,
+        mode: u32,
+    ) -> Result<Arc<dyn paludarium_host::FileHandle>, Errno> {
+        if path == self.path
+            && let Some(during) = self.during.lock().unwrap().take()
+        {
+            during();
+        }
+        self.inner.open(path, flags, mode)
+    }
+    fn metadata(&self, path: &[u8], follow: bool) -> Result<paludarium_host::FileStat, Errno> {
+        self.inner.metadata(path, follow)
+    }
+    fn statfs(&self, path: &[u8]) -> Result<paludarium_host::FsStats, Errno> {
+        self.inner.statfs(path)
+    }
+    fn mkdir(&self, path: &[u8], mode: u32) -> Result<(), Errno> {
+        self.inner.mkdir(path, mode)
+    }
+    fn unlink(&self, path: &[u8], directory: bool) -> Result<(), Errno> {
+        self.inner.unlink(path, directory)
+    }
+    fn link(&self, old: &[u8], new: &[u8]) -> Result<(), Errno> {
+        self.inner.link(old, new)
+    }
+    fn symlink(&self, target: &[u8], path: &[u8]) -> Result<(), Errno> {
+        self.inner.symlink(target, path)
+    }
+    fn readlink(&self, path: &[u8]) -> Result<Vec<u8>, Errno> {
+        self.inner.readlink(path)
+    }
+    fn rename(&self, old: &[u8], new: &[u8]) -> Result<(), Errno> {
+        self.inner.rename(old, new)
+    }
+    fn read_dir(&self, path: &[u8]) -> Result<Vec<paludarium_host::DirectoryEntry>, Errno> {
+        self.inner.read_dir(path)
+    }
+}
+
+#[test]
+fn an_eviction_while_a_file_is_being_opened_keeps_its_mark() {
+    let mut f = fixture();
+    let host = std::env::temp_dir().join(format!("paludarium-evict-open-{}", std::process::id()));
+    std::fs::create_dir_all(&host).unwrap();
+    let midway = Arc::new(Midway {
+        inner: paludarium_host::NativeFs::new(&host).unwrap(),
+        path: b"opening".to_vec(),
+        during: Mutex::new(None),
+    });
+    let base = paludarium_vfs::MemFs::new();
+    let _ = <paludarium_vfs::MemFs as paludarium_vfs::HostFs>::mkdir(&base, b"/tmp", 0o1777);
+    let mut mounted = paludarium_vfs::MountedFs::new(base);
+    mounted
+        .mount(b"/data".to_vec(), Arc::clone(&midway) as _)
+        .unwrap();
+    f.kernel.files.set_file_system(Arc::new(mounted));
+    let fan = f.init(NONBLOCK, 0);
+    for name in ["/data/opening", "/data/free"] {
+        f.touch(name);
+        assert_eq!(f.mark(fan, ADD | EVICTABLE, OPEN, name), 0);
+    }
+    let marks = |f: &mut Fixture| {
+        f.fdinfo(fan)
+            .lines()
+            .filter(|l| l.starts_with("fanotify ino:"))
+            .count()
+    };
+    assert_eq!(marks(&mut f), 2);
+    // The file being opened is in use from its lookup on, as its dentry
+    // reference keeps Linux's inode: the eviction takes only the other's.
+    let caches = Arc::clone(&f.kernel.files.caches);
+    *midway.during.lock().unwrap() = Some(Box::new(move || {
+        caches
+            .notify
+            .fan
+            .evict(&|key| caches.held(key) || caches.notify.watches_file(key));
+    }));
+    let opening = f.open("/data/opening", 0);
+    assert!(midway.during.lock().unwrap().is_none());
+    assert_eq!(marks(&mut f), 1);
+    // Once closed, it goes too.
+    f.close(opening);
+    let caches = Arc::clone(&f.kernel.files.caches);
+    caches
+        .notify
+        .fan
+        .evict(&|key| caches.held(key) || caches.notify.watches_file(key));
+    assert_eq!(marks(&mut f), 0);
+    let _ = std::fs::remove_dir_all(&host);
+}
+
+/// An in-memory file system that calls itself ext4, whose marks may be
+/// evicted as tmpfs's may not, and which makes FIFOs on any host.
+struct Disk(paludarium_vfs::MemFs);
+
+/// The absolute path in [`Disk`]'s file system of `path` below its mount.
+fn at(path: &[u8]) -> Vec<u8> {
+    [b"/", path].concat()
+}
+
+impl paludarium_vfs::HostFs for Disk {
+    fn open(
+        &self,
+        path: &[u8],
+        flags: u32,
+        mode: u32,
+    ) -> Result<Arc<dyn paludarium_host::FileHandle>, Errno> {
+        self.0.open(&at(path), flags, mode)
+    }
+    fn metadata(&self, path: &[u8], follow: bool) -> Result<paludarium_host::FileStat, Errno> {
+        self.0.metadata(&at(path), follow)
+    }
+    fn statfs(&self, path: &[u8]) -> Result<paludarium_host::FsStats, Errno> {
+        const EXT4_SUPER_MAGIC: u64 = 0xef53;
+        Ok(paludarium_host::FsStats {
+            kind: EXT4_SUPER_MAGIC,
+            ..self.0.statfs(&at(path))?
+        })
+    }
+    fn mkdir(&self, path: &[u8], mode: u32) -> Result<(), Errno> {
+        self.0.mkdir(&at(path), mode)
+    }
+    fn unlink(&self, path: &[u8], directory: bool) -> Result<(), Errno> {
+        self.0.unlink(&at(path), directory)
+    }
+    fn link(&self, old: &[u8], new: &[u8]) -> Result<(), Errno> {
+        self.0.link(&at(old), &at(new))
+    }
+    fn symlink(&self, target: &[u8], path: &[u8]) -> Result<(), Errno> {
+        self.0.symlink(target, &at(path))
+    }
+    fn readlink(&self, path: &[u8]) -> Result<Vec<u8>, Errno> {
+        self.0.readlink(&at(path))
+    }
+    fn rename(&self, old: &[u8], new: &[u8]) -> Result<(), Errno> {
+        self.0.rename(&at(old), &at(new))
+    }
+    fn read_dir(&self, path: &[u8]) -> Result<Vec<paludarium_host::DirectoryEntry>, Errno> {
+        self.0.read_dir(&at(path))
+    }
+    fn make_fifo(&self, path: &[u8], mode: u32) -> Result<paludarium_host::FileStat, Errno> {
+        self.0.make_fifo(&at(path), mode)
+    }
+}
+
+#[test]
+fn an_eviction_while_a_fifo_open_waits_keeps_its_mark() {
+    let host = Arc::new(RecordingHost::new());
+    let mut f = fixture();
+    f.kernel = Kernel::new(Arc::clone(&host) as _);
+    let base = paludarium_vfs::MemFs::new();
+    let _ = <paludarium_vfs::MemFs as paludarium_vfs::HostFs>::mkdir(&base, b"/tmp", 0o1777);
+    let mut mounted = paludarium_vfs::MountedFs::new(base);
+    mounted
+        .mount(
+            b"/data".to_vec(),
+            Arc::new(Disk(paludarium_vfs::MemFs::new())) as _,
+        )
+        .unwrap();
+    f.kernel.files.set_file_system(Arc::new(mounted));
+    let fan = f.init(NONBLOCK, 0);
+    let fifo = f.put(b"/data/fifo");
+    assert_eq!(f.ret(133, &[fifo, 0o010_644, 0]), 0);
+    f.touch("/data/free");
+    for name in ["/data/fifo", "/data/free"] {
+        assert_eq!(f.mark(fan, ADD | EVICTABLE, OPEN, name), 0);
+    }
+    let marks = |f: &mut Fixture| {
+        f.fdinfo(fan)
+            .lines()
+            .filter(|l| l.starts_with("fanotify ino:"))
+            .count()
+    };
+    assert_eq!(marks(&mut f), 2);
+    // The FIFO an open for reading waits on is in use from its lookup on:
+    // an eviction while it waits for a writer (once its thread's wait flag
+    // shows it asleep) takes only the other's mark. The wait then ends with
+    // `EINTR`.
+    let waiting = Arc::clone(f.kernel.inbox.blocked_flag());
+    let caches = Arc::clone(&f.kernel.files.caches);
+    let evicting = std::thread::spawn({
+        let host = Arc::clone(&host);
+        move || {
+            while !waiting.load(std::sync::atomic::Ordering::SeqCst) {
+                std::thread::yield_now();
+            }
+            caches
+                .notify
+                .fan
+                .evict(&|key| caches.held(key) || caches.notify.watches_file(key));
+            host.interrupt_next_wait();
+        }
+    });
+    assert_eq!(f.ret(2, &[fifo, 0, 0]), errno(Errno(4)));
+    evicting.join().unwrap();
+    assert_eq!(marks(&mut f), 1);
+    // Once the open is over, it goes too.
+    let caches = Arc::clone(&f.kernel.files.caches);
+    caches
+        .notify
+        .fan
+        .evict(&|key| caches.held(key) || caches.notify.watches_file(key));
+    assert_eq!(marks(&mut f), 0);
+}
+
 /// The names a read's events give, with their masks, from the first
 /// record of each (a directory and name).
 fn named(seen: &[Seen]) -> Vec<(u64, String)> {

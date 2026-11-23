@@ -360,6 +360,13 @@ impl PageCaches {
         hold.pin = fs.mount_pin(&path);
         Some(hold)
     }
+    /// What keeps file `key`, of status `stat`, that an open's lookup found,
+    /// until the open is listed or fails, as the lookup's dentry reference
+    /// keeps Linux's inode from `evict`: none while fanotify has no mark,
+    /// or for a directory, whose marks are never evicted here.
+    pub(crate) fn looked_up(self: &Arc<Self>, key: Key, stat: &FileStat) -> Option<Hold> {
+        (self.notify.fan.active() && stat.mode & 0o170000 != 0o040000).then(|| self.hold_of(key))
+    }
     fn hold_of(self: &Arc<Self>, key: Key) -> Hold {
         let use_ = self.notify.fan.using();
         *self
@@ -1340,6 +1347,24 @@ impl HostFs for CoherentFs {
         // A running program's file is not truncated: `handle_truncate`
         // takes write access first (ETXTBSY), whatever the access mode.
         const O_NOFOLLOW: u32 = 0o400000;
+        // The file the open's lookup found is in use until the open is
+        // listed or fails, as the lookup's dentry reference keeps Linux's
+        // inode from `evict`: an eviction meanwhile keeps its marks
+        // ([`crate::fanotify::Registry::evict_of`]). Only marks are evicted.
+        // It goes as a hold does: a file removed meanwhile that nothing else
+        // holds ends as it goes (`IN_DELETE_SELF`), even if the open fails,
+        // as the lookup's `dput` ends it on Linux.
+        let _lookup = if self.caches.notify.fan.active() {
+            self.inner
+                .metadata(path, flags & O_NOFOLLOW == 0)
+                .ok()
+                .and_then(|stat| {
+                    self.caches
+                        .looked_up((self.inner.device(path), stat.inode), &stat)
+                })
+        } else {
+            None
+        };
         if flags & O_TRUNC != 0
             && flags & O_PATH == 0
             && let Ok(stat) = self.inner.metadata(path, flags & O_NOFOLLOW == 0)
