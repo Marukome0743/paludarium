@@ -1381,6 +1381,12 @@ verified.
   never for a third time. It retries nothing else, no test and no result, and
   each retry is logged with its error and timing. These failures come and go,
   so a run that passes does not show they are gone.
+- Ending a WebDriver session leaves running the Safari that safaridriver
+  launched for it. So after each session, and after a failed request for one,
+  the test driver asks each Safari that was not running before the request to
+  quit, and waits up to 15 seconds for it to exit. A Safari already running,
+  such as your own, is never asked. A Safari that does not quit is logged, not
+  killed.
 
 ## Found a problem?
 
