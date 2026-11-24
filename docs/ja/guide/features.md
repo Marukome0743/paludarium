@@ -877,7 +877,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `MADV_PAGEOUT`、`MADV_REMOVE`、`MADV_GUARD_INSTALL` を断り（`EINVAL`。前の VMA は
   指定を受けたあとです）、`MS_INVALIDATE` の `msync` も断ります（`EBUSY`）。
   `MADV_DONTNEED_LOCKED` は受け付けます。`fork` の子と、`MREMAP_DONTUNMAP` が残す元の
-  範囲はロックされず、AIO と `io_uring` のリングもロックされません。`mlock2` と
+  範囲はロックされず、AIO、`io_uring`、perf イベントのリングもロックされません。`mlock2` と
   `mlockall` の未知のフラグは `EINVAL` です。スワップアウトは起きないので、ほかに
   何もしなくてもメモリはそのまま残ります。
 
@@ -906,7 +906,9 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   VMA のフラグを付けたり外したりします（あとのものでページは変わりません）。
   VMA は、Linux と同じように前後の VMA から分かれたり、つながったりします
   （`/proc/<pid>/maps`）。VMA を順に処理し、受け付けない VMA があればそこで `EINVAL`
-  で止まります（`MADV_WIPEONFORK` はプライベートの匿名メモリだけです）。範囲に穴が
+  で止まります（`MADV_WIPEONFORK` はプライベートの匿名メモリだけです。AIO、`io_uring`、
+  perf イベントのリングのような、コアの mm が支えないメモリは `MADV_DOFORK` と
+  `MADV_DODUMP` を受け付けず、perf のリングバッファは一部だけの変更を受け付けません）。範囲に穴が
   あれば、残りを処理してから `ENOMEM` を返します。`fork` の子は、`MADV_DONTFORK` の
   マッピングを受け継がず、`MADV_WIPEONFORK` のマッピングはページなしの、0 で埋まった
   新しいメモリとして受け継ぎます。そのフラグと `MADV_DONTDUMP` は子にも残ります。
@@ -990,7 +992,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   続きの上へ広げられ、そのページは初めて触れたときに読み込みます。また、複数の
   マッピングにまたがる範囲を
   `MREMAP_FIXED` で動かすと、`EFAULT` になります（最近の Linux は動かせます）。
-  AIO と `io_uring` のリングは固定のマッピング（`VM_DONTEXPAND`）で、広げられず
+  AIO、`io_uring`、perf イベントのリングは固定のマッピング（`VM_DONTEXPAND`）で、広げられず
   （`EFAULT`）、動かして元を残すこともできません（`MREMAP_DONTUNMAP`、`EINVAL`）。
   AIO のリングは、Linux master の `aio_ring_mremap` と同じく丸ごとでなければ動かせず
   （行き先を空け、縮めて落とす分を外したあとで `EINVAL`）、コンテキストも一緒に移ります。
@@ -4134,7 +4136,13 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   イベントを数え続けさせます。最後にアンマップされると、バッファと課したものは
   なくなります。これはイベントのファイルのマッピングで、`/proc/<pid>/maps` と `MMAP2`
   の記録は、ディスクリプタの `fstat` が示すデバイスと inode（無名 inode のもの）を付けて
-  `anon_inode:[perf_event]` と示します。ユーザーページは `struct perf_event_mmap_page` で、バージョン 0、
+  `anon_inode:[perf_event]` と示します。Linux の `VM_PFNMAP` のマッピングの規則
+  （`perf_mmap_vmops`）に従い、データページは読み込み専用で、書き込むと `SIGBUS` です。
+  一部だけのアンマップ、上へのマップ、移動、保護やほかのフラグの変更、封印はできません
+  （`EINVAL`）が、呼び出しで変わらない一部なら受け付けます。コアの mm が支えるメモリでは
+  ないので、`MADV_DOFORK` と `MADV_DODUMP` は受け付けず、`MADV_DONTNEED` と
+  `MADV_DONTNEED_LOCKED` にページを渡さず（`EINVAL`）、`mlock` してもロックされません。
+  ユーザーページは `struct perf_event_mmap_page` で、バージョン 0、
   `size` 96、データのオフセットと大きさ、`cap_bit0_is_deprecated` があり
   `cap_user_rdpmc` はなく、インデックス 0、そしてシーケンスロックの 2 回の増加の間に
   数と有効な時間と動いた時間があります。`PERF_EVENT_IOC_SET_OUTPUT` と、開くときに
