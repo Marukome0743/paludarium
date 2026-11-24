@@ -16692,6 +16692,42 @@ static int thread_caps_status_case(void) {
     return 0;
 }
 
+/* The zombie-ns-links case: a zombie keeps its pid and user links until it
+   is reaped, as Linux's pidns_get and userns_get take them from its PID and
+   credentials, while the links that need the nsproxy it gave up at its exit
+   (exit_task_namespaces), pid_for_children among them, are ENOENT. The
+   parent waits for the child with WNOWAIT, so it stays a zombie, and compares
+   its links with its own. */
+static int zombie_ns_links_case(void) {
+    fflush(stdout);
+    pid_t kid = fork();
+    if (kid < 0) return 1;
+    if (kid == 0) _exit(0);
+    siginfo_t info;
+    if (waitid(P_PID, (id_t)kid, &info, WEXITED | WNOWAIT)) return 2;
+    static const char *const kept[] = {"pid", "user"};
+    for (size_t i = 0; i < sizeof kept / sizeof *kept; i++) {
+        char path[64], own[128], its[128];
+        snprintf(path, sizeof path, "/proc/self/ns/%s", kept[i]);
+        int own_error = glf_link(path, own, sizeof own);
+        snprintf(path, sizeof path, "/proc/%d/ns/%s", (int)kid, kept[i]);
+        int its_error = glf_link(path, its, sizeof its);
+        printf("%s own=%d zombie=%d same=%d\n", kept[i], own_error, its_error,
+               !own_error && !its_error && !strcmp(own, its));
+    }
+    static const char *const gone[] = {"net", "mnt", "uts", "ipc", "cgroup",
+                                       "time", "pid_for_children", "time_for_children"};
+    for (size_t i = 0; i < sizeof gone / sizeof *gone; i++) {
+        char path[64], target[128];
+        snprintf(path, sizeof path, "/proc/%d/ns/%s", (int)kid, gone[i]);
+        printf("%s=%d\n", gone[i], glf_link(path, target, sizeof target));
+    }
+    int status = 0;
+    waitpid(kid, &status, 0);
+    printf("wait=%#x\n", status);
+    return 0;
+}
+
 /* The userns-nondumpable-read case: as Linux's __ptrace_may_access asks
    (task_still_dumpable), an undumpable process is readable only with
    CAP_SYS_PTRACE in the user namespace its program runs in: where it was
@@ -37476,6 +37512,7 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "ptrace-stop-exit-code")) return ptrace_stop_exit_code_case();
     if (!strcmp(mode, "gone-leader-files")) return gone_leader_files_case();
     if (!strcmp(mode, "thread-caps-status")) return thread_caps_status_case();
+    if (!strcmp(mode, "zombie-ns-links")) return zombie_ns_links_case();
     if (!strcmp(mode, "userns-nondumpable-read")) return userns_nondumpable_read_case(self);
     if (!strcmp(mode, "userns-nondumpable-target")) return userns_nondumpable_target();
     if (!strcmp(mode, "userns-nondumpable-stage")) return userns_nondumpable_stage(self);
