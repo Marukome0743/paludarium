@@ -1067,6 +1067,7 @@ mod linux {
         processes_leader_zombie_task => ("leader-zombie-task","process"),
         processes_ptrace_stop_exit_code => ("ptrace-stop-exit-code","process"),
         processes_gone_leader_files => ("gone-leader-files","process"),
+        processes_smaps_rollup => ("smaps-rollup","process"),
         processes_thread_caps_status => ("thread-caps-status","process"),
         processes_zombie_ns_links => ("zombie-ns-links","process"),
         processes_userns_nondumpable_read => ("userns-nondumpable-read","process"),

@@ -3710,7 +3710,7 @@ kernel.
   as the PID of the process reading it and names itself `/proc/self`; then
   `/proc/self/status`, `stat`, `statm`, `cmdline`, `environ`, `auxv`,
   `limits`, `personality`, `comm`, `syscall`, `exe`, `cwd`, `root`, `maps`, `mounts`, `mountinfo`,
-  `clear_refs`, `smaps`, `pagemap`, `wchan`, `io`, `fd`, `fdinfo`, `ns` and `task`. They are owned by the process's
+  `clear_refs`, `smaps`, `smaps_rollup`, `pagemap`, `wchan`, `io`, `fd`, `fdinfo`, `ns` and `task`. They are owned by the process's
   effective user and group, or by root once it is not dumpable (after a
   change of its IDs, until `PR_SET_DUMPABLE`), as Linux's `task_dump_owner`
   gives them: root of the user namespace its program runs in, or the first
@@ -3735,7 +3735,14 @@ kernel.
   `root` leads to the root, `/` unless `chroot` moved it. A link of `exe`, `cwd`, `root` or
   `fd` reads, as Linux's `d_path` gives it, as a path from the reader's root
   when its file is under that root, and otherwise from the machine's root,
-  unmarked; `maps` and `smaps` name a mapped file the same way. `status`
+  unmarked; `maps` and `smaps` name a mapped file the same way.
+  `smaps_rollup` is what `smaps` counts of every VMA summed under one line,
+  from the first VMA's start to the last one's end with no flags, file or
+  name but `[rollup]`, as Linux's `show_smaps_rollup` makes it: `Pss` is
+  summed before it is rounded to kB and split by what each page is
+  (`Pss_Anon`, `Pss_File`, and `Pss_Shmem` for shared memory of no file, a
+  tmpfs file, a memfd or System V shared memory), and its open is `ESRCH`
+  for a task with no memory left. `status`
   has Linux's fields in Linux's order (umask, IDs, threads, signal masks,
   capabilities and so on) and, of the memory ones, the locked memory
   (`VmLck`), the peak of the resident memory (`VmHWM`) and the resident
@@ -3765,7 +3772,7 @@ kernel.
   Linux lists them, which is what `ps`, `pgrep` and `pidof` read. Another
   process's `/proc/<pid>` (0555, owned by its effective IDs) has `status`,
   `stat`, `statm`, `cmdline`, `environ` (0400), `auxv` (0400), `limits`, `personality` (0400),
-  `comm`, `syscall` (0400), `maps`, `clear_refs` (0200), `smaps`, `pagemap` (0400), `wchan`, `io` (0400), `exe`, `cwd`,
+  `comm`, `syscall` (0400), `maps`, `clear_refs` (0200), `smaps`, `smaps_rollup`, `pagemap` (0400), `wchan`, `io` (0400), `exe`, `cwd`,
   `root`, `mounts`, `mountinfo`, `fd`, `fdinfo`, `ns` (0511) and `task`, made as
   `fs/proc/base.c` and `array.c` make them for root; any other name there is
   `ENOENT`, as is the directory of a process that was never there or was
@@ -3787,8 +3794,8 @@ kernel.
   through `/proc/self/fd/<n>` or `/dev/fd/<n>` is `ENOENT`; `maps`, `smaps` and
   `cmdline` read nothing; its files but its directory are root's, as a
   zombie's are (see limitations), so `environ`, `auxv` and `pagemap` are
-  `EACCES`, and `ESRCH` for root;
-  `exe`, `cwd`, `root` and its other `ns` links are `ENOENT`; `mountinfo` is
+  `EACCES`, and `ESRCH` for root; `smaps_rollup` is `ESRCH` for any reader
+  (`smaps_rollup_open`); `exe`, `cwd`, `root` and its other `ns` links are `ENOENT`; `mountinfo` is
   `EINVAL`; `statm` is zeros; `status` has no `Vm` lines or `Umask` and an
   `FDSize` of 0; and `stat` has no sizes or addresses. A zombie process keeps
   its `pid` and `user` links too until it is reaped, as Linux's `pidns_get`
@@ -3798,7 +3805,7 @@ kernel.
   thread's own ID names a directory of its process as that thread sees it,
   which `/proc` does not list, as on Linux. As Linux's `ptrace_may_access`
   decides, a reader that is not of the process and has no `CAP_SYS_PTRACE`
-  gets `EACCES` for `environ` unless its real IDs, and for `auxv`, `maps`, `smaps`, `pagemap`, `exe`, `cwd`,
+  gets `EACCES` for `environ` unless its real IDs, and for `auxv`, `maps`, `smaps`, `smaps_rollup`, `pagemap`, `exe`, `cwd`,
   `root`, `fdinfo` and the links of `ns` and `fd` unless its filesystem IDs, are every user and group ID of a dumpable
   process in its user namespace whose permitted capabilities its own cover
   (its effective ones for the filesystem IDs), as reading another process
@@ -3828,7 +3835,7 @@ kernel.
   another is what that process's threads published at their last system call
   or signal check: the name (`PR_SET_NAME`, `execve`), the blocked and pending
   signals and the credentials, with the process's dispositions, memory (for
-  `cmdline`, `environ`, `auxv`, `maps`, `smaps`, `pagemap`, `statm` and the sizes in `stat`), resource limits, current directory, umask and
+  `cmdline`, `environ`, `auxv`, `maps`, `smaps`, `smaps_rollup`, `pagemap`, `statm` and the sizes in `stat`), resource limits, current directory, umask and
   descriptors as they are. Its state is `R` for the reader, `T (stopped)`
   during a job-control stop, `Z (zombie)` once it has ended and until it is
   reaped, `S (sleeping)` while its thread is blocked in a wait (for a pipe,
@@ -3841,7 +3848,9 @@ kernel.
   memory; its `statm` is all 0, its `fd` and `fdinfo` list nothing, and `exe`, `cwd` and `root` are `ENOENT`, as on Linux; its `limits` stay. Its
   `environ`, `auxv` and `pagemap` do not open (`ESRCH`, for any reader
   their mode lets), as Linux's `__mem_open` and `pagemap_open` refuse a
-  process with no memory before they check the reader. Its files but its
+  process with no memory before they check the reader, nor does its
+  `smaps_rollup` (`ESRCH` for any reader, `smaps_rollup_open`), as for a
+  leader that ended before its other threads. Its files but its
   directory are root's, as on the CI runners' kernel (see limitations), so
   their mode lets only root open them, and any other reader gets `EACCES`.
 
