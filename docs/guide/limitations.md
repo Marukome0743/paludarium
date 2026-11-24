@@ -295,7 +295,10 @@ verified.
   counts it in `page-faults`; a context switch is a sleep of the thread,
   not a preemption (but for a thread with `rseq` that gives its virtual CPU
   to another); and a thread without `rseq` moves to
-  another CPU only when a new CPU mask changes the lowest CPU it allows.
+  another CPU only when a new CPU mask changes the lowest CPU it allows,
+  at once for its own `sched_setaffinity` and at its next system call for
+  another thread's, so that until then its events of one CPU count what it
+  does to the CPU it was on, where Linux has moved it already.
   A sampling event's samples are taken as its thread enters a system call,
   or reaches the emulator's checkpoint, of what it did since then, where
   Linux takes each at its occurrence: they show the thread's address,
@@ -335,8 +338,7 @@ verified.
   each time the event is scheduled in, and `cap_user_time` is never set.
   Where Linux's checks of a mapping and of where it goes both fail, the
   mapping's are the error here. `inherit_stat` is taken, but an inherited
-  event's end sends no read record, as nothing is recorded. An event of a
-  task on one CPU counts on any, and the cgroup mode
+  event's end sends no read record, as nothing is recorded. The cgroup mode
   (`PERF_FLAG_PID_CGROUP`) is `EBADF`. The ioctls `SET_FILTER`,
   `SET_BPF`, `QUERY_BPF` and `MODIFY_ATTRIBUTES` are `ENOTTY`. `remove_on_exec`
   takes the event out of its group as Linux master has done since 7.2
