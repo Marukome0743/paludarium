@@ -3281,20 +3281,20 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   リンクをたどり、`O_NOFOLLOW` はたどらず `ELOOP` です。`O_PATH | O_NOFOLLOW` は
   リンクそのものを開き、読んだプロセスの PID を読み、自分を `/proc/self` と
   名乗ります。ほかに `/proc/self/status`、`stat`、`statm`、`cmdline`、`environ`、`auxv`、
-  `limits`、`personality`、`comm`、`syscall`、`exe`、`cwd`、`root`、`maps`、`mounts`、`mountinfo`、`clear_refs`、`smaps`、`smaps_rollup`、
+  `limits`、`personality`、`comm`、`syscall`、`exe`、`cwd`、`root`、`maps`、`mem`、`mounts`、`mountinfo`、`clear_refs`、`smaps`、`smaps_rollup`、
   `pagemap`、`wchan`、`io`、`fd`、`fdinfo`、`ns`、`task` があります。これらの持ち主は、Linux の `task_dump_owner` と同じく
   プロセスの実効ユーザーとグループで、ダンプできなくなると（ID を変えてから
   `PR_SET_DUMPABLE` まで）root です。この root は、そのプログラムが動くユーザー名前空間の
   root で、その名前空間が root を対応づけていなければ最初の名前空間の root です。ディレクトリ、`task`、`fdinfo`（0555）はどちらでも
   プロセスのもので、`/proc/self` そのものは root のものです。`stat` は
-  その持ち主とモード（`environ`、`auxv`、`pagemap`、`io`、`personality`、`syscall` は 0400、`comm` は 0644、`clear_refs`
-  は 0200、ほかのファイルは 0444）を示します。
+  その持ち主とモード（`environ`、`auxv`、`pagemap`、`io`、`personality`、`syscall` は 0400、`comm` は 0644、`mem` は 0600、
+  `clear_refs` は 0200、ほかのファイルは 0444）を示します。
   開いたファイルの `fstat` は、そのパスを最後に探したとき（どのプロセスの open や `stat` でも）の
   持ち主を示します。Linux の inode と同じで、開いたファイルが押さえるパスを探すたびに新しく
   なります（`pid_revalidate`）。開いたディレクトリとその `ns` の `fstat` は、Linux の
   `pid_getattr` と同じくその時点の持ち主を示します。開くときは Linux の `generic_permission` と同じくその
   持ち主に対してモードを確かめるので、`CAP_DAC_OVERRIDE` なしに書き込み用に開くと
-  `EACCES` で、ダンプできないプロセスが `environ`、`auxv`、`pagemap` を読むために開いても
+  `EACCES` で、ダンプできないプロセスが `environ`、`auxv`、`pagemap`、`mem` を読むために開いても
   `EACCES` です。書き込み用に開いたもの（root のもの）への書き込みは `EINVAL` です。ただし `comm` への書き込みは、
   Linux の `comm_write` と同じくスレッドの名前を変えます。書き手がそのスレッドのプロセスのものなら、
   最初の 15 バイト（NUL まで）を名前にして、書いた数をすべて返します（スレッドは次のシステムコールで
@@ -3333,7 +3333,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   ディレクトリ（ゾンビも含む）を、Linux と同じくこの順に並べます。`ps`、`pgrep`、`pidof`
   が読むのはこれです。ほかのプロセスの `/proc/<pid>`（0555 で、持ち主はその実効 ID）には、
   `status`、`stat`、`statm`、`cmdline`、`environ`（0400）、`auxv`（0400）、`limits`、`personality`（0400）、`comm`、
-  `syscall`（0400）、`maps`、`clear_refs`（0200）、`smaps`、`smaps_rollup`、`pagemap`（0400）、`wchan`、`io`（0400）、`exe`、`cwd`、`root`、`mounts`、`mountinfo`、`fd`、`fdinfo`、
+  `syscall`（0400）、`maps`、`mem`（0600）、`clear_refs`（0200）、`smaps`、`smaps_rollup`、`pagemap`（0400）、`wchan`、`io`（0400）、`exe`、`cwd`、`root`、`mounts`、`mountinfo`、`fd`、`fdinfo`、
   `ns`（0511）、`task` があり、
   Linux の `fs/proc/base.c` と `array.c` が root に見せるとおりに作ります。そこのほかの名前は
   `ENOENT` です。いなかったプロセスや回収されたプロセスのディレクトリも、マウントした
@@ -3352,7 +3352,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `/proc/<pid>` と `/proc/self` でも同じです。`fd` と `fdinfo` は何も並べないので、
   `/proc/self/fd/<n>` や `/dev/fd/<n>` を通した `execveat` は `ENOENT` です。`maps`、`smaps`、
   `cmdline` は何も読めず、ディレクトリー以外のファイルはゾンビのものと同じく root の
-  もの（制限事項を参照）なので、`environ`、`auxv`、`pagemap` は `EACCES`（root には
+  もの（制限事項を参照）なので、`environ`、`auxv`、`pagemap`、`mem` は `EACCES`（root には
   `ESRCH`）です。`smaps_rollup` は、Linux の `smaps_rollup_open` と同じく、どの読み手にも
   `ESRCH` です。`exe`、`cwd`、`root` と
   ほかの `ns` のリンクは `ENOENT`、`mountinfo` は `EINVAL` です。`statm` はすべて 0、
@@ -3363,7 +3363,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `<pid>/task/<tid>` と読めます。スレッド自身の ID も、Linux と同じく、
   そのスレッドから見たプロセスのディレクトリを指し、`/proc` には並びません。Linux の
   `ptrace_may_access` と同じく、同じプロセスでなく `CAP_SYS_PTRACE` もない読み手には、
-  `environ` は実 ID が、`auxv`、`maps`、`smaps`、`smaps_rollup`、`pagemap`、`exe`、`cwd`、`root`、`fdinfo`、`ns` と `fd` のリンクはファイルシステムの ID が、ダンプできるプロセスの
+  `environ` は実 ID が、`auxv`、`maps`、`smaps`、`smaps_rollup`、`pagemap`、`mem`、`exe`、`cwd`、`root`、`fdinfo`、`ns` と `fd` のリンクはファイルシステムの ID が、ダンプできるプロセスの
   ユーザーとグループのすべての ID と同じで、そのプロセスが同じユーザー名前空間にいて、
   その許可されたケーパビリティを読み手のもの（ファイルシステムの ID の場合は実効
   ケーパビリティ）が含むのでなければ `EACCES` です。上に書いた、ほかのプロセスを読む場合と
@@ -3376,7 +3376,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   同じで（ダンプできないプロセスのディレクトリ（0555）もそのプロセスのものです）、開くときは Linux の `generic_permission` と同じく、ほかの何よりも先に通常の
   ファイルのモードをその持ち主に対して確かめます（`EACCES`）。書き込むには、`comm`、
   `uid_map`、`gid_map`、`setgroups`（0644）を除いて `CAP_DAC_OVERRIDE` が要り、`environ`、
-  `auxv`、`pagemap` を読むには持ち主か `CAP_DAC_OVERRIDE` が要ります。開いたものの `fstat` は、
+  `auxv`、`pagemap`、`mem` を読むには持ち主か `CAP_DAC_OVERRIDE` が要ります。開いたものの `fstat` は、
   このプロセス自身のもの（前述）と同じく持ち主を示します。`statm` と `limits` は、Linux と同じく誰でも読めます。
   `fd` そのものを読むことと中を探すことは、Linux の
   `proc_fd_permission` と同じくそのモード（0500）が許す読み手だけができます。`fd` と
@@ -3388,7 +3388,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   ファイルのマウントと、そのプロセスが持つレコードロックを示します。ほかのプロセスについて見えるのは、そのプロセスのスレッドが
   最後のシステムコールかシグナルの確認で公開したもの（名前（`PR_SET_NAME`、`execve`）、
   ブロックしているシグナルと保留中のシグナル、資格情報）と、その時点のプロセスの
-  シグナルの扱い、メモリ（`cmdline`、`environ`、`auxv`、`maps`、`smaps`、`smaps_rollup`、`pagemap`、`statm`、`stat` の大きさ）、リソース制限、カレントディレクトリ、
+  シグナルの扱い、メモリ（`cmdline`、`environ`、`auxv`、`maps`、`smaps`、`smaps_rollup`、`pagemap`、`mem`、`statm`、`stat` の大きさ）、リソース制限、カレントディレクトリ、
   umask、ディスクリプタです。状態は、読んでいるプロセスなら `R`、ジョブ制御で止まって
   いる間は `T (stopped)`、終わってから回収されるまでは `Z (zombie)`、Linux が動いていない
   タスクをそう見せるのと同じく、スレッドが待ちで眠っている間（パイプ、futex、タイマーなど
@@ -3399,7 +3399,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   Linux の `proc_mem_open` はメモリのあるプロセスについてだけ読み手を確かめるので、
   ゾンビの `maps` と `smaps` は、モードが許すどの読み手も開けます。Linux の `__mem_open` と
   `pagemap_open` は、読み手を確かめる前にメモリのないプロセスを断るので、ゾンビの
-  `environ`、`auxv`、`pagemap` は、モードが許すどの読み手にも開けません（`ESRCH`）。
+  `environ`、`auxv`、`pagemap`、`mem` は、モードが許すどの読み手にも開けません（`ESRCH`）。
   ゾンビの `smaps_rollup` も、Linux の `smaps_rollup_open` と同じく、どの読み手にも開けません
   （`ESRCH`）。ほかのスレッドより先に終わったリーダーも同じです。
   ゾンビのディレクトリー以外のファイルは、CI ランナーのカーネルと同じく root のもの
@@ -3800,6 +3800,20 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
     （`EINVAL`）、ページの区切りから始まること（`EINVAL`）、範囲とバッファーが
     ユーザー空間にあること（`EFAULT`）、長さがあればバッファーがあること（`EINVAL`）です。
   - ほかの ioctl は `ENOTTY` で、アドレス空間がなくなったあとのスキャンは `ESRCH` です。
+
+- `/proc/<pid>/mem`（モード 0600、大きさ 0。スレッドのものも）は、Linux の `mem_rw` が
+  `FOLL_FORCE` 付きの `access_remote_vm` でするのと同じく、位置が示すアドレスでタスクの
+  メモリを読み書きします。保護がどうであってもページに届き、プライベートなページには
+  そのページだけの写しを作って書き、1 ページずつ進みます。1 バイトも動かせない呼び出し
+  （ページがない、`get_user_pages` が拒む `perf` のリングや `memfd_secret` のファイルのページ）は
+  `EIO` で、途中で止まった呼び出しはそこまでの数を返します。`lseek` は `SEEK_SET` と
+  `SEEK_CUR` だけを受け付け（`EINVAL`）、位置は符号なしです（`FOP_UNSIGNED_OFFSET`）。
+  `lseek` は `i64::MAX` を超えて進め、そこでの読み書きはそのアドレスのバイトを動かします。
+  `pread64` と `pwrite64` は、Linux v7.0 と同じくそのような位置を拒みます（`EINVAL`、
+  制限事項を参照）。開くとそのときのタスクのメモリを取ってそれを持ち続けるので、
+  `execve` やタスクの終わりの後は、そのメモリがなくなり何も動きません。読み手自身のメモリか、アタッチできるタスクの
+  もの（`PTRACE_MODE_ATTACH` とファイルシステムの ID での `mm_access`。`EACCES`）で、
+  メモリのないタスク（ゾンビ）は `ESRCH` です。
 
 - `/proc/<pid>/clear_refs`（モード 0200、大きさ 0。スレッドのものも）は、Linux の
   `clear_refs_write` と同じく、書き込みの先頭の多くて 12 バイト（書き込みはこれを返します）を、

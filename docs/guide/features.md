@@ -3793,22 +3793,22 @@ kernel.
   (`ELOOP`), and `O_PATH | O_NOFOLLOW` opens the link itself, which reads
   as the PID of the process reading it and names itself `/proc/self`; then
   `/proc/self/status`, `stat`, `statm`, `cmdline`, `environ`, `auxv`,
-  `limits`, `personality`, `comm`, `syscall`, `exe`, `cwd`, `root`, `maps`, `mounts`, `mountinfo`,
+  `limits`, `personality`, `comm`, `syscall`, `exe`, `cwd`, `root`, `maps`, `mem`, `mounts`, `mountinfo`,
   `clear_refs`, `smaps`, `smaps_rollup`, `pagemap`, `wchan`, `io`, `fd`, `fdinfo`, `ns` and `task`. They are owned by the process's
   effective user and group, or by root once it is not dumpable (after a
   change of its IDs, until `PR_SET_DUMPABLE`), as Linux's `task_dump_owner`
   gives them: root of the user namespace its program runs in, or the first
   one's where that namespace maps no root; the directory, `task` and `fdinfo` (0555) are the process's
   either way, and `/proc/self` itself is root's. `stat` shows that owner and
-  the mode, 0400 for `environ`, `auxv`, `pagemap`, `io`, `personality` and `syscall`, 0644 for `comm`, 0200 for
-  `clear_refs` and 0444 for the other files.
+  the mode, 0400 for `environ`, `auxv`, `pagemap`, `io`, `personality` and `syscall`, 0644 for `comm`, 0600 for
+  `mem`, 0200 for `clear_refs` and 0444 for the other files.
   `fstat` of an open file shows its owner as of the last lookup of its path
   (an open, a `stat`, by any process), as Linux's inode, which each lookup
   of the path an open file pins brings up to date (`pid_revalidate`); of
   the open directory and its `ns`, the owner at that moment, as Linux's
   `pid_getattr` asks it. An open checks the mode for that owner, as Linux's
   `generic_permission` does, so opening one for writing is `EACCES` without
-  `CAP_DAC_OVERRIDE`, and so is reading `environ`, `auxv` or `pagemap` once the
+  `CAP_DAC_OVERRIDE`, and so is reading `environ`, `auxv`, `pagemap` or `mem` once the
   process is not dumpable; a write to one opened for writing (root's) is
   `EINVAL`, but to `comm`, which renames the thread as Linux's
   `comm_write` does: to its first 15 bytes, up to a NUL, taking the whole
@@ -3856,7 +3856,7 @@ kernel.
   Linux lists them, which is what `ps`, `pgrep` and `pidof` read. Another
   process's `/proc/<pid>` (0555, owned by its effective IDs) has `status`,
   `stat`, `statm`, `cmdline`, `environ` (0400), `auxv` (0400), `limits`, `personality` (0400),
-  `comm`, `syscall` (0400), `maps`, `clear_refs` (0200), `smaps`, `smaps_rollup`, `pagemap` (0400), `wchan`, `io` (0400), `exe`, `cwd`,
+  `comm`, `syscall` (0400), `maps`, `mem` (0600), `clear_refs` (0200), `smaps`, `smaps_rollup`, `pagemap` (0400), `wchan`, `io` (0400), `exe`, `cwd`,
   `root`, `mounts`, `mountinfo`, `fd`, `fdinfo`, `ns` (0511) and `task`, made as
   `fs/proc/base.c` and `array.c` make them for root; any other name there is
   `ENOENT`, as is the directory of a process that was never there or was
@@ -3877,7 +3877,7 @@ kernel.
   as in `task/<pid>`. Its `fd` and `fdinfo` list nothing, so `execveat`
   through `/proc/self/fd/<n>` or `/dev/fd/<n>` is `ENOENT`; `maps`, `smaps` and
   `cmdline` read nothing; its files but its directory are root's, as a
-  zombie's are (see limitations), so `environ`, `auxv` and `pagemap` are
+  zombie's are (see limitations), so `environ`, `auxv`, `pagemap` and `mem` are
   `EACCES`, and `ESRCH` for root; `smaps_rollup` is `ESRCH` for any reader
   (`smaps_rollup_open`); `exe`, `cwd`, `root` and its other `ns` links are `ENOENT`; `mountinfo` is
   `EINVAL`; `statm` is zeros; `status` has no `Vm` lines or `Umask` and an
@@ -3889,7 +3889,7 @@ kernel.
   thread's own ID names a directory of its process as that thread sees it,
   which `/proc` does not list, as on Linux. As Linux's `ptrace_may_access`
   decides, a reader that is not of the process and has no `CAP_SYS_PTRACE`
-  gets `EACCES` for `environ` unless its real IDs, and for `auxv`, `maps`, `smaps`, `smaps_rollup`, `pagemap`, `exe`, `cwd`,
+  gets `EACCES` for `environ` unless its real IDs, and for `auxv`, `maps`, `smaps`, `smaps_rollup`, `pagemap`, `mem`, `exe`, `cwd`,
   `root`, `fdinfo` and the links of `ns` and `fd` unless its filesystem IDs, are every user and group ID of a dumpable
   process in its user namespace whose permitted capabilities its own cover
   (its effective ones for the filesystem IDs), as reading another process
@@ -3905,7 +3905,7 @@ kernel.
   file's mode for that owner before anything else, as Linux's
   `generic_permission` does (`EACCES`): writing needs `CAP_DAC_OVERRIDE`
   but for `comm`, `uid_map`, `gid_map` and `setgroups` (0644), and
-  reading `environ`, `auxv` or `pagemap` needs the owner or
+  reading `environ`, `auxv`, `pagemap` or `mem` needs the owner or
   `CAP_DAC_OVERRIDE`. `fstat` of an opened one shows the owner as this
   process's own do (above). `statm` and `limits` are anyone's to read, as on Linux. `fd` itself is read
   and looked in as its mode (0500) lets the reader, as Linux's
@@ -3919,7 +3919,7 @@ kernel.
   another is what that process's threads published at their last system call
   or signal check: the name (`PR_SET_NAME`, `execve`), the blocked and pending
   signals and the credentials, with the process's dispositions, memory (for
-  `cmdline`, `environ`, `auxv`, `maps`, `smaps`, `smaps_rollup`, `pagemap`, `statm` and the sizes in `stat`), resource limits, current directory, umask and
+  `cmdline`, `environ`, `auxv`, `maps`, `smaps`, `smaps_rollup`, `pagemap`, `mem`, `statm` and the sizes in `stat`), resource limits, current directory, umask and
   descriptors as they are. Its state is `R` for the reader, `T (stopped)`
   during a job-control stop, `Z (zombie)` once it has ended and until it is
   reaped, `S (sleeping)` while its thread is blocked in a wait (for a pipe,
@@ -3930,7 +3930,7 @@ kernel.
   `maps` and `smaps` are empty, and open for any reader their mode lets,
   as Linux's `proc_mem_open` checks the reader only of a process with
   memory; its `statm` is all 0, its `fd` and `fdinfo` list nothing, and `exe`, `cwd` and `root` are `ENOENT`, as on Linux; its `limits` stay. Its
-  `environ`, `auxv` and `pagemap` do not open (`ESRCH`, for any reader
+  `environ`, `auxv`, `pagemap` and `mem` do not open (`ESRCH`, for any reader
   their mode lets), as Linux's `__mem_open` and `pagemap_open` refuse a
   process with no memory before they check the reader, nor does its
   `smaps_rollup` (`ESRCH` for any reader, `smaps_rollup_open`), as for a
@@ -4395,6 +4395,24 @@ kernel.
     length (`EINVAL`).
   - Any other ioctl is `ENOTTY`, and a scan once the address space is gone
     is `ESRCH`.
+
+- `/proc/<pid>/mem` (mode 0600, size 0, a thread's too) reads and writes
+  the task's memory at the address its position gives, as Linux's `mem_rw`
+  does through `access_remote_vm` with `FOLL_FORCE`: a page whatever its
+  protection, a private one written to a copy of its own, a page at a time.
+  A call that moves no byte (no page there, a `perf` ring's or a
+  `memfd_secret` file's, which `get_user_pages` refuses) is `EIO`, and one
+  that stops later gives what it moved. `lseek` takes `SEEK_SET` and
+  `SEEK_CUR` only (`EINVAL`), and its positions are unsigned
+  (`FOP_UNSIGNED_OFFSET`): `lseek` goes past `i64::MAX`, and a read or
+  write there moves bytes at that address; `pread64` and `pwrite64` refuse
+  such an offset (`EINVAL`), as Linux v7.0 does (see limitations). An open
+  takes the memory the task has then, which the file keeps: after an
+  `execve` or the end of the task, that memory is gone and nothing moves.
+  It is the reader's own
+  or one it may attach to (`mm_access` with `PTRACE_MODE_ATTACH` and the
+  filesystem IDs: `EACCES`), and a task with no memory (a zombie) is
+  `ESRCH`.
 
 - `/proc/<pid>/clear_refs` (mode 0200, size 0, a thread's too), as Linux's
   `clear_refs_write`: a write's first 12 bytes at most, which is what it

@@ -221,6 +221,7 @@ mod linux {
                 mode,
                 "credentials"
                     | "file-leases"
+                    | "proc-mem"
                     | "permissions"
                     | "setuid"
                     | "signal-permissions"
@@ -918,6 +919,7 @@ mod linux {
         processes_page_faults => ("page-faults","process"),
         processes_exec_names => ("exec-names","process"),
         processes_context_switches => ("context-switches","process"),
+        processes_proc_mem => ("proc-mem","process"),
         processes_proc_stat_counts => ("proc-stat-counts","process"),
         processes_proc_stat_sched => ("proc-stat-sched","process"),
         processes_page_faults_live => ("page-faults-live","process"),

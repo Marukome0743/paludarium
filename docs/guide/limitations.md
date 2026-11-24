@@ -62,8 +62,11 @@ verified.
   no huge pages and the CPU has no protection keys. `VmFlags` shows no
   `ht` or `dp` (`MAP_HUGETLB`, `MAP_DROPPABLE`). A page of a host file
   that `write` filled is clean (see "Pages `write` filled" below).
-- **No `/proc/<pid>/mem`**: a task's memory is read and written through
-  `ptrace` and `process_vm_readv` and `process_vm_writev` only.
+- **`/proc/<pid>/mem`'s offsets past `i64::MAX`**: `pread64` and
+  `pwrite64` refuse them (`EINVAL`), as Linux v7.0's `ksys_pread64` and
+  `ksys_pwrite64` do for every file, where Linux master takes them for a
+  file of unsigned offsets (`FOP_UNSIGNED_OFFSET`). This follows v7.0
+  until the runners' kernel has master's change.
 - **`/proc/<pid>/pagemap`, in part**: its entries come from the
   emulator's page entries, as `smaps`'s counts do. A page of a loaded program's segment, or of a
   private file mapping, is a file's (bit 61) until the mapping was
