@@ -7118,6 +7118,125 @@ static int context_switches_case(void) {
     fflush(stdout);
     _exit(0);
 }
+/* The exec-names case: a program's segments in /proc/self/maps are
+   named as /proc/self/exe names the program, as Linux's d_path of the
+   vm_file and of exe_file gives both: by the path with its symbolic links
+   resolved, and with " (deleted)" once nothing links the file, and a
+   core's NT_FILE note names it the same way. A copy of this program runs
+   through a symbolic link to it and looks. */
+static void en_maps_name(char *out, size_t size) {
+    out[0] = 0;
+    FILE *maps = fopen("/proc/self/maps", "r");
+    if (!maps) return;
+    char line[4096];
+    /* The first line is the program's first segment. */
+    if (fgets(line, sizeof line, maps)) {
+        char *path = strchr(line, '/');
+        if (path) {
+            path[strcspn(path, "\n")] = 0;
+            snprintf(out, size, "%s", path);
+        }
+    }
+    fclose(maps);
+}
+static int exec_names_child(void) {
+    char exe[4096] = {0}, maps[4096];
+    if (readlink("/proc/self/exe", exe, sizeof exe - 1) < 0) return 70;
+    en_maps_name(maps, sizeof maps);
+    const char *base = strrchr(exe, '/');
+    printf("exe is the copy: %d\n", base && !strcmp(base, "/prog-copy"));
+    printf("maps names it so: %d\n", !strcmp(maps, exe));
+    char path[4096];
+    snprintf(path, sizeof path, "%s", exe);
+    if (unlink(path)) return 71;
+    char gone[4096] = {0};
+    if (readlink("/proc/self/exe", gone, sizeof gone - 1) < 0) return 72;
+    en_maps_name(maps, sizeof maps);
+    char marked[4200];
+    snprintf(marked, sizeof marked, "%s (deleted)", path);
+    printf("exe marked: %d\n", !strcmp(gone, marked));
+    printf("maps marked: %d\n", !strcmp(maps, marked));
+    /* A core names it so in its NT_FILE note too (fill_files_note's
+       file_path): a forked child dumps it, in the copy's directory. */
+    char *slash = strrchr(path, '/');
+    if (!slash) return 73;
+    *slash = 0;
+    if (chdir(path)) return 74;
+    struct rlimit r;
+    getrlimit(RLIMIT_CORE, &r);
+    r.rlim_cur = r.rlim_max;
+    setrlimit(RLIMIT_CORE, &r);
+    fflush(stdout);
+    pid_t dumper = fork();
+    if (dumper == 0) {
+        raise(SIGABRT);
+        _exit(75);
+    }
+    int status = 0;
+    waitpid(dumper, &status, 0);
+    int fd = open("core", O_RDONLY);
+    struct stat st;
+    unsigned char *core = NULL;
+    long size = 0, n;
+    if (fd >= 0 && fstat(fd, &st) == 0 && (core = malloc((size_t)st.st_size + 1)))
+        while (size < st.st_size && (n = read(fd, core + size, (size_t)(st.st_size - size))) > 0)
+            size += n;
+    if (fd >= 0) close(fd);
+    unlink("core");
+    core_bytes = core;
+    core_size = core ? (uint64_t)size : 0;
+    uint64_t files = 0;
+    for (int k = 0; core && size >= 64 && k < (int)le(56, 2); k++) {
+        uint64_t h = le(32, 8) + 56 * (uint64_t)k, offset = le(h + 8, 8), filesz = le(h + 32, 8);
+        if (le(h, 4) != 4) continue;
+        for (uint64_t q = offset; q + 12 <= offset + filesz && q + 12 <= core_size;) {
+            uint64_t namesz = le(q, 4), descsz = le(q + 4, 4), type = le(q + 8, 4);
+            uint64_t desc = q + 12 + ((namesz + 3) & ~3ULL);
+            if (type == 0x46494c45 && !files) files = desc;
+            q = desc + ((descsz + 3) & ~3ULL);
+        }
+    }
+    uint64_t start, end, pgoff;
+    const char *named = file_entry(files, (uintptr_t)&exec_names_child, &start, &end, &pgoff);
+    printf("core dumped: %d names it so: %d\n", WCOREDUMP(status) ? 1 : 0,
+           named && !strcmp(named, marked));
+    free(core);
+    core_bytes = NULL;
+    core_size = 0;
+    fflush(stdout);
+    return 0;
+}
+static int exec_names_case(void) {
+    char dir[] = "/tmp/names-XXXXXX";
+    if (!mkdtemp(dir)) return 80;
+    char copy[64], link[64];
+    snprintf(copy, sizeof copy, "%s/prog-copy", dir);
+    snprintf(link, sizeof link, "%s/link", dir);
+    int from = open("/proc/self/exe", O_RDONLY);
+    int to = open(copy, O_WRONLY | O_CREAT | O_EXCL, 0755);
+    if (from < 0 || to < 0) return 81;
+    char buf[65536];
+    long n;
+    while ((n = read(from, buf, sizeof buf)) > 0)
+        if (write(to, buf, (size_t)n) != n) return 82;
+    close(from);
+    close(to);
+    if (symlink("prog-copy", link)) return 83;
+    fflush(stdout);
+    pid_t child = fork();
+    if (child == 0) {
+        char *argv[] = {link, "exec-names-child", link, NULL};
+        execv(link, argv);
+        _exit(84);
+    }
+    int status = 0;
+    waitpid(child, &status, 0);
+    printf("child: %d\n", WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    unlink(link);
+    unlink(copy);
+    rmdir(dir);
+    return 0;
+}
 /* The page-faults case: getrusage's and wait4's ru_minflt count the
    faults a task took (mm/memory.c mm_account_fault, current->min_flt),
    its own accesses' and those of get_user_pages for it: mlock's
@@ -38188,6 +38307,8 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "fault-around")) return fault_around_case();
     if (!strcmp(mode, "maxrss")) return maxrss_case(self);
     if (!strcmp(mode, "context-switches")) return context_switches_case();
+    if (!strcmp(mode, "exec-names")) return exec_names_case();
+    if (!strcmp(mode, "exec-names-child")) return exec_names_child();
     if (!strcmp(mode, "page-faults")) return page_faults_case(self);
     if (!strcmp(mode, "ptrace-stop-signal")) return ptrace_stop_signal_case();
     if (!strcmp(mode, "traced-rusage")) return traced_rusage_case();
