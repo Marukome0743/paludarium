@@ -105,7 +105,8 @@ verified.
 - **The rest of `/proc`, in part**: only the process directories and a few
   system files are made (see [features](./features)). The other system files
   (`/proc/cpuinfo`, the files of `/proc/sys` but for the ones of `fs`,
-  `kernel` and `net` it has and `vm/drop_caches`, ...) and the other names in
+  `kernel` and `net` it has and `vm/drop_caches` and
+  `vm/unprivileged_userfaultfd`, ...) and the other names in
   the reader's own directory (`stack`, `sched`, ...) are looked up like any
   path, which with `--mount /:/` finds the host's `/proc`; in another
   process's directory they are `ENOENT`, where Linux shows root `stack`
@@ -1041,8 +1042,7 @@ verified.
   Linux waits for the page as for an instruction. A `UFFDIO_MOVE` source
   hole is `ENOENT` before the destination is looked at when nothing
   touched the 2 MiB around it here, as when Linux has no page table there,
-  which Linux may also have freed or kept otherwise. There is no `/dev/userfaultfd` and no
-  `/proc/sys/vm/unprivileged_userfaultfd`, which is taken as 0.
+  which Linux may also have freed or kept otherwise.
 - **dnotify, in part**: there is no `/proc/sys/fs/dir-notify-enable`, so
   dnotify is always on, as with Linux's default of 1.
 - **File leases, not yet**: `fcntl`'s `F_SETLEASE` and `F_GETLEASE` give
