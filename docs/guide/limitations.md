@@ -520,8 +520,8 @@ verified.
   clears the `%fs` or `%gs` base, where AMD's CPUs before Zen 2 keep it.
 - **io_uring, in part**: only `IORING_OP_NOP`, `IORING_OP_EPOLL_CTL`,
   `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV`, `_FSYNC`, `_READ_FIXED`,
-  `_WRITE_FIXED`, `IORING_OP_FILES_UPDATE`, `IORING_OP_PROVIDE_BUFFERS` and
-  `_REMOVE_BUFFERS` run; the other operations
+  `_WRITE_FIXED`, `IORING_OP_FILES_UPDATE`, `IORING_OP_PROVIDE_BUFFERS`,
+  `_REMOVE_BUFFERS` and `IORING_OP_ASYNC_CANCEL` run; the other operations
   complete with `EOPNOTSUPP`.
   The setup flags
   `IORING_SETUP_IOPOLL`, `_SQPOLL`, `_SQ_AFF`, `_ATTACH_WQ`, `_R_DISABLED`,
@@ -532,16 +532,16 @@ verified.
   `IORING_REGISTER_FILES_UPDATE`, `IORING_REGISTER_FILE_ALLOC_RANGE`,
   `IORING_REGISTER_FILES2`, `IORING_REGISTER_FILES_UPDATE2`,
   `IORING_REGISTER_PBUF_RING`, `IORING_UNREGISTER_PBUF_RING` and
-  `IORING_REGISTER_PBUF_STATUS` (the others give `EINVAL`). So no ring descriptor or personality can be
+  `IORING_REGISTER_PBUF_STATUS` and `IORING_REGISTER_SYNC_CANCEL` (the others give `EINVAL`). So no ring descriptor or personality can be
   registered, buffers cannot be updated, and buffers cannot be registered
-  with `IORING_REGISTER_BUFFERS2`, which gives them tags. Task work that
-  a thread still has when it exits or calls `execve` is dropped, and so are
-  the requests it submitted that wait for their files, and a ring's own
-  task work when the ring closes. Linux runs them cancelled
-  (`io_uring_cancel_generic`), posting `ECANCELED`. A request that waits
-  for its file keeps its ring after the ring closes, until the file is
-  ready, where Linux cancels it then. No request can cancel another
-  (`IORING_OP_ASYNC_CANCEL` is `EOPNOTSUPP`). A registered file that an
+  with `IORING_REGISTER_BUFFERS2`, which gives them tags. A process's
+  whole exit cancels the requests its threads submitted that wait for
+  their files, as Linux master's `io_task_group_exiting` does. Linux 7.0,
+  the kernel the differential tests run on, cancels them only once their
+  files are ready, as for a thread that exits alone. In that exit, a
+  link's next request that still waits to run fails with `EFAULT`, as an
+  exiting thread's does; Linux master runs it before the thread is
+  exiting. A registered file that an
   update outside a submission takes from its slot posts its tag at once,
   even while a request that waits for its file holds it; Linux posts the
   tag once that request completes. A registered buffer's pages
@@ -551,13 +551,20 @@ verified.
   Linux moves the pages it pinned. A shared mapping of a disk file can be
   registered, where Linux's long-term pin refuses it (`EFAULT`), and a huge
   page charges RLIMIT_MEMLOCK for each of its 4 KiB pages, where Linux
-  charges it once. A ring maps only shared (`MAP_PRIVATE` gives `EINVAL`), and
-  `poll` and `epoll` cannot watch its descriptor. The features are Linux
+  charges it once. A ring maps only shared (`MAP_PRIVATE` gives `EINVAL`).
+  A `poll`, or a level-triggered `epoll`, that waits for room in a ring's
+  submission queue ends once there is room, where Linux's ring wakes only
+  what waits for its completions. The features are Linux
   6.12's, so `IORING_FEAT_REG_REG_RING` is reported though no ring
   descriptor can be registered, and `IORING_FEAT_MIN_TIMEOUT` though a
   wait's `min_wait_usec` changes nothing. A pseudo-terminal's read waits in
   `io_uring_enter` instead of waiting for its file as a pipe's read does. A file that is never read (an epoll instance, a ring)
   fails with `EINVAL` at once, where Linux first waits for it to be ready.
+  An `IORING_OP_ASYNC_CANCEL` with `IORING_ASYNC_CANCEL_OP` and an
+  operation past `IORING_OP_LAST` finds no request (`ENOENT`), as on Linux
+  7.0, the kernel the differential tests run on; Linux master's
+  `io_async_cancel_prep` refuses it with `EINVAL`. This follows master once
+  the test runners' kernel does.
   A file without a position (a pipe, a socket, a terminal, an eventfd) is
   taken as one that can be polled, which decides when a read uses a ring's
   buffer and whether a transfer waits for it. A ring of buffers in the program's memory is not

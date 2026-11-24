@@ -1676,8 +1676,9 @@ kernel.
   operations are `IORING_OP_NOP`,
   `IORING_OP_EPOLL_CTL` (which libuv batches its `epoll_ctl` calls with), and
   the file transfers `IORING_OP_READ`, `_WRITE`, `_READV`, `_WRITEV`,
-  `_FSYNC`, `_READ_FIXED` and `_WRITE_FIXED`, `IORING_OP_FILES_UPDATE`, and
-  `IORING_OP_PROVIDE_BUFFERS` and `_REMOVE_BUFFERS`. The other operations complete with `EOPNOTSUPP`, as on a Linux
+  `_FSYNC`, `_READ_FIXED` and `_WRITE_FIXED`, `IORING_OP_FILES_UPDATE`,
+  `IORING_OP_PROVIDE_BUFFERS` and `_REMOVE_BUFFERS`, and
+  `IORING_OP_ASYNC_CANCEL`. The other operations complete with `EOPNOTSUPP`, as on a Linux
   built without them, and `IORING_REGISTER_PROBE` reports only these. The
   rings are the sizes, offsets and features Linux gives, and `mmap` of the
   descriptor shows them. The descriptor is an anonymous inode of its own,
@@ -1729,6 +1730,60 @@ kernel.
   - A read that chose a provided buffer keeps it while it waits
     (`REQ_F_BUFFER_SELECTED`). A ring's buffer stays at the ring's head and
     is chosen again as the read goes on.
+
+- `IORING_OP_ASYNC_CANCEL` and `IORING_REGISTER_SYNC_CANCEL` cancel the
+  requests of their ring that wait for their files, as Linux master's
+  `io_uring/cancel.c` and `io_poll_cancel` do. No other request is ever in
+  flight to find.
+  - A cancellation matches by `user_data`, by file with
+    `IORING_ASYNC_CANCEL_FD` (a registered one with `_FD_FIXED` or
+    `IOSQE_FIXED_FILE`), by operation with `_OP`, or any request with
+    `_ANY`. With `_USERDATA` the `user_data` must match too.
+  - Without `_ALL` or `_ANY` it cancels the first match and gives 0, or
+    `ENOENT`, which fails its link. With them it cancels every match and
+    gives how many, 0 for none. The order is that of the ring's hash table
+    (`hash_long` of the `user_data`, latest first within a bucket).
+  - A cancelled request completes with `ECANCELED` as task work of the
+    thread that submitted it, after the cancellation, and fails its link. A
+    provided buffer it kept is used (`IORING_CQE_F_BUFFER`).
+  - A request whose file became ready, but whose task work has not run yet,
+    is cancelled too: it stays findable until the work runs. The bytes stay
+    in the file.
+  - `IORING_OP_ASYNC_CANCEL` refuses unknown flags, `_ANY` with `_FD` or
+    `_OP`, and an `off` or `splice_fd_in` (`EINVAL`), as Linux 7.0's
+    `io_async_cancel_prep` does. A descriptor that is not open is `EBADF`.
+  - `IORING_REGISTER_SYNC_CANCEL` takes one `struct
+    io_uring_sync_cancel_reg`. Its padding must be zero, and it gives the
+    count, 0 or `ENOENT` itself. It never waits, as nothing it finds is
+    running, so its timeout is unused.
+
+- A request's submitter or ring may go before it completes, as in Linux's
+  `io_uring_cancel_generic`, `tw.c` and `io_ring_ctx_wait_and_kill`.
+  - A thread that exits alone leaves the requests it submitted waiting.
+    Once a file is ready, its request fails with `ECANCELED` as Linux's
+    `io_fallback_tw` runs the work of a thread that is gone, and the bytes
+    stay in the file. Task work the thread still has as it exits runs so
+    too: a request whose file became ready fails with `ECANCELED`, a
+    link's next request with `EFAULT` (`io_should_terminate_tw`), and an
+    `IORING_NOP_TW` completes.
+  - `execve` cancels every request the thread submitted that waits for its
+    file, one whose file became ready too (`io_uring_task_cancel`), on the
+    old image's memory, as `io_uring_cancel_generic` loops. The task work of
+    the `IORING_SETUP_DEFER_TASKRUN` rings it submits to runs first, so a
+    request whose file became ready there goes on. Then the requests are
+    cancelled, and its task work and theirs run, so each completes with
+    `ECANCELED` before the new program runs.
+  - A ring whose last descriptor and mapping close lets go of its waiting
+    requests and the files they hold, as Linux master does before `close`
+    returns, so a pipe whose only reader was such a request takes no more
+    writes (`EPIPE`). Task work left for the ring goes with it.
+
+- `poll` and `epoll` watch a ring's descriptor as Linux's `io_uring_poll`
+  answers. It is writable while the submission queue has room, and
+  readable while completions wait in the queue or in the kernel, or while
+  an `IORING_SETUP_DEFER_TASKRUN` ring has task work. Only a completion
+  wakes a waiter, and only one that waits for input, so an edge-triggered
+  interest in output is reported once.
 
 - `IORING_OP_NOP` takes Linux 7.0's flags, as `io_nop_prep` and `io_nop`
   do. `IORING_NOP_INJECT_RESULT` completes it with its `len`.
