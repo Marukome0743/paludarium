@@ -1804,8 +1804,13 @@ kernel.
   answers. It is writable while the submission queue has room, and
   readable while completions wait in the queue or in the kernel, or while
   an `IORING_SETUP_DEFER_TASKRUN` ring has task work. Only a completion
-  wakes a waiter, and only one that waits for input, so an edge-triggered
-  interest in output is reported once.
+  wakes a waiter, and only one that waits for input, as Linux's keyed
+  wake-ups filter it (`pollwake`, `ep_poll_callback`, `aio_poll_wake`). So
+  an edge-triggered interest in output is reported once, a level-triggered
+  one only as `epoll_ctl` adds or changes it, and a `poll`, `select` or aio
+  poll that waits only for room in the submission queue sleeps on until
+  another of its files wakes it or its time runs out, when `poll` and
+  `select` look a last time (`do_poll`, `do_select`).
 
 - `IORING_OP_NOP` takes Linux 7.0's flags, as `io_nop_prep` and `io_nop`
   do. `IORING_NOP_INJECT_RESULT` completes it with its `len`.
