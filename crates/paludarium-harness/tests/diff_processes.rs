@@ -133,6 +133,7 @@ mod linux {
         // default core_pattern, which CI sets.
         if mode == "core-dump"
             || mode == "exec-names"
+            || mode == "rename-names"
             || mode == "core-dump-faults"
             || mode == "core-mappings"
             || mode == "core-credentials"
@@ -929,6 +930,7 @@ mod linux {
         processes_page_faults => ("page-faults","process"),
         processes_vma_names => ("vma-names","process"),
         processes_exec_names => ("exec-names","process"),
+        processes_rename_names => ("rename-names","process"),
         processes_context_switches => ("context-switches","process"),
         processes_proc_mem => ("proc-mem","process"),
         processes_proc_stat_counts => ("proc-stat-counts","process"),

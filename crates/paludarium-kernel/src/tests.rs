@@ -2168,6 +2168,27 @@ fn proc_pagemap_reads_through_the_system_calls_and_opens_for_writing_for_root_on
     assert!(f.ret(2, &[path, 0]) < 1 << 32);
 }
 #[test]
+fn proc_files_read_at_an_offset_do_not_map() {
+    let mut f = fixture();
+    for path in [
+        &b"/proc/self/mem\0"[..],
+        b"/proc/self/pagemap\0",
+        b"/proc/self/clear_refs\0",
+    ] {
+        f.mem.write(GuestAddr(DATA), path).unwrap();
+        let fd = f.ret(2, &[DATA, 2]);
+        assert!(fd < 1 << 32, "{fd:#x}");
+        // PROT_READ, MAP_PRIVATE and MAP_SHARED.
+        for flags in [2, 1] {
+            assert_eq!(
+                f.ret(9, &[0, 4096, 1, flags, fd, 0]),
+                errno(Errno::ENODEV),
+                "{path:?}"
+            );
+        }
+    }
+}
+#[test]
 fn proc_mem_reads_and_writes_the_process_memory_through_the_system_calls() {
     let mut f = fixture();
     let (path, buf) = (DATA, DATA + 0x400);
@@ -7677,6 +7698,40 @@ mod inotify {
         n
     }
     #[test]
+    fn the_last_mapping_of_an_unlinked_file_lets_it_go() {
+        let mut f = fixture();
+        // A watched file of one page, mapped, its descriptor closed, then
+        // unlinked: the mapping holds it (`vm_file`), so it is only
+        // IN_ATTRIB until the mapping goes, and then IN_DELETE_SELF and
+        // IN_IGNORED, as the mapping's name lets go before its file.
+        let path = put(&f, DATA + 0x400, b"/held-map");
+        let fd = f.ret(2, &[path, 0o102, 0o644]);
+        assert!(fd < 1 << 32, "{fd:#x}");
+        assert_eq!(f.ret(77, &[fd, 0x1000]), 0);
+        let ifd = f.ret(INIT1, &[IN_NONBLOCK]);
+        let wd = f.ret(ADD, &[ifd, path, 0xfff]);
+        assert!((wd as i64) > 0, "{wd:#x}");
+        let at = f.ret(9, &[0, 0x1000, 1, 1, fd, 0]);
+        assert!(at < 1 << 47, "{at:#x}");
+        assert_eq!(f.ret(3, &[fd]), 0);
+        let _ = events(&mut f, ifd);
+        assert_eq!(f.ret(87, &[path]), 0);
+        let unlinked = events(&mut f, ifd);
+        assert!(
+            masks(&unlinked)
+                .iter()
+                .all(|&(_, mask, _)| mask & 0x8400 == 0),
+            "{unlinked:?}"
+        );
+        assert_eq!(f.ret(11, &[at, 0x1000]), 0);
+        let unmapped = events(&mut f, ifd);
+        let got: Vec<u32> = masks(&unmapped).iter().map(|&(_, mask, _)| mask).collect();
+        assert!(
+            got.contains(&0x400) && got.contains(&0x8000),
+            "{unmapped:?}"
+        );
+    }
+    #[test]
     fn an_async_instance_signals_its_owner_for_each_event_it_queues() {
         let mut f = fixture();
         // Blocked, the signals stay pending to be looked at.
@@ -12433,6 +12488,51 @@ mod context_switches {
         assert_eq!(f.mem.read_u64(GuestAddr(at + 136)).unwrap(), 0);
         assert_eq!(f.ret(98, &[u64::MAX, at]), 0);
         assert_eq!(nvcsw(&f, at), 0);
+    }
+}
+
+mod mapping_names {
+    use super::*;
+
+    /// The name the VMA at `at` shows in `/proc/self/maps` and a core.
+    fn name(f: &Fixture, at: u64) -> Option<Vec<u8>> {
+        f.mem.view().vma_from(at)?.file?.name
+    }
+
+    #[test]
+    fn a_mapped_file_is_named_where_renames_move_it_and_marked_once_removed() {
+        let mut f = fixture();
+        let path = |f: &Fixture, at: u64, p: &[u8]| {
+            f.mem.write(GuestAddr(at), &[p, b"\0"].concat()).unwrap();
+            at
+        };
+        // mkdir("/dir"), open("/dir/file", O_RDWR | O_CREAT), one page.
+        let dir = path(&f, DATA, b"/dir");
+        assert_eq!(f.ret(83, &[dir, 0o755]), 0);
+        let file = path(&f, DATA + 0x100, b"/dir/file");
+        let fd = f.ret(2, &[file, 0o102, 0o644]);
+        assert!(fd < 1 << 32, "{fd:#x}");
+        assert_eq!(f.ret(77, &[fd, 0x1000]), 0);
+        for (flags, label) in [(1u64, "shared"), (2, "private")] {
+            let at = f.ret(9, &[0, 0x1000, 1, flags, fd, 0]);
+            assert!(at < 1 << 47, "{label}: {at:#x}");
+            assert_eq!(name(&f, at).as_deref(), Some(&b"/dir/file"[..]), "{label}");
+        }
+        let shared = f.ret(9, &[0, 0x1000, 1, 1, fd, 0]);
+        // rename("/dir/file", "/dir/moved"), then rename("/dir", "/top").
+        let moved = path(&f, DATA + 0x200, b"/dir/moved");
+        assert_eq!(f.ret(82, &[file, moved]), 0);
+        assert_eq!(name(&f, shared).as_deref(), Some(&b"/dir/moved"[..]));
+        let top = path(&f, DATA + 0x300, b"/top");
+        assert_eq!(f.ret(82, &[dir, top]), 0);
+        assert_eq!(name(&f, shared).as_deref(), Some(&b"/top/moved"[..]));
+        // unlink("/top/moved"): the name it has then, marked.
+        let gone = path(&f, DATA + 0x400, b"/top/moved");
+        assert_eq!(f.ret(87, &[gone]), 0);
+        assert_eq!(
+            name(&f, shared).as_deref(),
+            Some(&b"/top/moved (deleted)"[..])
+        );
     }
 }
 

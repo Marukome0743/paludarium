@@ -8736,6 +8736,17 @@ pub(crate) fn seen_from(root: &[u8], path: &[u8]) -> Option<Vec<u8>> {
 fn opened_path(d: &Descriptor) -> Vec<u8> {
     paludarium_vfs::normalize_path(&d.path).unwrap_or_else(|_| d.path.clone())
 }
+/// What a mapping of `d`'s file shows: where the file is now, as its
+/// description tells it, which the mapping holds (`d_path` of `vm_file`'s
+/// dentry), or a memfd's fixed name: no other file that maps is without a
+/// place (those of the machine's file systems all have one, and no other
+/// handle that reads at an offset maps).
+pub(crate) fn mapped_name(c: &Context<'_>, d: &Descriptor) -> Option<crate::page_cache::FileName> {
+    if d.file.dentry_path().is_some() {
+        return Some(crate::page_cache::FileName::Moving);
+    }
+    mapped_path(c, d).map(crate::page_cache::FileName::Fixed)
+}
 /// The path of the file `d` holds, for a mapping of it to name: where the
 /// file is now, or where it was opened if no name reaches it there (the
 /// mapping marks that itself), or a memfd's own path. `None` if the file

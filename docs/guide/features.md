@@ -4371,12 +4371,15 @@ kernel.
   offset in the file, the file's device and inode as `stat` gives them (the
   device as glibc's `major` and `minor` take it apart), and
   the name in Linux's column: the file's path, with a newline in it as
-  `\012`, followed by a space and `(deleted)` once nothing names it, `/memfd:<name> (deleted)`,
+  `\012`, where renames of it or of a directory above it have moved it
+  (`d_move`), followed by a space and `(deleted)` once the name it has is
+  removed, `/memfd:<name> (deleted)`,
   `/dev/zero (deleted)` for shared anonymous memory, `[heap]` or `[stack]`.
   A program's segments and its interpreter's are named as
   `/proc/self/exe` names the program, as Linux's `d_path` of the file:
-  by its path with symbolic links resolved, and `(deleted)` once nothing
-  links it.
+  by its path with symbolic links resolved, moved by renames, and
+  `(deleted)` once that name is removed. A core's `NT_FILE` note names
+  them all the same way.
   It is made as it is read, as Linux's `seq_file` makes it: a read gathers
   whole lines up to a page, goes on from the VMA it found next, and sees the
   mappings of that moment, `lseek` goes from the start or the current
@@ -4491,7 +4494,8 @@ kernel.
   It is the reader's own
   or one it may attach to (`mm_access` with `PTRACE_MODE_ATTACH` and the
   filesystem IDs: `EACCES`), and a task with no memory (a zombie) is
-  `ESRCH`.
+  `ESRCH`. It cannot be mapped, nor can `pagemap` or `clear_refs`
+  (`ENODEV`).
 
 - `/proc/<pid>/clear_refs` (mode 0200, size 0, a thread's too), as Linux's
   `clear_refs_write`: a write's first 12 bytes at most, which is what it
@@ -6016,8 +6020,9 @@ kernel.
     signal (`NT_SIGINFO`), the auxiliary vector its exec saved (Linux's
     `saved_auxv`, whatever the program did to its stack), the mapped files
     (`NT_FILE`:
-    each VMA that maps a file, by its path, followed by `(deleted)` once
-    unlinked, and shared anonymous memory as `/dev/zero (deleted)`, as Linux
+    each VMA that maps a file, where renames have moved it, followed by
+    `(deleted)` once the name it has is removed, as in `/proc/<pid>/maps`,
+    and shared anonymous memory as `/dev/zero (deleted)`, as Linux
     names it) and the memory. It has no `NT_X86_XSTATE` note, as Linux writes
     none on a CPU without XSAVE, which the virtual CPU is. The memory is
     chosen as Linux's `vma_dump_size` chooses it with the default

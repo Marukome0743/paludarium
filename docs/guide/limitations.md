@@ -44,11 +44,11 @@ verified.
   has not been compared with a real CPU.
 - **`/proc/self/maps`, in part**: the emulator has no vDSO or `vsyscall` page,
   so the `[vvar]`, `[vdso]` and `[vsyscall]` lines are not there. The stack's
-  VMA has its full size from the start, where Linux's grows as it is used. A
-  program's own segments and its interpreter's are named by the path the
-  file had when it was started, with its symbolic links resolved and
-  `(deleted)` once nothing links it, but not after a rename, which Linux
-  follows. Maps can show fewer VMAs than Linux after a merge: Linux merges
+  VMA has its full size from the start, where Linux's grows as it is used.
+  A rename that a process under `chroot` makes does not move the names
+  of the files it moves in the maps, a core's `NT_FILE` note and
+  `/proc/<pid>/exe`, where Linux's `d_move` moves them whatever the root.
+  Maps can show fewer VMAs than Linux after a merge: Linux merges
   two VMAs only where their `anon_vma`s are compatible
   (`is_mergeable_anon_vma`), and the emulator does not model `anon_vma`
   identity, so it merges neighbours that Linux keeps apart, such as after
@@ -1367,10 +1367,7 @@ verified.
   Linux.
 - **Core files**: a core is written as with the kernel's default
   `core_pattern` (`core` in the working directory); a host that pipes cores to
-  a crash handler (systemd-coredump, apport) is not modelled. Its `NT_FILE`
-  note names a mapped file by the path it had when it was mapped, and the
-  program by the path it had when it was started (resolved, `(deleted)`
-  once removed), where Linux follows a rename.
+  a crash handler (systemd-coredump, apport) is not modelled.
 - **Memory limit**: a write beyond the limit ends the process that made it,
   where Linux's OOM killer picks the process using the most memory.
 - **The native JIT**: it is experimental and off unless `--jit` asks for it,

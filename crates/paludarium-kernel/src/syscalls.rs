@@ -2690,7 +2690,7 @@ fn sys_mmap(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
                 prot,
                 kind,
                 Backing::Cache {
-                    pages: &cache.map_private(file, crate::files::mapped_path(c, d)),
+                    pages: &cache.map_private(file, crate::files::mapped_name(c, d)),
                     offset,
                 },
             )
@@ -2819,7 +2819,8 @@ fn check_mappable(
     // Neither a file that is not regular nor one that /proc generates can
     // be read at an offset, which a mapping needs.
     // A BPF map's file maps by its own `mmap` ([`crate::bpf::mmap`]).
-    let readable = regular && file.read_at(0, &mut []) != Err(Errno::ENODEV);
+    let readable =
+        regular && !crate::proc::unmappable(file) && file.read_at(0, &mut []) != Err(Errno::ENODEV);
     if !readable && !is_zero_device(file) && !crate::bpf::is_map(file) {
         return Err(Errno::ENODEV);
     }
@@ -2884,9 +2885,10 @@ fn shared_file(
         (true, false) => paludarium_mmu::SharedWrites::Allowed,
     };
     let may_write = writes == paludarium_mmu::SharedWrites::Allowed;
-    let pages = file_cache(c, d, file)?.map(
+    let cache = file_cache(c, d, file)?;
+    let pages = cache.map(
         &crate::memfd::pages_source(file),
-        crate::files::mapped_path(c, d),
+        crate::files::mapped_name(c, d),
         offset,
         len,
         may_write,
