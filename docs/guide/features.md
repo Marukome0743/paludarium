@@ -602,7 +602,13 @@ kernel.
   unlocking, changing or closing it ends the wait there at once, as
   `locks_wake_up_blocks` does, even before the waiter runs again. The
   locks are the guest's own: a program on the host does not see them, nor
-  they its.
+  they its. `/proc/locks` lists the record locks, the `flock` locks and the
+  leases as `locks_show` prints them: those of each CPU in turn (as `getcpu`
+  numbers it where the lock was taken), the latest first, a merged lock at
+  its first one's place and a split one's left piece as new
+  (`posix_lock_inode`), without those of processes outside the reader's PID
+  namespace. `/proc/<pid>/fdinfo` lists a description's own, its lease last
+  (`show_fd_locks`).
 
 - File leases (`fcntl`'s `F_SETLEASE` and `F_GETLEASE`), as Linux's
   `fs/locks.c` takes and gives them back: a read or write lease on an open
@@ -3913,8 +3919,8 @@ kernel.
   directory there, one whose `..` or symbolic link leads into `/proc`,
   `execve` and a Unix socket's address do not.
 
-- The other `/proc` entries are `/proc/loadavg`, `/proc/meminfo`,
-  `/proc/stat`, `/proc/uptime` and `/proc/sysvipc` (below), `/proc/sys` with only
+- The other `/proc` entries are `/proc/loadavg`, `/proc/locks` (above),
+  `/proc/meminfo`, `/proc/stat`, `/proc/uptime` and `/proc/sysvipc` (below), `/proc/sys` with only
   `fs`, `kernel`, `net` and `vm` in it (below), a directory per process, and this process's own: `/proc/<pid>`, a
   directory its entries can be opened relative to and that lists them, and `/proc/self`, a
   symbolic link to it (0777, size 0) that `readlink` resolves to the PID:
@@ -4370,10 +4376,13 @@ kernel.
   reaped, then its numbers in each namespace below down to its own. The other kinds add Linux's lines
   too. After the first four come `lock:` lines (`show_fd_locks`): the
   description's `flock` lock, then each record lock set through it that the
-  process's table or the description owns, by where they start, numbered from 1
-  across both. Each has `FLOCK`, `POSIX` or `OFDLCK`, `READ` or `WRITE`, the
-  ID of the process that set it (-1 for a description's record lock), the device and inode, and the range
-  (`0 EOF` for a `flock` lock). Asking again for the kind of `flock` lock a
+  process's table or the description owns, in the file's order (each owner's
+  together by where they start, the owners as they first locked the file), then
+  its lease, numbered from 1 across all. Each has `FLOCK`, `POSIX`, `OFDLCK` or
+  `LEASE`, `READ` or `WRITE` (for a lease being broken, `BREAKING` and the type
+  it is to have, which can be `UNLCK`), the ID of the process that set it (-1 for a
+  description's record lock), the device and inode, and the range (`0 EOF` for
+  a `flock` lock or a lease). Asking again for the kind of `flock` lock a
   description has keeps it as it was, and a change of kind drops the old
   one first, even when the new one conflicts, as `flock_lock_inode` does.
   A lock merged into another
@@ -4430,7 +4439,7 @@ kernel.
   - A segment's or queue's PIDs, which `IPC_STAT` gives too, still show
     once their process is gone, as the object keeps its `struct pid`.
 
-- These system files (`loadavg`, `meminfo`, `stat`, `uptime` and
+- These system files (`loadavg`, `locks`, `meminfo`, `stat`, `uptime` and
   `sysvipc`'s) are of size 0, as Linux's `proc_create` makes them, and a
   read goes on to the end of what they hold. So is every file of a process's
   or a thread's directory (`stat` and `fstat` alike), as Linux's
