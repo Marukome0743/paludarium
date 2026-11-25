@@ -540,6 +540,7 @@ mod linux {
                     | "cpu-timer"
                     | "cpu-sleep"
                     | "cpu-sleep-others"
+                    | "cpu-clock-running"
                     | "cpu-timer-others"
                     | "perf-counts"
                     | "perf-exec"
@@ -1045,6 +1046,7 @@ mod linux {
         processes_pidfd_getfd => ("pidfd-getfd","process"),
         processes_pidfd_fdinfo => ("pidfd-fdinfo","process"),
         processes_cpu_clock_ids => ("cpu-clock-ids","process"),
+        processes_cpu_clock_running => ("cpu-clock-running","process"),
         processes_alarm_clocks => ("alarm-clocks","process"),
         processes_yama => ("yama","process"),
         processes_ignored_signal_wait => ("ignored-signal-wait","process"),
