@@ -5038,9 +5038,10 @@ fn option6_int(c: &Context<'_>, at: u64, len: u64) -> Result<i32, Errno> {
 /// only on AF_UNIX (`sk_may_scm_recv` adds netlink and Bluetooth for the
 /// first two). Any other option is ENOPROTOOPT. Only
 /// `TCP_NODELAY` reaches the host; the rest are kept for getsockopt.
+/// The options are locked once the value is read: the copy may wait for a
+/// `userfaultfd`, and a TCP socket's readiness takes them.
 fn set_option(c: &mut Context<'_>, socket: &InetSocket, a: [u64; 6]) -> Result<u64, Errno> {
     let (level, name, at, len) = (a[1], a[2], a[3], a[4]);
-    let mut options = socket.options();
     let tcp = !socket.datagram;
     match (level, name) {
         (1, _) if Timestamps::is_option(name as u32) => {
@@ -5053,7 +5054,10 @@ fn set_option(c: &mut Context<'_>, socket: &InetSocket, a: [u64; 6]) -> Result<u
                 let s = socket.lock();
                 s.listen.is_some() || matches!(s.connection, Connection::Unconnected)
             };
-            options.timestamps.set(name as u32, value, unconnected)?;
+            socket
+                .options()
+                .timestamps
+                .set(name as u32, value, unconnected)?;
         }
         (1, 16 | 34 | 76 | 83) => {
             option_int(c, at, len)?;
@@ -5064,7 +5068,6 @@ fn set_option(c: &mut Context<'_>, socket: &InetSocket, a: [u64; 6]) -> Result<u
         // not its options', holds the filter.
         (1, 26 | 27 | 44 | 50) => {
             let value = option_int(c, at, len)?;
-            drop(options);
             return crate::sockets::set_filter(
                 c,
                 socket,
@@ -5096,7 +5099,7 @@ fn set_option(c: &mut Context<'_>, socket: &InetSocket, a: [u64; 6]) -> Result<u
                     .map(|d| d.index.unsigned_abs())
                     .ok_or(ENODEV)?
             };
-            bind_to_device(c, socket, &mut options, index.cast_signed())?;
+            bind_to_device(c, socket, &mut socket.options(), index.cast_signed())?;
         }
         // `IPV6_MULTICAST_IF` (`do_ipv6_setsockopt`, before the socket's
         // lock): not for TCP (`ENOPROTOOPT`); a device of the namespace
@@ -5168,6 +5171,7 @@ fn set_option(c: &mut Context<'_>, socket: &InetSocket, a: [u64; 6]) -> Result<u
                 .map_err(|_| Errno::EFAULT)?;
             let word = |i: usize| i64::from_le_bytes(raw[i..i + 8].try_into().unwrap_or_default());
             let timeout = Timeout::from_timeval(word(0), word(8))?;
+            let mut options = socket.options();
             if matches!(name, 20 | 66) {
                 options.receive_timeout = timeout;
             } else {
@@ -5184,13 +5188,14 @@ fn set_option(c: &mut Context<'_>, socket: &InetSocket, a: [u64; 6]) -> Result<u
                 .map_err(|_| Errno::EFAULT)?;
             let on = i32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
             let seconds = i32::from_le_bytes([raw[4], raw[5], raw[6], raw[7]]);
-            options.linger = (on != 0).then_some(seconds);
+            socket.options().linger = (on != 0).then_some(seconds);
         }
         (1, 2 | 6 | 7 | 8 | 9 | 10 | 12 | 15 | 62)
         | (6, 1 | 4 | 5 | 6 | 12 | 18)
         | (0, 1)
         | (41, 26) => {
             let value = option_int(c, at, len)?;
+            let mut options = socket.options();
             match (level, name) {
                 (1, 2 | 15) => {
                     if name == 2 {
@@ -5256,8 +5261,7 @@ fn set_option(c: &mut Context<'_>, socket: &InetSocket, a: [u64; 6]) -> Result<u
         _ => return Err(ENOPROTOOPT),
     }
     if tcp && level == 1 && matches!(name, 7 | 8) {
-        let now = *options;
-        drop(options);
+        let now = *socket.options();
         let stream = {
             let s = socket.lock();
             s.link.as_ref().and(s.stream.clone())
