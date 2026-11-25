@@ -335,6 +335,29 @@ pub mod faults {
         fn user(&self) -> &AtomicU64;
         fn kernel(&self) -> &AtomicU64;
         fn forced(&self) -> &AtomicU64;
+        /// A fault that made its count `nth`, of the kernel's accesses or
+        /// the thread's own code's, `at`, which is told where
+        /// [`trace_addresses`] asked for it.
+        fn fault(&self, kernel: bool, nth: u64, at: At) {
+            let _ = (kernel, nth, at);
+        }
+    }
+
+    /// Where a fault was, and whether the page was there before it, as it
+    /// is for a write to one that is to be copied.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct At {
+        pub addr: u64,
+        pub present: bool,
+    }
+
+    /// Whether the sinks are told the faults' addresses.
+    static ADDRESSES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+    /// From now on every [`Sink`] of the process is told its faults'
+    /// addresses ([`Sink::fault`]).
+    pub fn trace_addresses() {
+        ADDRESSES.store(true, Ordering::SeqCst);
     }
 
     std::thread_local! {
@@ -420,35 +443,39 @@ pub mod faults {
     }
 
     /// Adds a fault to the bound sink's count `forced` or not; `false`
-    /// when the host thread is not bound.
-    fn add(forced: bool) -> bool {
+    /// when the host thread is not bound. It was `at` there.
+    fn add(forced: bool, at: At) -> bool {
         SINK.with(|sink| {
             let sink = sink.borrow();
             let Some(counts) = sink.as_ref() else {
                 return false;
             };
+            let kernel = KERNEL.with(Cell::get);
             let field = if forced {
                 counts.forced()
-            } else if KERNEL.with(Cell::get) {
+            } else if kernel {
                 counts.kernel()
             } else {
                 counts.user()
             };
-            field.fetch_add(1, Ordering::SeqCst);
+            let nth = field.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
+            if !forced && ADDRESSES.load(Ordering::Relaxed) {
+                counts.fault(kernel, nth, at);
+            }
             true
         })
     }
 
-    pub(crate) fn count() {
+    pub(crate) fn count(addr: u64, present: bool) {
         if GUP.with(Cell::get) != Gup::No {
             count_forced();
-        } else if !add(false) {
+        } else if !add(false, At { addr, present }) {
             TAKEN.with(|taken| taken.set(taken.get().wrapping_add(1)));
         }
     }
 
     pub(crate) fn count_forced() {
-        if !add(true) {
+        if !add(true, At::default()) {
             FORCED.with(|forced| forced.set(forced.get().wrapping_add(1)));
         }
     }
@@ -4635,7 +4662,7 @@ impl AddressSpaceData {
         self.check(&directory, addr, buf.len(), access, true)?;
         // A successful lazy read installs the logical zero-page entry without
         // allocating its byte frame, matching subsequent Linux fault metadata.
-        for (page, _, _) in chunks(addr, buf.len()) {
+        for (page, offset, _) in chunks(addr, buf.len()) {
             if ready(&directory, page) {
                 continue;
             }
@@ -4645,7 +4672,7 @@ impl AddressSpaceData {
                 if let Some(entry) = table.pages.get_mut(slot) {
                     let missing = entry.is_none();
                     if missing && matches!(access, Access::Read | Access::Fetch) {
-                        faults::count();
+                        faults::count(page + offset as u64, false);
                     } else if missing && access == Access::Dump {
                         faults::count_forced();
                     }
@@ -4805,7 +4832,7 @@ impl AddressSpaceData {
         }
         let mut directory = self.write_directory();
         self.check(&directory, addr, len, access, true)?;
-        for (page, _, _) in chunks(addr, len) {
+        for (page, offset, _) in chunks(addr, len) {
             let Some(prot) = self.mapping_at(page).map(|m| m.prot) else {
                 return Err(Fault {
                     addr: GuestAddr(page),
@@ -4827,7 +4854,8 @@ impl AddressSpaceData {
                 })
             {
                 if access == Access::Write {
-                    faults::count();
+                    let present = table.pages.get(slot).is_some_and(Option::is_some);
+                    faults::count(page + offset as u64, present);
                 } else {
                     faults::count_forced();
                 }
