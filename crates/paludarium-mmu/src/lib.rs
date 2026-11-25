@@ -2470,6 +2470,8 @@ pub struct Remap {
     pub keep_old: bool,
     /// The target with `fixed`, or a hint with `keep_old` alone.
     pub new_addr: GuestAddr,
+    /// Whether the move may go below `MMAP_MIN_ADDR` (`cap_mmap_addr`).
+    pub low: bool,
 }
 
 /// How many pages the [`Tlb`] remembers. An entry holds the bytes of its
@@ -6234,13 +6236,18 @@ impl AddressSpaceData {
             let to = if how.fixed {
                 self.unmap(GuestAddr(hint), new_len)?;
                 hint
-            } else if hint != 0 && hint >= MMAP_MIN_ADDR && !self.overlaps(hint, hint + new_len) {
+            } else if hint != 0 && !self.overlaps(hint, hint + new_len) {
                 hint
             } else {
                 free_for(self, new_len, hint != 0).ok_or(Errno::ENOMEM)?
             };
             if old_len > new_len {
                 self.unmap(GuestAddr(addr.0 + new_len), old_len - new_len)?;
+            }
+            // `security_mmap_addr`, as `vrm_set_new_addr` asks it: the
+            // target is unmapped and the source shrunk by then.
+            if to < MMAP_MIN_ADDR && !how.low {
+                return Err(Errno::EPERM);
             }
             // Moving a part of memory that may not be split
             // (`prep_move_vma`).
@@ -10816,6 +10823,7 @@ mod tests {
             fixed: false,
             keep_old: false,
             new_addr: GuestAddr(0),
+            low: false,
         };
         assert_eq!(
             space.remap_shared(at(1), PAGE_SIZE, 2 * PAGE_SIZE, grow),
@@ -10939,6 +10947,7 @@ mod tests {
             fixed: true,
             keep_old: true,
             new_addr: GuestAddr(0x90000),
+            low: false,
         };
         space
             .remap_shared(GuestAddr(0x50000), 3 * PAGE_SIZE, 3 * PAGE_SIZE, how)
@@ -11063,6 +11072,7 @@ mod tests {
             fixed: true,
             keep_old: true,
             new_addr: GuestAddr(0x90000),
+            low: false,
         };
         let to = moving
             .remap_shared(GuestAddr(0x80000), 2 * PAGE_SIZE, 2 * PAGE_SIZE, how)
@@ -11138,6 +11148,7 @@ mod tests {
             fixed,
             keep_old: false,
             new_addr: GuestAddr(to),
+            low: false,
         };
         // The sealed page is a VMA of its own, so the range runs past the
         // first one (EFAULT, as Linux's `vma_lookup` finds the first).
@@ -11529,6 +11540,7 @@ mod tests {
             fixed: false,
             keep_old: false,
             new_addr: GuestAddr(0),
+            low: false,
         };
         assert_eq!(
             space.remap_shared(at, len, 2 * PAGE_SIZE, stay),
@@ -11539,6 +11551,7 @@ mod tests {
             fixed: true,
             keep_old: false,
             new_addr: GuestAddr(end + 16 * PAGE_SIZE),
+            low: false,
         };
         assert_eq!(
             space.remap_shared(mid, PAGE_SIZE, PAGE_SIZE, away),
@@ -12087,6 +12100,7 @@ mod tests {
         let fixed = Remap {
             fixed: true,
             new_addr: GuestAddr(0x4000_0000),
+            low: false,
             ..MOVE
         };
         let moved = space
@@ -12140,6 +12154,7 @@ mod tests {
         fixed: false,
         keep_old: false,
         new_addr: GuestAddr(0),
+        low: false,
     };
 
     #[test]
@@ -12215,6 +12230,7 @@ mod tests {
         let fixed = Remap {
             fixed: true,
             new_addr: GuestAddr(0x10800),
+            low: false,
             ..MOVE
         };
         assert_eq!(
@@ -12240,6 +12256,7 @@ mod tests {
             fixed: true,
             keep_old: true,
             new_addr: GuestAddr(0x20000),
+            low: false,
             ..MOVE
         };
         assert_eq!(
@@ -12266,6 +12283,7 @@ mod tests {
                 Remap {
                     fixed: true,
                     new_addr: GuestAddr(0x30000),
+                    low: false,
                     ..MOVE
                 },
             )
@@ -12612,6 +12630,7 @@ mod tests {
                     may_move: true,
                     fixed: true,
                     new_addr: GuestAddr(shared.0 - 16 * PAGE_SIZE),
+                    low: false,
                     ..Remap::default()
                 },
             )
