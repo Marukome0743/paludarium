@@ -44,9 +44,10 @@ verified.
   has not been compared with a real CPU.
 - **`/proc/self/maps`, in part**: the stack's VMA has its full size from the
   start, where Linux's grows as it is used.
-  A rename that a process under `chroot` makes does not move the names
-  of the files it moves in the maps, a core's `NT_FILE` note and
-  `/proc/<pid>/exe`, where Linux's `d_move` moves them whatever the root.
+  A rename does not move the names of files that were opened in another
+  mount namespace, or by a process that entered this one apart (`unshare`
+  and `setns` each begin anew), in the maps, a core's `NT_FILE` note and
+  `/proc/<pid>/exe`, where Linux's `d_move` moves them in each.
 - **The vDSO, in part**: its functions make their system calls, as Linux's
   vDSO does only when no clock can be read from user space, so a seccomp
   filter, a ptrace tracer's syscall stops and syscall counts see a call

@@ -325,6 +325,7 @@
     {"name":"vma-merges","binary":"process"},
     {"name":"exec-names","binary":"process"},
     {"name":"rename-names","binary":"process"},
+    {"name":"chroot-names","binary":"process"},
     {"name":"context-switches","binary":"process"},
     {"name":"proc-mem","binary":"process"},
     {"name":"proc-stat-counts","binary":"process"},
