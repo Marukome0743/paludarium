@@ -1126,6 +1126,7 @@ mod linux {
         processes_io_uring_ring_poll => ("io-uring-ring-poll","process"),
         processes_io_uring_cancel => ("io-uring-cancel","process"),
         processes_io_uring_exit => ("io-uring-exit","process"),
+        processes_io_uring_ring_fds => ("io-uring-ring-fds","process"),
         processes_io_uring_pinned => ("io-uring-pinned","process"),
         processes_io_uring_held_tag => ("io-uring-held-tag","process"),
         vfork_exit => ("vfork-exit","process"),

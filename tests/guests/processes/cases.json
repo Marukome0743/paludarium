@@ -517,6 +517,7 @@
     {"name":"io-uring-ring-poll","binary":"process"},
     {"name":"io-uring-cancel","binary":"process"},
     {"name":"io-uring-exit","binary":"process"},
+    {"name":"io-uring-ring-fds","binary":"process"},
     {"name":"io-uring-pinned","binary":"process"},
     {"name":"io-uring-held-tag","binary":"process"},
     {"name":"cloexec","binary":"process"},
