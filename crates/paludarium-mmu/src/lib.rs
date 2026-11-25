@@ -2235,8 +2235,8 @@ pub trait PageSource: Send + Sync {
         true
     }
     /// Whether a VMA of this memory may be split (the VMA's
-    /// `vm_ops->may_split`): a perf event's ring buffer's may not, so that
-    /// an `munmap`, `mprotect`, `mremap`, `madvise` or `mseal` that would
+    /// `vm_ops->may_split`): a perf event's ring buffer's and the vDSO's
+    /// (`special_mapping_split`) may not, so that an `munmap`, `mprotect`, `mremap`, `madvise` or `mseal` that would
     /// split it is `EINVAL`.
     fn splits(&self) -> bool {
         true
@@ -3150,6 +3150,17 @@ impl AddressSpaceData {
             .is_some_and(|source| {
                 source.secret() || source.vma_flags(0) & (vm::IO | vm::PFNMAP) != 0
             })
+            || self.special_backing(page).is_some()
+    }
+    /// The source of a private mapping at `page` that core mm does not back
+    /// with pages of its own (`VM_IO | VM_PFNMAP`), as the vDSO's data,
+    /// Linux's `[vvar]`, is a special mapping: its accesses ask the source
+    /// to [`PageSource::admit`] each page, and `get_user_pages`, `madvise`
+    /// and `mremap` treat it as they treat a perf ring.
+    fn special_backing(&self, page: u64) -> Option<(&Arc<dyn PageSource>, u64)> {
+        let backing = self.backing_at(page)?;
+        (backing.cache.is_none() && backing.source.vma_flags(0) & (vm::IO | vm::PFNMAP) != 0)
+            .then(|| (&backing.source, page.wrapping_add(backing.shift)))
     }
     /// Whether a page of `[start, end)` is one `get_user_pages` refuses
     /// ([`Self::gup_refused`]): the shared mappings that overlap it, as
@@ -4481,10 +4492,10 @@ impl AddressSpaceData {
 
     /// The memory an access to the page at `page` asks to take the page in
     /// ([`PageSource::admit`]), and the page's offset in it: a shared
-    /// mapping's, or the shmem page cache a private mapping shows where it
-    /// has no copy of its own, as Linux's `shmem_fault` brings the page
-    /// into the file for a private mapping's read and copy-on-write faults
-    /// too.
+    /// mapping's, a private special mapping's ([`Self::special_backing`]),
+    /// or the shmem page cache a private mapping shows where it has no copy
+    /// of its own, as Linux's `shmem_fault` brings the page into the file
+    /// for a private mapping's read and copy-on-write faults too.
     fn admitting(&self, directory: &Directory, page: u64) -> Option<(&Arc<dyn PageSource>, u64)> {
         if let Some(shared) = self.shared_at(page) {
             return shared
@@ -4492,6 +4503,9 @@ impl AddressSpaceData {
                 .source
                 .as_ref()
                 .map(|source| (source, page.wrapping_add(shared.shift)));
+        }
+        if let Some(special) = self.special_backing(page) {
+            return Some(special);
         }
         let backing = self.backing_at(page)?;
         (backing.cache.is_some()
@@ -5492,6 +5506,13 @@ impl AddressSpaceData {
             .is_some_and(|(_, shared)| {
                 at < shared.end && shared.pages.source().is_some_and(|source| !source.splits())
             })
+            || self
+                .backing
+                .range(..at)
+                .next_back()
+                .is_some_and(|(_, backing)| {
+                    at < backing.end && backing.cache.is_none() && !backing.source.splits()
+                })
     }
     /// Whether the VMA at `addr` is one of Linux's `VM_SPECIAL`, memory core
     /// mm does not back: a fixed mapping ([`PageSource::fixed`]) or one of
@@ -5502,6 +5523,17 @@ impl AddressSpaceData {
             .is_some_and(|source| {
                 source.fixed() || source.vma_flags(0) & (vm::IO | vm::PFNMAP | vm::MIXEDMAP) != 0
             })
+            || self.private_special(addr).is_some()
+    }
+    /// The source of a private mapping at `addr` that is one of Linux's
+    /// `VM_SPECIAL` ([`Self::special`]), as the vDSO and its data are
+    /// special mappings: fixed ([`PageSource::fixed`], `VM_DONTEXPAND`) or
+    /// of no pages of its own ([`Self::special_backing`]).
+    fn private_special(&self, addr: u64) -> Option<&Arc<dyn PageSource>> {
+        let backing = self.backing_at(addr)?;
+        (backing.cache.is_none()
+            && (backing.source.fixed() || backing.source.vma_flags(0) & (vm::IO | vm::PFNMAP) != 0))
+            .then_some(&backing.source)
     }
     /// Whether the VMA at `addr` is a `VM_PFNMAP` one, whose pages
     /// `MADV_DONTNEED` may not drop (`madvise_dontneed_free_valid_vma`).
@@ -5509,6 +5541,7 @@ impl AddressSpaceData {
         self.shared_at(addr)
             .and_then(|shared| shared.pages.source())
             .is_some_and(|source| source.vma_flags(0) & vm::PFNMAP != 0)
+            || self.special_backing(addr).is_some()
     }
     /// The first mapping of `[addr, end)` whose pages `MADV_DONTNEED` may
     /// not drop: a `VM_PFNMAP` one, or with `locked` a locked one too.
@@ -5898,7 +5931,8 @@ impl AddressSpaceData {
         // behind a move (`check_prep_vma`)...
         let source = self
             .shared_at(addr.0)
-            .and_then(|shared| shared.pages.source().cloned());
+            .and_then(|shared| shared.pages.source().cloned())
+            .or_else(|| self.private_special(addr.0).cloned());
         let fixed = source.as_ref().is_some_and(|source| source.fixed());
         if how.keep_old && fixed {
             return Err(Errno::EINVAL);
@@ -6115,6 +6149,14 @@ impl AddressSpaceData {
             if matches!(advice, FlagAdvice::DoFork | FlagAdvice::DoDump) && self.special(start) {
                 return Err(Errno::EINVAL);
             }
+            // One that is never dumped keeps its flags.
+            if advice == FlagAdvice::DontDump
+                && self
+                    .private_special(start)
+                    .is_some_and(|source| source.vma_flags(0) & vm::DONTDUMP != 0)
+            {
+                continue;
+            }
             let ksm = self.shared_at(start).is_none();
             let advise = |m: &mut Mapping| match advice {
                 FlagAdvice::DontFork => m.dont_fork = true,
@@ -6157,7 +6199,9 @@ impl AddressSpaceData {
     /// `name` (none clears it), split where the range starts and ends
     /// within it, which keeps every other state of it (its lock, its
     /// `userfaultfd`); one with a file but shared anonymous memory ends it
-    /// with `EBADF` (`vma_is_anon_shmem`), after those before it; a hole in
+    /// with `EBADF` (`vma_is_anon_shmem`), after those before it, and one
+    /// that may not be split there with `EINVAL`; a special mapping has no
+    /// file (it takes the name, and shows its own); a hole in
     /// the range is `ENOMEM` once the rest has it.
     pub fn set_anon_name(&mut self, addr: u64, end: u64, name: Option<&[u8]>) -> Result<(), Errno> {
         // The name's id, taken only once a mapping is to hold it: a call
@@ -6180,8 +6224,9 @@ impl AddressSpaceData {
             // Only anonymous memory is named: a loaded program's segments
             // and a file's mappings have a file (`vm_file`), and so has shared
             // memory of a file, where shared anonymous memory's is shmem's.
-            let file = matches!(m.kind, MappingKind::File | MappingKind::ElfSegment)
-                || self.backing_at(start).is_some()
+            let file = self.private_special(start).is_none()
+                && (matches!(m.kind, MappingKind::File | MappingKind::ElfSegment)
+                    || self.backing_at(start).is_some())
                 || self
                     .shared_at(start)
                     .is_some_and(|shared| shared.pages.source.is_some());
@@ -6190,6 +6235,9 @@ impl AddressSpaceData {
             }
             if m.anon_name == id && (name.is_none() || id.is_some()) {
                 continue;
+            }
+            if self.splits_refused(&m, addr, end) {
+                return Err(Errno::EINVAL);
             }
             if let Some(name) = name
                 && id.is_none()
@@ -7728,6 +7776,16 @@ impl AddressSpaceData {
                 && self
                     .shared_at(m.start.0)
                     .is_some_and(|shared| !shared.may_write)
+            {
+                denied = Some(Errno::EACCES);
+                break;
+            }
+            // A special mapping its memory keeps from being written, as
+            // the vDSO's data, Linux's `[vvar]`, has no `VM_MAYWRITE`.
+            if prot.contains(Prot::WRITE)
+                && self
+                    .private_special(m.start.0)
+                    .is_some_and(|source| source.vma_flags(vm::MAYWRITE) & vm::MAYWRITE == 0)
             {
                 denied = Some(Errno::EACCES);
                 break;
@@ -11086,6 +11144,73 @@ mod tests {
         fn writable(&self, offset: u64) -> bool {
             offset == 0
         }
+    }
+
+    /// A private special mapping, as the vDSO is one.
+    struct Special;
+    impl PageSource for Special {
+        fn read_at(&self, _: u64, buf: &mut [u8]) -> Result<usize, Errno> {
+            buf.fill(7);
+            Ok(buf.len())
+        }
+        fn size(&self) -> Option<u64> {
+            Some(2 * PAGE_SIZE)
+        }
+        fn name(&self) -> Option<Vec<u8>> {
+            Some(b"[special]".to_vec())
+        }
+        fn fixed(&self) -> bool {
+            true
+        }
+        fn splits(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn a_private_special_mapping_is_not_split_either() {
+        let mut space = AddressSpace::new();
+        let len = 2 * PAGE_SIZE;
+        let at = GuestAddr(0x10_0000);
+        let other = GuestAddr(at.0 + len);
+        for start in [at, other] {
+            space
+                .map(Some(start), len, Prot::READ_EXEC, MappingKind::ElfSegment)
+                .unwrap();
+            space
+                .back_with_file(start, len, Arc::new(Special), 0)
+                .unwrap();
+        }
+        let mid = GuestAddr(at.0 + PAGE_SIZE);
+        let whole = |space: &AddressSpace| {
+            let vma = space.view().vma_from(at.0).unwrap();
+            (vma.start, vma.end) == (at.0, other.0)
+        };
+        assert_eq!(space.unmap_shared(at, PAGE_SIZE), Err(Errno::EINVAL));
+        assert_eq!(space.unmap_shared(mid, len), Err(Errno::EINVAL));
+        assert_eq!(
+            space.protect_shared(mid, PAGE_SIZE, Prot::READ),
+            Err(Errno::EINVAL)
+        );
+        assert_eq!(space.seal_shared(at, PAGE_SIZE), Err(Errno::EINVAL));
+        assert_eq!(
+            space.advise_flags(at, mid.0, FlagAdvice::DontDump),
+            Err(Errno::EINVAL)
+        );
+        assert_eq!(
+            space.set_anon_name(at, mid.0, Some(b"name")),
+            Err(Errno::EINVAL)
+        );
+        assert_eq!(space.protect_shared(at, PAGE_SIZE, Prot::READ_EXEC), Ok(()));
+        assert!(whole(&space));
+        // It has no file, so it takes a name and shows its own.
+        assert_eq!(space.set_anon_name(at, other.0, Some(b"name")), Ok(()));
+        assert!(whole(&space));
+        let vma = space.view().vma_from(at.0).unwrap();
+        assert_eq!(vma.file.unwrap().name.as_deref(), Some(&b"[special]"[..]));
+        // The whole of two goes.
+        space.unmap_shared(at, 2 * len).unwrap();
+        assert!(space.view().vma_from(at.0).is_none());
     }
 
     #[test]
