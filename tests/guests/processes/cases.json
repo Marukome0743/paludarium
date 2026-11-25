@@ -322,6 +322,7 @@
     {"name":"proc-other-files","binary":"process"},
     {"name":"page-faults","binary":"process"},
     {"name":"vma-names","binary":"process"},
+    {"name":"vma-merges","binary":"process"},
     {"name":"exec-names","binary":"process"},
     {"name":"rename-names","binary":"process"},
     {"name":"context-switches","binary":"process"},

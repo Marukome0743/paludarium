@@ -941,6 +941,7 @@ mod linux {
         processes_proc_other_files => ("proc-other-files","process"),
         processes_page_faults => ("page-faults","process"),
         processes_vma_names => ("vma-names","process"),
+        processes_vma_merges => ("vma-merges","process"),
         processes_exec_names => ("exec-names","process"),
         processes_rename_names => ("rename-names","process"),
         processes_context_switches => ("context-switches","process"),

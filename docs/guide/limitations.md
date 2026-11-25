@@ -48,12 +48,6 @@ verified.
   A rename that a process under `chroot` makes does not move the names
   of the files it moves in the maps, a core's `NT_FILE` note and
   `/proc/<pid>/exe`, where Linux's `d_move` moves them whatever the root.
-  Maps can show fewer VMAs than Linux after a merge: Linux merges
-  two VMAs only where their `anon_vma`s are compatible
-  (`is_mergeable_anon_vma`), and the emulator does not model `anon_vma`
-  identity, so it merges neighbours that Linux keeps apart, such as after
-  `munlock` of a page `mlock` populated next to a piece written while it was
-  part of another VMA.
 - **The vDSO, in part**: its functions make their system calls, as Linux's
   vDSO does only when no clock can be read from user space, so a seccomp
   filter, a ptrace tracer's syscall stops and syscall counts see a call
@@ -801,12 +795,9 @@ verified.
     would run it in that segment or fault.
   - `mincore` counts a page of a file as in memory whenever it lies within the
     file, where Linux asks its page cache.
-  - Adjacent private VMAs merge once their flags agree again (after
-    `munlock`, for one), whatever their `anon_vma`s. Linux merges them only
-    when they share one or one of them has none. A VMA gets its `anon_vma` on its first write, and
-    takes a neighbour's only if their flags agreed then
-    (`anon_vma_compatible`), so pieces written while apart may stay
-    separate VMAs in `/proc/<pid>/maps`.
+  - Adjacent VMAs never written that a `fork`ed child's lost locks or
+    `userfaultfd` registrations make alike are one VMA in
+    `/proc/<pid>/maps`, where Linux merges none at a `fork`.
   - `mmap` with
     `MAP_LOCKED` checks `can_do_mlock` (`EPERM`) and room under
     `RLIMIT_MEMLOCK` (`EAGAIN`) before it finds room for the mapping
