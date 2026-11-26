@@ -150,10 +150,10 @@ verified.
   (`/proc/version`, `/proc/cmdline`, the files of `/proc/sys` but for the ones of `fs`,
   `kernel` and `net` it has and `vm/drop_caches` and
   `vm/unprivileged_userfaultfd`, ...) and the other names in
-  the reader's own directory (`stack`, `sched`, ...) are looked up like any
-  path, which with `--mount /:/` finds the host's `/proc`; in another
-  process's directory they are `ENOENT`, where Linux shows root `stack`
-  and the rest. `wchan` is `0` for a waiting task too, where Linux names the
+  the reader's own directory (`stack`, `sched`, ...) are `ENOENT`, as in
+  another process's directory, whatever the filesystem holds there (with
+  `--mount /:/`, the host's `/proc`), where Linux shows them, and root
+  `stack` and the rest of another's. `wchan` is `0` for a waiting task too, where Linux names the
   kernel function it waits in for a reader that may read the task: there are
   no kernel functions here to name. A poll of an epoll that watches several
   of `hostname` and `domainname` polls them by descriptor number until one is
@@ -210,7 +210,9 @@ verified.
   `/dev`, its devices and links, `/proc` or `/proc`'s system-wide files, which only
   root may give these files of root's, is `EPERM`, where Linux keeps it;
   a pseudo-terminal's slave keeps its own. Times set on a generated file
-  are not kept either: its `stat` shows the times it had.
+  are not kept either: its `stat` shows the times it had. Removing or
+  renaming a generated name (`unlink`, `rmdir`, `rename`) gives `ENOENT`,
+  where Linux gives `EPERM`.
 - **Device nodes and FIFOs on the host**: `mknod` of a character or block
   device is `EPERM`, although the guest runs as root, since paludarium has
   no device for it to stand for. A FIFO in a mounted host directory can be
@@ -911,8 +913,8 @@ verified.
   namespace the caller is in now). A file a bind mount of a generated
   file shows has, in `statx` and `/proc/self/fdinfo`, the mount ID of
   `/dev` or `/proc`, not the bind mount's. Of the mounts Linux has under
-  `/proc` and `/dev`, the table has only `/dev` itself and the tmpfs on
-  `/dev/shm`, not `/proc`, `/dev/pts`, `/dev/mqueue` or
+  `/proc` and `/dev`, the table has only `/proc` and `/dev` themselves and
+  the tmpfs on `/dev/shm`, not `/dev/pts`, `/dev/mqueue` or
   `/proc/sys/fs/binfmt_misc`: a bind mount of `/proc` or `/dev` (or a
   directory in them) still shows what is generated in those directories,
   and what is in `/dev/shm`, where Linux shows their empty mount points,
@@ -991,7 +993,8 @@ verified.
   root's `/proc` and `/dev` after `pivot_root`, where Linux's go to
   `put_old` with the old root, and at `/proc` and `/dev` in a namespace
   from `open_tree`'s `OPEN_TREE_NAMESPACE`, where Linux has them only
-  where the copy has their mounts. A move or a `pivot_root` takes the roots
+  where the copy has their mounts. `umount2` of either gives `EINVAL`,
+  where Linux unmounts it. A move or a `pivot_root` takes the roots
   and working directories along, but an open descriptor keeps the path it
   was opened at for what it does by path (`fchdir`, a lookup from it).
   Mounts are kept by their mount
