@@ -1286,6 +1286,10 @@ kernel.
   `UFFDIO_WAKE` takes its range, `UFFDIO_UNREGISTER` takes it from a range
   registered for missing pages, or the file is closed, and a signal ends
   it too; then the instruction runs again, as Linux retries the fault.
+  Unless a signal is to be taken first, the retry counts as a minor fault
+  of the thread's own code (`ru_minflt`, `page-faults`, `minor-faults`),
+  whether it brings the page in or not: its first try ran under the VMA's
+  lock, whose retry is not `FAULT_FLAG_TRIED`.
   With `UFFD_FEATURE_SIGBUS` the fault raises SIGBUS (`BUS_ADRERR`)
   instead. `UFFDIO_WRITEPROTECT` protects the pages of its range, or ends
   their protection, VMA by VMA as `mwriteprotect_range` does: each must be
@@ -5031,9 +5035,8 @@ kernel.
   forked child starts from zero, and an `execve` keeps both. Their
   `ru_minflt` counts the minor faults, as Linux's `mm_account_fault` adds
   them to the task: a thread's first read or write of a page and its write
-  to a page `fork` shares or of a private mapping of a file (in its own code,
-  where an instruction that reads and writes its operand takes one, a write,
-  as x86-64's do, and in the kernel's accesses for it: a system call's copies, a signal
+  to a page `fork` shares or of a private mapping of a file (in its own code
+  and in the kernel's accesses for it: a system call's copies, a signal
   frame, an `rseq` area's update), each as it is taken, and the faults of the reads and writes
   through `get_user_pages` made for it, which `perf` does not count:
   `mlock`'s, `mlockall`'s and `MAP_POPULATE`'s population,
@@ -5042,7 +5045,8 @@ kernel.
   and `PTRACE_POKEDATA` (counted to the tracer) and a core dump's (counted
   to the thread the signal ended, which dumps while the others wait,
   regardless of which thread exits last; it leaves private anonymous memory never touched
-  a hole, with no fault). `RUSAGE_SELF` gives the sum of the
+  a hole, with no fault). An instruction of its code that reads and writes
+  its operand takes one fault, a write, as x86-64's do. `RUSAGE_SELF` gives the sum of the
   process's threads, `RUSAGE_THREAD` the thread's, and `RUSAGE_CHILDREN` and
   a wait those of the children as with the CPU time; a forked child starts
   from none, and an `execve` keeps them. `ru_nvcsw` counts the voluntary
