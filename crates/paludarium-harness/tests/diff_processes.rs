@@ -1180,6 +1180,7 @@ mod linux {
         processes_io_uring_held_buffer => ("io-uring-held-buffer","process"),
         processes_io_uring_net => ("io-uring-net","process"),
         processes_io_uring_placement => ("io-uring-placement","process"),
+        processes_io_uring_timeout => ("io-uring-timeout","process"),
         vfork_exit => ("vfork-exit","process"),
         processes_exec => ("exec","process"),
         exec_thread => ("exec-thread","process"),
