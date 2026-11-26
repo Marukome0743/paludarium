@@ -2959,6 +2959,15 @@ kernel.
     address of the namespace, a broadcast or a group (`EINVAL`). Its
     packets go to the gateway's neighbour where a route of link scope
     reaches the gateway (`rt_uses_gateway`), else to their destination's.
+    A gateway may be one of IPv6 (`RTA_VIA`, `fib_gw_from_via`; one of IPv4
+    there is as in `RTA_GATEWAY`, except that 0.0.0.0 is a gateway still,
+    and both are `EINVAL`): it is checked as
+    an IPv6 route's (`fib_check_nh_v6_gw`), by the IPv6 table of the
+    route's number, then the local and main ones, its end needs IPv6 on
+    (`EACCES`), and a next hop made without its carrier is not
+    `RTNH_F_LINKDOWN`. The packets go to its neighbour, which neighbour
+    discovery finds from the end's link-local address, and dumps,
+    notifications and lookups give it as `RTA_VIA`.
     A route's `RTA_MULTIPATH` makes one route of its next hops
     (`fib_get_nhs`), each checked as a route's next hop of its own device,
     gateway and flags (`fib_check_nh`), with its weight (`rtnh_hops` + 1):
@@ -4579,7 +4588,9 @@ kernel.
   read:
   - `dev` (`dev_seq_show`), the devices, with counters of 0; `if_inet6`
     (`if6_seq_show`), the IPv6 addresses; `route` (`fib_route_seq_show`),
-    IPv4's main table, nothing while there is none; `ipv6_route`
+    IPv4's main table, nothing while there is none, with a gateway of IPv6
+    (`RTA_VIA`) as 00000000, `RTF_GATEWAY` where its first 4 bytes are not
+    0 (`fib_flag_trans`); `ipv6_route`
     (`ipv6_route_native_seq_show`), each IPv6 table, with a reference each;
     and `arp` (`arp_seq_show`), the IPv4 neighbours that need ARP.
   - Any other name there is `ENOENT`, with `--mount /:/` too: the host's

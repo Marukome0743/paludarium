@@ -158,7 +158,17 @@ fn route(network: Option<&Network>, now: Option<u64>) -> String {
         if matches!(r.kind, Kind::Unreachable | Kind::Prohibit) {
             flags |= RTF_REJECT;
         }
-        if gateway.is_some_and(|gateway| !gateway.is_unspecified()) {
+        // `fib_flag_trans` reads `nhc_gw.ipv4`, which an IPv6 gateway's
+        // first 4 bytes share, where `fib_route_seq_show` prints only an
+        // IPv4 one.
+        let first4 = |gateway: IpAddr| match gateway {
+            IpAddr::V4(ip) => u32::from(ip),
+            IpAddr::V6(ip) => {
+                let o = ip.octets();
+                u32::from_be_bytes([o[0], o[1], o[2], o[3]])
+            }
+        };
+        if gateway.is_some_and(|gateway| first4(gateway) != 0) {
             flags |= RTF_GATEWAY;
         }
         if r.len == 32 {
@@ -171,7 +181,11 @@ fn route(network: Option<&Network>, now: Option<u64>) -> String {
         let line = format!(
             "{device}\t{:08X}\t{:08X}\t{flags:04X}\t0\t0\t{}\t{:08X}\t{mtu}\t{window}\t{}",
             u32::from(r.dst).swap_bytes(),
-            gateway.map_or(0, u32::from).swap_bytes(),
+            match gateway {
+                Some(IpAddr::V4(ip)) => u32::from(ip),
+                _ => 0,
+            }
+            .swap_bytes(),
             r.priority,
             mask.swap_bytes(),
             rtt >> 3,
