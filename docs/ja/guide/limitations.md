@@ -123,8 +123,12 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   種類ごとに同じ値、まだ届いていないデータグラムとメッセージが占めるメモリは 0 で、TCP の接続の
   `pingpong` を含む `quick` も 0 です。確認応答を待つ間のタイマーは示しません。`netlink` には、ポートが 0 である
   カーネル自身のソケットはありません。
+- **仮想 CPU の `/proc/cpuinfo`**：`RDTSC` は動きますが、`CPUID` はタイムスタンプカウンタを
+  示さないので、`bogomips` は 0.00 で、`cpu MHz` はありません。`CPUID` のリーフ 1 は CPU ごとの
+  ID を返さないので、`initial apicid` はどの CPU でも 0 です。`bugs` は、Linux 7.0 がファミリー
+  15 の AMD の CPU に想定するものを並べますが、仮想 CPU は投機実行をしません。
 - **ほかの `/proc` の一部**：作るのは、プロセスのディレクトリといくつかのシステムの
-  ファイルだけです（[機能](./features) を参照）。ほかのシステムのファイル（`/proc/cpuinfo`、
+  ファイルだけです（[機能](./features) を参照）。ほかのシステムのファイル（`/proc/version`、`/proc/cmdline`、
   `/proc/sys` のファイルのうち、`fs`、`kernel`、`net` にあるものと `vm/drop_caches`、
   `vm/unprivileged_userfaultfd` 以外など）と、
   読むプロセス自身のディレクトリのほかの名前
