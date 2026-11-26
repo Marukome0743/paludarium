@@ -1192,9 +1192,11 @@ kernel.
   Linux's `complete_signal` starts the group exit then, when it is SIGKILL,
   or when its action is the default one, which ends the process without a
   core (not SIGQUIT, SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGSEGV,
-  SIGXCPU, SIGXFSZ or SIGSYS, which their taker dumps), the thread it goes
-  to (or one of the process's) does not block it, and the process is not
-  stopped. The memory goes as the process's last thread ends, so there is
+  SIGXCPU, SIGXFSZ or SIGSYS, which their taker dumps), a thread wants it
+  as Linux's `wants_signal` asks (the thread it is sent to, or another of
+  the process's: one that does not block it, does not exit, is in no group
+  or ptrace stop and does not sleep with another signal pending), and the
+  process is neither stopped nor, but for SIGKILL, traced. The memory goes as the process's last thread ends, so there is
   nothing more to release early.
 
 - `mremap` grows a mapping in place when the pages after it are free, and
@@ -7094,7 +7096,21 @@ one only with an `--allow-net`.
   pending. An unblocked ignored signal, such as the `SIGCHLD` of a child that
   ends, ends no wait in any thread: a blocked `read` stays blocked and a
   `nanosleep` sleeps on, as Linux drops the signal as it is sent
-  (`sig_ignored`).
+  (`sig_ignored`), so that a handler set later does not run for it. It is
+  kept if the thread it is sent to (the leader, for a process) blocks it or
+  is traced. `SIGCONT` takes the pending stop signals away, and a stop signal
+  the pending `SIGCONT`, even one that is then dropped.
+- A signal sent to a process goes to the thread Linux's `complete_signal`
+  chooses: the one it is sent to, or else the first that wants it, from the
+  thread last chosen so on. That is the leader for `kill` (or the thread whose
+  ID it names), signal-driven I/O and `ITIMER_REAL`, the thread that made the
+  child for `SIGCHLD`, and the one that runs for the timers on CPU time. A
+  thread wants a signal it does not block, unless it is in a group stop or a
+  ptrace stop, exits, or sleeps with another pending. The others sleep on. A
+  thread that takes a signal in takes every other of the process's it does
+  not block; those it then blocks, or leaves as it exits, go to another
+  (`retarget_shared_pending`), and one no thread wants waits until one
+  unblocks it. `rt_sigtimedwait` counts as unblocking what it waits for.
 
 ## Filesystem
 
