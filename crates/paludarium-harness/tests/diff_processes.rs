@@ -261,6 +261,7 @@ mod linux {
                     | "msg"
                     | "ipc-sysctl"
                     | "sysvipc-proc"
+                    | "proc-net"
                     | "kernel-sysctl"
                     | "uts-sysctl"
                     | "uts-sysctl-poll"
@@ -678,6 +679,7 @@ mod linux {
         veth_ipv6_ecmp => ("veth-ipv6-ecmp","veth-ipv6-ecmp"),
         veth_ipv6_scope => ("veth-ipv6-scope","veth-ipv6-scope"),
         veth_ipv6_traffic => ("veth-ipv6-traffic","veth-ipv6-traffic"),
+        proc_net => ("proc-net","proc-net"),
         processes_user_namespaces => ("user-namespaces","process"),
         processes_scheduling_set => ("scheduling-set","process"),
         processes_personality_layout => ("personality-layout","process"),
