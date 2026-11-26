@@ -6896,7 +6896,7 @@ one only with an `--allow-net`.
   (`de_thread`). It resets the actions as Linux's `flush_signal_handlers`
   does: a handled signal goes back to its default, and an ignored one stays
   ignored, with no flags or mask. `CLONE_CLEAR_SIGHAND` resets the child's
-  the same way.
+  actions the same way.
 - The threads of a process share its signal dispositions, as Linux's
   `sighand_struct` does. A thread that was already waiting (in `epoll_wait`,
   `poll` or a `futex` wait, say) when another thread called `sigaction` takes
@@ -7068,6 +7068,14 @@ one only with an `--allow-net`.
   handler has run, which runs with that mask; the original mask is back after
   it. The mask stays through a stop, as on Linux, so a signal that only it
   unblocks, sent while the thread is stopped, is taken as the stop ends.
+- On its way back to user space a thread takes every signal it may, as
+  Linux's `exit_to_user_mode_loop`: its own pending ones by number, then the
+  process's by number (`dequeue_signal`), the synchronous ones (`SIGSEGV`,
+  `SIGBUS`, `SIGILL`, `SIGTRAP`, `SIGFPE`, `SIGSYS`) first, a queued
+  real-time signal's instances in the order they came. Each handler's frame
+  goes on the one before, with the mask that handler runs with, so the last
+  frame's handler runs first, and a signal that mask blocks waits for its
+  `rt_sigreturn`. Only the first can restart the call the thread was in.
 - A `sigaction` that makes a signal ignored (`SIG_IGN`, or `SIG_DFL` for
   `SIGCHLD`, `SIGCONT`, `SIGURG` and `SIGWINCH`, which are ignored by
   default) discards its pending instances in the process and in every thread,
