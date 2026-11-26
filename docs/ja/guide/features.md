@@ -871,6 +871,26 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `EEXIST` になります。中身を付けられなかったときは、新しいマッピングを外し、置き換えた
   マッピングは戻りません。
 
+- `mmap` は `do_mmap` の種類（`MAP_TYPE`、4 ビット）を受け付けます。ファイルと
+  `/dev/zero` は `MAP_SHARED`、`MAP_SHARED_VALIDATE`、`MAP_PRIVATE`、匿名メモリは
+  `MAP_SHARED`、`MAP_PRIVATE`、`MAP_DROPPABLE` でマップでき、ほかの値は `EINVAL` です。
+  `MAP_SHARED_VALIDATE` は、Linux の `LEGACY_MAP_MASK` にないフラグを断る
+  `MAP_SHARED` です（`EOPNOTSUPP`。ファイルの大きさを確かめたあと、アクセスの前）。
+  `MAP_FIXED_NOREPLACE`、2 MiB にも 1 GiB にもないヒュージページの大きさのビット 31、
+  ビット 31 より上も含む知らないビット、ext4 と xfs（`FOP_MMAP_SYNC`。Linux に番号のない
+  ホストのファイルシステムは ext4 とみなします）以外での `MAP_SYNC` がそうで、
+  `MAP_SHARED` はこれらを捨てます。ext4 か xfs のファイルでは、DAX のファイルがないので、
+  どの種類でも `MAP_SYNC` はほかの確認のあとで `EOPNOTSUPP` です
+  （`daxdev_mapping_supported`）。`MAP_DROPPABLE` のメモリは、`VM_DROPPABLE`
+  （`VmFlags: dp`）、`VM_NORESERVE`、`VM_WIPEONFORK`、`VM_DONTDUMP` を持つプライベートな
+  匿名メモリです。`fork` した子はページのない状態で受け取り、コアには何も入らず、
+  これは変えられません（`MADV_KEEPONFORK` と `MADV_DODUMP` は `EINVAL`）。`MAP_LOCKED`、
+  `MAP_GROWSDOWN`、`MAP_HUGETLB` とは使えず（`EINVAL`）、`mlock` も `mlockall` の
+  `MCL_FUTURE` もロックしません（Linux master の `vma_supports_mlock` と同じです。v7.0 の
+  ソースならロックするところで、CI のランナーのカーネルは master に従います）。
+  `MADV_MERGEABLE` は素通りし、`userfaultfd` は登録しません（`EINVAL`）。Linux はメモリが
+  足りないときにそのページを捨てますが、エミュレーターにはそういうときがないので残ります。
+
 - ファイルの `MAP_SHARED` のマッピングは、Linux と同じくファイルのページキャッシュを
   見せます。どのプロセスのものでも、そのファイルの共有マッピングはみな同じページを
   持ちます。そこへの書き込みは `read` にも、そのファイルのプライベートなマッピングにも
@@ -3297,14 +3317,14 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `[vdso]` は書き込めるようにでき（そのときは写しになり、`/proc/<pid>/mem` で書いたときも
   同じです）、`mremap` で動かせますが、大きくはできません（`EFAULT`）。三つとも分割は
   できず、一部への `munmap`、`mprotect`、`mremap`、`mseal` などで分割になるものは
-  `EINVAL` です。`statm` と `VmSize` はこの三つを数え、`fork` しても
+  `EINVAL` です。`statm` はこの三つを数え、`fork` しても
   同じ場所に残り、Linux の `always_dump_vma` が特別なマッピングをそうするように、
   コアには全体が入ります。
 
 - `vsyscall` のページは Linux の既定（`CONFIG_LEGACY_VSYSCALL_XONLY`）どおりです。
   `ffffffffff600000` にあるゲート領域で、プロセスのマッピングではなく、`maps` と `smaps`
   の最後の行（`--xp`、`VmFlags: ex`）とコアの最後のセグメント（中身は 0）になり、`statm`、
-  `VmSize`、`smaps_rollup` には入りません。実行はできますが読めません（`SIGSEGV`、
+  `smaps_rollup` には入りません。実行はできますが読めません（`SIGSEGV`、
   `SEGV_MAPERR`）。入口の `+0x000`（`gettimeofday`）、`+0x400`（`time`）、`+0x800`
   （`getcpu`）は `emulate_vsyscall` と同じ動きをします。seccomp には入口のアドレスで
   その呼び出しが見え、トレーサーには `PTRACE_EVENT_SECCOMP` が届きますが、システム
@@ -3738,7 +3758,8 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   root（どのユーザー名前空間の外でもユーザー ID 0）だけです。どちらも Linux の
   `proc_doulongvec_minmax` と同じく unsigned long として読み書きし、書き込みは `-` を取らず
   （`EINVAL`）、それ以外は `/proc/sys/fs/mqueue` のファイルと同じに読みます。
-  `/proc/sys/fs` にあるのはこれらと `fanotify`、`inotify`、`mqueue` だけです。
+  `/proc/sys/fs` にあるのはこれらと `fanotify`、`inotify`、`mqueue`、`lease-break-time`、
+  `leases-enable` だけです。
 
 - `/proc/sys/fs/inotify` はマシンの inotify の上限で、root の持つモード 0644 の
   通常のファイルです。書くために開けるのは root（どのユーザー名前空間の外でも
@@ -4008,7 +4029,8 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   （`gu`）、アドバイス（`sr`、`rr`、`dc`、`wf`、`dd`、`hg`、`nh`、`mg`）、リングと秘密の
   メモリの `de`、`mm`、`dd`、課金（`ac`。書き込めたプライベートメモリが持ち、
   `MAP_NORESERVE` なら代わりに `nr` を持ちます。一度も書いていない匿名メモリは書き込め
-  なくなるときに返します）、`MAP_STACK` のマッピングの `nh`、封印（`sl`）、最初の
+  なくなるときに返します）、`MAP_STACK` のマッピングの `nh`、`MAP_DROPPABLE` のマッピングの
+  `nr`、`wf`、`dd`、`dp`、封印（`sl`）、最初の
   スタック以外の、作られてから `clear_refs` に消されていない VMA の `sd`（`VM_SOFTDIRTY`）
   です。新しい VMA とつながった VMA は、Linux の引き継がれるフラグと同じく、また `sd` を持ちます。
 
