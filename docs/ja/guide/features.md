@@ -971,8 +971,9 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   ページは、次のアクセスでまたマップされます。`MADV_FREE` では
   中身を残します。メモリが足りているときの Linux と同じです。
   `MADV_WILLNEED` を受け付けます。`MADV_COLD` と `MADV_PAGEOUT`（回収するものが
-  ないので、これもヒントです）も受け付け、どれも範囲がマップされていれば足ります
-  （`ENOMEM`）。
+  ないので、これもヒントです）も受け付け、どれも範囲がマップされていることが要ります
+  （`ENOMEM`）。あとの 2 つは、ロックしたメモリ、ヒュージページ（`MAP_HUGETLB`）、Linux が
+  `VM_PFNMAP` でマップするメモリを受け付けません（`EINVAL`）。
   `MADV_DONTNEED_LOCKED` は `MADV_DONTNEED` と同じく捨てます。`MADV_POPULATE_READ` と
   `MADV_POPULATE_WRITE` は、読み込みや書き込みと同じようにページを割り当てます
   （ゼロページ、自分のページ）。どのマッピングにもないページ（`ENOMEM`）、マッピングが
@@ -986,7 +987,8 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   （`/proc/<pid>/maps`）。VMA を順に処理し、受け付けない VMA があればそこで `EINVAL`
   で止まります（`MADV_WIPEONFORK` はプライベートの匿名メモリだけです。AIO、`io_uring`、
   perf イベントのリングのような、コアの mm が支えないメモリは `MADV_DOFORK` と
-  `MADV_DODUMP` を受け付けず、perf のリングバッファは一部だけの変更を受け付けません）。範囲に穴が
+  `MADV_DODUMP` を受け付けません。ただしヒュージページは `MADV_DODUMP` を受け付け、
+  `MADV_HUGEPAGE` を受け付けません。perf のリングバッファは一部だけの変更を受け付けません）。範囲に穴が
   あれば、残りを処理してから `ENOMEM` を返します。`fork` の子は、`MADV_DONTFORK` の
   マッピングを受け継がず、`MADV_WIPEONFORK` のマッピングはページなしの、0 で埋まった
   新しいメモリとして受け継ぎます。そのフラグと `MADV_DONTDUMP` は子にも残ります。
@@ -1008,7 +1010,8 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `mremap` でページと一緒に移り、`munmap` でなくなります。`MADV_GUARD_REMOVE` は
   ガードを外し、内容のないページを残します。ページを捨てられない封印したメモリには
   ガードを置けません（`EPERM`）。Linux が `VM_DONTEXPAND` でマップする AIO と
-  `io_uring` のリングは、どちらの指定も受け付けません（`EINVAL`）。
+  `io_uring` のリング、ヒュージページ、vDSO のデータは、どちらの指定も受け付けません
+  （`EINVAL`）。
   `MADV_COLLAPSE` は、Linux の `madvise_collapse` と同じく VMA ごとにプライベートな
   anonymous メモリと shmem のページキャッシュをまとめます。`MADV_NOHUGEPAGE` の VMA、
   揃った 2 MiB の区間が入らない VMA、どのページも書かれていないプライベートな
@@ -1588,6 +1591,18 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   （64 KiB）より低いヒントは、そのアドレスとして扱います。それより下への固定のマッピングと、`mremap`
   によるそこへの移動（移動先をアンマップし、元を縮めたあと。`MREMAP_DONTUNMAP` だけで求めた空き
   アドレスへも）と、そこへの `shmat` は、`CAP_SYS_RAWIO` がなければ `EPERM` です。
+
+- `MAP_HUGETLB` は、ヒュージページのプールが空（`vm.nr_hugepages` が 0）の Linux と同じように
+  マップします。Linux が先にする確認のあと `ENOMEM` で、固定のマッピングはそのとき置き換える
+  範囲をすでにアンマップしています。`MAP_NORESERVE` があれば成功し、アクセスすると `SIGBUS`
+  になります。このマッピングは 2 MiB の境目に置かれ、分割、`mremap`、破棄も境目でだけできます
+  （ほかは `EINVAL`）。広げることはできず、`smaps` には `ht` と 2 MiB のページが出ます。
+  `madvise` は `MADV_FREE`、`MADV_COLD`、`MADV_PAGEOUT`、`MADV_HUGEPAGE`、ガードを受け付けず、
+  2 MiB の境目にない番地からの `MADV_DONTNEED` も受け付けません（`EINVAL`）。仮想 CPU に
+  1 GiB のページはないので、大きさは 2 MiB だけです（ほかは `EINVAL`）。このフラグを付けたファイルの
+  マッピングは `EINVAL` です。メモリーは hugetlbfs のファイルのものなので、ファイルの種類を
+  取ります。`MAP_SHARED_VALIDATE` でマップでき（受け付けないフラグは `EOPNOTSUPP`）、
+  `MAP_DROPPABLE` は `do_mmap` と同じく置き場所とロックの確認のあと `EINVAL` です。
 
 - 保護キーは、保護キーのない CPU での Linux と同じ答えを返します。仮想 CPU はそういう CPU
   です（`CPUID` は PKU を報告しません）。キーは、既定のキー 0 も含めて一つも割り当てられて
