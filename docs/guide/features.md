@@ -3116,10 +3116,11 @@ kernel.
     namespace's own random key, as `fib_multipath_hash_policy` 0 hashes
     the source, the destination, the flow label and the protocol; a
     socket's packets hash as it is bound, `::` unbound, with no flow
-    label. An answer goes back by a lookup of its own, through whichever
-    end that takes: the one its listener is bound to, or to a link-local
-    address the one the packet came in on (`inet6_csk_route_req`,
-    `icmp6_send`). Turning `disable_ipv6` on for an end
+    label, and one unbound takes the source of the hop that gives
+    (`ip6_dst_lookup_tail`). An answer goes back by a lookup of its own,
+    through whichever end that takes: the one its listener is bound to, or
+    to a link-local address the one the packet came in on
+    (`inet6_csk_route_req`, `icmp6_send`). Turning `disable_ipv6` on for an end
     takes its IPv6 routes and addresses as going down does; off again,
     while it is up, makes them as coming up does (`dev_disable_change`).
     Going down, it loses its IPv6 routes, told of in the order of a dump,
@@ -3312,8 +3313,9 @@ kernel.
     request names (none for 0), and the caller's
     `RTA_UID` (or the one the request names, as it is; none for -1, and
     `ERANGE` for one shorter than 4 bytes); `0.0.0.0` goes to the loopback
-    from 127.0.0.1. An IPv6 answer names the source `ipv6_dev_get_saddr`
-    picks. Where no route goes it is `ENETUNREACH`, and `AF_UNSPEC`
+    from 127.0.0.1. An IPv6 answer names the found hop's source: the
+    route's preferred one, else the one `ipv6_dev_get_saddr` picks on the
+    hop's device (`ip6_route_get_saddr`). Where no route goes it is `ENETUNREACH`, and `AF_UNSPEC`
     `EOPNOTSUPP`; a destination shorter than its family's address is
     `ERANGE` for IPv4 and `EINVAL` for IPv6. With `RTM_F_FIB_MATCH` the
     answer is the table entry that matched (`EHOSTUNREACH` for `0.0.0.0`,

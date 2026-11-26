@@ -424,6 +424,7 @@ mod linux {
                     | "veth-ipv4-ecmp"
                     | "veth-ipv4-hash"
                     | "veth-answers"
+                    | "veth-ipv6-source"
                     | "veth-ipv6-gateway"
                     | "veth-bindtodevice"
                     | "veth-multicast"
@@ -671,6 +672,7 @@ mod linux {
         veth_ipv4_ecmp => ("veth-ipv4-ecmp","veth-ipv4-ecmp"),
         veth_ipv4_hash => ("veth-ipv4-hash","veth-ipv4-hash"),
         veth_answers => ("veth-answers","veth-answers"),
+        veth_ipv6_source => ("veth-ipv6-source","veth-ipv6-source"),
         veth_ipv6_gateway => ("veth-ipv6-gateway","veth-ipv6-gateway"),
         veth_bindtodevice => ("veth-bindtodevice","veth-bindtodevice"),
         veth_multicast => ("veth-multicast","veth-multicast"),
