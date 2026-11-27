@@ -1154,7 +1154,9 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   先に受け取るシグナルがなければ、このやり直しは、ページを取り込んだかどうかに関わらず
   スレッド自身のコードのマイナーフォールト（`ru_minflt`、`page-faults`、`minor-faults`）
   として数えます。最初の試みは VMA のロックの下で動き、そのやり直しは
-  `FAULT_FLAG_TRIED` にならないからです。上に書いたように待つカーネルのアクセスの
+  `FAULT_FLAG_TRIED` にならないからです。受け取るシグナルが終わらせた待ちはやり直さず、
+  Linux がフォールトを始めるときに数えるのと同じく `page-faults` にだけ数えます。命令は
+  シグナルのハンドラの後でもう一度フォールトします。上に書いたように待つカーネルのアクセスの
   フォールトはメジャーフォールトです。カーネルモードのフォールトは先に VMA のロックの下で
   動かないので、そのやり直しは `FAULT_FLAG_TRIED` になり、やり直しがページを取り込んだか
   どうかに関わらず一度だけ数えます（`ru_majflt`、`page-faults`、`major-faults`。マイナー
@@ -4749,7 +4751,9 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `context-switches`（眠るたび）と `cpu-migrations`（`getcpu` の返す CPU が変わるたび）。
   後の二つはカーネルが起こすので、Linux と同じく `exclude_kernel` で除きます。
   `userfaultfd` がやり直させたカーネルのアクセスのフォールトを数える `major-faults`
-  （`page-faults` も数え、`minor-faults` は数えません）と、x86-64 と同じく何も数えない
+  （`page-faults` も数え、`minor-faults` は数えません。シグナルが `userfaultfd` の待ちを
+  終わらせたスレッドのコードのフォールトはやり直さないので、`page-faults` だけが数えます）と、
+  x86-64 と同じく何も数えない
   `alignment-faults`、`emulation-faults`、`dummy`、`bpf-output` もあります。
   `perf record` が CPU ごとに開くような、一つの CPU のスレッドのイベントは、スレッドが
   その CPU にいる間だけ数えて動き（`event_filter_match`）、有効な時間はその間ずっと

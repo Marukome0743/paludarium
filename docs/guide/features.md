@@ -1295,7 +1295,10 @@ kernel.
   Unless a signal is to be taken first, the retry counts as a minor fault
   of the thread's own code (`ru_minflt`, `page-faults`, `minor-faults`),
   whether it brings the page in or not: its first try ran under the VMA's
-  lock, whose retry is not `FAULT_FLAG_TRIED`. The fault of a kernel
+  lock, whose retry is not `FAULT_FLAG_TRIED`. A wait that a signal to be
+  taken ends is no retry, and counts in `page-faults` alone, as Linux
+  counts a fault there as it starts; the instruction then faults again
+  after the signal's handler. The fault of a kernel
   access, which waits as described above, is a major one: a kernel-mode
   fault does not run under the VMA's lock first, so its retry is
   `FAULT_FLAG_TRIED`, and it counts once (`ru_majflt`, `page-faults`,
@@ -5535,7 +5538,9 @@ kernel.
   changes), the last two made by the kernel and so left out with
   `exclude_kernel`, as Linux leaves them out; `major-faults` (the faults of
   the kernel's accesses that a `userfaultfd` had try again, which
-  `page-faults` counts too and `minor-faults` does not); and
+  `page-faults` counts too and `minor-faults` does not; `page-faults`
+  alone counts a fault of the thread's code whose `userfaultfd` wait a
+  signal ends, as it is not tried again); and
   `alignment-faults`,
   `emulation-faults`, `dummy` and `bpf-output`, which count nothing, as on
   x86-64. An event of a thread on one CPU, as `perf record` opens one for
