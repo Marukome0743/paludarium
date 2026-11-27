@@ -68,11 +68,10 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   `write` で埋めたホストのファイルのページはクリーンです（下の「`write` で埋めたページ」）。
 - **ヒュージページ**：hugetlbfs のプールは空で、増やせません。`/proc/sys/vm/nr_hugepages`
   （書き込む先）も `/sys/kernel/mm/hugepages` もなく、`sysfs` は `hugetlbfs` を並べますが
-  マウントはできません（`ENODEV`）。`SHM_HUGETLB` は、hugetlbfs のないカーネルと同じく
-  `ENOSYS` です。プールが空の Linux では、セグメントは `EPERM` か `ENOMEM` です。1 GiB の
-  ページの `MAP_HUGETLB` は `EINVAL`、`MFD_HUGETLB` は `ENODEV` で、それのない CPU と同じです。
-  差分テストはこれを比べません。`userfaultfd` はこのマッピングを登録せず、anonymous のマッピングの
-  `maps` でのデバイスは 0 です。
+  マウントはできません（`ENODEV`）。1 GiB のページの `MAP_HUGETLB` と `SHM_HUGETLB` は
+  `EINVAL`、`MFD_HUGETLB` は `ENODEV` で、それのない CPU と同じです。差分テストはこれを
+  比べません。`userfaultfd` はこのマッピングを登録せず、`maps` でのデバイスは anonymous の
+  ものが 0、セグメントのものが 00:01 です。
 - **`/proc/<pid>/mem` の `i64::MAX` を超える位置**：`pread64` と `pwrite64` は、
   Linux v7.0 の `ksys_pread64` と `ksys_pwrite64` がどのファイルでもするのと同じく、
   これを拒みます（`EINVAL`）。Linux master は符号なしの位置のファイル

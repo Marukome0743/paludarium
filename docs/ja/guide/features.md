@@ -1292,7 +1292,13 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   外します。つながったまま `IPC_RMID`
   したセグメントは、ID はそのままで、どのキーでも見つからなくなり、最後に外れたとき
   消えます。`SHM_LOCK` は Linux と同じく所有者と `RLIMIT_MEMLOCK` を確かめます。
-  `SHM_HUGETLB` は、hugetlbfs なしでビルドしたカーネルと同じく `ENOSYS` です。
+  `SHM_HUGETLB` は、`newseg` と同じく、プールが空の hugetlbfs のセグメントを作ります（下の
+  `MAP_HUGETLB` を参照）。2 MiB 以外のヒュージページの大きさは `EINVAL`、`CAP_IPC_LOCK` がなく
+  グループ 0（`vm.hugetlb_shm_group`）にも入っていないプロセスは `EPERM`、`SHM_NORESERVE`
+  がなければ予約が `ENOMEM` です。このセグメントの大きさ（`shm_segsz`）はそのままですが、
+  `shmat` は 2 MiB のページ単位で 2 MiB の境目にマップし（境目にない固定の番地は `EINVAL`）、
+  アクセスすると `SIGBUS` になる `MAP_HUGETLB` のマッピングと同じです。`SHM_LOCK` と
+  `SHM_UNLOCK` は何も変えません。
 
 - System V のセマフォー（`semget`、`semop`、`semtimedop`、`semctl`）も、スレッドの IPC
   名前空間のものです。確かめる内容とその順序は Linux の `ipc/sem.c` と同じで、上限は

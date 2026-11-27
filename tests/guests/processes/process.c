@@ -19726,6 +19726,33 @@ static int mmap_hugetlb_case(void) {
     waitpid(kid, NULL, 0);
     return 0;
 }
+/* The shm-hugetlb case: SHM_HUGETLB as a process without CAP_IPC_LOCK
+ * outside group 0 makes it, as the CI runners' user is, so that both sides
+ * answer alike: the size code's EINVAL comes first, then EPERM, before the
+ * reservation (newseg, hugetlb_file_setup). The unit tests check the
+ * segment a privileged process makes. */
+static int shm_hugetlb_get(size_t size, int flags) {
+    int id = shmget(IPC_PRIVATE, size, IPC_CREAT | 0600 | SHM_HUGETLB | flags);
+    if (id >= 0) shmctl(id, IPC_RMID, NULL);
+    return id < 0 ? errno : 0;
+}
+static int shm_hugetlb_case(void) {
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    if (geteuid() == 0 &&
+        (setgroups(0, NULL) || setresgid(65534, 65534, 65534) || setresuid(65534, 65534, 65534)))
+        return 80;
+    gid_t groups[64];
+    int count = getgroups(64, groups), in_root = getegid() == 0;
+    for (int i = 0; i < count; i++) in_root |= groups[i] == 0;
+    printf("root-group=%d\n", in_root);
+    printf("reserve=%d noreserve=%d", shm_hugetlb_get(4096, 0), shm_hugetlb_get(4096, SHM_NORESERVE));
+    printf(" size-21=%d size-12=%d size-22=%d\n", shm_hugetlb_get(4096, SHM_NORESERVE | 21 << 26),
+           shm_hugetlb_get(4096, SHM_NORESERVE | 12 << 26), shm_hugetlb_get(4096, SHM_NORESERVE | 22 << 26));
+    /* shmget's own checks come before those of SHM_HUGETLB. */
+    printf("empty=%d huge-size=%d\n", shm_hugetlb_get(0, SHM_NORESERVE | 12 << 26),
+           shm_hugetlb_get((size_t)1 << 62, 0));
+    return 0;
+}
 /* The memfd-hugetlb case: MFD_HUGETLB makes a file on hugetlbfs, with no
    huge page in the pool. Another size is ENODEV; it can't be written, its
    size is whole huge pages, and fallocate has no page to give (ENOSPC). Its
@@ -43869,6 +43896,7 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "mmap-32bit")) return mmap_32bit_case();
     if (!strcmp(mode, "mmap-low")) return mmap_low_case();
     if (!strcmp(mode, "mmap-hugetlb")) return mmap_hugetlb_case();
+    if (!strcmp(mode, "shm-hugetlb")) return shm_hugetlb_case();
     if (!strcmp(mode, "memfd-hugetlb")) return memfd_hugetlb_case();
     if (!strcmp(mode, "io-uring-placement")) return io_uring_placement_case();
     if (!strcmp(mode, "generated-noexec")) return generated_noexec_case();
