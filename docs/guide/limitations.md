@@ -246,7 +246,7 @@ verified.
     route's source address: `getsockname` gives the unspecified address,
     and a `bind` of that port on a loopback address is `EADDRINUSE`, where
     Linux allows it.
-    Broadcast datagrams reach no one but through a veth end (below). A
+    Broadcast datagrams reach no one but through a veth end or `lo` (below). A
     datagram is always
     stamped as it comes, as Linux stamps it while some socket on the
     machine takes timestamps; with none, Linux stamps it only when
@@ -1242,16 +1242,15 @@ verified.
   `sk_rethink_txhash`), but here a connection's path is settled as it
   opens, so a hop whose answers do not come back fails it. An ICMPv6 error
   takes the hop of its own flow, where Linux's takes that of the packet
-  it tells of (`icmp6_send`). An IPv4 connection with no port of its own
-  yet hashes one random source port in each of its lookups, where Linux
-  draws a new one at each (`FLOWI_FLAG_ANY_SPORT` in `ip_route_connect`
-  and `ip_route_newports`). A UDP
+  it tells of (`icmp6_send`). A connection with no port of its own yet
+  hashes a random source port, as on Linux (`FLOWI_FLAG_ANY_SPORT`): one
+  in each of its lookups, where Linux's IPv4 one draws a new one at each
+  (`ip_route_connect`, `ip_route_newports`); IPv6's looks its route up
+  once (`tcp_v6_connect`). A UDP
   connect whose route fails puts the socket's device back, as Linux
   master does since "ipv6: fix device binding after failed datagram
   connect"; a CI kernel without that fix keeps the device the scope ID
-  gave. Bound to `lo`, an IPv4 socket's packet to the limited broadcast
-  address or `127.255.255.255` is `ENETUNREACH`, where Linux sends it
-  through `lo`. Neighbour discovery sends no advertisement unasked, and no
+  gave. Neighbour discovery sends no advertisement unasked, and no
   redirect; the
   probe a delaying neighbour sends teaches the peer nothing, where
   Linux's, from the end's link-local address, makes it a neighbour of
