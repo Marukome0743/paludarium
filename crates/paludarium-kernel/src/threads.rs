@@ -2429,11 +2429,39 @@ impl ThreadGroup {
             .fold(0, |set, signal| set | 1 << (signal.number - 1));
         (set, pending.arrivals)
     }
+    /// Sets signal `n`'s action, which a thread changed in its own copy.
+    /// An action made `SA_IMMUTABLE` since that thread last synced (another
+    /// process sharing the actions was killed by seccomp meanwhile) stays
+    /// so: it takes the change as Linux's siglock would have ordered it,
+    /// before [`Self::force_exit_action`].
     pub(crate) fn set_action(&self, n: i32, a: SignalAction) {
-        self.shared_actions()
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(n, a);
+        let actions = self.shared_actions();
+        let mut actions = actions.lock().unwrap_or_else(PoisonError::into_inner);
+        let immutable = actions
+            .get(&n)
+            .is_some_and(|old| old.flags & signals::SA_IMMUTABLE != 0);
+        let a = if immutable {
+            SignalAction {
+                handler: 0,
+                flags: a.flags | signals::SA_IMMUTABLE,
+                ..a
+            }
+        } else {
+            a
+        };
+        actions.insert(n, a);
+    }
+    /// Leaves signal `n`'s action at its default and `SA_IMMUTABLE`, as
+    /// Linux's `force_sig_info_to_task` does for `HANDLER_EXIT`: the other
+    /// fields stay. A process that shares the actions (`CLONE_SIGHAND`)
+    /// keeps it after this one ends, and a process forked from that one
+    /// copies it, until an `execve`.
+    pub(crate) fn force_exit_action(&self, n: i32) {
+        let actions = self.shared_actions();
+        let mut actions = actions.lock().unwrap_or_else(PoisonError::into_inner);
+        let action = actions.entry(n).or_default();
+        action.handler = 0;
+        action.flags |= signals::SA_IMMUTABLE;
     }
 }
 impl Kernel {
