@@ -12216,6 +12216,194 @@ static int io_uring_timeout_case(void) {
     return 0;
 }
 
+/* A wait's min_wait_usec (struct io_uring_getevents_arg). */
+static void umw_wait(struct uring *u, unsigned submit, unsigned min, unsigned usec,
+                     struct timespec *ts, long least_ms, const char *label) {
+    struct {
+        unsigned long sigmask;
+        unsigned sigmask_sz, min_wait_usec;
+        unsigned long ts;
+    } arg = {0, 0, usec, (unsigned long)ts};
+    struct timespec from, to;
+    clock_gettime(CLOCK_MONOTONIC, &from);
+    long r = uring_enter(u->fd, submit, min, 1 | 8, &arg, sizeof arg);
+    int e = errno;
+    clock_gettime(CLOCK_MONOTONIC, &to);
+    errno = e;
+    uring_show(label, r);
+    uring_reap(u, label);
+    long ms = (to.tv_sec - from.tv_sec) * 1000 + (to.tv_nsec - from.tv_nsec) / 1000000;
+    printf("%s: waited=%d\n", label, ms >= least_ms && ms < 50000);
+}
+
+static int io_uring_min_wait_case(void) {
+    struct uring u;
+    if (uring_open(&u, 4)) return 80;
+    int p[2];
+    if (pipe(p)) return 81;
+    char buf[8];
+    struct timespec later = {0, 60 * 1000 * 1000}, never = {100, 0}, now = {0, 0};
+
+    /* Nothing comes: the least time ends it, else the timeout. */
+    umw_wait(&u, 0, 1, 20000, NULL, 20, "least");
+    umw_wait(&u, 0, 1, 20000, &later, 60, "timeout");
+    umw_wait(&u, 0, 1, 0, &now, 0, "at-once");
+    umw_wait(&u, 0, 0, 20000, &never, 0, "none");
+    /* Fewer completions are enough once the least time passed. */
+    uring_push(&u, 0, 1);
+    umw_wait(&u, 1, 2, 20000, &never, 20, "fewer");
+    uring_push(&u, 0, 1);
+    umw_wait(&u, 1, 2, 20000, NULL, 20, "fewer-no-timeout");
+    uring_push(&u, 0, 1);
+    uring_push(&u, 0, 2);
+    umw_wait(&u, 2, 2, 100000000, &never, 0, "all");
+    /* Those that come after it end the wait at once: a linked timeout, which
+       ends no wait by itself, and the read it cancels. */
+    pw_read(&u, 1, p[0], buf, sizeof buf, 0)[1] = 4;
+    uto_timeout(&u, 15, 2, &later, 0, 0);
+    umw_wait(&u, 2, 4, 10000, &never, 60, "after");
+    /* The timeout is read even if nothing is to wait for; a negative number
+       of completions is there. */
+    umw_wait(&u, 0, 0, 0, (struct timespec *)8, 0, "unmapped");
+    uring_show("negative", uring_enter(u.fd, 0, 0xffffffff, 1, NULL, 0));
+    close(u.fd);
+    return 0;
+}
+
+/* A ring made with IORING_SETUP_R_DISABLED, its restrictions, and
+   IORING_REGISTER_ENABLE_RINGS. */
+struct ures {
+    unsigned short opcode;
+    unsigned char value, resv;
+    unsigned resv2[3];
+};
+
+static long ures_register(struct uring *u, unsigned op, const void *arg, unsigned n) {
+    return syscall(427, u->fd, op, arg, n);
+}
+
+static void ures_run(struct uring *u, unsigned char op, unsigned char flags, const char *label) {
+    uring_push(u, op, 1)[1] = flags;
+    uring_show(label, uring_enter(u->fd, 1, 1, 1, NULL, 0));
+    uring_reap(u, label);
+}
+
+static void *ures_enable(void *arg) {
+    struct uring *u = arg;
+    uring_show("thread-enable", ures_register(u, 12, NULL, 0));
+    ures_run(u, 0, 0, "thread-nop");
+    return NULL;
+}
+
+static int io_uring_restrictions_case(void) {
+    struct uring u;
+    if (uring_open(&u, 4)) return 80;
+    struct ures list[4] = {{0, 3, 0, {0}}, {1, 0, 0, {0}}, {2, 16, 0, {0}}, {3, 4, 0, {0}}};
+    uring_show("enabled-enable", ures_register(&u, 12, NULL, 0));
+    uring_show("enabled-restrict", ures_register(&u, 11, list, 4));
+    close(u.fd);
+
+    struct uring d;
+    if (uring_open_flags(&d, 4, 1 << 6)) return 81;
+    uring_show("disabled-enter", uring_enter(d.fd, 0, 0, 0, NULL, 0));
+    uring_show("disabled-submit", uring_enter(d.fd, 1, 1, 1, NULL, 0));
+    uring_show("restrict-null", ures_register(&d, 11, NULL, 0));
+    uring_show("restrict-many", ures_register(&d, 11, list, 100000));
+    uring_show("restrict-unmapped", ures_register(&d, 11, (void *)8, 1));
+    struct ures bad[2] = {{1, 0, 0, {0}}, {4, 0, 0, {0}}};
+    uring_show("restrict-unknown", ures_register(&d, 11, bad, 2));
+    bad[1].opcode = 0;
+    bad[1].value = 255;
+    uring_show("restrict-register", ures_register(&d, 11, bad, 2));
+    bad[1].opcode = 1;
+    uring_show("restrict-operation", ures_register(&d, 11, bad, 2));
+    uring_show("restrict", ures_register(&d, 11, list, 4));
+    uring_show("restrict-again", ures_register(&d, 11, list, 4));
+    uring_show("disabled-personality", ures_register(&d, 9, NULL, 0));
+    uring_show("enable-argument", ures_register(&d, 12, list, 0));
+    uring_show("enable-count", ures_register(&d, 12, NULL, 1));
+    uring_show("enable", ures_register(&d, 12, NULL, 0));
+    uring_show("enable-again", ures_register(&d, 12, NULL, 0));
+    uring_show("personality", ures_register(&d, 9, NULL, 0));
+    uring_show("unregister-files", ures_register(&d, 3, NULL, 0));
+    ures_run(&d, 0, 4, "nop-link");
+    ures_run(&d, 0, 4 | 16, "nop-link-async");
+    ures_run(&d, 0, 0, "nop");
+    ures_run(&d, 0, 4 | 1, "nop-fixed");
+    ures_run(&d, 22, 4, "read");
+    ures_run(&d, 200, 4, "past-the-last");
+    close(d.fd);
+
+    /* None at all allows nothing; registrations alone leave the requests. */
+    struct uring none;
+    if (uring_open_flags(&none, 4, 1 << 6)) return 82;
+    uring_show("restrict-none", ures_register(&none, 11, list, 0));
+    uring_show("none-enable", ures_register(&none, 12, NULL, 0));
+    ures_run(&none, 0, 0, "none-nop");
+    uring_show("none-personality", ures_register(&none, 9, NULL, 0));
+    close(none.fd);
+    struct uring half;
+    if (uring_open_flags(&half, 4, 1 << 6)) return 83;
+    struct ures personality = {0, 9, 0, {0}};
+    uring_show("half", ures_register(&half, 11, &personality, 1));
+    uring_show("half-enable", ures_register(&half, 12, NULL, 0));
+    ures_run(&half, 0, 0, "half-nop");
+    uring_show("half-personality", ures_register(&half, 9, NULL, 0));
+    uring_show("half-unregister", ures_register(&half, 10, NULL, 1));
+    close(half.fd);
+
+    /* The thread that enables one for a single issuer is that issuer. */
+    struct uring single;
+    if (uring_open_flags(&single, 4, 1 << 6 | 1 << 12)) return 84;
+    uring_show("single-personality", ures_register(&single, 9, NULL, 0));
+    pthread_t t;
+    pthread_create(&t, NULL, ures_enable, &single);
+    pthread_join(t, NULL);
+    uring_show("single-submit", uring_enter(single.fd, 1, 0, 0, NULL, 0));
+    uring_show("single-register", ures_register(&single, 9, NULL, 0));
+    close(single.fd);
+    return 0;
+}
+
+/* IORING_REGISTER_PERSONALITY: the thread's credentials, its Landlock domain
+   among them, as they were, for requests to run with. */
+static void uper_open(struct uring *u, unsigned short id, const char *label) {
+    unsigned char *sqe = unet_push(u, 18, 1, AT_FDCWD, 0, (unsigned long)"file", 0, O_RDONLY, 0);
+    memcpy(sqe + 42, &id, 2);
+    int fd = unet_run(u, 1, 1, label, 1);
+    if (fd >= 0) close(fd);
+}
+
+static int io_uring_personality_case(void) {
+    char dir[] = "/tmp/uring-personality-XXXXXX";
+    if (!mkdtemp(dir) || chdir(dir)) return 80;
+    int file = open("file", O_RDWR | O_CREAT, 0600);
+    if (file < 0) return 81;
+    close(file);
+    struct uring u;
+    if (uring_open(&u, 4)) return 82;
+    uring_show("register-argument", ures_register(&u, 9, &u, 0));
+    uring_show("register-count", ures_register(&u, 9, NULL, 1));
+    uper_open(&u, 1, "none");
+    uring_show("register", ures_register(&u, 9, NULL, 0));
+    if (ll_enforce(ll_ruleset(LL_READ_FILE))) return 83;
+    uring_show("register-restricted", ures_register(&u, 9, NULL, 0));
+    uper_open(&u, 0, "own");
+    uper_open(&u, 1, "before");
+    uper_open(&u, 2, "after");
+    uper_open(&u, 0, "own-again");
+    uring_show("unregister-argument", ures_register(&u, 10, &u, 1));
+    uring_show("unregister", ures_register(&u, 10, NULL, 1));
+    uring_show("unregister-again", ures_register(&u, 10, NULL, 1));
+    uper_open(&u, 1, "gone");
+    uring_show("register-next", ures_register(&u, 9, NULL, 0));
+    close(u.fd);
+    unlink("file");
+    if (chdir("/")) return 84;
+    rmdir(dir);
+    return 0;
+}
+
 /* io_uring's polls: IORING_OP_POLL_ADD and _POLL_REMOVE. */
 static unsigned char *up_add(struct uring *u, unsigned long data, int fd, unsigned events,
                              unsigned flags) {
@@ -12641,6 +12829,102 @@ static int io_uring_multishot_case(void) {
     um_run(&u, 0, 2, "receive-end");
     close(first);
     close(second);
+    close(u.fd);
+    return 0;
+}
+
+/* io_uring's IORING_OP_SPLICE and _TEE, which Linux runs in a worker. */
+static unsigned char *us_push(struct uring *u, unsigned char op, unsigned long data, int in,
+                              long off_in, int out, long off_out, unsigned len, unsigned flags) {
+    unsigned char *sqe = unet_push(u, op, data, out, off_out, off_in, len, flags, 0);
+    memcpy(sqe + 44, &in, 4);
+    return sqe;
+}
+
+static int io_uring_splice_case(void) {
+    struct uring u;
+    if (uring_open(&u, 4)) return 80;
+    int from[2], to[2], pair[2];
+    if (pipe(from) || pipe(to) || socketpair(AF_UNIX, SOCK_STREAM, 0, pair)) return 81;
+    char path[] = "/tmp/uring-splice-XXXXXX", buf[32];
+    int file = mkstemp(path);
+    unlink(path);
+    unsigned char *sqe;
+
+    /* What is refused. */
+    us_push(&u, 30, 1, from[0], -1, to[1], -1, 5, 16);
+    um_run(&u, 1, 1, "flags");
+    us_push(&u, 33, 1, from[0], 1, to[1], 0, 5, 0);
+    um_run(&u, 1, 1, "tee-offset");
+    us_push(&u, 33, 1, from[0], 0, to[1], 1, 5, 0);
+    um_run(&u, 1, 1, "tee-offset-out");
+    us_push(&u, 30, 1, 99, -1, to[1], -1, 5, 0);
+    um_run(&u, 1, 1, "badf-in");
+    us_push(&u, 30, 1, from[0], -1, 99, -1, 5, 0);
+    um_run(&u, 1, 1, "badf-out");
+    us_push(&u, 30, 1, from[1], -1, to[1], -1, 5, 0);
+    um_run(&u, 1, 1, "write-end");
+    us_push(&u, 30, 1, file, -1, file, -1, 5, 0);
+    um_run(&u, 1, 1, "no-pipe");
+    us_push(&u, 30, 1, from[0], -1, from[1], -1, 5, 0);
+    um_run(&u, 1, 1, "same-pipe");
+    us_push(&u, 30, 1, from[0], 0, to[1], -1, 5, 0);
+    um_run(&u, 1, 1, "pipe-offset");
+    us_push(&u, 30, 1, from[0], -1, to[1], -1, 0, 0);
+    um_run(&u, 1, 1, "nothing");
+    us_push(&u, 30, 1, from[0], -1, to[1], -1, 5, SPLICE_F_NONBLOCK);
+    um_run(&u, 1, 1, "nonblock");
+
+    /* A copy, a move, and fewer bytes than asked for. */
+    write(from[1], "hello", 5);
+    us_push(&u, 33, 1, from[0], 0, to[1], 0, 8, 0)[1] = 4;
+    uring_push(&u, 0, 2);
+    um_run(&u, 2, 2, "tee");
+    printf("read %ld\n", (long)read(to[0], buf, sizeof buf));
+    us_push(&u, 30, 1, from[0], -1, file, 3, 5, 0)[1] = 4;
+    uring_push(&u, 0, 2);
+    um_run(&u, 2, 2, "to-file");
+    memset(buf, 1, sizeof buf);
+    printf("read %ld %d%d%d %.5s\n", (long)pread(file, buf, sizeof buf, 0), buf[0], buf[1], buf[2],
+           buf + 3);
+    us_push(&u, 30, 1, file, 4, to[1], -1, 32, 0);
+    um_run(&u, 1, 1, "from-file");
+    long got = read(to[0], buf, sizeof buf);
+    printf("read %ld %.*s\n", got, (int)got, buf);
+    printf("position %ld\n", (long)lseek(file, 0, SEEK_CUR));
+    us_push(&u, 30, 1, file, -1, to[1], -1, 4, 0);
+    um_run(&u, 1, 1, "from-position");
+    printf("read %ld position %ld\n", (long)read(to[0], buf, sizeof buf),
+           (long)lseek(file, 0, SEEK_CUR));
+
+    /* Waiting. */
+    us_push(&u, 30, 1, from[0], -1, to[1], -1, 5, 0);
+    um_run(&u, 1, 0, "waits");
+    write(from[1], "again", 5);
+    um_run(&u, 0, 1, "waited");
+    got = read(to[0], buf, sizeof buf);
+    printf("read %ld %.*s\n", got, (int)got, buf);
+    us_push(&u, 30, 1, pair[0], -1, to[1], -1, 5, 0);
+    um_run(&u, 1, 0, "waits-socket");
+    write(pair[1], "bytes", 5);
+    um_run(&u, 0, 1, "waited-socket");
+    got = read(to[0], buf, sizeof buf);
+    printf("read %ld %.*s\n", got, (int)got, buf);
+
+    /* Registered files, and the end. */
+    int slots[2] = {from[0], to[1]};
+    syscall(427, u.fd, 2, slots, 2);
+    write(from[1], "fixed", 5);
+    sqe = us_push(&u, 30, 1, 0, -1, 1, -1, 5, 1u << 31);
+    sqe[1] = 1;
+    um_run(&u, 1, 1, "fixed");
+    got = read(to[0], buf, sizeof buf);
+    printf("read %ld %.*s\n", got, (int)got, buf);
+    us_push(&u, 30, 1, 5, -1, to[1], -1, 5, 1u << 31);
+    um_run(&u, 1, 1, "fixed-none");
+    close(from[1]);
+    us_push(&u, 30, 1, from[0], -1, to[1], -1, 5, 0);
+    um_run(&u, 1, 1, "end");
     close(u.fd);
     return 0;
 }
@@ -43980,10 +44264,14 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "io-uring-held-buffer")) return io_uring_held_buffer_case();
     if (!strcmp(mode, "io-uring-net")) return io_uring_net_case();
     if (!strcmp(mode, "io-uring-timeout")) return io_uring_timeout_case();
+    if (!strcmp(mode, "io-uring-min-wait")) return io_uring_min_wait_case();
+    if (!strcmp(mode, "io-uring-restrictions")) return io_uring_restrictions_case();
+    if (!strcmp(mode, "io-uring-personality")) return io_uring_personality_case();
     if (!strcmp(mode, "io-uring-poll-add")) return io_uring_poll_add_case();
     if (!strcmp(mode, "io-uring-fs")) return io_uring_fs_case();
     if (!strcmp(mode, "io-uring-message")) return io_uring_message_case();
     if (!strcmp(mode, "io-uring-multishot")) return io_uring_multishot_case();
+    if (!strcmp(mode, "io-uring-splice")) return io_uring_splice_case();
     if (!strcmp(mode, "io-uring-exec-reap")) {
         struct uring r;
         r.fd = 50;

@@ -506,7 +506,7 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   `IORING_OP_FILES_UPDATE`、`IORING_OP_PROVIDE_BUFFERS`、`_REMOVE_BUFFERS`、`IORING_OP_ASYNC_CANCEL`、
   `IORING_OP_TIMEOUT`、`_TIMEOUT_REMOVE`、`_LINK_TIMEOUT`、`IORING_OP_POLL_ADD`、`_POLL_REMOVE`、ファイルの要求 `IORING_OP_OPENAT`、`_OPENAT2`、`_CLOSE`、
   `_STATX`、`_FALLOCATE`、`_FADVISE`、`_MADVISE`、`_RENAMEAT`、`_UNLINKAT`、`_MKDIRAT`、`_SYMLINKAT`、
-  `_LINKAT`、`_FTRUNCATE`、それにソケットの要求 `IORING_OP_SHUTDOWN`、`_SOCKET`、`_ACCEPT`、`_CONNECT`、`_SEND`、`_RECV`、`_SENDMSG`、`_RECVMSG`
+  `_LINKAT`、`_FTRUNCATE`、`IORING_OP_SPLICE`、`_TEE`、それにソケットの要求 `IORING_OP_SHUTDOWN`、`_SOCKET`、`_ACCEPT`、`_CONNECT`、`_SEND`、`_RECV`、`_SENDMSG`、`_RECVMSG`
   だけで、ほかの操作は `EOPNOTSUPP` で完了します。ソケットの要求のうち、マルチショットの
   `IORING_OP_RECVMSG`、バンドル（`IORING_RECVSEND_BUNDLE`）、ベクターの送信（`IORING_SEND_VECTORIZED`）、
   バッファーを選ぶ送信、`MSG_WAITALL` でバッファーを選ぶ受信はまだありません（`EINVAL`）。
@@ -519,12 +519,14 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   （Linux では失敗します）。`IORING_OP_SHUTDOWN`、`IORING_OP_FSYNC` と
   ファイルの要求は、Linux では close と一部の open や advice を除いてワーカーで実行するところを
   `io_uring_enter` が取ったときに実行するので、その完了は Linux が先に入れるものより先に来ることが
-  あります。FIFO を作るかもしれない open はそこで待ちます。タイムアウトの期限は、そのプロセスが走れるチェックポイントで
+  あります。FIFO を作るかもしれない open はそこで待ちます。待っている `IORING_OP_SPLICE` の
+  取り消しは、ファイルを待つ要求と同じです（Linux はワーカーに割り込みます）。ソケットへの
+  splice は、途中からそこで待つことがあります。タイムアウトの期限は、そのプロセスが走れるチェックポイントで
   来ます。すべてのスレッドが `nanosleep` で眠るあいだに期限が来たものは、眠りが終わるときに
   完了します（Linux のタイマーはその時点で完了させます）。単独で終了するスレッドは、リングを待つポーリングを
   残します（Linux は取り消します）。自分の要求にポーリングされるリングは、その要求が終わるまで
   残ります。setup のフラグ `IORING_SETUP_IOPOLL`、`_SQPOLL`、
-  `_SQ_AFF`、`_ATTACH_WQ`、`_R_DISABLED`、`_SQE128`、`_CQE32`、`_NO_MMAP`、
+  `_SQ_AFF`、`_ATTACH_WQ`、`_SQE128`、`_CQE32`、`_NO_MMAP`、
   `_REGISTERED_FD_ONLY` は `EINVAL` です。`io_uring_register` は `IORING_REGISTER_PROBE`、
   `IORING_REGISTER_BUFFERS`、`IORING_UNREGISTER_BUFFERS`、`IORING_REGISTER_BUFFERS2`、
   `IORING_REGISTER_BUFFERS_UPDATE`、`IORING_REGISTER_FILES`、
@@ -532,9 +534,11 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   `IORING_REGISTER_FILE_ALLOC_RANGE`、`IORING_REGISTER_FILES2`、
   `IORING_REGISTER_FILES_UPDATE2`、`IORING_REGISTER_PBUF_RING`、
   `IORING_UNREGISTER_PBUF_RING`、`IORING_REGISTER_PBUF_STATUS`、
-  `IORING_REGISTER_SYNC_CANCEL`、`IORING_REGISTER_RING_FDS`、
-  `IORING_UNREGISTER_RING_FDS` だけです（ほかは `EINVAL`）。そのため、
-  パーソナリティは登録できません。`IORING_REGISTER_BUFFERS_UPDATE` は、差分テストを走らせる
+  `IORING_REGISTER_SYNC_CANCEL`、`IORING_REGISTER_PERSONALITY`、
+  `IORING_UNREGISTER_PERSONALITY`、`IORING_REGISTER_RESTRICTIONS`、
+  `IORING_REGISTER_ENABLE_RINGS`、`IORING_REGISTER_RING_FDS`、
+  `IORING_UNREGISTER_RING_FDS` だけです（ほかは `EINVAL`）。Linux 7.0 にあるタスクの制限は
+  ありません（記述子 -1 は `EBADF`）。`IORING_REGISTER_BUFFERS_UPDATE` は、差分テストを走らせる
   カーネルである Linux 7.0 と同じく、スロットごとに `iovec` をタグより先に読み、
   `IORING_RSRC_UPDATE_EXTENDED` を断ります。Linux master はタグを先に読み、そのフラグの
   `struct io_uring_regbuf_desc` を受け付けます。テストを走らせるカーネルが追いつけば master に
@@ -547,8 +551,7 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   リングのどの領域でもないオフセットのマッピングは、差分テストを走らせるカーネルである
   Linux 7.0 と同じく `ENOMEM` です。Linux master の `io_uring_get_unmapped_area` は `EINVAL` を
   返します。テストを走らせるカーネルが追いつけば master に合わせます。
-  機能は Linux 6.12 のものなので、待ちの `min_wait_usec` は何も変えないのに
-  `IORING_FEAT_MIN_TIMEOUT` を報告します。疑似端末の読み出しは、パイプの読み出しのように
+  機能は Linux 6.12 のものです。疑似端末の読み出しは、パイプの読み出しのように
   ファイルを待つのではなく、`io_uring_enter` の中で待ちます。
   読めないファイル（epoll のインスタンス、リング）は、Linux が先に準備を待つところで、すぐに
   `EINVAL` で失敗します。`IORING_ASYNC_CANCEL_OP` と `IORING_OP_LAST` 以降の操作を持つ

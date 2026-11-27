@@ -606,8 +606,8 @@ verified.
   `_TIMEOUT_REMOVE`, `_LINK_TIMEOUT`, `IORING_OP_POLL_ADD`,
   `_POLL_REMOVE`, the file requests `IORING_OP_OPENAT`, `_OPENAT2`,
   `_CLOSE`, `_STATX`, `_FALLOCATE`, `_FADVISE`, `_MADVISE`, `_RENAMEAT`,
-  `_UNLINKAT`, `_MKDIRAT`, `_SYMLINKAT`, `_LINKAT` and `_FTRUNCATE`, and the
-  socket requests
+  `_UNLINKAT`, `_MKDIRAT`, `_SYMLINKAT`, `_LINKAT` and `_FTRUNCATE`,
+  `IORING_OP_SPLICE` and `_TEE`, and the socket requests
   `IORING_OP_SHUTDOWN`, `_SOCKET`, `_ACCEPT`, `_CONNECT`, `_SEND`,
   `_RECV`, `_SENDMSG` and `_RECVMSG` run; the other operations complete with `EOPNOTSUPP`. Of the
   socket requests, a multishot `IORING_OP_RECVMSG`, a bundle
@@ -626,13 +626,15 @@ verified.
   and a file request run while `io_uring_enter` takes them, where Linux
   runs them, but for a close and some opens and advice, in a worker, so
   their completions can come before those Linux posts first, and an open of
-  a FIFO that may create it waits there. A timeout expires at
+  a FIFO that may create it waits there. An `IORING_OP_SPLICE` that waits is
+  cancelled as a request that waits for its file, where Linux interrupts
+  its worker, and a splice to a socket can wait there for part of it. A timeout expires at
   the checkpoints where its process can run: one due while every thread
   sleeps in `nanosleep` completes as the sleep ends, where Linux's timer
   completes it then. A thread that exits alone leaves its polls of rings
   waiting, where Linux cancels them, and a ring polled by a request of its
   own stays until that request ends. The setup flags
-  `IORING_SETUP_IOPOLL`, `_SQPOLL`, `_SQ_AFF`, `_ATTACH_WQ`, `_R_DISABLED`,
+  `IORING_SETUP_IOPOLL`, `_SQPOLL`, `_SQ_AFF`, `_ATTACH_WQ`,
   `_SQE128`, `_CQE32`, `_NO_MMAP` and `_REGISTERED_FD_ONLY` give `EINVAL`,
   and `io_uring_register` has only `IORING_REGISTER_PROBE`,
   `IORING_REGISTER_BUFFERS`, `IORING_UNREGISTER_BUFFERS`,
@@ -642,8 +644,11 @@ verified.
   `IORING_REGISTER_FILES2`, `IORING_REGISTER_FILES_UPDATE2`,
   `IORING_REGISTER_PBUF_RING`, `IORING_UNREGISTER_PBUF_RING`,
   `IORING_REGISTER_PBUF_STATUS`, `IORING_REGISTER_SYNC_CANCEL`,
+  `IORING_REGISTER_PERSONALITY`, `IORING_UNREGISTER_PERSONALITY`,
+  `IORING_REGISTER_RESTRICTIONS`, `IORING_REGISTER_ENABLE_RINGS`,
   `IORING_REGISTER_RING_FDS` and `IORING_UNREGISTER_RING_FDS` (the others
-  give `EINVAL`). So no personality can be registered.
+  give `EINVAL`). Restrictions of a task, which Linux 7.0 has, are not
+  there (`EBADF` for descriptor -1).
   `IORING_REGISTER_BUFFERS_UPDATE` reads each slot's `iovec`
   before its tag and refuses `IORING_RSRC_UPDATE_EXTENDED`, as Linux 7.0,
   the kernel the differential tests run on, does; Linux master reads the
@@ -660,8 +665,7 @@ verified.
   Linux master's `io_uring_get_unmapped_area` gives `EINVAL`. This follows
   master once the test runners' kernel does.
   The features are Linux
-  6.12's, so `IORING_FEAT_MIN_TIMEOUT` is reported though a wait's
-  `min_wait_usec` changes nothing. A pseudo-terminal's read waits in
+  6.12's. A pseudo-terminal's read waits in
   `io_uring_enter` instead of waiting for its file as a pipe's read does. A file that is never read (an epoll instance, a ring)
   fails with `EINVAL` at once, where Linux first waits for it to be ready.
   An `IORING_OP_ASYNC_CANCEL` with `IORING_ASYNC_CANCEL_OP` and an

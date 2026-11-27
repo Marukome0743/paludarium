@@ -1655,7 +1655,8 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   `IORING_OP_PROVIDE_BUFFERS` と `_REMOVE_BUFFERS`、`IORING_OP_ASYNC_CANCEL`、タイムアウト
   `IORING_OP_TIMEOUT`、`_TIMEOUT_REMOVE`、`_LINK_TIMEOUT`、ポーリングの `IORING_OP_POLL_ADD` と `_POLL_REMOVE`、ファイルの要求
   `IORING_OP_OPENAT`、`_OPENAT2`、`_CLOSE`、`_STATX`、`_FALLOCATE`、`_FADVISE`、`_MADVISE`、
-  `_RENAMEAT`、`_UNLINKAT`、`_MKDIRAT`、`_SYMLINKAT`、`_LINKAT`、`_FTRUNCATE`、それにソケットの要求
+  `_RENAMEAT`、`_UNLINKAT`、`_MKDIRAT`、`_SYMLINKAT`、`_LINKAT`、`_FTRUNCATE`、`IORING_OP_SPLICE` と
+  `_TEE`、それにソケットの要求
   `IORING_OP_SHUTDOWN`、`_SOCKET`、`_ACCEPT`、`_CONNECT`、`_SEND`、`_RECV`、`_SENDMSG`、`_RECVMSG` です。ほかの操作は、それらなしでビルドした Linux と同じく
   `EOPNOTSUPP` で完了し、`IORING_REGISTER_PROBE` もこれらだけを報告します。リングの大きさ、オフセット、機能は Linux が返すものと同じで、記述子の `mmap` で
   見えます。記述子は `anon_inode_create_getfile` が作るのと同じく自分だけの無名 inode で、
@@ -1673,6 +1674,11 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
     （`TWA_SIGNAL_NO_IPI`）。これはプログラムを実行中のスレッドに割り込みを送らないだけです。
   - `IORING_SETUP_DEFER_TASKRUN` のリングは、そのリングで `io_uring_enter` が待つときだけ、
     待ちがそれ以上を求めない限り一度に 20 個（`IO_LOCAL_TW_DEFAULT_MAX`）実行します。
+
+  `io_uring_enter` の待ちは、求めた数の完了、待つあいだに終わった `IORING_OP_TIMEOUT`
+  （`cq_timeouts`）、シグナル、タイムアウトで終わります。`min_wait_usec` があれば、その時間が
+  過ぎたときにはもっと少ない完了でも終わり、過ぎた後は最初の完了で終わります。完了もタイムアウトも
+  なければ、そのとき `ETIME` で終わります（`io_cqring_min_timer_wakeup`）。
 
   `IORING_SETUP_TASKRUN_FLAG` があれば、`IORING_SQ_TASKRUN` が待っているものがあることを
   示します。`IOSQE_CQE_SKIP_SUCCESS` 付きの要求が失敗したリンクは、残りを完了なしで取り消し
@@ -1808,6 +1814,11 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   open、close、`IORING_OP_FADVISE` と、記述子が開いていない場合だけです。`IORING_OP_FSYNC` も
   失敗させません。
 
+- `IORING_OP_SPLICE` と `_TEE` は `splice` と `tee` と同じくバイトを移すか写します。オフセットは
+  エントリーにあり（-1 ならファイルの位置）、`SPLICE_F_FD_IN_FIXED` では入力が登録したファイルです。
+  待つはずの要求はファイルを待ちます。ただし `SPLICE_F_NONBLOCK` やパイプの `O_NONBLOCK` では
+  `EAGAIN` です。頼んだより少ないバイトを移した要求は、リンクを失敗させます。
+
 - ポーリングは Linux master のもの（`io_uring/poll.c`）です。`IORING_OP_POLL_ADD` は、求めた
   イベントと、どのポーリングも終わらせるイベント（`POLLERR`、`POLLHUP`、`POLLNVAL`、読み手には
   `POLLRDHUP`）のうちファイルにあるもので完了し、なければファイルを持ったまま待ちます。起こされて
@@ -1891,6 +1902,19 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   タグを投稿しません。`IORING_OP_READ_FIXED` と `_WRITE_FIXED` は、ファイルを
   見つけたあと、`buf_index` が指すバッファーの中で転送します。そこにバッファーがないか、
   範囲がはみ出せば `EFAULT` です。
+
+- `IORING_SETUP_R_DISABLED` で作ったリングは、`IORING_REGISTER_ENABLE_RINGS` で有効にするまで
+  `io_uring_enter` を断ります（`EBADFD`）。`IORING_SETUP_SINGLE_ISSUER` なら、有効にした
+  スレッドだけが投入できます。そのあいだに一度だけ（`EBUSY`、有効なリングは `EBADFD`）
+  `IORING_REGISTER_RESTRICTIONS` で制限を付けられます。制限は Linux の
+  `io_parse_restrictions` と同じく読みます。許す登録（有効になった後、ほかは `EACCES`）と、
+  要求に許す操作、付けてよいフラグ、付けなければならないフラグで、合わない要求は `EACCES` で
+  失敗します。1 つもない制限は何も許しません。
+
+- `IORING_REGISTER_PERSONALITY` はスレッドの資格情報を Landlock のドメインごと保ち、1 から
+  始まる ID を返します（`xa_alloc_cyclic`）。それを指す要求（なければ `EINVAL`）は、待った後に
+  続くときも含めてその資格情報で実行し（`override_creds`）、
+  `IORING_UNREGISTER_PERSONALITY` の後も保ちます。
 
 - `IORING_REGISTER_RING_FDS` は、Linux の `io_ringfd_register` と同じく、呼んだスレッドの
   ためにリングの記述子を登録します。1 から 16 個の `struct io_uring_rsrc_update`（`EINVAL`）は、

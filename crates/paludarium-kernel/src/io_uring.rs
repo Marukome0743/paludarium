@@ -11,19 +11,25 @@
 //! `_SYMLINKAT`, `_LINKAT` and `_FTRUNCATE` ([`fs`]), and the socket
 //! requests `IORING_OP_SHUTDOWN`, `_SOCKET`, `_ACCEPT`, `_CONNECT`,
 //! `_SEND`, `_RECV`, `_SENDMSG` and `_RECVMSG`, with multishot accepts and
-//! receives ([`net`]). The others answer
+//! receives ([`net`]), and `IORING_OP_SPLICE` and `_TEE` ([`splice`]). The
+//! others answer
 //! `EOPNOTSUPP`, as on a Linux built without them, and
 //! `IORING_REGISTER_PROBE` says so. `IORING_REGISTER_BUFFERS` registers
 //! the buffers `IORING_OP_READ_FIXED` and `_WRITE_FIXED` transfer with,
 //! `IORING_REGISTER_FILES` (or `_FILES2`, with tags) the files a request
 //! with `IOSQE_FIXED_FILE` names by their index, and
 //! `IORING_REGISTER_PBUF_RING` a ring of the buffers a read or a receive
-//! with `IOSQE_BUFFER_SELECT` chooses from, as it does from provided ones. The
-//! registered files, their updates and their allocation range are checked
-//! as Linux 7.0's `io_uring/rsrc.c`, `register.c` and `filetable.c` check
-//! them, the provided buffers and their rings as its `kbuf.c` does, and a
-//! NOP's flags as its `nop.c` takes them (with Linux master's
-//! `IOSQE_FIXED_FILE`): the kernel the differential tests run on.
+//! with `IOSQE_BUFFER_SELECT` chooses from, as it does from provided ones. A
+//! ring set up with `IORING_SETUP_R_DISABLED` takes no requests until
+//! `IORING_REGISTER_ENABLE_RINGS`, `IORING_REGISTER_RESTRICTIONS` (while it
+//! is disabled) limits the requests and registrations it takes after, and
+//! `IORING_REGISTER_PERSONALITY` keeps credentials a request with
+//! `personality` runs with ([`register`]). The registered files, their
+//! updates and their allocation range are checked as Linux 7.0's
+//! `io_uring/rsrc.c`, `register.c` and `filetable.c` check them, the
+//! provided buffers and their rings as its `kbuf.c` does, and a NOP's flags
+//! as its `nop.c` takes them (with Linux master's `IOSQE_FIXED_FILE`): the
+//! kernel the differential tests run on.
 //!
 //! The rings are pages the kernel shares with the mappings of the ring's
 //! descriptor ([`SharedPages`]). A request runs when `io_uring_enter` takes
@@ -53,6 +59,8 @@ use crate::syscalls::{Context, Outcome, err, ok};
 mod fs;
 mod net;
 mod poll;
+mod register;
+mod splice;
 mod timeout;
 
 /// The most submission queue entries, and completion queue entries.
@@ -61,6 +69,7 @@ const MAX_CQ_ENTRIES: u32 = 2 * MAX_ENTRIES;
 
 const SETUP_CQSIZE: u32 = 1 << 3;
 const SETUP_CLAMP: u32 = 1 << 4;
+const SETUP_R_DISABLED: u32 = 1 << 6;
 const SETUP_SUBMIT_ALL: u32 = 1 << 7;
 const SETUP_COOP_TASKRUN: u32 = 1 << 8;
 const SETUP_TASKRUN_FLAG: u32 = 1 << 9;
@@ -70,10 +79,10 @@ const SETUP_NO_SQARRAY: u32 = 1 << 16;
 /// Every flag Linux 6.12 knows: `IORING_SETUP_IOPOLL` to `_NO_SQARRAY`.
 const SETUP_KNOWN: u32 = (1 << 17) - 1;
 /// The flags implemented. `IOPOLL`, `SQPOLL`, `SQ_AFF`, `ATTACH_WQ`,
-/// `R_DISABLED`, `SQE128`, `CQE32`, `NO_MMAP` and `REGISTERED_FD_ONLY` are
-/// not.
+/// `SQE128`, `CQE32`, `NO_MMAP` and `REGISTERED_FD_ONLY` are not.
 const SETUP_IMPLEMENTED: u32 = SETUP_CQSIZE
     | SETUP_CLAMP
+    | SETUP_R_DISABLED
     | SETUP_SUBMIT_ALL
     | SETUP_COOP_TASKRUN
     | SETUP_TASKRUN_FLAG
@@ -140,7 +149,7 @@ const OP_EPOLL_CTL: u8 = 29;
 const OP_PROVIDE_BUFFERS: u8 = 31;
 const OP_REMOVE_BUFFERS: u8 = 32;
 /// The operations implemented.
-const OPS: [u8; 26] = [
+const OPS: [u8; 28] = [
     OP_NOP,
     OP_READV,
     OP_WRITEV,
@@ -167,6 +176,8 @@ const OPS: [u8; 26] = [
     timeout::OP_LINK_TIMEOUT,
     poll::OP_POLL_ADD,
     poll::OP_POLL_REMOVE,
+    splice::OP_SPLICE,
+    splice::OP_TEE,
 ];
 /// Whether operation `opcode` runs.
 fn supported(opcode: u8) -> bool {
@@ -330,10 +341,14 @@ pub(crate) struct Ring {
     sq_array: Option<u64>,
     sqes: SharedPages,
     sqes_len: u64,
-    /// The thread that made it, with `IORING_SETUP_SINGLE_ISSUER`: the only
-    /// one that may submit and register, and wait with
-    /// `IORING_SETUP_DEFER_TASKRUN`.
-    submitter: Option<u32>,
+    /// The thread that made it, or that enabled it, with
+    /// `IORING_SETUP_SINGLE_ISSUER`: the only one that may submit and
+    /// register, and wait with `IORING_SETUP_DEFER_TASKRUN`.
+    submitter: std::sync::OnceLock<u32>,
+    /// `IORING_SETUP_R_DISABLED`, until it is enabled.
+    disabled: std::sync::atomic::AtomicBool,
+    restrictions: Mutex<register::Restrictions>,
+    personalities: Mutex<register::Personalities>,
     /// Held across a submission, as Linux's `uring_lock`: threads that
     /// submit at once take entries one after another, never the same ones.
     submitting: Mutex<()>,
@@ -846,6 +861,8 @@ struct Request {
     failed: Option<Errno>,
     /// The timeout linked to it, once it was issued (`REQ_F_LINK_TIMEOUT`).
     ltimeout: Option<u64>,
+    /// Its personality, which it runs with (`REQ_F_CREDS`).
+    credentials: Option<Arc<dyn register::Personality>>,
     work: Work,
 }
 
@@ -874,6 +891,8 @@ enum Work {
     TimeoutRemove(Box<timeout::Remove>),
     /// A file request ([`fs`]).
     Fs(Box<fs::Fs>),
+    /// `IORING_OP_SPLICE` and `_TEE` ([`splice`]).
+    Splice(Box<splice::Splice>),
     /// `IORING_OP_POLL_ADD` ([`poll`]).
     Poll(Box<poll::Poll>),
     /// `IORING_OP_POLL_REMOVE`.
@@ -1168,6 +1187,7 @@ impl Ring {
             flags,
             failed: None,
             ltimeout: None,
+            credentials: None,
             work: Work::None,
         };
         let fail = |mut request: Request, e: Errno| {
@@ -1199,6 +1219,9 @@ impl Ring {
                 return fail(request, EOPNOTSUPP);
             }
         }
+        if !self.allows_request(opcode, flags) {
+            return fail(request, Errno::EACCES);
+        }
         let transfer = matches!(
             opcode,
             OP_READ | OP_WRITE | OP_READV | OP_WRITEV | OP_READ_FIXED | OP_WRITE_FIXED
@@ -1213,9 +1236,12 @@ impl Ring {
         if supported(opcode) && !takes_ioprio && u16::from_le_bytes([sqe[2], sqe[3]]) != 0 {
             return fail(request, Errno::EINVAL);
         }
-        // No personality is ever registered.
-        if u16::from_le_bytes([sqe[42], sqe[43]]) != 0 {
-            return fail(request, Errno::EINVAL);
+        let personality = u16::from_le_bytes([sqe[42], sqe[43]]);
+        if personality != 0 {
+            request.credentials = self.personality(personality);
+            if request.credentials.is_none() {
+                return fail(request, Errno::EINVAL);
+            }
         }
         let int_at = |at: usize| int_at(sqe, at);
         let fixed = flags & IOSQE_FIXED_FILE != 0;
@@ -1345,6 +1371,10 @@ impl Ring {
                 }
             }
             _ if fs::OPS.contains(&opcode) => match fs::prepare(opcode, flags, sqe) {
+                Ok(work) => work,
+                Err(e) => return fail(request, e),
+            },
+            splice::OP_SPLICE | splice::OP_TEE => match splice::prepare(opcode, flags, sqe) {
                 Ok(work) => work,
                 Err(e) => return fail(request, e),
             },
@@ -1806,6 +1836,7 @@ fn run(c: &mut Context<'_>, ring: &Ring, work: &mut Work) -> (i32, u32, bool, Op
     let result = |r: Result<u64, Errno>| r.map_or_else(|e| -e.0, |v| v as i32);
     match work {
         Work::Net(net) => return net::run(c, ring, net),
+        Work::Splice(splice) => return splice::run(c, ring, splice),
         Work::Fs(fs) => {
             let (res, failed) = fs::run(c, ring, fs);
             return (res, 0, failed, None);
@@ -1890,6 +1921,7 @@ fn run(c: &mut Context<'_>, ring: &Ring, work: &mut Work) -> (i32, u32, bool, Op
             bid,
         } => result(manage_buffers(ring, provide, count, addr, len, bgid, bid)),
         Work::Fs(_)
+        | Work::Splice(_)
         | Work::Fsync { .. }
         | Work::Transfer(_)
         | Work::Net(_)
@@ -2037,6 +2069,14 @@ fn issue_link(
         state.held.split_off(at)
     };
     let (res, flags, failed, waits) = loop {
+        // `io_issue_sqe` takes its personality for as long as it runs
+        // (`override_creds`).
+        let own = request.credentials.as_ref().map(|credentials| {
+            std::mem::replace(
+                &mut c.process.credentials,
+                credentials.credentials().clone(),
+            )
+        });
         let done = match &mut request.work {
             Work::PollRemove(remove) => {
                 let res = poll::remove(c, file, ring, remove).map_or_else(|e| -e.0, |v| v as i32);
@@ -2044,6 +2084,9 @@ fn issue_link(
             }
             work => run(c, ring, work),
         };
+        if let Some(own) = own {
+            c.process.credentials = own;
+        }
         if let (res, flags, _, None) = done
             && let Work::Net(net) = &mut request.work
             && net.goes_on(res)
@@ -2132,7 +2175,8 @@ fn arm(
     }
     let polls = &c.processes.io_uring;
     let (polled, mask) = (Arc::clone(&waits.file), waits.mask);
-    let id = ring.hash(&chain[0], &polled, c.inbox);
+    // Its own file (`req->file`), by which a cancellation finds it.
+    let id = ring.hash(&chain[0], &waits.found.0.file, c.inbox);
     polls
         .armed
         .lock()
@@ -2367,7 +2411,7 @@ pub(crate) fn cancel_all_task(c: &mut Context<'_>) {
         .into_iter()
         .filter(|file| {
             downcast(file).is_ok_and(|ring| {
-                ring.flags & SETUP_DEFER_TASKRUN != 0 && ring.submitter == Some(c.tid)
+                ring.flags & SETUP_DEFER_TASKRUN != 0 && ring.submitter.get() == Some(&c.tid)
             })
         })
         .collect();
@@ -3288,7 +3332,14 @@ fn setup(c: &mut Context<'_>, entries: u32, params: u64) -> Result<u32, Errno> {
         sq_array,
         sqes: pages(sqes_len)?,
         sqes_len,
-        submitter: (flags & SETUP_SINGLE_ISSUER != 0).then_some(c.tid),
+        submitter: if flags & (SETUP_SINGLE_ISSUER | SETUP_R_DISABLED) == SETUP_SINGLE_ISSUER {
+            c.tid.into()
+        } else {
+            std::sync::OnceLock::new()
+        },
+        disabled: (flags & SETUP_R_DISABLED != 0).into(),
+        restrictions: Mutex::default(),
+        personalities: Mutex::default(),
         submitting: Mutex::default(),
         state: Mutex::default(),
         charged: (!c.process.credentials.capable(CAP_IPC_LOCK)).then(|| {
@@ -3398,11 +3449,14 @@ fn enter(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
     }
     let file = ring_file(c, a[0], flags & ENTER_REGISTERED_RING != 0)?;
     let ring = downcast(&file)?;
+    if ring.disabled() {
+        return Err(register::EBADFD);
+    }
     let mut submitted = 0;
     if to_submit != 0 {
         // `__io_uring_add_tctx_node_from_submit`: the submitter, then the
         // context, though no entry may be there to take.
-        if ring.submitter.is_some_and(|tid| tid != c.tid) {
+        if ring.others(c.tid) {
             return Err(EEXIST);
         }
         give_context(c);
@@ -3423,8 +3477,8 @@ fn enter(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
                 c,
                 &file,
                 ring,
-                min_complete,
-                LOCAL_TW_DEFAULT_MAX.max(min_complete),
+                at_least(min_complete),
+                LOCAL_TW_DEFAULT_MAX.max(at_least(min_complete)),
             );
         }
     }
@@ -3433,7 +3487,7 @@ fn enter(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
             c,
             &file,
             ring,
-            min_complete.min(ring.cq_entries),
+            (min_complete as i32).min(ring.cq_entries as i32) as u32,
             flags,
             a[4],
             a[5],
@@ -3445,11 +3499,67 @@ fn enter(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
     Ok(u64::from(submitted))
 }
 
+/// The completions `min_complete` asks for, an `int` of which a negative one
+/// asks for none.
+fn at_least(min_complete: u32) -> u32 {
+    (min_complete as i32).max(0) as u32
+}
+
+/// Linux's `struct ext_arg`: what a wait for completions is given
+/// (`io_get_ext_arg`).
+struct WaitArg {
+    sigmask: u64,
+    sigsz: u64,
+    /// The least time to wait for all the completions, in nanoseconds
+    /// (`min_wait_usec`).
+    min_time: u64,
+    /// The timeout, a `ktime_t`.
+    timeout: Option<i64>,
+}
+
+fn wait_arg(c: &Context<'_>, flags: u32, argp: u64, argsz: u64) -> Result<WaitArg, Errno> {
+    if flags & ENTER_EXT_ARG == 0 {
+        return Ok(WaitArg {
+            sigmask: argp,
+            sigsz: argsz,
+            min_time: 0,
+            timeout: None,
+        });
+    }
+    // struct io_uring_getevents_arg.
+    if argsz != 24 {
+        return Err(Errno::EINVAL);
+    }
+    let mut arg = [0; 24];
+    c.mem
+        .read(GuestAddr(argp), &mut arg)
+        .map_err(|_| Errno::EFAULT)?;
+    let ts = u64_at(&arg, 16);
+    let timeout = if ts == 0 {
+        None
+    } else {
+        let mut timespec = [0; 16];
+        c.mem
+            .read(GuestAddr(ts), &mut timespec)
+            .map_err(|_| Errno::EFAULT)?;
+        let (sec, nsec) = (u64_at(&timespec, 0) as i64, u64_at(&timespec, 8) as i64);
+        // `timespec64_to_ktime`.
+        Some(sec.saturating_mul(1_000_000_000).saturating_add(nsec))
+    };
+    Ok(WaitArg {
+        sigmask: u64_at(&arg, 0),
+        sigsz: u64::from(u32_at(&arg, 8)),
+        min_time: u64::from(u32_at(&arg, 12)) * 1000,
+        timeout,
+    })
+}
+
 /// Linux's `io_cqring_wait`: it runs the ring's own task work and the
 /// thread's, then is done once the program has `min` completions to
 /// consume, else it waits, with the signal mask it was given, for a signal
 /// (`EINTR`) or the timeout (`ETIME`), running task work that comes. An
-/// `IORING_OP_TIMEOUT` done as it waits ends it too. Completions in the
+/// `IORING_OP_TIMEOUT` done as it waits ends it too, and once the
+/// `min_wait_usec` passed, so does any completion. Completions in the
 /// queue by then make it succeed whatever ended the wait.
 fn wait(
     c: &mut Context<'_>,
@@ -3460,27 +3570,12 @@ fn wait(
     argp: u64,
     argsz: u64,
 ) -> Result<(), Errno> {
-    let (sigmask, sigsz, ts) = if flags & ENTER_EXT_ARG != 0 {
-        // struct io_uring_getevents_arg.
-        if argsz != 24 {
-            return Err(Errno::EINVAL);
-        }
-        let mut arg = [0; 24];
-        c.mem
-            .read(GuestAddr(argp), &mut arg)
-            .map_err(|_| Errno::EFAULT)?;
-        (
-            u64_at(&arg, 0),
-            u64::from(u32_at(&arg, 8)),
-            u64_at(&arg, 16),
-        )
-    } else {
-        (argp, argsz, 0)
-    };
-    if ring.flags & SETUP_DEFER_TASKRUN != 0 && ring.submitter.is_some_and(|t| t != c.tid) {
+    let arg = wait_arg(c, flags, argp, argsz)?;
+    if ring.flags & SETUP_DEFER_TASKRUN != 0 && ring.others(c.tid) {
         return Err(EEXIST);
     }
     if local_pending(ring) {
+        let min = at_least(min);
         run_local(c, file, ring, min, LOCAL_TW_DEFAULT_MAX.max(min));
     }
     if task_work_due(c.inbox) {
@@ -3493,76 +3588,88 @@ fn wait(
     if ring.completions() >= min {
         return Ok(());
     }
-    // How many more it waits for (`nr_wait`), as much task work as its
-    // ring's own runs at a time while it waits.
-    let wanted = min - ring.completions();
+    let first = ring.load_u32(CQ_TAIL);
+    // The queue's tail it waits for, and how much task work of the ring's
+    // own it runs at a time meanwhile, as many completions as it lacks.
+    let mut target = ring.load_u32(CQ_HEAD).wrapping_add(min);
+    let mut wanted = target.wrapping_sub(first);
     let timeouts = timeout::done(ring);
-    let started = ring.load_u32(CQ_TAIL);
-    let mut ran = false;
-    let now = c.host.clock(paludarium_host::ClockId::Monotonic)?;
-    let deadline = if ts == 0 {
-        None
-    } else {
-        let mut timespec = [0; 16];
-        c.mem
-            .read(GuestAddr(ts), &mut timespec)
-            .map_err(|_| Errno::EFAULT)?;
-        let (sec, nsec) = (u64_at(&timespec, 0) as i64, u64_at(&timespec, 8) as i64);
-        let nanos = sec
-            .saturating_mul(1_000_000_000)
-            .saturating_add(nsec)
-            .max(0) as u64;
-        Some(if flags & ENTER_ABS_TIMER != 0 {
-            nanos
-        } else {
-            now.saturating_add(nanos)
+    let start = c.host.clock(paludarium_host::ClockId::Monotonic)? as i64;
+    // `KTIME_MAX` is no timeout.
+    let deadline = arg
+        .timeout
+        .map(|time| {
+            if flags & ENTER_ABS_TIMER != 0 {
+                time
+            } else {
+                time.wrapping_add(start)
+            }
         })
-    };
+        .filter(|end| *end != i64::MAX);
+    let mut least = (arg.min_time != 0).then(|| start.saturating_add(arg.min_time as i64));
     let old_mask = c.process.signal_mask;
-    if sigmask != 0 {
-        if sigsz != 8 {
+    if arg.sigmask != 0 {
+        if arg.sigsz != 8 {
             return Err(Errno::EINVAL);
         }
         c.process.signal_mask = c
             .mem
-            .read_u64(GuestAddr(sigmask))
+            .read_u64(GuestAddr(arg.sigmask))
             .map_err(|_| Errno::EFAULT)?
             & !((1 << 8) | (1 << 18));
         crate::userfaultfd::mask_changed(c.process.signal_mask);
     }
+    // Whether it is to sleep anew, rather than sleeps on.
+    let mut fresh = true;
+    let mut ran = false;
     let result = loop {
         let ticket = c.files.readiness.token.value();
-        if local_pending(ring) {
-            run_local(c, file, ring, wanted, wanted);
-            ran = true;
-            continue;
-        }
-        if task_work_due(c.inbox) {
-            run_task_work(c);
-            ran = true;
+        if run_waiting(c, file, ring, wanted) {
+            (fresh, ran) = (true, true);
+            wanted = target.wrapping_sub(ring.load_u32(CQ_TAIL));
             continue;
         }
         // `io_should_wake`. A timeout of another thread's counts once that
         // thread posts its completion, which is what wakes Linux's wait.
-        if ring.completions() >= min
-            || (timeout::done(ring) != timeouts && (ran || ring.load_u32(CQ_TAIL) != started))
+        let tail = ring.load_u32(CQ_TAIL);
+        if tail.wrapping_sub(target) as i32 >= 0
+            || (timeout::done(ring) != timeouts && (ran || tail != first))
         {
             break Ok(());
         }
-        if deadline.is_some_and(|end| {
-            c.host
-                .clock(paludarium_host::ClockId::Monotonic)
-                .is_ok_and(|now| now >= end)
-        }) {
+        let now = match c.host.clock(paludarium_host::ClockId::Monotonic) {
+            Ok(now) => now as i64,
+            Err(e) => break Err(e),
+        };
+        // Linux master looks at the timeout before it arms the timer of
+        // either time, which then is the only one there is.
+        if (fresh || least.is_none()) && deadline.is_some_and(|end| now >= end) {
             break Err(ETIME);
+        }
+        if least.is_some_and(|least| now >= least) {
+            // `io_cqring_min_timer_wakeup`, which compares the time itself
+            // with the timeout's end.
+            if deadline.is_none_or(|end| arg.min_time as i64 >= end)
+                || tail != first
+                || ring.completions() != 0
+            {
+                break Err(ETIME);
+            }
+            least = None;
+            target = first.wrapping_add(1);
+            continue;
         }
         // Task work that comes as it waits runs here, and ends no wait
         // (`io_cqring_wait_schedule` checks `task_sigpending`).
-        if let Err(e) = crate::events::wait_for(c, ticket, deadline, false) {
+        let end = least.or(deadline).map(|end| end.max(0) as u64);
+        if let Err(e) = crate::events::wait_for(c, ticket, end, false) {
             break Err(e);
         }
+        fresh = false;
     };
-    if sigmask != 0
+    // Whatever ends it, it runs the work that came.
+    run_waiting(c, file, ring, wanted);
+    if arg.sigmask != 0
         && result == Err(Errno(4))
         && crate::signals::next_pending(c.process, true).is_some()
     {
@@ -3577,6 +3684,21 @@ fn wait(
         return Ok(());
     }
     result
+}
+
+/// Runs the ring's own task work, `wanted` of it at a time, and the
+/// thread's, if there is any, and moves completions without room to the
+/// queue.
+fn run_waiting(c: &mut Context<'_>, file: &Arc<dyn FileHandle>, ring: &Ring, wanted: u32) -> bool {
+    let (local, task) = (local_pending(ring), task_work_due(c.inbox));
+    if local {
+        run_local(c, file, ring, wanted, wanted);
+    }
+    if task {
+        run_task_work(c);
+    }
+    ring.flush(&mut ring.state());
+    local || task
 }
 
 /// `io_uring_register(fd, opcode, arg, nr_args)`: only
@@ -3599,8 +3721,11 @@ fn register(c: &mut Context<'_>, a: [u64; 6]) -> Result<u64, Errno> {
     }
     let file = ring_file(c, a[0], registered)?;
     let ring = downcast(&file)?;
-    if ring.submitter.is_some_and(|tid| tid != c.tid) {
+    if ring.others(c.tid) {
         return Err(EEXIST);
+    }
+    if !ring.allows_registration(opcode) {
+        return Err(Errno::EACCES);
     }
     let done = run_registration(c, ring, opcode, a);
     // A tag it posted counts for the timeouts (`io_post_aux_cqe`).
@@ -3616,6 +3741,18 @@ fn run_registration(
 ) -> Result<u64, Errno> {
     match opcode {
         REGISTER_PROBE => probe(c, a),
+        register::REGISTER_PERSONALITY | register::REGISTER_ENABLE_RINGS
+            if a[2] != 0 || a[3] as u32 != 0 =>
+        {
+            Err(Errno::EINVAL)
+        }
+        register::REGISTER_PERSONALITY => register::register_personality(c, ring),
+        register::UNREGISTER_PERSONALITY if a[2] != 0 => Err(Errno::EINVAL),
+        register::UNREGISTER_PERSONALITY => register::unregister_personality(ring, a[3] as u32),
+        register::REGISTER_ENABLE_RINGS => register::enable_rings(c, ring),
+        register::REGISTER_RESTRICTIONS => {
+            register::register_restrictions(c, ring, a[2], a[3] as u32)
+        }
         REGISTER_BUFFERS if a[2] == 0 => Err(Errno::EFAULT),
         REGISTER_BUFFERS => register_buffers(c, ring, a[2], a[3] as u32, 0),
         REGISTER_BUFFERS2 => register_buffers2(c, ring, a[2], a[3] as u32),

@@ -5355,7 +5355,7 @@ mod io_uring {
             supported,
             [
                 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                24, 25, 26, 27, 28, 29, 31, 32, 34, 35, 36, 37, 38, 39, 45, 55
+                24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 45, 55
             ]
         );
         // A probe that is not zeroed, buffers without an argument, another
@@ -6831,6 +6831,94 @@ mod io_uring {
         assert_eq!(reap(&mut f, &r), [(6, -62)]);
     }
 
+    /// A wait's `struct io_uring_getevents_arg` with `min_wait_usec` and,
+    /// but for `None`, a timeout of `nanos`.
+    fn wait_min(
+        f: &mut Fixture,
+        r: &Ring,
+        submit: u64,
+        min: u64,
+        usec: u32,
+        nanos: Option<i64>,
+    ) -> u64 {
+        let (arg, ts) = (DATA + 0x600, DATA + 0x640);
+        f.mem.write(GuestAddr(arg), &[0; 24]).unwrap();
+        f.mem
+            .write(GuestAddr(arg + 12), &usec.to_le_bytes())
+            .unwrap();
+        if let Some(nanos) = nanos {
+            f.mem.write_u64(GuestAddr(arg + 16), ts).unwrap();
+            f.mem.write_u64(GuestAddr(ts), 0).unwrap();
+            f.mem.write_u64(GuestAddr(ts + 8), nanos as u64).unwrap();
+        }
+        f.ret(426, &[r.fd, submit, min, GETEVENTS | 1 << 3, arg, 24])
+    }
+
+    #[test]
+    fn a_wait_ends_with_any_completion_after_its_least_time() {
+        const MS: u64 = 1_000_000;
+        let mut f = fixture();
+        at_time(&f, 0);
+        let r = ring(&mut f);
+        let now = |f: &Fixture| f.host.clock(paludarium_host::ClockId::Monotonic).unwrap();
+        let etime = errno(Errno(62));
+        // Nothing comes: with no timeout the least time ends it, else the
+        // timeout does, which a shorter one waits for too.
+        assert_eq!(wait_min(&mut f, &r, 0, 1, 20_000, None), etime);
+        assert_eq!(now(&f), 20 * MS);
+        assert_eq!(
+            wait_min(&mut f, &r, 0, 1, 20_000, Some(50 * MS as i64)),
+            etime
+        );
+        assert_eq!(now(&f), 70 * MS);
+        assert_eq!(
+            wait_min(&mut f, &r, 0, 1, 20_000, Some(10 * MS as i64)),
+            etime
+        );
+        assert_eq!(now(&f), 90 * MS);
+        // One that passed is looked at first.
+        assert_eq!(wait_min(&mut f, &r, 0, 1, 20_000, Some(-5)), etime);
+        assert_eq!(now(&f), 90 * MS);
+        // Fewer completions than asked are enough once the least time
+        // passed, not before.
+        let slot = u32_at(&f, r.rings + 4) & 3;
+        push(&mut f, &r, slot, &nop(7, 0, 0, 0, 0));
+        assert_eq!(
+            wait_min(&mut f, &r, 1, 2, 20_000, Some(1000 * MS as i64)),
+            1
+        );
+        assert_eq!(now(&f), 110 * MS);
+        assert_eq!(reap(&mut f, &r), [(7, 0)]);
+        // One that comes after it ends the wait at once: a read's linked
+        // timeout, which ends no wait by itself.
+        let (at, ends, buf) = (DATA + 0x100, DATA + 0x300, DATA + 0x800);
+        assert_eq!(f.ret(293, &[ends, 0]), 0);
+        let mut reads = rw(22, u64::from(u32_at(&f, ends)), u64::MAX, buf, 8);
+        reads[1] = 4;
+        let link = timeout(&f, LINK_TIMEOUT, 2, at, 60 * MS, 0, 0);
+        for e in [reads, link] {
+            let slot = u32_at(&f, r.rings + 4) & 3;
+            push(&mut f, &r, slot, &e);
+        }
+        assert_eq!(
+            wait_min(&mut f, &r, 2, 4, 20_000, Some(1000 * MS as i64)),
+            2
+        );
+        assert_eq!(now(&f), 170 * MS);
+        assert_eq!(reap(&mut f, &r), [(2, -62), (1, -125)]);
+        // The timeout is read before anything else, and a negative number of
+        // completions is there at once.
+        f.mem.write_u64(GuestAddr(DATA + 0x610), 8).unwrap();
+        assert_eq!(
+            f.ret(426, &[r.fd, 0, 0, GETEVENTS | 1 << 3, DATA + 0x600, 24]),
+            errno(Errno::EFAULT)
+        );
+        assert_eq!(f.ret(426, &[r.fd, 0, 0xffff_ffff, GETEVENTS, 0, 0]), 0);
+        // `KTIME_MAX` from now is past.
+        assert_eq!(wait_min(&mut f, &r, 0, 1, 0, Some(i64::MAX)), etime);
+        assert_eq!(now(&f), 170 * MS);
+    }
+
     #[test]
     fn a_timeout_completes_after_its_number_of_completions() {
         let mut f = fixture();
@@ -7451,6 +7539,116 @@ mod io_uring {
         assert_eq!(reap_flags(&mut f, &r), [(1, 0, 0)]);
     }
 
+    /// A splice (30) or tee (33) of `len` bytes from `input` to `out`.
+    fn splice(opcode: u8, data: u64, input: u64, out: u64, len: u32, flags: u32) -> [u8; 64] {
+        let off = if opcode == 30 { u64::MAX } else { 0 };
+        let mut e = fs(opcode, out as i32, off, off, len, flags);
+        e[32..40].copy_from_slice(&data.to_le_bytes());
+        e[44..48].copy_from_slice(&(input as u32).to_le_bytes());
+        e
+    }
+
+    #[test]
+    fn splices_move_bytes_and_wait_for_them() {
+        let mut f = fixture();
+        let r = ring(&mut f);
+        let (from, into) = a_pipe(&mut f, DATA + 0x300);
+        let (read, write) = a_pipe(&mut f, DATA + 0x308);
+        for (fd, flags) in [(from, 0), (into, 0), (read, 0), (write, 0)]
+            .iter()
+            .copied()
+        {
+            assert_eq!(f.ret(72, &[fd, 4, flags]), 0);
+        }
+        f.mem.write(GuestAddr(DATA), b"/a\0").unwrap();
+        let file = f.ret(2, &[DATA, 0o102, 0o600]);
+        f.mem.write(GuestAddr(DATA + 0x200), b"hello").unwrap();
+        assert_eq!(f.ret(1, &[into, DATA + 0x200, 5]), 5);
+        // Copied, then moved: fewer bytes than asked for fail the link.
+        let mut tee = splice(33, 1, from, write, 8, 0);
+        tee[1] = 1 << 2;
+        let after = nop(9, 0, 0, 0, 0);
+        assert_eq!(batch(&mut f, &r, &[tee, after]), [(1, 5), (9, -125)]);
+        assert_eq!(f.ret(0, &[read, DATA + 0x800, 8]), 5);
+        let mut to_file = splice(30, 1, from, file, 5, 0);
+        to_file[8..16].copy_from_slice(&3u64.to_le_bytes());
+        to_file[1] = 1 << 2;
+        assert_eq!(batch(&mut f, &r, &[to_file, after]), [(1, 5), (9, 0)]);
+        assert_eq!(f.ret(17, &[file, DATA + 0x800, 8, 0]), 8);
+        assert_eq!(bytes(&f, DATA + 0x800, 8), b"\0\0\0hello");
+        // Waiting for data, or not.
+        assert_eq!(batch(&mut f, &r, &[splice(30, 2, from, write, 5, 0)]), []);
+        assert_eq!(f.ret(1, &[into, DATA + 0x200, 5]), 5);
+        assert_eq!(reap(&mut f, &r), [(2, 5)]);
+        assert_eq!(one(&mut f, &r, &splice(30, 1, from, write, 5, 2)), -11);
+        assert_eq!(one(&mut f, &r, &splice(30, 1, from, write, 0, 0)), 0);
+        // What is refused.
+        assert_eq!(one(&mut f, &r, &splice(30, 1, from, write, 5, 16)), -22);
+        assert_eq!(one(&mut f, &r, &splice(30, 1, 99, write, 5, 0)), -9);
+        assert_eq!(one(&mut f, &r, &splice(30, 1, into, write, 5, 0)), -9);
+        assert_eq!(one(&mut f, &r, &splice(30, 1, file, file, 5, 0)), -22);
+        assert_eq!(one(&mut f, &r, &splice(30, 1, from, into, 5, 0)), -22);
+        let mut offset = splice(30, 1, from, write, 5, 0);
+        offset[16..24].copy_from_slice(&0u64.to_le_bytes());
+        assert_eq!(one(&mut f, &r, &offset), -29);
+        let mut offset = splice(33, 1, from, write, 5, 0);
+        offset[8] = 1;
+        assert_eq!(one(&mut f, &r, &offset), -22);
+        // A registered input.
+        fds(&f, DATA + 0x400, &[from as i32]);
+        assert_eq!(f.ret(427, &[r.fd, 2, DATA + 0x400, 1]), 0);
+        assert_eq!(f.ret(1, &[into, DATA + 0x200, 5]), 5);
+        assert_eq!(one(&mut f, &r, &splice(30, 1, 0, write, 5, 1 << 31)), 5);
+        assert_eq!(one(&mut f, &r, &splice(30, 1, 1, write, 5, 1 << 31)), -9);
+    }
+
+    /// What Linux's worker waits for with a pipe's mutex taken, the request
+    /// waits for, not the thread that submits it.
+    #[test]
+    fn a_splice_waits_for_what_holds_its_pipe() {
+        let mut f = fixture();
+        let r = ring(&mut f);
+        let (from, into) = a_pipe(&mut f, DATA + 0x300);
+        let (read, write) = a_pipe(&mut f, DATA + 0x308);
+        for (data, opcode, fd) in [(1, 33, from), (2, 33, write), (3, 30, from), (4, 30, write)] {
+            assert_eq!(f.ret(1, &[into, DATA + 0x200, 5]), 5);
+            let file = f.kernel.files.descriptor(fd).unwrap().file;
+            let held = crate::sockets::pipe(&file).unwrap().hold();
+            let e = splice(opcode, data, from, write, 5, 0);
+            assert_eq!(batch(&mut f, &r, &[e]), []);
+            // It is found by its output, as `req->file` is.
+            if data == 4 {
+                let other = cancel(8, 0, 2 | 1, from as i32);
+                assert_eq!(batch(&mut f, &r, &[other]), [(8, 0)]);
+            }
+            drop(held);
+            assert_eq!(f.ret(39, &[]), 1);
+            assert_eq!(reap(&mut f, &r), [(data, 5)]);
+            assert_eq!(f.ret(0, &[read, DATA + 0x800, 8]), 5);
+            if opcode == 33 {
+                assert_eq!(f.ret(0, &[from, DATA + 0x800, 8]), 5);
+            }
+        }
+        // A file's splice into one, and one cancelled meanwhile.
+        f.mem.write(GuestAddr(DATA), b"/a\0").unwrap();
+        let file = f.ret(2, &[DATA, 0o102, 0o600]);
+        assert_eq!(f.ret(1, &[file, DATA + 0x200, 5]), 5);
+        let pipe = f.kernel.files.descriptor(write).unwrap().file;
+        let held = crate::sockets::pipe(&pipe).unwrap().hold();
+        let mut e = splice(30, 5, file, write, 5, 0);
+        e[16..24].copy_from_slice(&0u64.to_le_bytes());
+        let mut gone = e;
+        gone[32] = 6;
+        assert_eq!(batch(&mut f, &r, &[e, gone]), []);
+        assert_eq!(
+            batch(&mut f, &r, &[cancel(7, 6, 0, 0)]),
+            [(7, 0), (6, -125)]
+        );
+        drop(held);
+        assert_eq!(f.ret(39, &[]), 1);
+        assert_eq!(reap(&mut f, &r), [(5, 5)]);
+    }
+
     /// A `struct user_msghdr` at `at`, with the iovecs `iov`, put after it,
     /// and `control_len` bytes of control after them.
     fn msghdr(f: &Fixture, at: u64, iov: &[(u64, u64)], control_len: u64) {
@@ -7872,6 +8070,118 @@ mod io_uring {
             sqes,
             array,
         }
+    }
+
+    const R_DISABLED: u32 = 1 << 6;
+    const EBADFD: Errno = Errno(77);
+    const EACCES: i32 = -13;
+
+    /// `IORING_REGISTER_RESTRICTIONS` of `list`, each an operation and its
+    /// value.
+    fn restrict(f: &mut Fixture, r: &Ring, list: &[(u16, u8)]) -> u64 {
+        let at = DATA + 0x200;
+        for (i, (op, value)) in list.iter().enumerate() {
+            let mut entry = [0; 16];
+            entry[..2].copy_from_slice(&op.to_le_bytes());
+            entry[2] = *value;
+            f.mem.write(GuestAddr(at + 16 * i as u64), &entry).unwrap();
+        }
+        f.ret(427, &[r.fd, 11, at, list.len() as u64])
+    }
+
+    #[test]
+    fn a_disabled_ring_takes_restrictions_until_it_is_enabled() {
+        let mut f = fixture();
+        let enabled = ring(&mut f);
+        assert_eq!(f.ret(427, &[enabled.fd, 12, 0, 0]), errno(EBADFD));
+        assert_eq!(restrict(&mut f, &enabled, &[(1, 0)]), errno(EBADFD));
+        let r = ring_with(&mut f, R_DISABLED);
+        // No wait, and no submission.
+        assert_eq!(f.ret(426, &[r.fd, 0, 0, 0]), errno(EBADFD));
+        assert_eq!(f.ret(426, &[r.fd, 1, 1, GETEVENTS]), errno(EBADFD));
+        // What is refused leaves it without restrictions.
+        let einval = errno(Errno::EINVAL);
+        assert_eq!(f.ret(427, &[r.fd, 11, 0, 0]), einval);
+        assert_eq!(f.ret(427, &[r.fd, 11, DATA, 1000]), einval);
+        assert_eq!(f.ret(427, &[r.fd, 11, 8, 1]), errno(Errno::EFAULT));
+        for bad in [(4, 0), (0, 200), (1, 200)] {
+            assert_eq!(restrict(&mut f, &r, &[(1, 0), bad]), einval);
+        }
+        // NOPs, with a link and never without one, and unregistering files.
+        assert_eq!(restrict(&mut f, &r, &[(0, 3), (1, 0), (2, 16), (3, 4)]), 0);
+        assert_eq!(restrict(&mut f, &r, &[(1, 1)]), errno(EBUSY));
+        // A disabled ring still takes any registration.
+        assert_eq!(f.ret(427, &[r.fd, 9, 0, 0]), 1);
+        assert_eq!(f.ret(427, &[r.fd, 12, 1, 0]), einval);
+        assert_eq!(f.ret(427, &[r.fd, 12, 0, 1]), einval);
+        assert_eq!(f.ret(427, &[r.fd, 12, 0, 0]), 0);
+        let eacces = errno(Errno::EACCES);
+        let nop = |flags: u8| {
+            let mut e = nop(1, 0, 0, 0, 0);
+            e[1] = flags;
+            e
+        };
+        assert_eq!(f.ret(427, &[r.fd, 12, 0, 0]), eacces);
+        assert_eq!(f.ret(427, &[r.fd, 9, 0, 0]), eacces);
+        assert_eq!(f.ret(427, &[r.fd, 3, 0, 0]), errno(ENXIO));
+        assert_eq!(one(&mut f, &r, &nop(4)), 0);
+        assert_eq!(one(&mut f, &r, &nop(4 | 16)), 0);
+        assert_eq!(one(&mut f, &r, &nop(0)), EACCES);
+        assert_eq!(one(&mut f, &r, &nop(4 | 1)), EACCES);
+        let mut read = rw(READ, 0, HERE, DATA, 1);
+        read[1] = 4;
+        assert_eq!(one(&mut f, &r, &read), EACCES);
+        // An operation past the last comes first.
+        assert_eq!(one(&mut f, &r, &sqe(200, 1)), -22);
+        // The list of none allows nothing; one half alone leaves the other.
+        let r = ring_with(&mut f, R_DISABLED);
+        assert_eq!(restrict(&mut f, &r, &[]), 0);
+        assert_eq!(f.ret(427, &[r.fd, 12, 0, 0]), 0);
+        assert_eq!(one(&mut f, &r, &nop(0)), EACCES);
+        assert_eq!(f.ret(427, &[r.fd, 9, 0, 0]), eacces);
+        let r = ring_with(&mut f, R_DISABLED);
+        assert_eq!(restrict(&mut f, &r, &[(0, 9)]), 0);
+        assert_eq!(f.ret(427, &[r.fd, 12, 0, 0]), 0);
+        assert_eq!(one(&mut f, &r, &nop(0)), 0);
+        assert_eq!(f.ret(427, &[r.fd, 9, 0, 0]), 1);
+        assert_eq!(f.ret(427, &[r.fd, 10, 0, 1]), eacces);
+    }
+
+    #[test]
+    fn a_request_runs_with_its_personality() {
+        let mut f = fixture();
+        let r = ring(&mut f);
+        f.mem.write(GuestAddr(DATA), b"/a\0").unwrap();
+        assert_ne!(f.ret(2, &[DATA, 0o102, 0o600]), errno(Errno::EACCES));
+        let with = |f: &mut Fixture, r: &Ring, id: u16| {
+            let mut e = fs(18, -100, 0, DATA, 0, 0);
+            e[42..44].copy_from_slice(&id.to_le_bytes());
+            one(f, r, &e)
+        };
+        let einval = errno(Errno::EINVAL);
+        assert_eq!(f.ret(427, &[r.fd, 9, DATA, 0]), einval);
+        assert_eq!(f.ret(427, &[r.fd, 9, 0, 1]), einval);
+        assert_eq!(with(&mut f, &r, 1), -22);
+        // Root's, then another user's, whose own open is refused.
+        assert_eq!(f.ret(427, &[r.fd, 9, 0, 0]), 1);
+        f.thread.state.credentials.fsuid = 1000;
+        f.thread.state.credentials.effective = 0;
+        assert_eq!(f.ret(427, &[r.fd, 9, 0, 0]), 2);
+        assert_eq!(with(&mut f, &r, 0), EACCES);
+        assert!(with(&mut f, &r, 1) > 0);
+        assert_eq!(with(&mut f, &r, 2), EACCES);
+        assert_eq!(f.thread.state.credentials.fsuid, 1000);
+        // One unregistered; IDs go on and start again.
+        assert_eq!(f.ret(427, &[r.fd, 10, 1, 1]), einval);
+        assert_eq!(f.ret(427, &[r.fd, 10, 0, 1]), 0);
+        assert_eq!(f.ret(427, &[r.fd, 10, 0, 1]), einval);
+        assert_eq!(with(&mut f, &r, 1), -22);
+        assert_eq!(f.ret(427, &[r.fd, 9, 0, 0]), 3);
+        for id in 4..=0xffff {
+            assert_eq!(f.ret(427, &[r.fd, 9, 0, 0]), id);
+        }
+        assert_eq!(f.ret(427, &[r.fd, 9, 0, 0]), 1);
+        assert_eq!(f.ret(427, &[r.fd, 9, 0, 0]), errno(EBUSY));
     }
 
     /// Submits `entries` at once with no wait.

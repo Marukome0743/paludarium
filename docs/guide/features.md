@@ -1880,8 +1880,8 @@ kernel.
   `_TIMEOUT_REMOVE` and `_LINK_TIMEOUT`, the polls `IORING_OP_POLL_ADD` and
   `_POLL_REMOVE`, the file requests `IORING_OP_OPENAT`, `_OPENAT2`,
   `_CLOSE`, `_STATX`, `_FALLOCATE`, `_FADVISE`, `_MADVISE`, `_RENAMEAT`,
-  `_UNLINKAT`, `_MKDIRAT`, `_SYMLINKAT`, `_LINKAT` and `_FTRUNCATE`, and the
-  socket requests
+  `_UNLINKAT`, `_MKDIRAT`, `_SYMLINKAT`, `_LINKAT` and `_FTRUNCATE`,
+  `IORING_OP_SPLICE` and `_TEE`, and the socket requests
   `IORING_OP_SHUTDOWN`, `_SOCKET`, `_ACCEPT`, `_CONNECT`, `_SEND`,
   `_RECV`, `_SENDMSG` and `_RECVMSG`. The other operations complete with `EOPNOTSUPP`, as on a Linux
   built without them, and `IORING_REGISTER_PROBE` reports only these. The
@@ -1907,6 +1907,12 @@ kernel.
   - A ring with `IORING_SETUP_DEFER_TASKRUN` runs it only as
     `io_uring_enter` waits on that ring, 20 at a time unless the wait wants
     more (`IO_LOCAL_TW_DEFAULT_MAX`).
+
+  A wait in `io_uring_enter` ends with the completions it asked for, an
+  `IORING_OP_TIMEOUT` done meanwhile (`cq_timeouts`), a signal, or its
+  timeout. With `min_wait_usec`, fewer completions end it once that time
+  passed, and so does the first one after it; with none and no timeout it
+  ends then with `ETIME` (`io_cqring_min_timer_wakeup`).
 
   With `IORING_SETUP_TASKRUN_FLAG`, `IORING_SQ_TASKRUN` shows that some
   waits. A link whose request fails with `IOSQE_CQE_SKIP_SUCCESS` cancels
@@ -2073,6 +2079,13 @@ kernel.
   link only for an open, a close and an `IORING_OP_FADVISE`, or if its
   descriptor is not open; an `IORING_OP_FSYNC` does not either.
 
+- `IORING_OP_SPLICE` and `_TEE` move and copy bytes as `splice` and `tee`
+  do, with offsets in the entry (-1 for the file's position) and a
+  registered input with `SPLICE_F_FD_IN_FIXED`. One that would wait waits
+  for its file, unless `SPLICE_F_NONBLOCK` or a pipe's `O_NONBLOCK`
+  (`EAGAIN`), and one that moves fewer bytes than it asked for fails its
+  link.
+
 - The polls are Linux master's (`io_uring/poll.c`). `IORING_OP_POLL_ADD`
   completes with the events its file has of those it asks for and the ones
   that end any poll (`POLLERR`, `POLLHUP`, `POLLNVAL`, and `POLLRDHUP` for a
@@ -2176,6 +2189,22 @@ kernel.
   posts no tag. `IORING_OP_READ_FIXED` and
   `_WRITE_FIXED` move bytes within the buffer `buf_index` names, after the
   file is found: no buffer there, or a range that leaves it, is `EFAULT`.
+
+- A ring made with `IORING_SETUP_R_DISABLED` refuses `io_uring_enter`
+  (`EBADFD`) until `IORING_REGISTER_ENABLE_RINGS` enables it, whose thread
+  is then the only submitter with `IORING_SETUP_SINGLE_ISSUER`. Meanwhile
+  `IORING_REGISTER_RESTRICTIONS` may give it restrictions once (`EBUSY`,
+  `EBADFD` for an enabled ring), as Linux's `io_parse_restrictions` reads
+  them: the registrations it allows (`EACCES` for another, once enabled),
+  and the operations, with the flags they may have and must have, of its
+  requests, each of which fails with `EACCES` otherwise. None at all allows
+  nothing.
+
+- `IORING_REGISTER_PERSONALITY` keeps the thread's credentials, with its
+  Landlock domain, and gives their ID, from 1 on (`xa_alloc_cyclic`). A
+  request that names one (`EINVAL` for none) runs with them, again as it
+  goes on after a wait (`override_creds`), and keeps them after
+  `IORING_UNREGISTER_PERSONALITY`.
 
 - `IORING_REGISTER_RING_FDS` registers ring descriptors for the calling
   thread, as Linux's `io_ringfd_register` does: 1 to 16 `struct
