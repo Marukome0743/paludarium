@@ -4561,7 +4561,9 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
     `ndisc_send_ns`、`ndisc_send_na`）と、TCP の各セグメント（いくつかをまとめた GSO のバッファは 1 つ。
     `__tcp_transmit_skb`）も数えます。TCP ヘッダは、SYN と SYN-ACK がそのオプション込み、閉じたポートへの
     リセットがオプションなし（`tcp_v4_send_reset`）、ほかはタイムスタンプとその SACK ブロック込み
-    （`tcp_options_write`）です。数えないものは
+    （`tcp_options_write`）です。キャリアのない veth の端は、これらのどれも送りません。キューイング規律の
+    `noop` が各パケットを捨て（`noop_enqueue`）、`tx_dropped` がそれを数えます。断片に分けたデータグラムは
+    最初のものだけで、それが残りを止めるからです（`ip_do_fragment`）。数えないものは
     [制限事項](./limitations) にあります。
   - `igmp`（`igmp_mc_seq_show`）は、デバイスごとの IPv4 のグループで、新しいものから順に、
     その利用者の数と並びます。その上には、デバイスの行があり、グループの数と問い合わせ元の

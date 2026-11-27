@@ -112,12 +112,24 @@ pub(crate) struct Conf6 {
 pub(crate) struct Tally {
     packets: AtomicU64,
     bytes: AtomicU64,
+    /// What was dropped as it was to go (`tx_dropped`): by a veth end
+    /// without its carrier, whose queueing discipline is `noop`
+    /// (`noop_enqueue`'s `dev_core_stats_tx_dropped_inc`).
+    dropped: AtomicU64,
 }
 impl Tally {
     /// A packet of `bytes` more.
     pub(crate) fn add(&self, bytes: usize) {
         self.packets.fetch_add(1, Ordering::Relaxed);
         self.bytes.fetch_add(bytes as u64, Ordering::Relaxed);
+    }
+    /// A packet dropped.
+    pub(crate) fn drop_one(&self) {
+        self.dropped.fetch_add(1, Ordering::Relaxed);
+    }
+    /// The packets dropped.
+    pub(crate) fn dropped(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
     }
     /// Its packets and bytes.
     pub(crate) fn read(&self) -> (u64, u64) {
@@ -129,7 +141,7 @@ impl Tally {
 }
 impl PartialEq for Tally {
     fn eq(&self, other: &Self) -> bool {
-        self.read() == other.read()
+        self.read() == other.read() && self.dropped() == other.dropped()
     }
 }
 impl Eq for Tally {}
@@ -162,7 +174,8 @@ pub(crate) struct Device {
 
 impl Device {
     /// Its statistics (`struct rtnl_link_stats64`, `dev_get_stats`): what
-    /// it has taken in and sent; no error, drop or multicast is counted.
+    /// it has taken in and sent, and dropped as it was to send; no error,
+    /// other drop or multicast is counted.
     pub(crate) fn stats64(&self) -> [u64; 25] {
         let mut stats = [0; 25];
         let (rx, tx) = (self.rx.read(), self.tx.read());
@@ -170,6 +183,7 @@ impl Device {
         stats[1] = tx.0;
         stats[2] = rx.1;
         stats[3] = tx.1;
+        stats[7] = self.tx.dropped();
         stats
     }
     /// [`Self::stats64`] as `IFLA_STATS64` carries it, and as `IFLA_STATS`

@@ -1199,10 +1199,11 @@ impl Network {
             there.devices().take(peer.index, frames);
         }
     }
-    /// The veth end `index` is to send packets of `frames`' lengths: with
-    /// its carrier they go ([`Self::count`]); without, its queueing
-    /// discipline, `noop`, drops them (`noop_enqueue`), which no counter
-    /// here takes.
+    /// The veth end `index` is to send a packet, or the fragments of one,
+    /// of `frames`' lengths: with its carrier they go ([`Self::count`]);
+    /// without, its queueing discipline drops the first (`noop_enqueue`),
+    /// whose `NET_XMIT_CN` stops the rest (`ip_do_fragment`,
+    /// `ip6_fragment`).
     pub(crate) fn send_out(&self, index: i32, frames: &[usize]) {
         let carrier = self
             .devices()
@@ -1211,6 +1212,12 @@ impl Network {
             .is_none_or(|v| v.carrier);
         if carrier {
             self.count(index, frames);
+            return;
+        }
+        if let Some(device) = self.devices().by_index(index)
+            && !frames.is_empty()
+        {
+            device.tx.drop_one();
         }
     }
     /// Where each side of a TCP connection from `from`, of this namespace,

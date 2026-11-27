@@ -153,9 +153,10 @@ verified.
   goes to the host (a TCP connection to a port no
   guest socket holds, the DNS stub's answers) or through the loopback to
   a broadcast or group address, nor an MCTP send out through the
-  loopback. No error, drop or multicast is counted: a packet that Linux
-  drops as it leaves a veth end whose peer is down (`tx_dropped`) is
-  not sent here at all.
+  loopback. No error, multicast or drop is counted but `tx_dropped` of a
+  veth end without its carrier, and of that only what goes at once, not
+  the requests that ARP and neighbour discovery send again on their
+  timers, nor a TCP segment.
 - **`/proc/net`, in part**: it has `anycast6`, `arp`, `dev`, `dev_mcast`,
   `if_inet6`, `igmp`, `igmp6`, `ipv6_route`, `mcfilter`, `mcfilter6`, `route`
   and those of the sockets (see [features](./features)) alone; `snmp`,
