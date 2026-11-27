@@ -1305,7 +1305,10 @@ kernel.
   fault does not run under the VMA's lock first, so its retry is
   `FAULT_FLAG_TRIED`, and it counts once (`ru_majflt`, `page-faults`,
   `major-faults`, and no minor fault), whether the retry brings the page in
-  or not. One through `get_user_pages` finds the page there and counts
+  or not. It counts when the retry completes, as `mm_account_fault` does:
+  a retry that waits again (after a `UFFDIO_WAKE` that filled nothing)
+  adds nothing, and one that then fails, as for a fatal signal, counts
+  none. One through `get_user_pages` finds the page there and counts
   nothing.
   With `UFFD_FEATURE_SIGBUS` the fault raises SIGBUS (`BUS_ADRERR`)
   instead. `UFFDIO_WRITEPROTECT` protects the pages of its range, or ends
@@ -5358,8 +5361,8 @@ kernel.
   system call. `ru_majflt` counts the major faults, for the same processes
   and threads and children (`cmaj_flt`): the faults of the kernel's
   accesses that a `userfaultfd` had try again, as described for
-  `userfaultfd`, each counted once as its wait ends, and to no minor
-  fault. The other counts (involuntary context switches, blocks) are 0.
+  `userfaultfd`, each counted once as its retry completes, and to no
+  minor fault. The other counts (involuntary context switches, blocks) are 0.
   `/proc/<pid>/stat` gives the same counts as `minflt` and `majflt` (a
   thread's own under `task`) and `cminflt` and `cmajflt`.
 
