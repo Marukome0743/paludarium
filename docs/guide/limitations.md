@@ -1169,9 +1169,6 @@ verified.
   and registered mappings of one `userfaultfd` that meet are one range of
   `UFFD_EVENT_REMOVE`, as when Linux's VMAs merge; `MADV_REMOVE` tells of
   its whole range once its first mapping passes the checks.
-  `MADV_GUARD_INSTALL` over a uffd-wp marker of shmem puts the guard in
-  the marker's place, where Linux, whose zap keeps the marker, restarts
-  the call until a signal comes.
   Of shmem's files a memfd and a file of a tmpfs mount (one a guest
   mounted, or `/dev/shm`) are registered, but for write protection alone
   with `UFFD_FEATURE_WP_ASYNC`, which takes any file: a file of the
