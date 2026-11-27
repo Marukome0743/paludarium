@@ -201,14 +201,11 @@ verified.
   names as written, where Linux takes a `..` after a link in `/proc` (such
   as `/proc/self/cwd`) from its target.
   `fchroot`, new in Linux master, is not there (`ENOSYS`).
-- **Names in `/dev` and `/proc`**: no call makes a name in `/dev`
-  (`mkdir`, `mknod`, `symlink`, an `open` with `O_CREAT` and a `rename`
-  into it give `ENOENT`), where Linux's devtmpfs takes them, and removing
-  or renaming a generated name gives `ENOENT`, where Linux gives `EPERM`
-  for an `unlink` of a file in `/proc`, `ENOTDIR` for an `rmdir` of a
-  link there, `EBUSY` for an `rmdir` of `/dev/pts` and `EXDEV` for a
-  `rename` out of `/proc`. A `link` to a new name in `/proc` is `EXDEV`,
-  where Linux's lookup of the name finds nothing first (`ENOENT`).
+- **Names in `/dev`**: as root, a call that makes a name in `/dev`
+  (`mkdir`, `mknod`, `symlink`, an `open` with `O_CREAT`) gives `ENOENT`,
+  and `unlink`, `rmdir` and `rename` of a name there give `EPERM`, where
+  Linux's devtmpfs makes, removes and renames them. Another user gets
+  Linux's `EACCES`.
 - **`O_PATH` of `/dev/tty`**: it opens the controlling terminal as any
   open does, so without one it fails (`ENOENT`), where Linux's `O_PATH`
   opens the name without the device.
