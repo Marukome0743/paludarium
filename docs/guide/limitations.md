@@ -510,12 +510,15 @@ verified.
   walks both ways of a jump Linux knows goes one way, and it prunes no
   states, so a program with many branches may reach the limits sooner. A
   lookup's result may be null until a 64-bit `BPF_JEQ` or `BPF_JNE` with
-  the immediate 0 tells, or an array's key is one the stack holds
-  ([System calls](./features#system-calls)), where Linux also learns from
-  comparing two pointers. A read of the stack is known where Linux knows
-  it (zeros stored, a scalar spilled read from its start, an atomic's old
-  value), but not one of zeros and a spill of 0 together, which master
-  knows as 0 and Linux 7.0 does not.
+  the immediate 0, or with a value's or a map's pointer it equals, tells,
+  or an array's key is one the stack holds
+  ([System calls](./features#system-calls)). Linux 7.0 also learns it
+  from equality with the stack's or the context's pointer, and master
+  from equality with a register it knows is 0; where the two decide
+  differently it refuses, so neither tells here. A read of the stack is
+  known where Linux knows it (zeros stored, a scalar spilled read from
+  its start, an atomic's old value), but not one of zeros and a spill of
+  0 together, which master knows as 0 and Linux 7.0 does not.
   Where master and the test machines' Linux 7.0 decide differently, it
   refuses: master takes a larger stack where its JIT can, makes a number
   of a pointer that any operator is applied to, and takes an exit for
