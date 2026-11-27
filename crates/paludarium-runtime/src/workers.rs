@@ -139,11 +139,14 @@ impl Execution {
                 }
                 _ => self.stopped.store(false, Ordering::SeqCst),
             }
+            // Shorter while a sampling clock counts the thread.
+            let budget = kernel.run_budget(self.budget);
             // JIT blocks execute at most 64 instructions. Smaller explicit
             // budgets retain exact interpreter checkpoint/kill semantics.
             // With the trap flag set, one instruction runs and traps; checked
             // once per run here, so a run without it pays nothing more.
             let breakpoints = thread.breakpoints();
+            let traced = thread.cpu.rflags & flag::TF != 0;
             // RF holds back only an execute breakpoint for one instruction.
             if breakpoints.is_none() {
                 thread.cpu.rflags &= !flag::RF;
@@ -154,16 +157,16 @@ impl Execution {
                 let budget = if thread.cpu.rflags & flag::TF != 0 {
                     1
                 } else {
-                    self.budget
+                    budget
                 };
                 run_watched(&mut thread.cpu, memory, budget, &mut decode, breakpoints)
             } else if thread.cpu.rflags & flag::TF != 0 {
                 step_traced(&mut thread.cpu, memory, &mut decode)
-            } else if self.accelerated && self.budget >= 64 {
+            } else if self.accelerated && budget >= 64 {
                 run_cached_with_counted_hook(
                     &mut thread.cpu,
                     memory,
-                    self.budget,
+                    budget,
                     &mut decode,
                     paludarium_cpu::AccelerationPolicy {
                         maximum_block: 64,
@@ -188,13 +191,18 @@ impl Execution {
                 run_compiled(
                     &mut thread.cpu,
                     memory,
-                    self.budget,
+                    budget,
                     &mut decode,
                     compiler.as_ref(),
                 )
             } else {
-                run_cached(&mut thread.cpu, memory, self.budget, &mut decode)
+                run_cached(&mut thread.cpu, memory, budget, &mut decode)
             };
+            // One instruction at a time with the trap flag (set before the
+            // run or by it) or a tracer's breakpoints: not a whole run.
+            if traced || breakpoints.is_some() || thread.cpu.rflags & flag::TF != 0 {
+                kernel.run_cut_short();
+            }
             let next = kernel.handle(thread, memory, reason);
             if let Some(replacement) = kernel.take_exec_memory() {
                 *memory = replacement;

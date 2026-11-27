@@ -321,6 +321,37 @@ fn host_cpu_time(host: &dyn Host) -> u64 {
         .unwrap_or(0)
 }
 
+/// The fewest instructions a run is given while a sampling clock counts
+/// its thread ([`Kernel::run_budget`]).
+pub const PACE_FLOOR: u64 = 5_000;
+
+/// How far a thread runs while a sampling clock counts it
+/// ([`Kernel::run_budget`]).
+#[derive(Debug, Default)]
+struct Pace {
+    /// The nanoseconds of the thread's CPU time until the first sampling
+    /// clock that counts it fires, as of its last checkpoint: `None` with
+    /// none.
+    due: Option<u64>,
+    /// The instructions its current run was given, and its CPU time then.
+    run: Option<(u64, u64)>,
+    /// The instructions and the nanoseconds of its last whole run.
+    rate: Option<(u64, u64)>,
+}
+
+impl Pace {
+    /// The run ran all it was given: the rate it ran at.
+    fn ran(&mut self, host: &dyn Host) {
+        if let Some((instructions, from)) = self.run.take() {
+            let ns = host_cpu_time(host).saturating_sub(from);
+            // A clock that has not moved tells nothing.
+            if ns != 0 {
+                self.rate = Some((instructions, ns));
+            }
+        }
+    }
+}
+
 /// A thread's CPU time on each CPU.
 #[derive(Debug, Default)]
 struct TimeOnCpus {
@@ -980,6 +1011,8 @@ pub struct Kernel {
     /// Its thread's faults are refused, for an event to sample each at its
     /// instruction ([`paludarium_mmu::faults::arm`]).
     armed: bool,
+    /// How far its thread runs while a sampling clock counts it.
+    pace: Pace,
     pending_child: Option<(Box<Kernel>, Thread)>,
     processes: Arc<Processes>,
     spawn_memory: Option<Arc<AddressSpace>>,
@@ -1038,6 +1071,7 @@ impl Kernel {
             group,
             copies: None,
             armed: false,
+            pace: Pace::default(),
             pending_child: None,
             processes,
             spawn_memory: None,
@@ -1527,6 +1561,38 @@ impl Kernel {
         )
     }
 
+    /// The instructions the thread is to run before its next checkpoint, at
+    /// most `budget`. While a sampling `cpu-clock` or `task-clock` counts
+    /// it, the run ends about when the first of them is to fire, at the
+    /// rate the thread ran its last whole run at, so that each checkpoint
+    /// has about one sample of each, with its own registers. It is not an
+    /// interrupt: a run is at least [`PACE_FLOOR`] instructions.
+    pub fn run_budget(&mut self, budget: u64) -> u64 {
+        // A run not paced tells nothing of the rate.
+        let Some(due) = self.pace.due else {
+            self.pace.run = None;
+            return budget;
+        };
+        let n = match self.pace.rate {
+            Some((instructions, ns)) => {
+                let n = u128::from(due) * u128::from(instructions) / u128::from(ns.max(1));
+                u64::try_from(n).unwrap_or(u64::MAX)
+            }
+            None => PACE_FLOOR,
+        };
+        let n = n.max(PACE_FLOOR).min(budget);
+        self.pace.run = Some((n, host_cpu_time(&*self.host)));
+        n
+    }
+
+    /// The thread's run may have ended before it ran all that
+    /// [`Kernel::run_budget`] gave it, though it ends with a used-up
+    /// budget: with the trap flag, or a tracer's breakpoints, it runs one
+    /// instruction at a time. It tells nothing of the rate.
+    pub fn run_cut_short(&mut self) {
+        self.pace.run = None;
+    }
+
     /// Delivers an unblocked pending signal at a CPU/Kernel boundary.
     pub fn checkpoint(&mut self, thread: &mut Thread, mem: &AddressSpace) -> Next {
         let next = self.checkpoint_once(thread, mem);
@@ -1606,6 +1672,19 @@ impl Kernel {
         }
         if sampling {
             self.perf_samples(thread, mem);
+        }
+        // A sampling clock that counts it ends its runs by its next sample.
+        if sampling || self.pace.due.is_some() {
+            self.pace.due = sampling
+                .then(|| {
+                    perf::clock_due(
+                        &self.processes.perf_events,
+                        &self.group,
+                        thread.tid,
+                        thread.state.cpu.on.map_or(0, |(cpu, _)| cpu),
+                    )
+                })
+                .flatten();
         }
         // A fault of its own code that an event samples stops the thread at
         // its instruction.
@@ -2255,7 +2334,10 @@ impl Kernel {
             ExitReason::ArithmeticFault { .. }
             | ExitReason::FloatingPointFault { .. }
             | ExitReason::MathFault { .. } => self.terminate(thread, signal::SIGFPE),
-            ExitReason::BudgetExhausted { .. } => self.checkpoint(thread, mem),
+            ExitReason::BudgetExhausted { .. } => {
+                self.pace.ran(&*self.host);
+                self.checkpoint(thread, mem)
+            }
             // Later units add stop reasons; until then they end the process.
             _ => self.terminate(thread, signal::SIGSEGV),
         }
