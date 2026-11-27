@@ -4635,7 +4635,11 @@ kernel.
   resolved; for the first program, the path the CLI gives it: its path in a
   `--mount`, else `/<file name>`)
   and to the current directory. `stat` and `open` follow them, and
-  `O_NOFOLLOW` does not (`ELOOP`).
+  `O_NOFOLLOW` does not (`ELOOP`). `execve` of `exe` (this process's or,
+  for a reader that may look at it, another's) runs the program it leads
+  to, as Linux's walk jumps to the file without searching its
+  directories; `AT_SYMLINK_NOFOLLOW` refuses it (`ELOOP`), and a
+  generated file that is no link is `EACCES`.
 
 - `/proc/sys/fs/mqueue` has the POSIX message queue limits of the
   reader's IPC namespace, as Linux's `ipc/mq_sysctl.c`: `queues_max`,
@@ -5138,8 +5142,9 @@ kernel.
   VMAs with no file and 3 those of VMAs with one (shared memory's too):
   `smaps` and `smaps_rollup` leave a page out of `Referenced` until its
   next access, an instruction fetch too. A `fork`ed child has referenced
-  none of the pages it gets (`pte_mkold`). It has no read operation (`EINVAL`, `EBADF` on a descriptor
-  open only for writing), and `lseek` leaves it at 0.
+  none of the pages it gets (`pte_mkold`). It has no read operation
+  (`EINVAL`, `EBADF` on a descriptor open only for writing), and `lseek`
+  leaves it at 0.
 
 - `/proc/self/fd` (mode 0500, its size the number of open descriptors, as
   Linux's `proc_fd_getattr` gives it) lists `.`, `..` and a link per open
@@ -7401,7 +7406,9 @@ one only with an `--allow-net`.
   `ln -s /dev/null f` makes, or a link to `/dev` on the way, leads to the
   file the kernel generates there: `stat`, `statx`, `access`, `open` and
   the other calls that look a path up go on there as for the path it
-  leads to (`readlink` reads a link there, as `/dev/fd`, and the `xattr`
+  leads to, as do `execve` and the calls that make or remove a name
+  through it (`mkdir`, `mknod`, `symlink`, `link`, `unlink`, `rmdir` and
+  `rename`) (`readlink` reads a link there, as `/dev/fd`, and the `xattr`
   calls, `statfs`, `link` and `name_to_handle_at`, with their `*at`
   forms, take the generated file), and a descriptor opened through it
   names that file in `/proc/self/fd`.
