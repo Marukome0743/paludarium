@@ -4812,6 +4812,7 @@ mod shm {
                 "tcp",
                 "udp",
                 "icmp",
+                "igmp",
                 "raw6",
                 "tcp6",
                 "udp6",
@@ -4821,6 +4822,8 @@ mod shm {
                 "packet",
                 "netlink",
                 "if_inet6",
+                "mcfilter",
+                "mcfilter6",
                 "ipv6_route"
             ]
         );
