@@ -8362,6 +8362,9 @@ fn open_path(
             crate::proc::directory_stat(),
         ))
     } else if let Some(entry) = crate::proc::system_entry(p) {
+        // Its 0444 mode checked as any file's (`may_open`): a write takes
+        // what only root's `CAP_DAC_OVERRIDE` overrides.
+        own_open_check(c, p, flags)?;
         system_file(c, entry, flags)
     } else if let Some(entry) = own_entry(c, p) {
         own_open_check(c, p, flags)?;
@@ -9705,8 +9708,8 @@ fn other_generated_stat(
             SMALL_BLOCK_SIZE,
         ));
     }
-    if crate::proc::system_entry(path).is_some() {
-        return Some((crate::proc::entry_stat(), device(c, path), SMALL_BLOCK_SIZE));
+    if let Some(entry) = crate::proc::system_entry(path) {
+        return Some((entry.stat(), device(c, path), SMALL_BLOCK_SIZE));
     }
     if tasks::is_root(path) {
         return Some((
@@ -9962,6 +9965,19 @@ fn system_file(
                 times: c.processes.cpu_times(),
             })
         }
+        crate::proc::SystemEntry::Cgroups => crate::proc::CGROUPS.to_vec(),
+        crate::proc::SystemEntry::Cmdline => {
+            let content = crate::proc::CMDLINE.to_vec();
+            return Arc::new(
+                crate::proc::GeneratedFile::open_entry(content, flags)
+                    .with_entry_size(entry.stat().size),
+            );
+        }
+        crate::proc::SystemEntry::Devices => crate::proc::render_devices(),
+        crate::proc::SystemEntry::Filesystems => crate::proc::render_filesystems(),
+        crate::proc::SystemEntry::Misc => crate::proc::render_misc(),
+        crate::proc::SystemEntry::Swaps => crate::proc::SWAPS.to_vec(),
+        crate::proc::SystemEntry::Version => crate::proc::render_version(),
         crate::proc::SystemEntry::Uptime => crate::proc::render_uptime(
             c.host
                 .clock(paludarium_host::ClockId::Monotonic)
