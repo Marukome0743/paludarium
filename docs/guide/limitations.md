@@ -596,18 +596,22 @@ verified.
   `_POLL_REMOVE`, the file requests `IORING_OP_OPENAT`, `_OPENAT2`,
   `_CLOSE`, `_STATX`, `_FALLOCATE`, `_FADVISE`, `_MADVISE`, `_RENAMEAT`,
   `_UNLINKAT`, `_MKDIRAT`, `_SYMLINKAT`, `_LINKAT` and `_FTRUNCATE`, and the
-  single-shot socket requests
-  `IORING_OP_SHUTDOWN`, `_SOCKET`, `_ACCEPT`, `_CONNECT`, `_SEND`
-  and `_RECV` run; the other operations complete with `EOPNOTSUPP`. Of the
-  socket requests, a multishot accept or receive, a bundle
+  socket requests
+  `IORING_OP_SHUTDOWN`, `_SOCKET`, `_ACCEPT`, `_CONNECT`, `_SEND`,
+  `_RECV`, `_SENDMSG` and `_RECVMSG` run; the other operations complete with `EOPNOTSUPP`. Of the
+  socket requests, a multishot `IORING_OP_RECVMSG`, a bundle
   (`IORING_RECVSEND_BUNDLE`), a vectored send (`IORING_SEND_VECTORIZED`), a
   send that selects a buffer, and a receive with `MSG_WAITALL` that selects
-  one are not there yet (`EINVAL`). A send or a receive with
+  one are not there yet (`EINVAL`). A multishot receive whose socket keeps
+  having more goes on at once however many times in a row, where Linux
+  requeues it after 32 (`MULTISHOT_MAX_RETRY`), letting other task work
+  run first. A send or a receive with
   `IORING_RECVSEND_FIXED_BUF` is `EINVAL`, as on Linux 7.0, the kernel the
   differential tests run on; Linux master moves the bytes of a registered
   buffer. This follows master once the test runners' kernel does. A
-  receive with `MSG_WAITALL` whose datagram was cut does not fail its
-  link, where Linux's does. An `IORING_OP_SHUTDOWN`, an `IORING_OP_FSYNC`
+  send's address is read again as it runs, and an `IORING_OP_RECV` with
+  `MSG_WAITALL` does not fail its link for ancillary data it has no room
+  for, as Linux's does. An `IORING_OP_SHUTDOWN`, an `IORING_OP_FSYNC`
   and a file request run while `io_uring_enter` takes them, where Linux
   runs them, but for a close and some opens and advice, in a worker, so
   their completions can come before those Linux posts first, and an open of
