@@ -4855,6 +4855,7 @@ mod shm {
                 "udp6",
                 "unix",
                 "icmp6",
+                "igmp6",
                 "route",
                 "packet",
                 "netlink",

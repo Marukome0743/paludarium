@@ -1352,7 +1352,7 @@ impl Network {
             (IpAddr::V4(src), IpAddr::V4(group)) if group.is_multicast() => {
                 self.in_group4(index, src, group)
             }
-            (IpAddr::V6(src), IpAddr::V6(group)) => self.in_group6(index, src, group, now),
+            (IpAddr::V6(src), IpAddr::V6(group)) => self.in_group6(index, src, group),
             _ => true,
         };
         if loops && joined {
@@ -3440,7 +3440,7 @@ impl InetSocket {
                         let scope = crate::multicast::scope6(ip);
                         let own = loops
                             && matches!(from.ip(), IpAddr::V6(src)
-                                if self.network.in_group6(index, src, ip, now));
+                                if self.network.in_group6(index, src, ip));
                         (loops && scope != 0, scope > 1 && (hops != 0 || !own))
                     }
                     IpAddr::V4(_) if on_lo => (true, false),
@@ -4901,8 +4901,8 @@ impl Drop for InetSocket {
         let abort = self.options().linger == Some(0);
         let s = std::mem::take(&mut *self.lock());
         self.network.drop4(&s.groups4);
-        crate::netlink::tell_groups(&self.network);
         self.network.drop6(&s.groups6);
+        crate::netlink::tell_groups(&self.network);
         // Its connection's tries go with it.
         if let Some(stream) = &s.stream
             && stream.phase() == Phase::Connecting
@@ -6260,14 +6260,18 @@ fn set_option(c: &mut Context<'_>, socket: &InetSocket, a: [u64; 6]) -> Result<u
                 .map_err(|_| Errno::EFAULT)?;
             let asked = Membership6::read(&raw);
             let now = socket.now();
-            let mut s = socket.lock();
-            if name == 20 {
-                socket
-                    .network
-                    .join6(&mut s.groups6, asked, Mode::Exclude, now)?;
-            } else {
-                socket.network.leave6(&mut s.groups6, asked)?;
-            }
+            let result = {
+                let mut s = socket.lock();
+                if name == 20 {
+                    socket
+                        .network
+                        .join6(&mut s.groups6, asked, Mode::Exclude, now)
+                } else {
+                    socket.network.leave6(&mut s.groups6, asked)
+                }
+            };
+            crate::netlink::tell_groups(&socket.network);
+            result?;
         }
         // A device that joins a group anew or leaves it for good is told
         // of as it does (`inet_ifmcaddr_notify`), whatever the option
@@ -6284,7 +6288,9 @@ fn set_option(c: &mut Context<'_>, socket: &InetSocket, a: [u64; 6]) -> Result<u
         }
         (41, 42..=48) if socket.family == Family::V6 => {
             option6_int(c, at, len)?;
-            sources::set6(c, socket, name, (at, len))?;
+            let result = sources::set6(c, socket, name, (at, len));
+            crate::netlink::tell_groups(&socket.network);
+            result?;
         }
         // `IPV6_MULTICAST_IF` (`do_ipv6_setsockopt`, before the socket's
         // lock): not for TCP (`ENOPROTOOPT`); a device of the namespace
