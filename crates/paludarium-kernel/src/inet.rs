@@ -6341,7 +6341,11 @@ fn set_option(c: &mut Context<'_>, socket: &InetSocket, a: [u64; 6]) -> Result<u
         | (6, 1 | 3 | 4 | 5 | 6 | 12 | 18)
         | (0, 1)
         | (41, 26) => {
-            let value = option_int(c, at, len)?;
+            let value = if level == 0 {
+                option4_int(c, at, len)?
+            } else {
+                option_int(c, at, len)?
+            };
             let mut options = socket.options();
             match (level, name) {
                 (1, 2 | 15) => {
@@ -6410,14 +6414,21 @@ fn set_option(c: &mut Context<'_>, socket: &InetSocket, a: [u64; 6]) -> Result<u
                     socket.joins(&options, &socket.lock());
                 }
                 // A new type of service sets the priority too
-                // (`__ip_sock_set_tos`, `rt_tos2priority`).
-                (0, 1) if options.type_of_service != value & 0xfc => {
-                    options.type_of_service = value & 0xfc;
-                    options.priority = tos_priority(value);
-                    socket.lock().kept6 = None;
-                    socket.joins(&options, &socket.lock());
+                // (`__ip_sock_set_tos`, `rt_tos2priority`); TCP keeps its own
+                // two bits of ECN.
+                (0, 1) => {
+                    let value = if tcp {
+                        (value & !3) | (options.type_of_service & 3)
+                    } else {
+                        value
+                    };
+                    if options.type_of_service != value {
+                        options.type_of_service = value & 0xff;
+                        options.priority = tos_priority(value);
+                        socket.lock().kept6 = None;
+                        socket.joins(&options, &socket.lock());
+                    }
                 }
-                (0, 1) => {}
                 (41, 26) if socket.family == Family::V6 => {
                     // Linux refuses it once the socket has a local port.
                     let s = socket.lock();
