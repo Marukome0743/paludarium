@@ -3687,8 +3687,10 @@ static int case_testrun(void) {
     return 0;
 }
 
-/* bpf-prog-cfg. Not here: a jump back, which Linux takes from a loader
-   with CAP_BPF as a bounded loop and the verifier here refuses. */
+/* bpf-prog-cfg. Not here: a loop, which Linux takes from a loader with
+   CAP_BPF as a bounded loop and the verifier here refuses. The one jump
+   back here lands in the second half of a 64-bit constant, which both
+   refuse, with a line that tells which check found it. */
 #define JA(off) I(0x05, 0, 0, off, 0)
 #define JEQ32(dst, imm, off) I(0x16, dst, 0, off, imm)
 #define CONST64(dst, v) I(0x18, dst, 0, 0, v), I(0, 0, 0, 0, 0)
@@ -3715,6 +3717,7 @@ static int case_cfg(void) {
          EXIT());
     LOAD("a 32-bit jump into a 64-bit constant", MOV(0, 0), JEQ32(0, 0, 1), CONST64(1, 5), EXIT());
     LOAD("a call into a 64-bit constant", CALLF(2), EXIT(), CONST64(0, 5), EXIT());
+    LOAD("a jump back into a 64-bit constant", MOV(0, 0), CONST64(1, 0), JA(-2));
     LOAD("code in a function no path reaches", CALLF(1), EXIT(), MOV(0, 0), JA(1), MOV(0, 1),
          EXIT());
     LOAD("a jump just past the end", MOV(0, 0), JA(1), EXIT());

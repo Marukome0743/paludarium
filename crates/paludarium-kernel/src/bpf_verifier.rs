@@ -70,6 +70,8 @@
 //!   pointer leaks, uninitialized stack reads and no Spectre sanitizing.
 use paludarium_types::Errno;
 
+#[cfg(test)]
+mod pins;
 mod rewrite;
 
 const EACCES: Errno = Errno(13);
@@ -811,6 +813,9 @@ enum Rule {
     },
     /// "`name` uses reserved fields", whatever the fields hold.
     Never(&'static str),
+    /// Any fields: the walk checks them, as Linux's `check_atomic` does
+    /// ([`Walk::atomic`]), so none is refused here.
+    Walked,
     /// A 64-bit `BPF_MOV` of a register with `off` [`ADDR_SPACE_CAST`]:
     /// `imm` names the address spaces, 1 to 0 or 0 to 1.
     AddrSpaceCast,
@@ -852,7 +857,7 @@ fn rule(insn: Insn) -> Rule {
             fields("BPF_LDX", ANY, ANY, ANY, ZERO)
         }
         class::LDX => Rule::Never("BPF_LDX"),
-        class::STX if insn.mode() == mode::ATOMIC => fields("", ANY, ANY, ANY, ANY),
+        class::STX if insn.mode() == mode::ATOMIC => Rule::Walked,
         class::STX if insn.mode() == mode::MEM => fields("BPF_STX", ANY, ANY, ANY, ZERO),
         class::STX => Rule::Never("BPF_STX"),
         class::ST if insn.mode() == mode::MEM => fields("BPF_ST", ZERO, ANY, ANY, ANY),
@@ -902,6 +907,7 @@ fn insn_fields(insn: Insn) -> Checked<()> {
             if taken { Ok(()) } else { reserved(name) }
         }
         Rule::Never(name) => reserved(name),
+        Rule::Walked => Ok(()),
         Rule::AddrSpaceCast if matches!(insn.imm, 1 | 0x1_0000) => Ok(()),
         Rule::AddrSpaceCast => refuse(
             Errno::EINVAL,
