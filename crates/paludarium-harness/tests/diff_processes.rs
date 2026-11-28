@@ -840,6 +840,8 @@ mod linux {
         processes_madvise_fork => ("madvise-fork", "process"),
         processes_madvise_guard => ("madvise-guard", "process"),
         processes_madvise_remove => ("madvise-remove", "process"),
+        // Becomes nobody for its names.
+        processes_magic_link_names => ("magic-link-names", "process", root),
         processes_map_count => ("map-count", "process", root),
         // Reads maps across a chroot.
         processes_maps_root => ("maps-root", "process", root),

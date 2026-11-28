@@ -16085,6 +16085,67 @@ fn the_first_thread_keeps_the_signals_the_host_started_with_ignored() {
     );
 }
 
+/// A magic link that is the last name, a trailing slash after it or not,
+/// is the name the calls that make or remove it find, not the file it
+/// leads to: `EEXIST` to make, `EISDIR` to create with `open`, `ENOTDIR` to
+/// unlink with the slash.
+#[test]
+fn the_name_calls_find_a_last_magic_link_itself() {
+    let mut f = fixture();
+    let file = put(&mut f, 0x80, b"/tmp/file");
+    let fd = f.ret(2, &[file, 0o101, 0o666]);
+    assert!(fd < 1024, "{fd:#x}");
+    let own = format!("/proc/self/fd/{fd}/");
+    let dev = format!("/dev/fd/{fd}/");
+    for p in [
+        own.as_bytes(),
+        dev.as_bytes(),
+        b"/proc/self/exe/",
+        b"/proc/self/cwd/",
+    ] {
+        let name = String::from_utf8_lossy(p).into_owned();
+        let at = put(&mut f, 0x100, p);
+        let x = put(&mut f, 0x200, b"x");
+        assert_eq!(
+            f.ret(83, &[at, 0o700]),
+            errno(Errno::EEXIST),
+            "mkdir {name}"
+        );
+        assert_eq!(
+            f.ret(133, &[at, 0o010600, 0]),
+            errno(Errno::EEXIST),
+            "mknod {name}"
+        );
+        assert_eq!(f.ret(88, &[x, at]), errno(Errno::EEXIST), "symlink {name}");
+        assert_eq!(f.ret(86, &[file, at]), errno(Errno::EEXIST), "link {name}");
+        assert_eq!(
+            f.ret(2, &[at, 0o101, 0o600]),
+            errno(Errno::EISDIR),
+            "creat {name}"
+        );
+        assert_eq!(f.ret(87, &[at]), errno(Errno::ENOTDIR), "unlink {name}");
+    }
+    // `/dev/fd` leads to `/proc/self/fd`, the same procfs: a rename or link
+    // there looks for the old name (`ENOENT`), not `EXDEV`.
+    let missing = put(&mut f, 0x300, b"/proc/self/nonesuch");
+    let new = put(&mut f, 0x340, b"/dev/fd/x9");
+    assert_eq!(f.ret(82, &[missing, new]), errno(Errno::ENOENT), "rename");
+    assert_eq!(f.ret(86, &[missing, new]), errno(Errno::ENOENT), "link");
+    // Under a root of its own, `/dev/fd` is a directory that root holds:
+    // a name made there is the root's.
+    let root = put(&mut f, 0x380, b"/tmp/r");
+    let dev = put(&mut f, 0x3a0, b"/tmp/r/dev");
+    let fd_dir = put(&mut f, 0x3c0, b"/tmp/r/dev/fd");
+    for at in [root, dev, fd_dir] {
+        assert_eq!(f.ret(83, &[at, 0o755]), 0);
+    }
+    assert_eq!(f.ret(161, &[root]), 0);
+    let made = put(&mut f, 0x3e0, b"/dev/fd/x9");
+    assert_eq!(f.ret(83, &[made, 0o755]), 0, "mkdir under the root");
+    assert_eq!(f.ret(84, &[made]), 0, "rmdir under the root");
+    assert_eq!(f.ret(3, &[fd]), 0);
+}
+
 /// The calls that make, remove or rename a name in `/proc` and `/dev` give
 /// Linux's errors in its order: the lookup (`ENOENT` in `/proc`), the
 /// trailing slash, the permission to write the directory (`EACCES` for

@@ -19533,6 +19533,60 @@ static int grl_inner(const char *self) {
     for (unsigned i = 0; i < 3; i++) printf("exec %s=%d\n", runs[i], gl_exec(self, runs[i], 0));
     return 0;
 }
+/* The magic-link-names case: a link of /proc or /dev that is the last
+   name, with a trailing slash, is the name the calls that make, remove or
+   rename it find (EEXIST, EISDIR, ENOTDIR), not the file it leads to. As
+   nobody, in a child, so that the permission checks that come first
+   (EACCES to remove a name in /dev or /proc/self/ns) are the same whoever
+   runs the case. Only errno values are printed. */
+static int mln_e(int rc) { return rc < 0 ? errno : 0; }
+static int magic_link_names_rows(void) {
+    char base[] = "/tmp/paludarium-magic-names-XXXXXX";
+    if (!mkdtemp(base)) return 1;
+    char file[96];
+    snprintf(file, sizeof file, "%s/file", base);
+    int fd = open(file, O_CREAT | O_WRONLY | O_CLOEXEC, 0600);
+    if (fd < 0) return 2;
+    char own[64], thread[64], dev[64];
+    snprintf(own, sizeof own, "/proc/self/fd/%d/", fd);
+    snprintf(thread, sizeof thread, "/proc/thread-self/fd/%d/", fd);
+    snprintf(dev, sizeof dev, "/dev/fd/%d/", fd);
+    const char *const names[] = {own, thread, dev, "/proc/self/exe/", "/proc/self/cwd/",
+                                 "/proc/self/root/", "/proc/self/ns/net/", "/dev/stdin/",
+                                 "/dev/stdout/"};
+    printf("name mkdir mknod symlink link creat unlink rmdir rename\n");
+    for (unsigned i = 0; i < sizeof names / sizeof names[0]; i++) {
+        const char *p = names[i];
+        int m = mln_e(mkdir(p, 0700));
+        int k = mln_e(mknod(p, S_IFIFO | 0600, 0));
+        int s = mln_e(symlink("x", p));
+        int l = mln_e(link(file, p));
+        int c = open(p, O_CREAT | O_WRONLY | O_CLOEXEC, 0600);
+        int ce = c < 0 ? errno : 0;
+        if (c >= 0) close(c);
+        int u = mln_e(unlink(p));
+        int r = mln_e(rmdir(p));
+        int rn = mln_e(rename("/proc/self/nonesuch", p));
+        printf("%s %d %d %d %d %d %d %d %d\n", i < 3 ? (i == 0 ? "own-fd/" : i == 1 ? "thread-fd/" : "dev-fd/") : p,
+               m, k, s, l, ce, u, r, rn);
+    }
+    close(fd);
+    unlink(file);
+    printf("cleaned=%d\n", rmdir(base) == 0);
+    return 0;
+}
+static int magic_link_names_case(void) {
+    fflush(stdout);
+    pid_t child = fork();
+    if (child == 0) {
+        if (setgroups(0, NULL) || setresgid(65534, 65534, 65534) || setresuid(65534, 65534, 65534)) _exit(90);
+        int rc = magic_link_names_rows();
+        fflush(stdout);
+        _exit(rc);
+    }
+    printf("status=%d\n", reaped(child));
+    return 0;
+}
 /* The named-fifo-statfs case: fstatfs of a fifo opened by its name is the
    file system that holds it, the same as statfs of its directory (type,
    fsid and flags), by a descriptor open for reading and writing and by an
@@ -46491,6 +46545,7 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "statx-attributes")) return statx_attributes_case();
     if (!strcmp(mode, "generated-enotdir")) return generated_enotdir_case();
     if (!strcmp(mode, "generated-changes")) return generated_changes_case();
+    if (!strcmp(mode, "magic-link-names")) return magic_link_names_case();
     if (!strcmp(mode, "tmpfs-limits")) return tmpfs_limits_case();
     if (!strcmp(mode, "shmem-fault-charge")) return shmem_fault_charge_case();
     if (!strcmp(mode, "named-fifo-statfs")) return named_fifo_statfs_case();
