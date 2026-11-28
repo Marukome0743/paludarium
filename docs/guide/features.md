@@ -2263,7 +2263,12 @@ kernel.
   wait or was cancelled, gives what it moved too (`io_sendrecv_fail`). A
   receive may select a provided buffer
   (`ENOBUFS`), which goes back to its group while the receive waits, or if
-  it read nothing, as Linux master's `io_recv` gives it back. A receive
+  it read nothing, as Linux master's `io_recv` gives it back. With
+  `MSG_WAITALL`, a stream's receive that filled some of it uses it then, a
+  ring's leaving the head once (`io_net_kbuf_recyle`), and keeps it to fill
+  the rest, a bundle of one buffer too; its completion names it, without
+  `IORING_CQE_F_BUF_MORE`, and one cancelled as it waits gives what it read
+  with it. A datagram shorter than the buffer, or cut, fails the link. A receive
   has `IORING_CQE_F_SOCK_NONEMPTY` while bytes are left on a TCP socket
   (or once its peer finished, as `tcp_inq_hint` tells) or an AF_UNIX
   stream, and an accept while more TCP connections wait. A new socket or

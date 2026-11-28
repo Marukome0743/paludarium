@@ -565,9 +565,11 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   `IORING_OP_TIMEOUT`、`_TIMEOUT_REMOVE`、`_LINK_TIMEOUT`、`IORING_OP_POLL_ADD`、`_POLL_REMOVE`、ファイルの要求 `IORING_OP_OPENAT`、`_OPENAT2`、`_CLOSE`、
   `_STATX`、`_FALLOCATE`、`_FADVISE`、`_MADVISE`、`_RENAMEAT`、`_UNLINKAT`、`_MKDIRAT`、`_SYMLINKAT`、
   `_LINKAT`、`_FTRUNCATE`、`_PIPE`、`IORING_OP_SPLICE`、`_TEE`、それにソケットの要求 `IORING_OP_SHUTDOWN`、`_SOCKET`、`_ACCEPT`、`_CONNECT`、`_SEND`、`_RECV`、`_SENDMSG`、`_RECVMSG`
-  だけです。ほかの操作は、Linux 7.0 の `IORING_OP_URING_CMD128` まで `EOPNOTSUPP` で完了します。ソケットの要求のうち、
-  `MSG_WAITALL` でバッファーを選ぶ受信（バンドル `IORING_RECVSEND_BUNDLE` を含む）はまだありません
-  （`EINVAL`）。送信が選ぶバッファーは Linux master に合わせます。差分テストのランナーのカーネルは、
+  だけです。ほかの操作は、Linux 7.0 の `IORING_OP_URING_CMD128` まで `EOPNOTSUPP` で完了します。
+  `MSG_WAITALL` の受信が、`IOU_PBUF_RING_INC` のリングのバッファーや、リングの複数のバッファーの
+  バンドル（`IORING_RECVSEND_BUNDLE`）を一部だけ埋めたときは、Linux master の 8444de681a17 からと
+  同じく短いまま終わり、リンクを失敗させます。Linux 7.0 は残りを埋めるまで待ち、そのあいだリングは
+  使っていない分を渡してしまいます。送信が選ぶバッファーは Linux master に合わせます。差分テストのランナーのカーネルは、
   提供されたバッファーを長さにかかわらずまだ丸ごと送る（master の b7322810d187 より前）ので、テストは
   それを比べず、長さが最後のバッファーで尽きるバンドルが続くかどうか（8742f4b5a472）も比べません。
   ランナーのカーネルは、そのとき送信のバンドルもマルチショットの受信のバンドルも終えませんが、ここでは

@@ -705,8 +705,9 @@ impl BufferRing {
 }
 
 /// A buffer a read selected: its group and ID, the bytes it reads to,
-/// and, for one of a ring, whether it was used already (a file that cannot
-/// be polled) and whether that left some of it.
+/// and, for one of a ring, whether the ring has `IOU_PBUF_RING_INC`,
+/// whether it was used already (a file that cannot be polled) and whether
+/// that left some of it.
 #[derive(Clone, Copy)]
 struct Chosen {
     bgid: u16,
@@ -717,6 +718,7 @@ struct Chosen {
     /// back to its group.
     size: u32,
     ring: bool,
+    incremental: bool,
     committed: bool,
     more: bool,
 }
@@ -1860,6 +1862,7 @@ fn select(
                 len: cut(buffer.len),
                 size: buffer.len,
                 ring: false,
+                incremental: false,
                 committed: true,
                 more: false,
             })
@@ -1876,6 +1879,7 @@ fn select(
                 len: cut(size),
                 size,
                 ring: true,
+                incremental: buffers.incremental,
                 committed: false,
                 more: false,
             };
@@ -1892,12 +1896,15 @@ fn select(
 /// (`io_buffers_select`), which it keeps until it completes: the first's
 /// ID, their bytes, whether a ring's last was left in part
 /// (`REQ_F_BUF_MORE`) and whether the group has none left
-/// (`REQ_F_BL_EMPTY`).
+/// (`REQ_F_BL_EMPTY`). A receive with `MSG_WAITALL` that waits for the rest
+/// keeps the buffers it received to in part as one too, with whether the
+/// first was cut short (`IORING_RECV_PARTIAL_MAP`).
 pub(super) struct Picked {
     pub(super) bid: u16,
     pub(super) pieces: Vec<(u64, usize)>,
     pub(super) more: bool,
     pub(super) emptied: bool,
+    pub(super) cut: bool,
 }
 
 impl Picked {
@@ -1943,6 +1950,7 @@ pub(super) fn select_send(
                 pieces: vec![(buffer.addr, size as usize)],
                 more: false,
                 emptied: list.is_empty(),
+                cut: false,
             })
         }
         Some(BufferList::Ring(buffers)) => buffers.take_for_send(c, len, bundle),
@@ -1969,6 +1977,7 @@ impl BufferRing {
             pieces: peeked.pieces,
             more,
             emptied: peeked.emptied,
+            cut: false,
         })
     }
 
@@ -2048,8 +2057,9 @@ struct Peeked {
 /// The buffers a receive with `IORING_RECVSEND_BUNDLE` and
 /// `IOSQE_BUFFER_SELECT` receives to (`io_buffers_peek`): the first's ID,
 /// their bytes, the provided buffer it took, which goes back if nothing
-/// comes, whether the group has none left (`REQ_F_BL_EMPTY`) and whether
-/// the first was cut short (`IORING_RECV_PARTIAL_MAP`).
+/// comes, whether the group has none left (`REQ_F_BL_EMPTY`), whether
+/// the first was cut short (`IORING_RECV_PARTIAL_MAP`) and whether a ring's
+/// have `IOU_PBUF_RING_INC`.
 pub(super) struct Received {
     bgid: u16,
     pub(super) bid: u16,
@@ -2057,6 +2067,19 @@ pub(super) struct Received {
     provided: Option<Chosen>,
     pub(super) emptied: bool,
     pub(super) cut: bool,
+    pub(super) incremental: bool,
+}
+
+impl Received {
+    /// Whether a receive with `MSG_WAITALL` that filled some of these can
+    /// wait for the rest, keeping them: a provided buffer, or a single
+    /// whole buffer of a ring without `IOU_PBUF_RING_INC`. Of the others,
+    /// a ring's that a receive went on with would be handed out again
+    /// meanwhile, so it ends short instead, as Linux master has it since
+    /// 8444de681a17 (`io_net_kbuf_can_retry`).
+    pub(super) fn can_wait(&self) -> bool {
+        self.provided.is_some() || !self.incremental && self.pieces.len() == 1
+    }
 }
 
 /// `io_buffers_peek` for a receive's bundle of up to `max` bytes (0 for any
@@ -2093,11 +2116,13 @@ pub(super) fn select_receive(
                     len,
                     size: buffer.len,
                     ring: false,
+                    incremental: false,
                     committed: true,
                     more: false,
                 }),
                 emptied: list.is_empty(),
                 cut: false,
+                incremental: false,
             })
         }
         Some(BufferList::Ring(buffers)) => {
@@ -2110,6 +2135,7 @@ pub(super) fn select_receive(
                 provided: None,
                 emptied: peeked.emptied,
                 cut: peeked.cut,
+                incremental: buffers.incremental,
             })
         }
     }

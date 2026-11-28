@@ -9038,11 +9038,11 @@ mod io_uring {
                 -22,
             ),
             (with(net(SEND, a, 1 << 40, buf, 1, 0, 0), 44, &[4]), -14),
-            // A message takes no bundle, and a receive that selects a whole
-            // buffer is not there yet.
+            // A message takes no bundle; a receive that selects a whole
+            // buffer looks for its group.
             (net(SENDMSG, a, 0, buf, 0, 0, 16), -22),
             (net(RECVMSG, a, 0, buf, 1, 0, 16), -22),
-            (with(net(RECV, a, 0, 0, 1, WAITALL, 16), 1, &[1 << 5]), -22),
+            (with(net(RECV, a, 0, 0, 1, WAITALL, 16), 1, &[1 << 5]), -2),
             // A vectored send reads its iovecs as it is prepared.
             (net(SEND, a, 0, buf, 1025, 0, 32), -22),
             (net(SEND, a, 0, 1 << 63, 1, 0, 32), -14),
@@ -9053,8 +9053,7 @@ mod io_uring {
             (with(net(RECV, a, 0, buf, 1, WAITALL, 2), 1, &[1 << 5]), -22),
             (with(net(RECV, a, 0, buf, 1, 0, 0), 44, &[1]), -22),
             (net(RECV, a, 0, 1 << 63, 1, 0, 0), -14),
-            // A whole selected buffer is not there yet.
-            (with(net(RECV, a, 0, 0, 1, WAITALL, 0), 1, &[1 << 5]), -22),
+            (with(net(RECV, a, 0, 0, 1, WAITALL, 0), 1, &[1 << 5]), -105),
         ] {
             assert_eq!(one(&mut f, &r, &e), res, "{:?}", &e[..48]);
         }
@@ -9291,6 +9290,115 @@ mod io_uring {
         assert_eq!(f.ret(426, &[r.fd, 0, 1, GETEVENTS]), 0);
         assert_eq!(reap_flags(&mut f, &r), [(1, 8, BUFFER | 26 << 16)]);
         assert_eq!(head(&mut f, &r, 1), 8);
+    }
+
+    #[test]
+    fn a_receive_with_waitall_fills_the_buffer_it_selected_as_linux_does() {
+        const NONEMPTY: u32 = 4;
+        const LINK: u8 = 1 << 2;
+        let mut f = fixture();
+        let r = ring(&mut f);
+        let (a, b) = unix_pair(&mut f, 1);
+        let (put, got) = (DATA + 0x100, DATA + 0x200);
+        f.mem.write(GuestAddr(put), b"abcdefgh").unwrap();
+        let select = |e: [u8; 64], bgid: u16, link: u8| {
+            with(with(e, 1, &[1 << 5 | link]), 40, &bgid.to_le_bytes())
+        };
+        let recv = |bgid: u16, len: u32, ioprio: u16| {
+            select(net(RECV, a, 0, 0, len, WAITALL, ioprio), bgid, 0)
+        };
+        // A provided buffer: it waits for the rest, keeping the buffer.
+        assert_eq!(one(&mut f, &r, &provide(1, got, 6, 7, 3)), 0);
+        assert_eq!(f.ret(1, &[b, put, 2]), 2);
+        submit_only(&mut f, &r, &[recv(7, 0, 0)]);
+        assert_eq!(reap_flags(&mut f, &r), []);
+        let other = select(net(RECV, a, 0, 0, 0, DONTWAIT, 0), 7, 0);
+        assert_eq!(one(&mut f, &r, &other), -105);
+        assert_eq!(f.ret(1, &[b, put + 2, 4]), 4);
+        assert_eq!(f.ret(426, &[r.fd, 0, 1, GETEVENTS]), 0);
+        assert_eq!(reap_flags(&mut f, &r), [(1, 6, BUFFER | 3 << 16)]);
+        assert_eq!(bytes(&f, got, 6), b"abcdef");
+        // A ring's: the head moves past it once, as it waits, and the
+        // completion names it.
+        let page = f.ret(9, &[0, 4096, 3, 0x22, u64::MAX, 0]);
+        assert_eq!(pbuf(&mut f, &r, page, 8, 1, 0), 0);
+        for index in 0..8 {
+            entry(&f, page, index, got + 8 * index, 4, 10 + index as u16);
+        }
+        tail(&f, page, 8);
+        assert_eq!(f.ret(1, &[b, put, 1]), 1);
+        submit_only(&mut f, &r, &[recv(1, 0, 0)]);
+        assert_eq!(reap_flags(&mut f, &r), []);
+        assert_eq!(head(&mut f, &r, 1), 1);
+        assert_eq!(f.ret(1, &[b, put + 1, 5]), 5);
+        assert_eq!(f.ret(426, &[r.fd, 0, 1, GETEVENTS]), 0);
+        assert_eq!(
+            reap_flags(&mut f, &r),
+            [(1, 4, BUFFER | NONEMPTY | 10 << 16)]
+        );
+        assert_eq!(head(&mut f, &r, 1), 1);
+        assert_eq!(bytes(&f, got, 4), b"abcd");
+        assert_eq!(f.ret(0, &[a, got + 0x100, 8]), 2);
+        // Cancelled as it waits, it gives what it read, and its buffer.
+        assert_eq!(f.ret(1, &[b, put, 1]), 1);
+        submit_only(&mut f, &r, &[recv(1, 0, 0)]);
+        assert_eq!(head(&mut f, &r, 1), 2);
+        submit_only(&mut f, &r, &[cancel(9, 1, 0, 0)]);
+        assert_eq!(
+            reap_flags(&mut f, &r),
+            [(9, 0, 0), (1, 1, BUFFER | 11 << 16)]
+        );
+        // A bundle of one buffer waits too.
+        assert_eq!(f.ret(1, &[b, put, 2]), 2);
+        submit_only(&mut f, &r, &[recv(1, 4, 16)]);
+        assert_eq!(reap_flags(&mut f, &r), []);
+        assert_eq!(head(&mut f, &r, 1), 3);
+        assert_eq!(f.ret(1, &[b, put + 2, 2]), 2);
+        assert_eq!(f.ret(426, &[r.fd, 0, 1, GETEVENTS]), 0);
+        assert_eq!(reap_flags(&mut f, &r), [(1, 4, BUFFER | 12 << 16)]);
+        assert_eq!(bytes(&f, got + 16, 4), b"abcd");
+        // A bundle of several ends short, and fails its link, as Linux
+        // master has it (8444de681a17).
+        assert_eq!(f.ret(1, &[b, put, 2]), 2);
+        let linked = select(net(RECV, a, 0, 0, 8, WAITALL, 16), 1, LINK);
+        submit_only(&mut f, &r, &[linked, nop(2, 0, 0, 0, 0)]);
+        assert_eq!(
+            reap_flags(&mut f, &r),
+            [(1, 2, BUFFER | 13 << 16), (2, -125, 0)]
+        );
+        assert_eq!(head(&mut f, &r, 1), 4);
+        // So does one of a ring with IOU_PBUF_RING_INC, whose bytes come
+        // off the buffer.
+        assert_eq!(pbuf(&mut f, &r, 8, 1, 2, 1 | 2), 0);
+        let mapped = f.ret(9, &[0, 4096, 3, 0x01, r.fd, 0x8000_0000 | 2 << 16]);
+        entry(&f, mapped, 0, got + 0x80, 10, 9);
+        tail(&f, mapped, 1);
+        assert_eq!(f.ret(1, &[b, put, 2]), 2);
+        let linked = select(net(RECV, a, 0, 0, 0, WAITALL, 0), 2, LINK);
+        submit_only(&mut f, &r, &[linked, nop(2, 0, 0, 0, 0)]);
+        assert_eq!(
+            reap_flags(&mut f, &r),
+            [(1, 2, BUFFER | BUF_MORE | 9 << 16), (2, -125, 0)]
+        );
+        assert_eq!(f.mem.read_u64(GuestAddr(mapped)).unwrap(), got + 0x82);
+        assert_eq!(u32_at(&f, mapped + 8), 8);
+        // A datagram shorter than the buffer, or cut, fails it.
+        let (c, d) = unix_pair(&mut f, 2);
+        assert_eq!(one(&mut f, &r, &provide(1, got, 6, 7, 4)), 0);
+        assert_eq!(f.ret(1, &[d, put, 2]), 2);
+        let datagram = select(net(RECV, c, 0, 0, 0, WAITALL, 0), 7, LINK);
+        submit_only(&mut f, &r, &[datagram, nop(2, 0, 0, 0, 0)]);
+        assert_eq!(
+            reap_flags(&mut f, &r),
+            [(1, 2, BUFFER | 4 << 16), (2, -125, 0)]
+        );
+        assert_eq!(one(&mut f, &r, &provide(1, got, 6, 7, 5)), 0);
+        assert_eq!(f.ret(1, &[d, put, 8]), 8);
+        submit_only(&mut f, &r, &[datagram, nop(2, 0, 0, 0, 0)]);
+        assert_eq!(
+            reap_flags(&mut f, &r),
+            [(1, 6, BUFFER | 5 << 16), (2, -125, 0)]
+        );
     }
 
     #[test]

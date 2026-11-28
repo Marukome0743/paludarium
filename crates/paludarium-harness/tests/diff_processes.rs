@@ -809,6 +809,7 @@ mod linux {
         processes_io_uring_placement => ("io-uring-placement", "process"),
         processes_io_uring_poll => ("io-uring-poll", "process"),
         processes_io_uring_poll_add => ("io-uring-poll-add", "process"),
+        processes_io_uring_recv_waitall => ("io-uring-recv-waitall", "process"),
         processes_io_uring_restrictions => ("io-uring-restrictions", "process"),
         processes_io_uring_ring_fds => ("io-uring-ring-fds", "process"),
         processes_io_uring_ring_poll => ("io-uring-ring-poll", "process"),

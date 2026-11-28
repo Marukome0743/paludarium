@@ -684,10 +684,12 @@ verified.
   `_PIPE`, `IORING_OP_SPLICE` and `_TEE`, and the socket requests
   `IORING_OP_SHUTDOWN`, `_SOCKET`, `_ACCEPT`, `_CONNECT`, `_SEND`,
   `_RECV`, `_SENDMSG` and `_RECVMSG` run; the other operations, up to
-  Linux 7.0's `IORING_OP_URING_CMD128`, complete with `EOPNOTSUPP`. Of the
-  socket requests, a receive with `MSG_WAITALL` that selects a buffer, a
-  bundle (`IORING_RECVSEND_BUNDLE`) among them, is not there yet
-  (`EINVAL`). A send's selected buffers follow Linux master; the kernel of
+  Linux 7.0's `IORING_OP_URING_CMD128`, complete with `EOPNOTSUPP`. A
+  receive with `MSG_WAITALL` that filled in part a buffer of a ring with
+  `IOU_PBUF_RING_INC`, or a bundle (`IORING_RECVSEND_BUNDLE`) of several of
+  a ring's buffers, ends short and fails its link, as on Linux master since
+  8444de681a17; Linux 7.0 waits to fill the rest, while the ring hands out
+  what it has not used. A send's selected buffers follow Linux master; the kernel of
   the differential tests' runners still sends a provided buffer whole
   whatever the length (before master's b7322810d187), so the tests do not
   compare that, nor whether a bundle whose length runs out on the last

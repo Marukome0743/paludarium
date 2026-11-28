@@ -13336,6 +13336,146 @@ static int io_uring_multishot_case(void) {
     return 0;
 }
 
+/* The head of buffer ring `bgid` (IORING_REGISTER_PBUF_STATUS). */
+static void uw_head(struct uring *u, unsigned short bgid) {
+    unsigned status[10] = {bgid};
+    long r = syscall(427, u->fd, 26, status, 1);
+    printf("head %ld %u\n", r, status[1]);
+}
+
+/* A receive (IORING_OP_RECV, or _RECVMSG with `msg`) of `len` bytes with
+   MSG_WAITALL that selects from group `bgid`, with IORING_RECVSEND_BUNDLE
+   for `bundle`, linked to a NOP for `link`. */
+static void uw_push(struct uring *u, int fd, struct msghdr *msg, unsigned len,
+                    unsigned short bgid, int bundle, int link) {
+    unsigned char *sqe = unet_push(u, msg ? 10 : 27, 1, fd, 0, (long)msg, msg ? 1 : len, 0x100,
+                                   bundle ? 16 : 0);
+    sqe[1] = 1 << 5 | (link ? 1 << 2 : 0);
+    memcpy(sqe + 40, &bgid, 2);
+    if (link) unet_push(u, 0, 2, 0, 0, 0, 0, 0, 0);
+}
+
+/* io_uring receives with MSG_WAITALL that select a buffer: on a stream, one
+   that filled a provided buffer or a single ring buffer in part uses it
+   then (the ring's head moves once), keeps it, and fills the rest once
+   more comes, in one completion that names it; cancelled as it waits, it
+   gives what it read and the buffer. A datagram shorter than the buffer,
+   or cut, fails the link. Whether a bundle of several ring buffers, or a
+   ring buffer with IOU_PBUF_RING_INC, waits for the rest or ends short
+   depends on the kernel (Linux master's 8444de681a17 ends it short), so
+   those steps print what is there without waiting. */
+static int io_uring_recv_waitall_case(void) {
+    struct uring u;
+    if (uring_open(&u, 4)) return 80;
+    int sp[2], gram[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sp)) return 81;
+    if (socketpair(AF_UNIX, SOCK_DGRAM, 0, gram)) return 82;
+    char provided[16], rin[96], rest[16];
+    memset(provided, '.', sizeof provided);
+    memset(rin, '.', sizeof rin);
+    unet_push(&u, 31, 99, 1, 3, (long)provided, 6, 0, 0)[40] = 1;
+    um_run(&u, 1, 1, "provide");
+    if (write(sp[1], "ab", 2) != 2) return 83;
+    uw_push(&u, sp[0], NULL, 0, 1, 0, 0);
+    um_run(&u, 1, 0, "provided-part");
+    unsigned char *sqe = unet_push(&u, 27, 3, sp[0], 0, 0, 0, 0x40, 0);
+    sqe[1] = 1 << 5;
+    sqe[40] = 1;
+    um_run(&u, 1, 1, "provided-other");
+    if (write(sp[1], "cdef", 4) != 4) return 84;
+    um_run(&u, 0, 1, "provided-rest");
+    printf("provided %.6s\n", provided);
+    /* A message's receive takes the whole buffer with no iovecs. */
+    unet_push(&u, 31, 99, 1, 5, (long)provided + 8, 6, 0, 0)[40] = 1;
+    um_run(&u, 1, 1, "provide");
+    struct msghdr mh;
+    memset(&mh, 0, sizeof mh);
+    if (write(sp[1], "gh", 2) != 2) return 85;
+    uw_push(&u, sp[0], &mh, 0, 1, 0, 0);
+    um_run(&u, 1, 0, "message-part");
+    if (write(sp[1], "ijkl", 4) != 4) return 86;
+    um_run(&u, 0, 1, "message-rest");
+    printf("provided %.6s msghdr %#x\n", provided + 8, mh.msg_flags);
+
+    unsigned char *ring = mmap(NULL, 2 * 4096, PROT_READ | PROT_WRITE,
+                               MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (ring == MAP_FAILED) return 87;
+    for (int g = 2; g <= 3; g++) {
+        unsigned char reg[40] = {0};
+        unsigned long at = (unsigned long)ring + 4096 * (g - 2);
+        unsigned entries = g == 2 ? 8 : 1;
+        unsigned short bgid = g, flags = g == 2 ? 0 : 2;
+        memcpy(reg, &at, 8);
+        memcpy(reg + 8, &entries, 4);
+        memcpy(reg + 12, &bgid, 2);
+        memcpy(reg + 14, &flags, 2);
+        uring_show("ring", syscall(427, u.fd, 22, reg, 1));
+    }
+    for (unsigned i = 0; i < 9; i++) {
+        unsigned char *e = i < 8 ? ring + 16 * i : ring + 4096;
+        unsigned long a = (unsigned long)rin + 8 * i;
+        unsigned len = i < 8 ? 4 : 10;
+        unsigned short bid = 10 + i;
+        memcpy(e, &a, 8);
+        memcpy(e + 8, &len, 4);
+        memcpy(e + 12, &bid, 2);
+    }
+    __atomic_store_n((unsigned short *)(ring + 14), 8, __ATOMIC_RELEASE);
+    __atomic_store_n((unsigned short *)(ring + 4096 + 14), 1, __ATOMIC_RELEASE);
+    if (write(sp[1], "m", 1) != 1) return 88;
+    uw_push(&u, sp[0], NULL, 0, 2, 0, 0);
+    um_run(&u, 1, 0, "ring-part");
+    uw_head(&u, 2);
+    if (write(sp[1], "nopqr", 5) != 5) return 89;
+    um_run(&u, 0, 1, "ring-rest");
+    uw_head(&u, 2);
+    printf("read %zd\n", read(sp[0], rest, sizeof rest));
+    if (write(sp[1], "s", 1) != 1) return 90;
+    uw_push(&u, sp[0], NULL, 0, 2, 0, 0);
+    um_run(&u, 1, 0, "cancel-part");
+    uw_head(&u, 2);
+    unet_push(&u, 14, 9, 0, 0, 1, 0, 0, 0);
+    um_run(&u, 1, 2, "cancel");
+    if (write(sp[1], "tu", 2) != 2) return 91;
+    uw_push(&u, sp[0], NULL, 4, 2, 1, 0);
+    um_run(&u, 1, 0, "bundle-one-part");
+    uw_head(&u, 2);
+    if (write(sp[1], "vw", 2) != 2) return 92;
+    um_run(&u, 0, 1, "bundle-one-rest");
+    printf("buffers %.32s\n", rin);
+    if (write(sp[1], "xy", 2) != 2) return 93;
+    uw_push(&u, sp[0], NULL, 8, 2, 1, 1);
+    um_run(&u, 2, 0, "bundle-several-part");
+    if (write(sp[1], "z12345", 6) != 6) return 94;
+    um_run(&u, 0, 0, "bundle-several-rest");
+    uw_head(&u, 2);
+    printf("read %zd\n", recv(sp[0], rest, sizeof rest, MSG_DONTWAIT));
+    if (write(sp[1], "67", 2) != 2) return 95;
+    uw_push(&u, sp[0], NULL, 0, 3, 0, 1);
+    um_run(&u, 2, 0, "inc-part");
+    if (write(sp[1], "89abcdef", 8) != 8) return 96;
+    um_run(&u, 0, 0, "inc-rest");
+    printf("entry +%ld %u\n",
+           (long)(*(unsigned long *)(ring + 4096) - (unsigned long)(rin + 64)),
+           *(unsigned *)(ring + 4096 + 8));
+    printf("read %zd\n", recv(sp[0], rest, sizeof rest, MSG_DONTWAIT));
+    printf("buffers %.32s %.10s\n", rin + 32, rin + 64);
+
+    for (int i = 0; i < 2; i++) {
+        unet_push(&u, 31, 99, 1, 6 + i, (long)provided, 6, 0, 0)[40] = 1;
+        um_run(&u, 1, 1, "provide");
+        if (write(gram[1], "ghijklmn", i ? 8 : 2) != (i ? 8 : 2)) return 97;
+        uw_push(&u, gram[0], NULL, 0, 1, 0, 1);
+        um_run(&u, 2, 2, i ? "datagram-cut" : "datagram-short");
+    }
+    close(sp[0]);
+    close(sp[1]);
+    close(gram[0]);
+    close(gram[1]);
+    close(u.fd);
+    return 0;
+}
+
 /* io_uring's IORING_OP_SPLICE and _TEE, which Linux runs in a worker. */
 static unsigned char *us_push(struct uring *u, unsigned char op, unsigned long data, int in,
                               long off_in, int out, long off_out, unsigned len, unsigned flags) {
@@ -46655,6 +46795,7 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "io-uring-fs")) return io_uring_fs_case();
     if (!strcmp(mode, "io-uring-message")) return io_uring_message_case();
     if (!strcmp(mode, "io-uring-multishot")) return io_uring_multishot_case();
+    if (!strcmp(mode, "io-uring-recv-waitall")) return io_uring_recv_waitall_case();
     if (!strcmp(mode, "io-uring-splice")) return io_uring_splice_case();
     if (!strcmp(mode, "io-uring-exec-reap")) {
         struct uring r;

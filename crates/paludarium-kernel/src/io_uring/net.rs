@@ -225,7 +225,9 @@ enum Op {
         /// left to go.
         vector: Option<Vec<(u64, usize)>>,
         /// The buffers a send selected, as they are left to go, which it
-        /// keeps until it completes.
+        /// keeps until it completes, or those a receive with `MSG_WAITALL`
+        /// filled in part, as they are left to fill, which it keeps while it
+        /// waits for the rest.
         picked: Option<Picked>,
         /// What its socket last said it has left to read (`msg_inq`), which
         /// a receive's bundle takes buffers for when it asks for no length.
@@ -240,8 +242,7 @@ enum Op {
 /// Prepares a socket request from its entry (`io_shutdown_prep`,
 /// `io_socket_prep`, `io_accept_prep`, `io_connect_prep` and
 /// `io_sendmsg_prep` or `io_recvmsg_prep` with `io_send_setup`), but for
-/// what it reads of the caller's memory ([`prepare_memory`]). A receive
-/// that selects a buffer with `MSG_WAITALL` is not there yet (`EINVAL`).
+/// what it reads of the caller's memory ([`prepare_memory`]).
 pub(super) fn prepare(opcode: u8, sqe_flags: u8, sqe: &[u8]) -> Result<Work, Errno> {
     let fixed = sqe_flags & super::IOSQE_FIXED_FILE != 0;
     let select = sqe_flags & super::IOSQE_BUFFER_SELECT != 0;
@@ -356,9 +357,8 @@ pub(super) fn prepare(opcode: u8, sqe_flags: u8, sqe: &[u8]) -> Result<Work, Err
                 // Only a multishot receive takes `optlen`.
                 return Err(Errno::EINVAL);
             }
-            // `IORING_OP_RECVMSG` takes no bundle; a selected buffer that a
-            // receive fills whole is not there yet.
-            if !send && (bundle && message || select && msg_flags & MSG_WAITALL != 0) {
+            // `IORING_OP_RECVMSG` takes no bundle.
+            if !send && bundle && message {
                 return Err(Errno::EINVAL);
             }
             // A message's iovecs are vectored anyway, and a send that
@@ -842,7 +842,12 @@ fn connect(c: &mut Context<'_>, op: &mut Op, file: &Arc<dyn FileHandle>) -> Issu
 /// may select a provided buffer first (`ENOBUFS`), which goes back to its
 /// group when the receive waits or moved nothing (`io_kbuf_recycle`, as
 /// Linux master has it), and tells whether more waits to be read
-/// ([`crate::sockets::inq_hint`]).
+/// ([`crate::sockets::inq_hint`]). One with `MSG_WAITALL` that filled some
+/// of it uses it then, a ring's leaving the head (`io_net_kbuf_recyle`),
+/// and waits to fill the rest, keeping it; its completion names it, with
+/// no `IORING_CQE_F_BUF_MORE`. A ring's with `IOU_PBUF_RING_INC` would be
+/// handed out again meanwhile, so that receive ends short instead
+/// ([`super::Received::can_wait`]).
 ///
 /// A send checks for a socket first (`ENOTSOCK`), and so does a receive,
 /// as Linux master has it (Linux 7.0 waits first with
@@ -889,8 +894,9 @@ fn transfer(
         return Issued::Again(mask);
     }
     let call_flags = *msg_flags | MSG_DONTWAIT;
+    // A receive that waits for the rest of its buffer keeps it.
     let chosen = match *group {
-        Some(bgid) if !send => match select(c, ring, bgid, *len, true) {
+        Some(bgid) if !send && picked.is_none() => match select(c, ring, bgid, *len, true) {
             Ok(chosen) => Some(chosen),
             Err(e) => return Issued::Done(-e.0, 0, true),
         },
@@ -994,9 +1000,25 @@ fn transfer(
                 }
                 return Issued::Again(mask);
             }
-            Ok(n) if n > 0 && crate::sockets::is_stream(file) => {
-                // A selected buffer is never filled whole: the preparation
-                // refused that.
+            Ok(n)
+                if n > 0
+                    && crate::sockets::is_stream(file)
+                    && chosen.is_none_or(|chosen| !chosen.incremental) =>
+            {
+                // A selected buffer is used now, and kept as it is left.
+                if let Some(chosen) = &chosen {
+                    give_back(c, ring, chosen, &Ok(n));
+                    *picked = Some(Picked {
+                        bid: chosen.bid,
+                        pieces: vec![(at, count as usize)],
+                        more: false,
+                        emptied: false,
+                        cut: false,
+                    });
+                }
+                if let (Some(_), Some(picked)) = (&message, &mut *picked) {
+                    advance(&mut picked.pieces, n);
+                }
                 match (message, picked, vector) {
                     (Some(message), ..) => go_on(message, n, send),
                     (None, Some(picked), _) => advance(&mut picked.pieces, n),
@@ -1052,6 +1074,11 @@ fn transfer(
 /// names the first buffer. Nothing to read gives the buffers back and
 /// waits, keeping what it received, and, after it tried again, the first
 /// buffers' flags, so that it does not try again.
+///
+/// With `MSG_WAITALL` a try that fills fewer bytes than its buffers have
+/// fails, but on a stream or sequenced-packet socket, when it can keep
+/// them ([`super::Received::can_wait`]): it uses them then and waits to
+/// fill the rest, as [`transfer`] does. A message cut fails it too.
 fn receive_bundle(
     c: &mut Context<'_>,
     ring: &Ring,
@@ -1066,6 +1093,7 @@ fn receive_bundle(
         flags,
         group: Some(bgid),
         done,
+        picked,
         inq,
         retried: kept,
         ..
@@ -1084,37 +1112,52 @@ fn receive_bundle(
     if !polled && *flags & RECVSEND_POLL_FIRST != 0 {
         return (Issued::Again(mask), false);
     }
-    let asked = u64::from(*msg_flags | MSG_DONTWAIT);
+    let whole = *msg_flags & MSG_WAITALL != 0;
+    // Whether a message was cut: `MSG_TRUNC` has it tell its length.
+    let lengths = whole && !crate::sockets::is_byte_stream(file);
+    let asked = u64::from(*msg_flags | MSG_DONTWAIT | if lengths { MSG_TRUNC } else { 0 });
     let mut want = if kept.is_some() {
         inq.unwrap_or(0)
     } else {
         *len
     };
-    let mut cflags = *kept;
+    let mut cflags = kept.or_else(|| picked.as_ref().map(Picked::flags));
     let mut retried = kept.is_some();
     loop {
-        let mut max = if want != 0 {
-            want
-        } else {
-            inq.filter(|&inq| inq > 1).unwrap_or(0)
-        };
-        if let Some(limit) = limit.filter(|&limit| limit != 0) {
-            max = if max == 0 { limit } else { max.min(limit) };
-        }
-        let received = match super::select_receive(c, ring, *bgid, max) {
-            Ok(received) => received,
-            Err(e) => {
-                *inq = None;
-                let res = if *done != 0 { *done as i32 } else { -e.0 };
-                return (Issued::Done(res, cflags.unwrap_or(0), true), false);
+        // What it waited to fill the rest of, or new buffers.
+        let held = picked.take();
+        let received = match &held {
+            Some(_) => None,
+            None => {
+                let mut max = if want != 0 {
+                    want
+                } else {
+                    inq.filter(|&inq| inq > 1).unwrap_or(0)
+                };
+                if let Some(limit) = limit.filter(|&limit| limit != 0) {
+                    max = if max == 0 { limit } else { max.min(limit) };
+                }
+                match super::select_receive(c, ring, *bgid, max) {
+                    Ok(received) => Some(received),
+                    Err(e) => {
+                        *inq = None;
+                        let res = if *done != 0 { *done as i32 } else { -e.0 };
+                        return (Issued::Done(res, cflags.unwrap_or(0), true), false);
+                    }
+                }
             }
         };
-        let room: u64 = received.pieces.iter().map(|&(_, size)| size as u64).sum();
-        let result = if let [(at, size)] = received.pieces[..] {
+        let pieces = match (&held, &received) {
+            (Some(held), _) => held.pieces.clone(),
+            (None, Some(received)) => received.pieces.clone(),
+            (None, None) => unreachable!(),
+        };
+        let room: u64 = pieces.iter().map(|&(_, size)| size as u64).sum();
+        let result = if let [(at, size)] = pieces[..] {
             let a = [0, at, size as u64, asked, 0, 0];
             crate::sockets::route_file(c, 45, a, file)
         } else {
-            let header = MessageHeader::of_send(None, received.pieces.clone());
+            let header = MessageHeader::of_send(None, pieces.clone());
             let a = [0, 0, asked, 0, 0, 0];
             crate::sockets::with_shadow_header(0, &header, 0, || {
                 crate::sockets::route_file(c, 47, a, file)
@@ -1125,38 +1168,91 @@ fn receive_bundle(
             Ok(_) => crate::sockets::inq_hint(file).map(|n| n.min(u32::MAX as usize) as u32),
             Err(_) => None,
         };
-        let n = match result {
+        let told = match result {
             Ok(n) => n,
-            Err(Errno::EAGAIN) => {
-                super::put_received(c, ring, &received, 0);
-                if retried {
-                    *kept = cflags;
-                }
-                return (Issued::Again(mask), false);
-            }
             Err(e) => {
-                super::put_received(c, ring, &received, 0);
+                // New buffers go back; kept ones stay kept.
+                match &received {
+                    Some(received) => {
+                        super::put_received(c, ring, received, 0);
+                    }
+                    None => *picked = held,
+                }
+                if e == Errno::EAGAIN {
+                    if retried {
+                        *kept = cflags;
+                    }
+                    return (Issued::Again(mask), false);
+                }
                 let res = if *done != 0 { *done as i32 } else { -e.0 };
                 return (Issued::Done(res, cflags.unwrap_or(0), true), false);
             }
         };
-        let these = super::put_received(c, ring, &received, n);
+        // A message longer than the buffers fills them, and is cut; its
+        // whole length counts only when the caller asked for it.
+        let cut = lengths && told > room;
+        let n = if *msg_flags & MSG_TRUNC != 0 {
+            told
+        } else {
+            told.min(room)
+        };
+        let these = match &received {
+            Some(received) => super::put_received(c, ring, received, n),
+            None => held.as_ref().map_or(0, Picked::flags),
+        };
         let first = *cflags.get_or_insert(these);
+        let emptied = held.as_ref().map_or_else(
+            || received.as_ref().is_some_and(|received| received.emptied),
+            |held| held.emptied,
+        );
+        let partial = held.as_ref().map_or_else(
+            || received.as_ref().is_some_and(|received| received.cut),
+            |held| held.cut,
+        );
+        let short = whole && n < room;
+        // `io_net_retry`: one that filled its buffers in part waits for the
+        // rest, keeping them, unless they would be handed out again.
+        if short
+            && n > 0
+            && crate::sockets::is_stream(file)
+            && received.as_ref().is_none_or(super::Received::can_wait)
+        {
+            let mut left = pieces;
+            advance(&mut left, n);
+            let bid = match (&held, &received) {
+                (Some(held), _) => held.bid,
+                (None, Some(received)) => received.bid,
+                (None, None) => unreachable!(),
+            };
+            *picked = Some(Picked {
+                bid,
+                pieces: left,
+                more: false,
+                emptied,
+                cut: partial,
+            });
+            *done += n;
+            if retried {
+                *kept = cflags;
+            }
+            return (Issued::Again(mask), false);
+        }
         *done += n;
-        if received.emptied {
+        let failed = short || cut;
+        if emptied {
             let res = *done as i32;
-            return (Issued::Done(res, first | nonempty(*inq), false), true);
+            return (Issued::Done(res, first | nonempty(*inq), failed), true);
         }
         // `IORING_RECV_MSHOT_CAP`: a multishot receive that took its length.
         let capped = limit.is_some() && *len != 0 && *done >= u64::from(*len);
         let more = inq.is_some_and(|inq| inq > 1);
-        if !retried && !received.cut && !capped && more && n > 0 && n == room {
+        if !retried && !partial && !capped && more && n > 0 && n == room {
             retried = true;
             want = inq.unwrap_or(0);
             continue;
         }
         let res = *done as i32;
-        return (Issued::Done(res, first | nonempty(*inq), false), false);
+        return (Issued::Done(res, first | nonempty(*inq), failed), false);
     }
 }
 
