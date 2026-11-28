@@ -167,10 +167,8 @@ fn the_corpus_is_decided_as_pinned() {
     let got: String = (0..PROGRAMS)
         .map(|n| format!("{n:04} {}\n", decision(&program(n))))
         .collect();
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/bpf_verifier/decisions.txt"
-    );
+    // Tests run in the package's directory.
+    let path = "src/bpf_verifier/decisions.txt";
     if std::env::var_os("PALUDARIUM_BLESS").is_some() {
         std::fs::write(path, &got).unwrap();
         return;
