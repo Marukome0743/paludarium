@@ -177,7 +177,7 @@ verified.
   system files are made (see [features](./features)). The other system files
   (`/proc/interrupts`, `/proc/partitions`, `/proc/kallsyms`, the files of `/proc/sys` but for the ones of `fs`,
   `kernel` and `net` it has and `vm/drop_caches`, `vm/max_map_count`,
-  `vm/mmap_min_addr` and `vm/unprivileged_userfaultfd`, ...) and the other names in
+  `vm/mmap_min_addr`, `vm/overcommit_memory` and `vm/unprivileged_userfaultfd`, ...) and the other names in
   the reader's own directory (`stack`, `sched`, `attr`, ...) are `ENOENT`, as in
   another process's directory, whatever the filesystem holds there (with
   `--mount /:/`, the host's `/proc`), where Linux shows them, and root
@@ -201,7 +201,12 @@ verified.
   (`CONFIG_LSM_MMAP_MIN_ADDR`) never places a mapping below that floor. An
   ELF program whose segment lies below 64 KiB is refused at `execve`
   (`ENOEXEC`) whatever `vm/mmap_min_addr` is, where Linux maps it when the
-  value or `CAP_SYS_RAWIO` lets it.
+  value or `CAP_SYS_RAWIO` lets it. `vm/overcommit_memory` is kept and read
+  back, and at 2 only `MAP_NORESERVE` follows it: no mode bounds memory, so
+  at 2 a mapping or growth past the commit limit (`CommitLimit` in
+  `/proc/meminfo`, which `vm.overcommit_ratio` and `vm.overcommit_kbytes`,
+  not here, would set) is not `ENOMEM`, nor at 0 one larger than memory and
+  swap together, as it is on Linux.
   `io` does not count what Linux's
   `kernel_read` and `kernel_write` count for the process (`execve` reading its
   program and interpreter, a core dump's writes), and a read or write that

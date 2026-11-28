@@ -2923,11 +2923,11 @@ fn sys_mmap(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
             {
                 c.mem.lock_new(a, end, lock);
             }
-            // Overcommit is never strict here, so MAP_NORESERVE always
-            // counts (`do_mmap`).
-            if flags & (MAP_NORESERVE | MAP_STACK) != 0 {
-                c.mem
-                    .flag_new(a, end, flags & MAP_NORESERVE != 0, flags & MAP_STACK != 0);
+            // MAP_NORESERVE counts unless overcommit is strict
+            // (`vm.overcommit_memory` 2, `do_mmap`).
+            let no_reserve = flags & MAP_NORESERVE != 0 && !c.processes.sysctls.strict_overcommit();
+            if no_reserve || flags & MAP_STACK != 0 {
+                c.mem.flag_new(a, end, no_reserve, flags & MAP_STACK != 0);
             }
             if flags & MAP_GROWSDOWN != 0 {
                 c.mem.grow_new_down(a, end);

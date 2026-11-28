@@ -91,7 +91,10 @@
 //!
 //! `/proc/sys/vm` has `unprivileged_userfaultfd`, the machine's as the perf
 //! ones are, 0 or 1 (`proc_dointvec_minmax`), which lets [`crate::userfaultfd`]
-//! take the kernel's faults for anyone; and `drop_caches`, as
+//! take the kernel's faults for anyone; `overcommit_memory`, the machine's
+//! too, 0 to 2 (`proc_dointvec_minmax`), at 2 of which `MAP_NORESERVE` no
+//! longer takes a mapping out of the charge, though no limit is kept; and
+//! `drop_caches`, as
 //! `fs/drop_caches.c` has it:
 //! root's, of mode 0200, which no one opens to read (`EACCES`) and only root
 //! to write; a write takes an `int` from 1 to 4, and each that goes through
@@ -451,6 +454,9 @@ pub(crate) enum Kernel {
     /// `vm.unprivileged_userfaultfd`, the machine's as the perf ones are,
     /// though under `/proc/sys/vm`.
     UnprivilegedUserfaultfd,
+    /// `/proc/sys/vm/overcommit_memory` (`mm/util.c`), the machine's `int`:
+    /// how the machine would charge memory against overcommit.
+    OvercommitMemory,
     /// `kernel.yama.ptrace_scope`, the machine's, under
     /// `/proc/sys/kernel/yama`.
     PtraceScope,
@@ -635,6 +641,7 @@ impl Kernel {
                 | Self::LeaseBreakTime
                 | Self::DirNotifyEnable
                 | Self::UnprivilegedUserfaultfd
+                | Self::OvercommitMemory
                 | Self::PtraceScope
                 | Self::NrOpen
                 | Self::PipeMaxSize
@@ -660,6 +667,8 @@ pub(crate) struct Machine {
     perf_event_paranoid: AtomicI32,
     unprivileged_bpf_disabled: AtomicI32,
     unprivileged_userfaultfd: AtomicI32,
+    /// `vm.overcommit_memory`, 0 at first (`OVERCOMMIT_GUESS`).
+    overcommit_memory: AtomicI32,
     ptrace_scope: AtomicI32,
     drop_caches: AtomicI32,
     leases_enable: AtomicI32,
@@ -690,6 +699,7 @@ impl Default for Machine {
             perf_event_paranoid: AtomicI32::new(crate::perf::PARANOID),
             unprivileged_bpf_disabled: AtomicI32::new(crate::bpf::UNPRIVILEGED_DISABLED),
             unprivileged_userfaultfd: AtomicI32::new(0),
+            overcommit_memory: AtomicI32::new(0),
             ptrace_scope: AtomicI32::new(YAMA_SCOPE_RELATIONAL),
             drop_caches: AtomicI32::new(0),
             leases_enable: AtomicI32::new(1),
@@ -782,6 +792,11 @@ impl Machine {
     pub(crate) fn unprivileged_userfaultfd(&self) -> bool {
         self.unprivileged_userfaultfd.load(Ordering::SeqCst) != 0
     }
+    /// Whether overcommit is strict (`OVERCOMMIT_NEVER`, 2), which takes
+    /// `MAP_NORESERVE` from a mapping (`do_mmap`). Its limit is not kept.
+    pub(crate) fn strict_overcommit(&self) -> bool {
+        self.overcommit_memory.load(Ordering::SeqCst) == 2
+    }
     /// Yama's `ptrace_scope`: 0 adds nothing to the attach checks, 1 lets
     /// in only an ancestor, a ptracer the target named or one with
     /// `CAP_SYS_PTRACE` in its user namespace, 2 only the last, and 3 no one
@@ -802,6 +817,7 @@ impl Machine {
             Kernel::SuidDumpable => self.suid_dumpable(),
             Kernel::PtraceScope => self.ptrace_scope(),
             Kernel::UnprivilegedUserfaultfd => self.unprivileged_userfaultfd.load(Ordering::SeqCst),
+            Kernel::OvercommitMemory => self.overcommit_memory.load(Ordering::SeqCst),
             Kernel::PerfCpuTimeMaxPercent => self.perf_cpu_time_max_percent.load(Ordering::SeqCst),
             Kernel::PerfEventMaxSampleRate => {
                 self.perf_event_max_sample_rate.load(Ordering::SeqCst)
@@ -914,6 +930,13 @@ impl Machine {
             Kernel::UnprivilegedUserfaultfd => {
                 let (value, consumed) = parse(buf, Some((0, 1)))?;
                 self.unprivileged_userfaultfd.store(value, Ordering::SeqCst);
+                return Ok(consumed);
+            }
+            // `overcommit_policy_handler`: `proc_dointvec_minmax` from 0 to
+            // 2.
+            Kernel::OvercommitMemory => {
+                let (value, consumed) = parse(buf, Some((0, 2)))?;
+                self.overcommit_memory.store(value, Ordering::SeqCst);
                 return Ok(consumed);
             }
             _ => {}
@@ -1032,6 +1055,7 @@ fn lookup(path: &[u8], network: Option<&crate::inet::Network>) -> Option<Entry> 
         b"/vm/drop_caches" => Some(Entry::DropCaches),
         b"/vm/max_map_count" => Some(Entry::Constant(Constant::MaxMapCount)),
         b"/vm/mmap_min_addr" => Some(Entry::Kernel(Kernel::MmapMinAddr)),
+        b"/vm/overcommit_memory" => Some(Entry::Kernel(Kernel::OvercommitMemory)),
         b"/vm/unprivileged_userfaultfd" => Some(Entry::Kernel(Kernel::UnprivilegedUserfaultfd)),
         _ => {
             if let Some(rest) = rest.strip_prefix(b"/net")
@@ -1097,6 +1121,7 @@ fn entries_of(directory: Directory, network: Option<&crate::inet::Network>) -> V
             (b"drop_caches", DT_REG),
             (b"max_map_count", DT_REG),
             (b"mmap_min_addr", DT_REG),
+            (b"overcommit_memory", DT_REG),
             (b"unprivileged_userfaultfd", DT_REG),
         ],
         Directory::Net => vec![(b"ipv4", DT_DIR), (b"ipv6", DT_DIR)],
@@ -1214,6 +1239,7 @@ fn child(
             b"drop_caches" => Some(Entry::DropCaches),
             b"max_map_count" => Some(Entry::Constant(Constant::MaxMapCount)),
             b"mmap_min_addr" => Some(Entry::Kernel(Kernel::MmapMinAddr)),
+            b"overcommit_memory" => Some(Entry::Kernel(Kernel::OvercommitMemory)),
             b"unprivileged_userfaultfd" => Some(Entry::Kernel(Kernel::UnprivilegedUserfaultfd)),
             _ => None,
         },
@@ -1350,6 +1376,7 @@ fn kernel_line(ipc: &Namespace, file: Kernel) -> Vec<u8> {
         | Kernel::LeaseBreakTime
         | Kernel::DirNotifyEnable
         | Kernel::UnprivilegedUserfaultfd
+        | Kernel::OvercommitMemory
         | Kernel::PtraceScope
         | Kernel::NrOpen
         | Kernel::PipeMaxSize
@@ -1437,6 +1464,7 @@ fn kernel_write(ipc: &Namespace, file: Kernel, buf: &[u8]) -> Result<usize, Errn
         | Kernel::LeaseBreakTime
         | Kernel::DirNotifyEnable
         | Kernel::UnprivilegedUserfaultfd
+        | Kernel::OvercommitMemory
         | Kernel::PtraceScope
         | Kernel::NrOpen
         | Kernel::PipeMaxSize
@@ -2636,7 +2664,11 @@ mod tests {
             lookup(b"/proc/sys/vm/drop_caches", None),
             Some(Entry::DropCaches)
         );
-        assert_eq!(entries_of(Directory::Vm, None).len(), 6);
+        assert_eq!(entries_of(Directory::Vm, None).len(), 7);
+        assert_eq!(
+            lookup(b"/proc/sys/vm/overcommit_memory", None),
+            Some(Entry::Kernel(Kernel::OvercommitMemory))
+        );
         assert_eq!(
             lookup(b"/proc/sys/vm/max_map_count", None),
             Some(Entry::Constant(Constant::MaxMapCount))

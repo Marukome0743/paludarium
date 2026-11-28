@@ -8354,6 +8354,7 @@ mod proc_names {
                 "drop_caches",
                 "max_map_count",
                 "mmap_min_addr",
+                "overcommit_memory",
                 "unprivileged_userfaultfd"
             ]
         );

@@ -901,6 +901,7 @@ mod linux {
         processes_old_times => ("old-times", "process"),
         processes_open_flags => ("open-flags", "process"),
         processes_orphaned_group => ("orphaned-group", "process"),
+        processes_overcommit_sysctl => ("overcommit-sysctl", "process"),
         processes_page_faults => ("page-faults", "process"),
         processes_page_faults_live => ("page-faults-live", "process"),
         processes_page_nodes => ("page-nodes", "process"),

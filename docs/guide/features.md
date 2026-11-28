@@ -5134,8 +5134,8 @@ kernel.
   `POLLRDNORM`, `POLLERR` and `POLLPRI` and no `POLLOUT`. A `dup` and a child
   share what it has seen, and a poll of an epoll that watches it is one too.
 
-- `/proc/sys/vm` has `drop_caches`, `max_map_count`, `mmap_min_addr` and
-  `unprivileged_userfaultfd` alone, so its listing differs from Linux's,
+- `/proc/sys/vm` has `drop_caches`, `max_map_count`, `mmap_min_addr`,
+  `overcommit_memory` and `unprivileged_userfaultfd` alone, so its listing differs from Linux's,
   which has the rest of the `vm` sysctls too. `mmap_min_addr` is the
   machine's, 65536 at first, root's of mode 0644: an `unsigned long`
   (`proc_doulongvec_minmax`, `EINVAL` for a `-`), which a writer without
@@ -5145,7 +5145,12 @@ kernel.
   `userfaultfd` ranges and `MMAP_PAGE_ZERO`. `max_map_count` is the
   machine's 65530 (`DEFAULT_MAX_MAP_COUNT`), root's, of mode 0444, which no
   one opens to write (`EACCES`), as nothing here bounds a process's
-  mappings by it. `unprivileged_userfaultfd` is the machine's, 0 at first, root's of
+  mappings by it. `overcommit_memory` is the machine's, 0 at first, root's
+  of mode 0644, and takes 0 to 2 (`proc_dointvec_minmax`, else `EINVAL`),
+  which it reads back; at 2 (`OVERCOMMIT_NEVER`) `MAP_NORESERVE` no longer
+  takes a mapping out of the charge (`VmFlags` shows `ac`, not `nr`), as
+  `do_mmap` has it, though no limit is kept (see
+  [limitations](./limitations)). `unprivileged_userfaultfd` is the machine's, 0 at first, root's of
   mode 0644, which only root opens to write, and takes 0 or 1
   (`proc_dointvec_minmax`, else `EINVAL`). As Linux's
   `fs/drop_caches.c` has it, the file is root's, of mode 0200: no one may

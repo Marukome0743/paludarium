@@ -149,7 +149,7 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
 - **ほかの `/proc` の一部**：作るのは、プロセスのディレクトリといくつかのシステムの
   ファイルだけです（[機能](./features) を参照）。ほかのシステムのファイル（`/proc/interrupts`、`/proc/partitions`、`/proc/kallsyms`、
   `/proc/sys` のファイルのうち、`fs`、`kernel`、`net` にあるものと `vm/drop_caches`、
-  `vm/max_map_count`、`vm/mmap_min_addr`、`vm/unprivileged_userfaultfd` 以外など）と、
+  `vm/max_map_count`、`vm/mmap_min_addr`、`vm/overcommit_memory`、`vm/unprivileged_userfaultfd` 以外など）と、
   読むプロセス自身のディレクトリのほかの名前
   （`stack`、`sched`、`attr` など）は、ほかのプロセスのディレクトリと同じく `ENOENT` です。
   ファイルシステムがそこに何を持っていても（`--mount /:/` ではホストの `/proc`）同じです。
@@ -171,7 +171,11 @@ paludarium は、まだ若いプロジェクトです。次のことは、今は
   （`CONFIG_LSM_MMAP_MIN_ADDR`）付きでビルドした Linux は、その下限より下にマッピングを
   置きません。64 KiB より下にセグメントがある ELF のプログラムは、`vm/mmap_min_addr` が
   何であっても `execve` で断ります（`ENOEXEC`）。Linux は、値か `CAP_SYS_RAWIO` が許せば
-  マップします。`io` は、Linux の `kernel_read` と `kernel_write` が
+  マップします。`vm/overcommit_memory` は値を持って読み返し、2 で従うのは `MAP_NORESERVE`
+  だけです。どのモードもメモリーを縛らないので、2 でコミットの上限（`/proc/meminfo` の
+  `CommitLimit`。ここにはない `vm.overcommit_ratio` と `vm.overcommit_kbytes` が決める）を
+  超えるマッピングや伸びも、0 でメモリーとスワップを合わせたより大きなものも、Linux と
+  違って `ENOMEM` になりません。`io` は、Linux の `kernel_read` と `kernel_write` が
   そのプロセスに数えるもの（`execve` がプログラムとインタープリターを読むこと、コアダンプの
   書き込み）を数えません。また、Linux がファイルの操作の前でも中でも返す errno
   （`EINVAL`、`EFAULT`。eventfd に小さすぎるバッファを渡したときなど）で失敗した読み書きは、

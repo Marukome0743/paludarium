@@ -4382,7 +4382,7 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   見たかどうかは `dup` と子で共有します。それを見張る epoll のポーリングも、見たことになります。
 
 - `/proc/sys/vm` にあるのは `drop_caches`、`max_map_count`、`mmap_min_addr`、
-  `unprivileged_userfaultfd` だけなので、ほかの `vm` の sysctl もある Linux とは一覧が
+  `overcommit_memory`、`unprivileged_userfaultfd` だけなので、ほかの `vm` の sysctl もある Linux とは一覧が
   違います。`mmap_min_addr` はマシン全体のもので、最初は 65536、root のモード 0644 の
   ファイルです。`unsigned long` を受け取り（`proc_doulongvec_minmax`、`-` は `EINVAL`）、
   `mmap_min_addr_handler` と同じく、`CAP_SYS_RAWIO` のない書き手は書けません（何より先に
@@ -4390,6 +4390,11 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   ヒント、配置、`mremap`、スタックの伸び、`userfaultfd` の範囲、`MMAP_PAGE_ZERO` です。`max_map_count` は
   マシンの 65530（`DEFAULT_MAX_MAP_COUNT`）で、root のモード 0444 のファイルです。ここでは
   プロセスのマッピングをこれで縛らないので、誰も書くために開けません（`EACCES`）。
+  `overcommit_memory` はマシンのもので、初めは 0、root のモード 0644 のファイルです。
+  0 から 2 を受け付け（`proc_dointvec_minmax`、ほかは `EINVAL`）、書いた値を読み返します。
+  2（`OVERCOMMIT_NEVER`）では、`do_mmap` と同じく `MAP_NORESERVE` がマッピングを
+  勘定から外さなくなります（`VmFlags` は `nr` ではなく `ac`）。ただし上限は守りません
+  （[制限](./limitations) を参照）。
   `unprivileged_userfaultfd` は
   マシンのもので、初めは 0、root のモード 0644 のファイルで、書くために開けるのは root
   だけです。0 か 1 を受け付けます（`proc_dointvec_minmax`、ほかは `EINVAL`）。Linux の `fs/drop_caches.c` と同じく、このファイルは root の

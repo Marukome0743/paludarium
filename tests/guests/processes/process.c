@@ -32487,6 +32487,74 @@ static int dump_min_sysctls_case(void) {
     return 0;
 }
 
+/* Whether smaps' VmFlags for the VMA at `at` has `name`: 1, 0, or -1 when
+   smaps has no such VMA. */
+static int oc_vma_flag(void *at, const char *name) {
+    static char text[1 << 17];
+    int fd = open("/proc/self/smaps", O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    size_t length = 0;
+    ssize_t n;
+    while (length < sizeof text - 1 && (n = read(fd, text + length, sizeof text - 1 - length)) > 0)
+        length += (size_t)n;
+    close(fd);
+    text[length] = 0;
+    char head[32];
+    snprintf(head, sizeof head, "%lx-", (unsigned long)(uintptr_t)at);
+    for (char *line = text; line && *line; line = strchr(line, '\n') ? strchr(line, '\n') + 1 : NULL) {
+        if (strncmp(line, head, strlen(head))) continue;
+        char *flags = strstr(line, "VmFlags:");
+        if (!flags) return -1;
+        char *end = strchr(flags, '\n');
+        size_t len = strlen(name);
+        for (char *p = flags + 8; p && (!end || p < end); p = strchr(p + 1, ' ')) {
+            if (p[0] == ' ' && !strncmp(p + 1, name, len) && (p[1 + len] == ' ' || p[1 + len] == '\n' || p[1 + len] == 0))
+                return 1;
+        }
+        return 0;
+    }
+    return -1;
+}
+/* The overcommit-sysctl case: /proc/sys/vm/overcommit_memory. Its value
+   differs from machine to machine, so its form shows, its file, and what
+   it changes: MAP_NORESERVE takes a private writable mapping out of the
+   charge ("nr", no "ac") unless the value is 2. Someone other than root may
+   not open it to write. */
+static int overcommit_sysctl_case(void) {
+    const char *file = "/proc/sys/vm/overcommit_memory";
+    char buf[64];
+    long long value = -1;
+    int formed = sl_number(file, buf, sizeof buf, &value);
+    printf("overcommit_memory: formed=%d in-range=%d\n", formed, value >= 0 && value <= 2);
+    struct stat st;
+    int r = stat(file, &st);
+    printf("stat=%d mode=%o uid=%u size=%lld\n", r, (unsigned)(st.st_mode & 07777), (unsigned)st.st_uid,
+           (long long)st.st_size);
+    void *at = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    if (at == MAP_FAILED) {
+        printf("mmap: errno=%d\n", errno);
+        return 1;
+    }
+    int nr = oc_vma_flag(at, "nr"), ac = oc_vma_flag(at, "ac");
+    printf("noreserve: follows=%d\n", nr == (value != 2) && ac == (value == 2));
+    munmap(at, 4096);
+    fflush(stdout);
+    pid_t child = fork();
+    if (child == 0) {
+        if (geteuid() == 0 && (setgroups(0, NULL) || setresgid(65534, 65534, 65534) || setresuid(65534, 65534, 65534)))
+            _exit(2);
+        int fd = open(file, O_WRONLY | O_CLOEXEC);
+        printf("not root: write=%d\n", fd < 0 ? -errno : 0);
+        if (fd >= 0) close(fd);
+        fflush(stdout);
+        _exit(0);
+    }
+    int status = 0;
+    waitpid(child, &status, 0);
+    printf("not root: child=%d\n", status);
+    return 0;
+}
+
 /* The uts-sysctl case's files, under /proc/sys/kernel. */
 static int us_open(const char *name, int flags) {
     char path[96];
@@ -46464,6 +46532,7 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "sysctl-constants")) return sysctl_constants_case();
     if (!strcmp(mode, "sysctl-limits")) return sysctl_limits_case();
     if (!strcmp(mode, "dump-min-sysctls")) return dump_min_sysctls_case();
+    if (!strcmp(mode, "overcommit-sysctl")) return overcommit_sysctl_case();
     if (!strcmp(mode, "poll-default")) return poll_default_case();
     if (!strcmp(mode, "uts-sysctl")) return uts_sysctl_case();
     if (!strcmp(mode, "uts-sysctl-poll")) return uts_sysctl_poll_case();

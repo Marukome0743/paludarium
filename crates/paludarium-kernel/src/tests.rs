@@ -1692,6 +1692,52 @@ fn huge_memfds_are_files_of_an_empty_hugetlbfs() {
     // A read-only private mapping is still taken.
     assert_eq!(f.ret(mmap, &[0, HUGE, 1, 0x4002, fd, 0]) % HUGE, 0);
 }
+/// `vm.overcommit_memory`: 0 at first, 0 to 2, read back; at 2 a private
+/// writable mapping keeps its charge though MAP_NORESERVE asks to drop it
+/// (`do_mmap`), and at 0 or 1 it drops it.
+#[test]
+fn overcommit_memory_is_read_back_and_strict_keeps_the_charge() {
+    let mut f = fixture();
+    f.mem
+        .write(GuestAddr(DATA), b"/proc/sys/vm/overcommit_memory\0")
+        .unwrap();
+    let read = |f: &mut Fixture| {
+        let fd = f.ret(2, &[DATA, 0, 0]);
+        assert_eq!(f.ret(0, &[fd, DATA + 0x100, 16]), 2);
+        assert_eq!(f.ret(3, &[fd]), 0);
+        let mut text = [0u8; 2];
+        f.mem.read(GuestAddr(DATA + 0x100), &mut text).unwrap();
+        text
+    };
+    assert_eq!(&read(&mut f), b"0\n");
+    let write = |f: &mut Fixture, text: &[u8]| {
+        let fd = f.ret(2, &[DATA, 1, 0]);
+        f.mem.write(GuestAddr(DATA + 0x200), text).unwrap();
+        let n = f.ret(1, &[fd, DATA + 0x200, text.len() as u64]);
+        assert_eq!(f.ret(3, &[fd]), 0);
+        n
+    };
+    for bad in [&b"3\n"[..], b"-1\n", b"x\n"] {
+        assert_eq!(write(&mut f, bad), errno(Errno::EINVAL));
+        assert_eq!(&read(&mut f), b"0\n");
+    }
+    let mapped = |f: &mut Fixture| {
+        // PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE.
+        let at = f.ret(syscalls::nr::MMAP, &[0, 4096, 3, 0x4022, u64::MAX, 0]);
+        let flags = f.mem.view().vma_from(at).unwrap().flags;
+        assert_eq!(f.ret(syscalls::nr::MUNMAP, &[at, 4096]), 0);
+        flags & (paludarium_mmu::vm::NORESERVE | paludarium_mmu::vm::ACCOUNT)
+    };
+    assert_eq!(mapped(&mut f), paludarium_mmu::vm::NORESERVE);
+    for (value, flags) in [
+        (b'2', paludarium_mmu::vm::ACCOUNT),
+        (b'1', paludarium_mmu::vm::NORESERVE),
+    ] {
+        assert_eq!(write(&mut f, &[value, b'\n']), 2);
+        assert_eq!(read(&mut f), [value, b'\n']);
+        assert_eq!(mapped(&mut f), flags, "overcommit_memory {}", value - b'0');
+    }
+}
 #[test]
 fn proc_fd_links_open_again_or_refuse() {
     let mut f = fixture();
