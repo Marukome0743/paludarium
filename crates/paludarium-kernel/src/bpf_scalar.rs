@@ -7,8 +7,16 @@
 //! and the sign-extending ones) and what a conditional jump tells
 //! (`is_scalar_branch_taken`, `regs_refine_cond_op`).
 //!
-//! Master follows a scalar otherwise (circular ranges and steps), which
-//! this is not; [`crate::bpf_verifier`] says where that matters.
+//! Master follows a scalar otherwise (circular ranges and steps,
+//! [`master`]). A [`Scalar`] holds both, every operation changes both, and
+//! what the verifier asks of one ([`Scalar::value`], [`taken`] and the
+//! like) is [`Split`] where the two answer differently, which the verifier
+//! refuses.
+
+mod cnum;
+mod master;
+
+use master::Master;
 
 /// What a scalar's bits are known to be (`struct tnum`): a bit set in
 /// `mask` is unknown, any other is the bit of `value`, whose unknown bits
@@ -225,9 +233,10 @@ pub(crate) const ADD_CONST32: u32 = 1 << 30;
 pub(crate) const ADD_CONST: u32 = ADD_CONST64 | ADD_CONST32;
 
 /// A scalar register's state: what its bits and bounds are known to be,
-/// and the ID it shares with the registers it was copied to or from
-/// (with `off`, the constant added since), which a jump's bounds then go
-/// to (`sync_linked_regs`).
+/// as 7.0 follows them (the fields from `var` to `s32_max`) and as master
+/// does (`master`), and the ID it shares with the registers it was copied
+/// to or from (with `off`, the constant added since), which a jump's
+/// bounds then go to (`sync_linked_regs`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Scalar {
     pub(crate) var: Tnum,
@@ -241,6 +250,20 @@ pub(crate) struct Scalar {
     pub(crate) s32_max: i32,
     pub(crate) id: u32,
     pub(crate) off: i32,
+    master: Master,
+}
+
+/// Where Linux 7.0 and master decide differently of a scalar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Split;
+
+/// The one answer of the two models, or [`Split`].
+fn agree<T: PartialEq>(seven: T, master: T) -> Result<T, Split> {
+    if seven == master {
+        Ok(seven)
+    } else {
+        Err(Split)
+    }
 }
 
 /// The BPF ALU operations, as `BPF_OP` gives them.
@@ -291,12 +314,14 @@ impl Scalar {
         s32_max: i32::MAX,
         id: 0,
         off: 0,
+        master: Master::UNKNOWN,
     };
 
     /// `__mark_reg_known`: the value, and no ID.
     pub(crate) fn known(value: u64) -> Scalar {
         let mut s = Scalar::UNKNOWN;
         s.set_known(value);
+        s.master = Master::known(value);
         s
     }
 
@@ -325,25 +350,20 @@ impl Scalar {
     }
 
     /// The value, where every bit is known (`tnum_is_const`).
-    pub(crate) fn value(&self) -> Option<u64> {
+    fn value70(&self) -> Option<u64> {
         self.var.is_const().then_some(self.var.value)
     }
 
     /// `is_reg_const` and `reg_const_value` of the whole register or of its
     /// low 32 bits.
-    pub(crate) fn constant(&self, subreg: bool) -> Option<u64> {
+    fn constant70(&self, subreg: bool) -> Option<u64> {
         let var = if subreg { self.var.subreg() } else { self.var };
         var.is_const().then_some(var.value)
     }
 
     /// `get_reg_width`: the bits its largest value needs.
-    pub(crate) fn width(&self) -> u32 {
+    fn width70(&self) -> u32 {
         fls64(self.umax)
-    }
-
-    /// Whether it is 0 (`register_is_null` of a scalar).
-    pub(crate) fn is_zero(&self) -> bool {
-        self.value() == Some(0)
     }
 
     fn unbounded64(&mut self) {
@@ -513,7 +533,7 @@ impl Scalar {
     }
 
     /// `reg_bounds_sync`.
-    pub(crate) fn sync(&mut self) {
+    fn sync70(&mut self) {
         self.update_bounds();
         self.deduce();
         self.deduce();
@@ -524,7 +544,7 @@ impl Scalar {
 
     /// Whether `reg_bounds_sanity_check` finds the bounds and the known
     /// bits agree.
-    pub(crate) fn sane(&self) -> bool {
+    fn sane70(&self) -> bool {
         if self.umin > self.umax
             || self.smin > self.smax
             || self.u32_min > self.u32_max
@@ -532,12 +552,12 @@ impl Scalar {
         {
             return false;
         }
-        if let Some(v) = self.value()
+        if let Some(v) = self.value70()
             && (self.umin != v || self.umax != v || self.smin != v as i64 || self.smax != v as i64)
         {
             return false;
         }
-        if let Some(v) = self.constant(true) {
+        if let Some(v) = self.constant70(true) {
             let v = v as u32;
             if self.u32_min != v
                 || self.u32_max != v
@@ -564,14 +584,14 @@ impl Scalar {
     }
 
     /// `zext_32_to_64`: the low 32 bits, zero-extended.
-    pub(crate) fn zext(&mut self) {
+    fn zext70(&mut self) {
         self.var = self.var.subreg();
         self.assign_32_into_64();
     }
 
     /// `coerce_reg_to_size`: the low `size` bytes, fewer than 8,
     /// zero-extended, as a load of them gives.
-    pub(crate) fn coerce(&mut self, size: u32) {
+    fn coerce70(&mut self, size: u32) {
         self.var = self.var.cast(size);
         let keep = (1u64 << (size * 8)) - 1;
         if self.umin & !keep == self.umax & !keep {
@@ -586,7 +606,7 @@ impl Scalar {
         if size < 4 {
             self.unbounded32();
         }
-        self.sync();
+        self.sync70();
     }
 
     /// `set_sext64_default_val`.
@@ -609,7 +629,7 @@ impl Scalar {
 
     /// `coerce_reg_to_size_sx`: the low `size` bytes (1, 2 or 4),
     /// sign-extended to 64 bits.
-    pub(crate) fn coerce_sx(&mut self, size: u32) {
+    fn coerce_sx70(&mut self, size: u32) {
         let bits = size * 8;
         let sext = |v: u64| -> i64 {
             match size {
@@ -653,7 +673,7 @@ impl Scalar {
 
     /// `coerce_subreg_to_size_sx`: the low `size` bytes (1 or 2),
     /// sign-extended to 32 bits.
-    pub(crate) fn coerce_subreg_sx(&mut self, size: u32) {
+    fn coerce_subreg_sx70(&mut self, size: u32) {
         let bits = size * 8;
         let sext = |v: u32| -> i32 {
             if size == 1 {
@@ -718,7 +738,7 @@ fn safe_range(op: u8, alu32: bool, src: &Scalar) -> bool {
 /// Whether `maybe_fork_scalars` splits the walk before a `BPF_AND` or
 /// `BPF_OR` with a constant of a register that is -1 or 0: the 64-bit
 /// register, or its low 32 bits.
-pub(crate) fn forks(op: u8, dst: &Scalar, src: &Scalar) -> Option<bool> {
+fn forks70(op: u8, dst: &Scalar, src: &Scalar) -> Option<bool> {
     if !matches!(op, op::AND | op::OR) || !src.var.is_const() {
         return None;
     }
@@ -735,7 +755,7 @@ impl Scalar {
     /// The two sides of `maybe_fork_scalars`: the register 0, which the
     /// other path starts the instruction again with, and -1, which this
     /// one goes on with; the low 32 bits only for `alu32`.
-    pub(crate) fn forked(&self, alu32: bool) -> (Scalar, Scalar) {
+    fn forked70(&self, alu32: bool) -> (Scalar, Scalar) {
         let (mut zero, mut ones) = (*self, *self);
         if alu32 {
             zero.mark_known32(0);
@@ -1211,21 +1231,14 @@ impl Scalar {
             self.unbounded();
         }
         if bits == 16 || bits == 32 {
-            self.coerce(bits / 8);
+            self.coerce70(bits / 8);
         }
     }
 
     /// `adjust_scalar_min_max_vals` of `op` with `src`: a 32-bit operation
     /// for `alu32`, a signed division or modulo for `signed`. A `BPF_END`
     /// takes `swap` and `bits` (the immediate).
-    pub(crate) fn alu(
-        &mut self,
-        op: u8,
-        alu32: bool,
-        signed: bool,
-        src: &Scalar,
-        end: (bool, u32),
-    ) {
+    fn alu70(&mut self, op: u8, alu32: bool, signed: bool, src: &Scalar, end: (bool, u32)) {
         if !safe_range(op, alu32, src) {
             *self = Scalar::UNKNOWN;
             return;
@@ -1310,17 +1323,17 @@ impl Scalar {
             _ => {}
         }
         if alu32 && op != op::END {
-            self.zext();
+            self.zext70();
         }
-        self.sync();
+        self.sync70();
     }
 
     /// The ID `adjust_reg_min_max_vals` leaves after a scalar operation
-    /// whose destination's `umax` was `umax_before`: a linked register's
-    /// plus a constant for a `BPF_ADD` or `BPF_SUB` of one (once), else
-    /// none.
-    pub(crate) fn link_after(&mut self, op: u8, alu32: bool, src: &Scalar, umax_before: u64) {
-        let constant = src.constant(alu32);
+    /// with a source of the value `constant` (if it is one) on a
+    /// destination that was below 2^32 if `fits_before`: a linked
+    /// register's plus a constant for a `BPF_ADD` or `BPF_SUB` of one
+    /// (once), else none.
+    fn link(&mut self, op: u8, alu32: bool, constant: Option<u64>, fits_before: bool) {
         if !matches!(op, op::ADD | op::SUB) || self.id == 0 {
             self.id = 0;
             return;
@@ -1336,7 +1349,7 @@ impl Scalar {
         if !alu32 && !(i64::from(i32::MIN)..=i64::from(i32::MAX)).contains(&(value as i64)) {
             return clear(self);
         }
-        if alu32 && umax_before > u64::from(u32::MAX) {
+        if alu32 && !fits_before {
             return clear(self);
         }
         let mut off = value as i32;
@@ -1356,7 +1369,7 @@ impl Scalar {
     /// `sync_linked_regs` of this register from `known`, which shares its
     /// ID: `known` itself, or `known` plus the difference of their
     /// constants.
-    pub(crate) fn follow(&mut self, known: &Scalar) {
+    fn follow70(&mut self, known: &Scalar) {
         if (self.id ^ known.id) & ADD_CONST == ADD_CONST {
             return;
         }
@@ -1373,9 +1386,9 @@ impl Scalar {
         self.add64(&delta);
         self.var = self.var.add(delta.var);
         if (self.id | known.id) & ADD_CONST32 != 0 {
-            self.zext();
+            self.zext70();
         }
-        self.sync();
+        self.sync70();
     }
 }
 
@@ -1416,7 +1429,7 @@ pub(crate) fn reverse(op: u8) -> u8 {
 /// `is_scalar_branch_taken`: whether `a <op> b` holds (`Some(true)`),
 /// does not (`Some(false)`) or may either way; `same` when the two are
 /// one register.
-pub(crate) fn taken(a: &Scalar, b: &Scalar, op: u8, jmp32: bool, same: bool) -> Option<bool> {
+fn taken70(a: &Scalar, b: &Scalar, op: u8, jmp32: bool, same: bool) -> Option<bool> {
     let (t1, t2) = if jmp32 {
         (a.var.subreg(), b.var.subreg())
     } else {
@@ -1471,12 +1484,12 @@ pub(crate) fn taken(a: &Scalar, b: &Scalar, op: u8, jmp32: bool, same: bool) -> 
             apart().then_some(true)
         }
         jmp::JSET => {
-            let (t1, t2) = if b.constant(jmp32).is_none() {
+            let (t1, t2) = if b.constant70(jmp32).is_none() {
                 (t2, t1)
             } else {
                 (t1, t2)
             };
-            if a.constant(jmp32).is_none() && b.constant(jmp32).is_none() {
+            if a.constant70(jmp32).is_none() && b.constant70(jmp32).is_none() {
                 return None;
             }
             if (!t1.mask & t1.value) & t2.value != 0 {
@@ -1511,10 +1524,10 @@ fn order(yes: bool, no: bool) -> Option<bool> {
 
 /// `regs_refine_cond_op` of `a <op> b` holding, then `reg_bounds_sync` of
 /// both, as `reg_set_min_max` does on each side of a jump.
-pub(crate) fn refine(a: &mut Scalar, b: &mut Scalar, op: u8, jmp32: bool) {
+fn refine70(a: &mut Scalar, b: &mut Scalar, op: u8, jmp32: bool) {
     refine_cond(a, b, op, jmp32);
-    a.sync();
-    b.sync();
+    a.sync70();
+    b.sync70();
 }
 
 fn refine_cond(a: &mut Scalar, b: &mut Scalar, op: u8, jmp32: bool) {
@@ -1550,12 +1563,12 @@ fn refine_cond(a: &mut Scalar, b: &mut Scalar, op: u8, jmp32: bool) {
             }
         }
         jmp::JNE => {
-            let (a, b) = if b.constant(jmp32).is_none() {
+            let (a, b) = if b.constant70(jmp32).is_none() {
                 (b, a)
             } else {
                 (a, b)
             };
-            let Some(val) = b.constant(jmp32) else {
+            let Some(val) = b.constant70(jmp32) else {
                 return;
             };
             if jmp32 {
@@ -1587,12 +1600,12 @@ fn refine_cond(a: &mut Scalar, b: &mut Scalar, op: u8, jmp32: bool) {
             }
         }
         jmp::JSET => {
-            let (a, b) = if b.constant(jmp32).is_none() {
+            let (a, b) = if b.constant70(jmp32).is_none() {
                 (b, a)
             } else {
                 (a, b)
             };
-            let Some(val) = b.constant(jmp32) else {
+            let Some(val) = b.constant70(jmp32) else {
                 return;
             };
             if !val.is_power_of_two() {
@@ -1606,12 +1619,12 @@ fn refine_cond(a: &mut Scalar, b: &mut Scalar, op: u8, jmp32: bool) {
             }
         }
         jmp::NOT_JSET => {
-            let (a, b) = if b.constant(jmp32).is_none() {
+            let (a, b) = if b.constant70(jmp32).is_none() {
                 (b, a)
             } else {
                 (a, b)
             };
-            let Some(val) = b.constant(jmp32) else {
+            let Some(val) = b.constant70(jmp32) else {
                 return;
             };
             a.unbounded();
@@ -1662,12 +1675,210 @@ fn refine_cond(a: &mut Scalar, b: &mut Scalar, op: u8, jmp32: bool) {
     }
 }
 
+/// What the verifier does with and asks of a scalar, of both models: an
+/// operation changes both, and a question is answered where the two agree.
+impl Scalar {
+    /// The value, where every bit is known (`tnum_is_const`).
+    pub(crate) fn value(&self) -> Result<Option<u64>, Split> {
+        agree(self.value70(), self.master.value())
+    }
+
+    /// Whether it is 0 (`register_is_null` of a scalar).
+    pub(crate) fn is_zero(&self) -> Result<bool, Split> {
+        Ok(self.value()? == Some(0))
+    }
+
+    /// Whether its largest value fits in `bits` bits (`get_reg_width` no
+    /// more than `bits`, or `umax_value` below 2^`bits`).
+    pub(crate) fn fits(&self, bits: u32) -> Result<bool, Split> {
+        agree(self.width70() <= bits, self.master.width() <= bits)
+    }
+
+    /// The known bits of a scalar that `check_generic_ptr_alignment` finds
+    /// misaligned with `off` for `size` bytes, which its line shows, or
+    /// `None` where it is aligned.
+    pub(crate) fn misaligned(&self, off: u64, size: u64) -> Result<Option<Tnum>, Split> {
+        let of = |var: Tnum| (!var.aligned_at(off, size)).then_some(var);
+        agree(of(self.var), of(self.master.var))
+    }
+
+    /// Whether `reg_bounds_sanity_check` passes in both.
+    pub(crate) fn sane(&self) -> bool {
+        self.sane70() && self.master.sane()
+    }
+
+    /// `reg_bounds_sync`.
+    pub(crate) fn sync(&mut self) {
+        self.sync70();
+        self.master.sync();
+    }
+
+    /// `zext_32_to_64`: the low 32 bits, zero-extended.
+    pub(crate) fn zext(&mut self) {
+        self.zext70();
+        self.master.zext();
+    }
+
+    /// `coerce_reg_to_size`: the low `size` bytes, fewer than 8,
+    /// zero-extended, as a load of them gives.
+    pub(crate) fn coerce(&mut self, size: u32) {
+        self.coerce70(size);
+        self.master.coerce(size);
+    }
+
+    /// `coerce_reg_to_size_sx`: the low `size` bytes (1, 2 or 4),
+    /// sign-extended to 64 bits.
+    pub(crate) fn coerce_sx(&mut self, size: u32) {
+        self.coerce_sx70(size);
+        self.master.coerce_sx(size);
+    }
+
+    /// `coerce_subreg_to_size_sx`: the low `size` bytes (1 or 2),
+    /// sign-extended to 32 bits.
+    pub(crate) fn coerce_subreg_sx(&mut self, size: u32) {
+        self.coerce_subreg_sx70(size);
+        self.master.coerce_subreg_sx(size);
+    }
+
+    /// `bpf_get_smp_processor_id`'s result (`do_refine_retval_range`): 0
+    /// to `last`.
+    pub(crate) fn below(last: u32) -> Scalar {
+        let mut s = Scalar::UNKNOWN;
+        s.umax = u64::from(last);
+        s.u32_max = last;
+        s.smax = i64::from(last);
+        s.s32_max = last as i32;
+        s.umin = 0;
+        s.u32_min = 0;
+        s.smin = 0;
+        s.s32_min = 0;
+        s.sync70();
+        s.master = Master::below(last);
+        s
+    }
+
+    /// The two sides of `maybe_fork_scalars`: the register 0, which the
+    /// other path starts the instruction again with, and -1, which this
+    /// one goes on with; the low 32 bits only for `alu32`.
+    pub(crate) fn forked(&self, alu32: bool) -> (Scalar, Scalar) {
+        let (mut zero, mut ones) = self.forked70(alu32);
+        (zero.master, ones.master) = self.master.forked(alu32);
+        (zero, ones)
+    }
+
+    /// `adjust_scalar_min_max_vals` of `op` with `src`: a 32-bit operation
+    /// for `alu32`, a signed division or modulo for `signed`. A `BPF_END`
+    /// takes `swap` and `bits` (the immediate).
+    pub(crate) fn alu(
+        &mut self,
+        op: u8,
+        alu32: bool,
+        signed: bool,
+        src: &Scalar,
+        end: (bool, u32),
+    ) {
+        let mut m = self.master;
+        m.alu(op, alu32, signed, &src.master, end);
+        self.alu70(op, alu32, signed, src, end);
+        self.master = m;
+    }
+
+    /// The ID `adjust_reg_min_max_vals` leaves after the operation `op`
+    /// with `src` on a destination that was `before`: a linked register's
+    /// plus a constant for a `BPF_ADD` or `BPF_SUB` of one (once), else
+    /// none. Where the source is the destination (`same`), 7.0 takes the
+    /// destination's new value as the source's, and master links nothing.
+    pub(crate) fn link_after(
+        &mut self,
+        op: u8,
+        alu32: bool,
+        src: &Scalar,
+        before: &Scalar,
+        same: bool,
+    ) -> Result<(), Split> {
+        let mut seven = *self;
+        let constant = if same {
+            self.constant70(alu32)
+        } else {
+            src.constant70(alu32)
+        };
+        seven.link(op, alu32, constant, before.umax <= u64::from(u32::MAX));
+        let mut master = *self;
+        if same {
+            master.id = 0;
+            master.off = 0;
+        } else {
+            let fits = before.master.umax() <= u64::from(u32::MAX);
+            master.link(op, alu32, src.master.constant(alu32), fits);
+        }
+        let ids = |s: &Scalar| (s.id, if s.id & ADD_CONST != 0 { s.off } else { 0 });
+        agree(ids(&seven), ids(&master))?;
+        *self = seven;
+        Ok(())
+    }
+
+    /// `sync_linked_regs` of this register from `known`, which shares its
+    /// ID: `known` itself, or `known` plus the difference of their
+    /// constants.
+    pub(crate) fn follow(&mut self, known: &Scalar) {
+        let (off, id) = (self.off, self.id);
+        self.follow70(known);
+        if (id ^ known.id) & ADD_CONST == ADD_CONST
+            || (id & ADD_CONST == 0 && known.id & ADD_CONST == 0)
+            || off == known.off
+        {
+            return;
+        }
+        let delta = i64::from(off) - i64::from(known.off);
+        let zext = (id | known.id) & ADD_CONST32 != 0;
+        self.master = Master::plus(&known.master, delta, zext);
+    }
+}
+
+/// Whether `maybe_fork_scalars` splits the walk before a `BPF_AND` or
+/// `BPF_OR` with a constant of a register that is -1 or 0: the 64-bit
+/// register, or its low 32 bits.
+pub(crate) fn forks(op: u8, dst: &Scalar, src: &Scalar) -> Result<Option<bool>, Split> {
+    agree(
+        forks70(op, dst, src),
+        master::forks(op, &dst.master, &src.master),
+    )
+}
+
+/// `is_scalar_branch_taken`: whether `a <op> b` holds (`Some(true)`),
+/// does not (`Some(false)`) or may either way; `same` when the two are
+/// one register. Master also tries both sides
+/// (`simulate_both_branches_taken`), and decides where one has no value.
+pub(crate) fn taken(
+    a: &Scalar,
+    b: &Scalar,
+    op: u8,
+    jmp32: bool,
+    same: bool,
+) -> Result<Option<bool>, Split> {
+    agree(
+        taken70(a, b, op, jmp32, same),
+        master::taken(&a.master, &b.master, op, jmp32, same),
+    )
+}
+
+/// What each side of a jump `taken` does not decide learns: 7.0's
+/// `regs_refine_cond_op` then `reg_bounds_sync` of both
+/// (`reg_set_min_max`), and master's as `simulate_both_branches_taken`
+/// left them.
+pub(crate) fn refine(a: &mut Scalar, b: &mut Scalar, op: u8, jmp32: bool) {
+    let (mut ma, mut mb) = (a.master, b.master);
+    master::refine(&mut ma, &mut mb, op, jmp32);
+    refine70(a, b, op, jmp32);
+    (a.master, b.master) = (ma, mb);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Whether `v` is one of the values `s` may hold.
-    fn holds(s: &Scalar, v: u64) -> bool {
+    /// Whether `v` is one of the values 7.0's model of `s` may hold.
+    fn holds70(s: &Scalar, v: u64) -> bool {
         let (v32, s32) = (v as u32, v as u32 as i32);
         v & !s.var.mask == s.var.value
             && (s.umin..=s.umax).contains(&v)
@@ -1676,10 +1887,27 @@ mod tests {
             && (s.s32_min..=s.s32_max).contains(&s32)
     }
 
+    /// Whether `v` is one of the values master's model may hold.
+    fn holds_master(m: &Master, v: u64) -> bool {
+        v & !m.var.mask == m.var.value
+            && m.r64.contains(v)
+            && m.r32.contains(v as u32)
+            && (v as i64).rem_euclid(i64::from(m.step)) == i64::from(m.base)
+    }
+
+    /// Whether `v` is one of the values both models of `s` may hold.
+    fn holds(s: &Scalar, v: u64) -> bool {
+        holds70(s, v) && holds_master(&s.master, v)
+    }
+
     /// The scalar of exactly these values' bits and bounds, then synced.
     fn of(values: &[u64]) -> Scalar {
         let mut s = Scalar::known(values[0]);
         for &v in &values[1..] {
+            let point = Master::known(v);
+            s.master.var = s.master.var.union(point.var);
+            s.master.r64 = s.master.r64.union(point.r64);
+            s.master.r32 = s.master.r32.union(point.r32);
             let k = Scalar::known(v);
             s.var = s.var.union(k.var);
             s.umin = s.umin.min(v);
@@ -1862,7 +2090,7 @@ mod tests {
                 .iter()
                 .flat_map(|&x| ys.iter().map(move |&y| (x, y, holds_jump(op, x, y, jmp32))))
                 .collect();
-            match taken(&a, &b, op, jmp32, false) {
+            match taken70(&a, &b, op, jmp32, false) {
                 Some(way) => assert!(
                     outcomes.iter().all(|&(_, _, o)| o == way),
                     "{op:#x} {jmp32} {xs:x?} {ys:x?} decided {way}"
@@ -1870,12 +2098,33 @@ mod tests {
                 None => {
                     for (side, op) in [(true, op), (false, reverse(op))] {
                         let (mut ra, mut rb) = (a, b);
-                        refine(&mut ra, &mut rb, op, jmp32);
+                        refine70(&mut ra, &mut rb, op, jmp32);
                         for &(x, y, o) in &outcomes {
                             if o == side {
                                 assert!(
-                                    holds(&ra, x) && holds(&rb, y),
+                                    holds70(&ra, x) && holds70(&rb, y),
                                     "{op:#x} {jmp32} {x:#x} {y:#x} lost on the {side} side: {ra:?} {rb:?}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            let (ma, mb) = (a.master, b.master);
+            match master::taken(&ma, &mb, op, jmp32, false) {
+                Some(way) => assert!(
+                    outcomes.iter().all(|&(_, _, o)| o == way),
+                    "master {op:#x} {jmp32} {xs:x?} {ys:x?} decided {way}"
+                ),
+                None => {
+                    for (side, op) in [(true, op), (false, reverse(op))] {
+                        let (mut ra, mut rb) = (ma, mb);
+                        master::refine(&mut ra, &mut rb, op, jmp32);
+                        for &(x, y, o) in &outcomes {
+                            if o == side {
+                                assert!(
+                                    holds_master(&ra, x) && holds_master(&rb, y),
+                                    "master {op:#x} {jmp32} {x:#x} {y:#x} lost on the {side} side: {ra:?} {rb:?}"
                                 );
                             }
                         }
@@ -1885,7 +2134,7 @@ mod tests {
             if xs.len() == 1 && ys.len() == 1 {
                 assert_eq!(
                     taken(&a, &b, op, jmp32, false),
-                    Some(outcomes[0].2),
+                    Ok(Some(outcomes[0].2)),
                     "{op:#x} {jmp32} {xs:x?} {ys:x?}"
                 );
             }
@@ -1911,7 +2160,7 @@ mod tests {
         );
         let sign = alu(Scalar::UNKNOWN, op::ARSH, 63);
         assert_eq!((sign.smin, sign.smax), (-1, 0));
-        assert_eq!(forks(op::AND, &sign, &Scalar::known(5)), Some(false));
+        assert_eq!(forks(op::AND, &sign, &Scalar::known(5)), Ok(Some(false)));
         let mut smod = Scalar::UNKNOWN;
         smod.alu(op::MOD, false, true, &Scalar::known(10), (false, 0));
         assert_eq!((smod.smin, smod.smax), (-9, 9));
@@ -1925,7 +2174,7 @@ mod tests {
         // A 32-bit load of an unknown value, then its high half.
         let mut low = Scalar::UNKNOWN;
         low.coerce(4);
-        assert_eq!(alu(low, op::RSH, 32).value(), Some(0));
+        assert_eq!(alu(low, op::RSH, 32).value(), Ok(Some(0)));
         // The sign extension of a byte of 0 to 255.
         let mut sx = alu(Scalar::UNKNOWN, op::AND, 0xff);
         sx.coerce_sx(1);
@@ -1937,17 +2186,20 @@ mod tests {
         let mut known = Scalar::UNKNOWN;
         known.id = 7;
         let mut copy = known;
-        let before = copy.umax;
+        let before = copy;
         copy.alu(op::ADD, false, false, &Scalar::known(1), (false, 0));
-        copy.link_after(op::ADD, false, &Scalar::known(1), before);
+        copy.link_after(op::ADD, false, &Scalar::known(1), &before, false)
+            .unwrap();
         assert_eq!((copy.id, copy.off), (7 | ADD_CONST64, 1));
         let mut nine = Scalar::known(9);
         refine(&mut known, &mut nine, jmp::JLE, false);
         copy.follow(&known);
         assert_eq!((copy.umin, copy.umax), (1, 10));
+        assert_eq!((copy.master.umin(), copy.master.umax()), (1, 10));
         // Another constant is not followed: the ID goes.
-        let before = copy.umax;
-        copy.link_after(op::ADD, false, &Scalar::known(1), before);
+        let before = copy;
+        copy.link_after(op::ADD, false, &Scalar::known(1), &before, false)
+            .unwrap();
         assert_eq!((copy.id, copy.off), (0, 0));
     }
 
@@ -1957,5 +2209,72 @@ mod tests {
         assert_eq!(t.step(0b1111_0001), 0b1111_0010);
         assert_eq!(t.step(0), t.value);
         assert_eq!(t.step(u64::MAX), t.value | t.mask);
+    }
+
+    /// Master's `tnum_step`, which finds the next value otherwise.
+    fn master_step(t: Tnum, z: u64) -> u64 {
+        let tmax = t.value | t.mask;
+        if z >= tmax {
+            return tmax;
+        }
+        if z < t.value {
+            return t.value;
+        }
+        let d = z - t.value;
+        let carry = u64::MAX.checked_shr(64 - fls64(d & !t.mask)).unwrap_or(0);
+        let filled = d | carry | !t.mask;
+        t.value | (filled.wrapping_add(1) & t.mask)
+    }
+
+    #[test]
+    fn master_s_next_value_of_known_bits_is_7_0_s() {
+        let mut rng = Rng(0x1234_5678_9abc_def1);
+        for _ in 0..100_000 {
+            let mask = rng.value();
+            let t = Tnum::new(rng.value() & !mask, mask);
+            let z = t.value.wrapping_add(rng.value() % (mask | 1).max(1));
+            assert_eq!(t.step(z), master_step(t, z), "{t:?} {z:#x}");
+        }
+    }
+
+    #[test]
+    fn master_s_steps_decide_a_jump_7_0_s_bounds_do_not() {
+        let mut x = Scalar::UNKNOWN;
+        x.alu(op::AND, false, false, &Scalar::known(0xff), (false, 0));
+        x.alu(op::MUL, false, false, &Scalar::known(3), (false, 0));
+        assert_eq!((x.master.base, x.master.step), (0, 3));
+        assert_eq!((x.umin, x.umax), (0, 765));
+        let (one, three) = (Scalar::known(1), Scalar::known(3));
+        assert_eq!(taken70(&x, &one, jmp::JEQ, false, false), None);
+        assert_eq!(
+            master::taken(&x.master, &one.master, jmp::JEQ, false, false),
+            Some(false)
+        );
+        assert_eq!(taken(&x, &one, jmp::JEQ, false, false), Err(Split));
+        assert_eq!(taken(&x, &three, jmp::JEQ, false, false), Ok(None));
+        // Added to, the step keeps the line; subtracted from, it is lost.
+        let mut y = x;
+        y.alu(op::ADD, false, false, &Scalar::known(4), (false, 0));
+        assert_eq!((y.master.base, y.master.step), (1, 3));
+        y.alu(op::SUB, false, false, &Scalar::known(1), (false, 0));
+        assert_eq!((y.master.base, y.master.step), (0, 1));
+    }
+
+    #[test]
+    fn a_question_the_two_models_answer_alike_is_answered() {
+        let mut x = Scalar::UNKNOWN;
+        x.alu(op::AND, false, false, &Scalar::known(7), (false, 0));
+        assert_eq!(x.value(), Ok(None));
+        assert_eq!(x.fits(3), Ok(true));
+        assert_eq!(x.fits(2), Ok(false));
+        assert_eq!(x.misaligned(0, 2), Ok(Some(x.var)));
+        x.alu(op::LSH, false, false, &Scalar::known(1), (false, 0));
+        assert_eq!(x.misaligned(0, 2), Ok(None));
+        // A known 0 the 32-bit halves of which it was cut to.
+        let mut low = Scalar::known(1 << 32);
+        low.zext();
+        low.sync();
+        assert_eq!(low.value(), Ok(Some(0)));
+        assert!(low.sane());
     }
 }

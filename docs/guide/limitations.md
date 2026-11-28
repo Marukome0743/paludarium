@@ -523,10 +523,13 @@ verified.
   before the walk as master does ("recursive call from %s() to %s()",
   `EINVAL`): the differential tests compare the line with that kernel,
   and master's check comes here once it has it. A scalar's bits and
-  bounds follow Linux 7.0's; master follows them otherwise (ranges that
-  wrap around, and steps), and where the two decide a jump, an access or
-  a size differently, it does not refuse yet: it may take a program master
-  refuses, or refuse one master takes. `bpf_get_smp_processor_id`'s result
+  bounds are followed both as Linux 7.0 follows them and as master does
+  (ranges that wrap around, and steps), and where the two decide
+  differently (which way a jump goes, a value known, whether a value fits,
+  a fork, an alignment, and the links master drops of a register added to
+  itself and of a sign-extending fill that may change the value), it
+  refuses: a scalar the two follow differently is not verified yet.
+  `bpf_get_smp_processor_id`'s result
   is below the CPUs the emulator gives the guest, as its maps count them,
   which may be fewer than the machine's `nr_cpu_ids` that Linux bounds it
   by. It prunes no states, so a program

@@ -24,9 +24,10 @@
 //!   which is what is done here, as the differential tests compare it with
 //!   that kernel; master's check comes once that kernel has it.
 //!
-//! A scalar's bits and bounds are followed as 7.0 follows them
-//! ([`crate::bpf_scalar`]). Master follows them otherwise, and where that
-//! decides a jump, an access or a size otherwise, nothing refuses yet.
+//! A scalar's bits and bounds are followed both as 7.0 follows them and as
+//! master does ([`crate::bpf_scalar`]); where the two decide differently
+//! (a jump, a known value or its width, a fork, an alignment, a link), it
+//! is refused as a scalar not verified yet.
 //!
 //! Every function is static, as no program here has BTF: a call gives the
 //! callee a frame of its own, up to 8 frames, whose stacks add up to 512
@@ -72,7 +73,7 @@
 //! - The loader has `CAP_BPF` and `CAP_PERFMON` ([`crate::bpf_prog`]
 //!   refuses others), so the verifier allows what Linux allows them:
 //!   pointer leaks, uninitialized stack reads and no Spectre sanitizing.
-use crate::bpf_scalar::{self, Scalar};
+use crate::bpf_scalar::{self, Scalar, Split};
 use paludarium_types::Errno;
 
 mod rewrite;
@@ -495,12 +496,25 @@ fn refuse<T>(errno: Errno, line: impl Into<String>) -> Checked<T> {
     Err((errno, line.into()))
 }
 
-/// What the emulator does not verify yet, which Linux may take.
-fn gap<T>(what: &str) -> Checked<T> {
-    refuse(
+/// The line of what the emulator does not verify yet.
+fn not_verified(what: &str) -> (Errno, String) {
+    (
         Errno::EINVAL,
         format!("paludarium: {what} are not verified yet"),
     )
+}
+
+/// What the emulator does not verify yet, which Linux may take.
+fn gap<T>(what: &str) -> Checked<T> {
+    Err(not_verified(what))
+}
+
+/// A scalar Linux 7.0 and master decide differently of: refused, as
+/// neither can be followed for both.
+impl From<Split> for (Errno, String) {
+    fn from(_: Split) -> (Errno, String) {
+        not_verified("scalars Linux 7.0 and master follow differently")
+    }
 }
 
 /// `bpf_check`'s first check of the instructions, which comes before
@@ -1092,10 +1106,10 @@ impl Reg {
     }
 
     /// The value of a scalar every bit of which is known.
-    fn value(self) -> Option<u64> {
+    fn value(self) -> Result<Option<u64>, Split> {
         match self {
             Reg::Scalar(s) => s.value(),
-            _ => None,
+            _ => Ok(None),
         }
     }
 }
@@ -1633,7 +1647,7 @@ impl Walk {
         let pointer = s.regs[usize::from(insn.src)];
         let value = self.access(s, insn.src, insn.off, insn.size(), None, options)?;
         let signed = insn.class() == class::LDX && insn.mode() == mode::MEMSX;
-        s.regs[usize::from(insn.dst)] = loaded(value, insn.size(), signed);
+        s.regs[usize::from(insn.dst)] = loaded(value, insn.size(), signed)?;
         self.same_pointers(i, pointer)
     }
 
@@ -1734,7 +1748,7 @@ impl Walk {
         }
         let value = self.access(s, insn.dst, insn.off, insn.size(), None, aligned)?;
         if let Some(r) = old {
-            s.regs[usize::from(r)] = loaded(value, insn.size(), false);
+            s.regs[usize::from(r)] = loaded(value, insn.size(), false)?;
         }
         self.access(
             s,
@@ -1798,8 +1812,8 @@ impl Walk {
                 // stored, and has no ID where it does not.
                 let value = match value {
                     Some(Store::Reg(r, Reg::Scalar(mut v))) if total % 8 == 0 => {
-                        if v.width() <= bytes as u32 * 8 {
-                            link(&mut v, &mut self.ids);
+                        if v.fits(bytes as u32 * 8)? {
+                            link(&mut v, &mut self.ids)?;
                             s.regs[usize::from(r)] = Reg::Scalar(v);
                         } else {
                             v.id = 0;
@@ -1865,18 +1879,19 @@ impl Walk {
             Reg::Scalar(known) => {
                 // check_generic_ptr_alignment: the known bits, then the
                 // offset, are aligned.
-                if options.strict_alignment && bytes > 1 {
-                    let var = known.var;
-                    if !var.aligned_at(off as i64 as u64, bytes as u64) {
-                        let var = match known.value() {
-                            Some(v) => known_value(v),
-                            None => format!("({:#x}; {:#x})", var.value, var.mask),
-                        };
-                        return refuse(
-                            EACCES,
-                            format!("misaligned access off {var}+0+{off} size {bytes}"),
-                        );
-                    }
+                if options.strict_alignment
+                    && bytes > 1
+                    && let Some(var) = known.misaligned(off as i64 as u64, bytes as u64)?
+                {
+                    let var = if var.is_const() {
+                        known_value(var.value)
+                    } else {
+                        format!("({:#x}; {:#x})", var.value, var.mask)
+                    };
+                    return refuse(
+                        EACCES,
+                        format!("misaligned access off {var}+0+{off} size {bytes}"),
+                    );
                 }
                 refuse(EACCES, format!("R{ptr} invalid mem access 'scalar'"))
             }
@@ -1972,20 +1987,7 @@ impl Walk {
                 Reg::UNKNOWN
             }
             // do_refine_retval_range: below nr_cpu_ids.
-            func::GET_SMP_PROCESSOR_ID => {
-                let last = self.cpus.max(1) - 1;
-                let mut r0 = Scalar::UNKNOWN;
-                r0.umax = u64::from(last);
-                r0.u32_max = last;
-                r0.smax = i64::from(last);
-                r0.s32_max = last as i32;
-                r0.umin = 0;
-                r0.u32_min = 0;
-                r0.smin = 0;
-                r0.s32_min = 0;
-                r0.sync();
-                Reg::Scalar(r0)
-            }
+            func::GET_SMP_PROCESSOR_ID => Reg::Scalar(Scalar::below(self.cpus.max(1) - 1)),
             func::KTIME_GET_NS
             | func::GET_PRANDOM_U32
             | func::GET_CURRENT_PID_TGID
@@ -2048,7 +2050,7 @@ impl Walk {
             Reg::Ptr(Ptr::Stack(frame), at)
                 if shape.kind == map_type::ARRAY && shape.flags & F_INNER_MAP == 0 =>
             {
-                constant_key(s.stack_of(frame).0, i64::from(at), shape.key_size)
+                constant_key(s.stack_of(frame).0, i64::from(at), shape.key_size)?
             }
             _ => None,
         };
@@ -2096,7 +2098,7 @@ impl Walk {
         // check_reg_type and check_mem_size_reg of the size.
         read_ok(s, 4)?;
         let len = match s.regs[4] {
-            Reg::Scalar(len) => match len.value() {
+            Reg::Scalar(len) => match len.value()? {
                 Some(len) => len,
                 None => return gap("helper sizes the verifier does not know"),
             },
@@ -2432,7 +2434,7 @@ fn ctx_arg(s: &State, r: u8, nullable: bool) -> Checked<()> {
     read_ok(s, r)?;
     match s.regs[usize::from(r)] {
         // register_is_null.
-        Reg::Scalar(v) if nullable && v.is_zero() => Ok(()),
+        Reg::Scalar(v) if nullable && v.is_zero()? => Ok(()),
         Reg::Ptr(Ptr::Ctx, off) => ctx_offset(r, off),
         reg => refuse(EACCES, format!("R{r} type={} expected=ctx", reg_name(reg))),
     }
@@ -2536,7 +2538,7 @@ fn stack_write(stack: &mut Stack, caller: bool, at: i64, bytes: i64, value: Stor
             let kept = if old.spilled() != 0 { 0 } else { old.zeros() };
             let marked = (at..at + bytes).fold(0, |m, at| m | slot_byte(at));
             let zero = match value {
-                Store::Reg(_, Reg::Scalar(v)) => v.is_zero(),
+                Store::Reg(_, Reg::Scalar(v)) => v.is_zero()?,
                 Store::Imm(imm) => imm == 0,
                 _ => false,
             };
@@ -2551,7 +2553,7 @@ fn stack_write(stack: &mut Stack, caller: bool, at: i64, bytes: i64, value: Stor
 /// holds, if it knows it: `STACK_ZERO` bytes from the key to the slot's
 /// top, or a scalar spill of the key's size from it. The spill's value is
 /// the register's whole, as Linux takes it.
-fn constant_key(stack: &Stack, at: i64, size: u32) -> Option<u64> {
+fn constant_key(stack: &Stack, at: i64, size: u32) -> Result<Option<u64>, Split> {
     let slot = stack[((-at - 1) / 8) as usize];
     let off = ((-at - 1) % 8) as u32;
     let run = |bytes: u8| {
@@ -2561,14 +2563,14 @@ fn constant_key(stack: &Stack, at: i64, size: u32) -> Option<u64> {
             .count()
     };
     if run(slot.zeros()) as u32 >= size {
-        return Some(0);
+        return Ok(Some(0));
     }
     let value = match slot {
         Slot::Spill(Reg::Scalar(value)) | Slot::Narrow { value, .. } => value,
-        _ => return None,
+        _ => return Ok(None),
     };
     if run(slot.spilled()) as u32 != size {
-        return None;
+        return Ok(None);
     }
     value.value()
 }
@@ -2600,7 +2602,7 @@ fn stack_read(stack: &mut Stack, at: i64, bytes: i64, ids: &mut u32) -> Checked<
             return Ok(reg);
         }
         Slot::Spill(Reg::Scalar(mut v)) if bytes == 8 => {
-            link(&mut v, ids);
+            link(&mut v, ids)?;
             stack[index] = Slot::Spill(Reg::Scalar(v));
             return Ok(Reg::Scalar(v));
         }
@@ -2611,33 +2613,37 @@ fn stack_read(stack: &mut Stack, at: i64, bytes: i64, ids: &mut u32) -> Checked<
     let size = spilled.count_ones();
     if bytes <= i64::from(size) && at % 8 == 0 {
         let mut v = value;
-        if bytes == 4 && size == 4 && v.width() <= 32 {
-            link(&mut v, ids);
+        if bytes == 4 && size == 4 && v.fits(32)? {
+            link(&mut v, ids)?;
             if let Slot::Narrow { value, .. } = &mut stack[index] {
                 *value = v;
             }
         }
         let mut filled = v;
-        if v.width() > bytes as u32 * 8 {
+        if !v.fits(bytes as u32 * 8)? {
             filled.id = 0;
         }
         return Ok(Reg::Scalar(filled));
     }
-    known(slot.zeros() & read == read || (value.is_zero() && spilled & read == read))
+    known(slot.zeros() & read == read || (value.is_zero()? && spilled & read == read))
 }
 
 /// `coerce_reg_to_size` and `coerce_reg_to_size_sx` of a scalar a load
 /// of `width` gives: zero-extended, or sign-extended for `BPF_MEMSX`.
-fn loaded(reg: Reg, width: u8, signed: bool) -> Reg {
+/// Master unlinks a value a sign extension may change, as 7.0 does not.
+fn loaded(reg: Reg, width: u8, signed: bool) -> Result<Reg, Split> {
     let bytes = match width {
         size::B => 1,
         size::H => 2,
         size::W => 4,
-        _ => return reg,
+        _ => return Ok(reg),
     };
-    match reg {
+    Ok(match reg {
         Reg::Scalar(mut v) => {
             if signed {
+                if v.id != 0 && !v.fits(bytes * 8 - 1)? {
+                    return Err(Split);
+                }
                 v.coerce_sx(bytes);
             } else {
                 v.coerce(bytes);
@@ -2645,21 +2651,22 @@ fn loaded(reg: Reg, width: u8, signed: bool) -> Reg {
             Reg::Scalar(v)
         }
         reg => reg,
-    }
+    })
 }
 
 /// `assign_scalar_id_before_mov`: a scalar copied keeps an ID its copy
 /// shares, a new one unless it has one or is known; one it had from an
 /// addition of a constant is dropped, as only one is followed.
-fn link(s: &mut Scalar, ids: &mut u32) {
+fn link(s: &mut Scalar, ids: &mut u32) -> Result<(), Split> {
     if s.id & bpf_scalar::ADD_CONST != 0 {
         s.id = 0;
         s.off = 0;
     }
-    if s.id == 0 && s.value().is_none() {
+    if s.id == 0 && s.value()?.is_none() {
         *ids += 1;
         s.id = *ids;
     }
+    Ok(())
 }
 
 /// `check_alu_op`, for a privileged loader. A `BPF_AND` or `BPF_OR` that
@@ -2700,7 +2707,7 @@ fn alu_op(s: &mut State, insn: Insn, ids: &mut u32) -> Checked<Option<Box<State>
             }
             write_ok(insn.dst)?;
             s.regs[dst] = if insn.x() {
-                mov(s, insn, wide, ids)
+                mov(s, insn, wide, ids)?
             } else if wide {
                 Reg::known(i64::from(insn.imm) as u64)
             } else {
@@ -2739,19 +2746,22 @@ fn alu_op(s: &mut State, insn: Insn, ids: &mut u32) -> Checked<Option<Box<State>
                         );
                     }
                 }
-                (Reg::Scalar(v), Reg::Ptr(p, off)) => pointer_math(insn, p, off, v.value(), true)?,
-                (Reg::Ptr(p, off), Reg::Scalar(v)) => pointer_math(insn, p, off, v.value(), false)?,
+                (Reg::Scalar(v), Reg::Ptr(p, off)) => pointer_math(insn, p, off, v.value()?, true)?,
+                (Reg::Ptr(p, off), Reg::Scalar(v)) => {
+                    pointer_math(insn, p, off, v.value()?, false)?
+                }
                 (Reg::Scalar(mut a), Reg::Scalar(b)) => {
-                    if let Some(alu32) = bpf_scalar::forks(op, &a, &b) {
+                    if let Some(alu32) = bpf_scalar::forks(op, &a, &b)? {
                         let (zero, ones) = a.forked(alu32);
                         let mut other = s.clone();
                         other.regs[dst] = Reg::Scalar(zero);
                         fork = Some(Box::new(other));
                         a = ones;
                     }
-                    let before = a.umax;
+                    let before = a;
                     a.alu(op, !wide, insn.off == 1, &b, (false, 0));
-                    a.link_after(op, !wide, &b, before);
+                    let same = insn.x() && insn.src == insn.dst;
+                    a.link_after(op, !wide, &b, &before, same)?;
                     Reg::Scalar(a)
                 }
                 _ => Reg::UNKNOWN,
@@ -2768,10 +2778,10 @@ fn alu_op(s: &mut State, insn: Insn, ids: &mut u32) -> Checked<Option<Box<State>
 /// sign extension (`BPF_MOVSX`, which links only a value that does not
 /// change), or the low half, zero-extended (which links a value that fits
 /// in it). Of a pointer, only the whole copy is a pointer.
-fn mov(s: &mut State, insn: Insn, wide: bool, ids: &mut u32) -> Reg {
+fn mov(s: &mut State, insn: Insn, wide: bool, ids: &mut u32) -> Result<Reg, Split> {
     let r = usize::from(insn.src);
     let Reg::Scalar(mut src) = s.regs[r] else {
-        return match (wide, insn.off) {
+        return Ok(match (wide, insn.off) {
             (true, 0) => s.regs[r],
             (true, _) => Reg::UNKNOWN,
             (false, _) => {
@@ -2780,15 +2790,15 @@ fn mov(s: &mut State, insn: Insn, wide: bool, ids: &mut u32) -> Reg {
                 v.sync();
                 Reg::Scalar(v)
             }
-        };
+        });
     };
     let links = match (wide, insn.off) {
         (true, 0) => true,
-        (false, 0) => src.width() <= 32,
-        (_, bits) => src.umax < 1u64 << (bits - 1),
+        (false, 0) => src.fits(32)?,
+        (_, bits) => src.fits(bits as u32 - 1)?,
     };
     if links {
-        link(&mut src, ids);
+        link(&mut src, ids)?;
         s.regs[r] = Reg::Scalar(src);
     }
     let mut v = src;
@@ -2806,7 +2816,7 @@ fn mov(s: &mut State, insn: Insn, wide: bool, ids: &mut u32) -> Reg {
             v.sync();
         }
     }
-    Reg::Scalar(v)
+    Ok(Reg::Scalar(v))
 }
 
 /// `adjust_ptr_min_max_vals` of a pointer and a scalar (`scalar` is the
@@ -2937,11 +2947,11 @@ fn jmp_op(s: &mut State, insn: Insn, i: usize) -> Checked<Step> {
             let target = (i as i64 + i64::from(insn.off) + 1) as usize;
             let a = s.regs[usize::from(insn.dst)];
             let jmp32 = insn.class() == class::JMP32;
-            let zero = |r: Reg| r.value() == Some(0);
+            let zero = |r: Reg| r.value().map(|v| v == Some(0));
             match (a, b) {
                 (Reg::Scalar(x), Reg::Scalar(y)) => {
                     let same = insn.x() && insn.src == insn.dst;
-                    match bpf_scalar::taken(&x, &y, op, jmp32, same) {
+                    match bpf_scalar::taken(&x, &y, op, jmp32, same)? {
                         Some(true) => Ok(Step::Next(target)),
                         Some(false) => Ok(Step::Next(i + 1)),
                         // reg_set_min_max, but for one register compared
@@ -2964,7 +2974,7 @@ fn jmp_op(s: &mut State, insn: Insn, i: usize) -> Checked<Step> {
                 // (e51179a4e098), as its low half may be 0.
                 (Reg::Ptr(Ptr::Value(_) | Ptr::Map(_), _), z)
                 | (z, Reg::Ptr(Ptr::Value(_) | Ptr::Map(_), _))
-                    if zero(z)
+                    if zero(z)?
                         && insn.class() == class::JMP
                         && matches!(op, jmp::JEQ | jmp::JNE) =>
                 {
@@ -3582,6 +3592,56 @@ mod tests {
             i(0x0f, 0, 10, 0, 0),
             exit(),
         ]);
+    }
+
+    #[test]
+    fn what_linux_7_0_and_master_decide_differently_of_a_scalar_is_refused() {
+        let split = (
+            Errno::EINVAL,
+            "paludarium: scalars Linux 7.0 and master follow differently are not verified yet"
+                .to_string(),
+        );
+        // A random byte times 3 is a multiple of 3 to master (its step),
+        // which so knows it is not 1; 7.0 walks both ways.
+        let times3 = |k| {
+            [
+                i(0x85, 0, 0, 0, 7),
+                i(0x57, 0, 0, 0, 0xff),
+                i(0x27, 0, 0, 0, 3),
+                i(0x15, 0, 0, 1, k),
+                mov(0, 0),
+                exit(),
+            ]
+        };
+        assert_eq!(refused(&times3(1)), split);
+        ok(&times3(3));
+        // A linked register 7.0 knows is 5, added to itself: 7.0 links the
+        // sum to its copy, master does not.
+        let doubled = |op| {
+            [
+                i(0x85, 0, 0, 0, 7),
+                mov_reg(1, 0),
+                i(0x55, 0, 0, 1, 5),
+                i(op, 0, 0, 0, 0),
+                exit(),
+            ]
+        };
+        assert_eq!(refused(&doubled(0x0f)), split);
+        ok(&doubled(0xaf));
+        // A spilled byte above 127 filled sign-extended: 7.0 keeps it
+        // linked to the spill, master does not.
+        let filled = |mask| {
+            [
+                i(0x85, 0, 0, 0, 7),
+                i(0x57, 0, 0, 0, mask),
+                stx_dw(10, 0, -8),
+                i(0x91, 1, 10, -8, 0),
+                mov(0, 0),
+                exit(),
+            ]
+        };
+        assert_eq!(refused(&filled(0xff)), split);
+        ok(&filled(0x7f));
     }
 
     #[test]

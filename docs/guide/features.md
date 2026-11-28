@@ -6211,10 +6211,11 @@ kernel.
   load through a scalar ("R%d invalid mem
   access 'scalar'", `EACCES`) and the exit's R0, which may be any value.
   Of a scalar it knows the bits and the unsigned and signed bounds, of 64
-  and of 32 bits, as Linux 7.0's verifier follows them (`tnum`,
-  `umin_value` to `s32_max_value`): through each ALU operation, the zero or
-  sign extension of a load, and `bpf_get_smp_processor_id`'s result below
-  the CPUs. A copy, a spill and its fill link a scalar to its copy, and to
+  and of 32 bits, both as Linux 7.0's verifier follows them (`tnum`,
+  `umin_value` to `s32_max_value`) and as master's does (`tnum`, the
+  circular ranges `r64` and `r32`, and the line `base` and `step`):
+  through each ALU operation, the zero or sign extension of a load, and
+  `bpf_get_smp_processor_id`'s result below the CPUs. A copy, a spill and its fill link a scalar to its copy, and to
   one with a constant added (`BPF_ADD_CONST`). A conditional jump goes one
   way where the bounds decide it (`is_branch_taken`), and is walked both
   ways otherwise, each with what holds there (`reg_set_min_max`) in the
