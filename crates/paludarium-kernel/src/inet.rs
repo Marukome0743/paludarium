@@ -1423,6 +1423,8 @@ impl Network {
         let (Some((there, peer_index, _)), Some(asker)) = (peer, asker) else {
             return;
         };
+        // Its advertisement back.
+        there.count(*peer_index, &[frames::NDISC]);
         let events = {
             let mut addresses = there.addresses_at(Some(now));
             let mut events = addresses.neigh_learn(*peer_index, asker, own_mac, now);
@@ -1461,11 +1463,13 @@ impl Network {
     /// A solicitation for `to` goes out through the veth end `index` at
     /// `now` from `asker`, if it has one (none goes without): to `to`'s
     /// solicited-node group, whose neighbour it takes, as any multicast
-    /// packet does ([`Self::noarp`]).
+    /// packet does ([`Self::noarp`]). Like ARP's request, it is counted
+    /// only if the end has its carrier ([`Self::send_out`]).
     fn solicit(&self, index: i32, asker: Option<Ipv6Addr>, to: Ipv6Addr, now: u64) {
         if asker.is_none() {
             return;
         }
+        self.send_out(index, &[frames::NDISC]);
         let o = to.octets();
         let group = Ipv6Addr::new(
             0xff02,
