@@ -1190,6 +1190,7 @@ mod linux {
         processes_exec_pending => ("exec-pending","exec-pending"),
         processes_pdeath_thread => ("pdeath-thread","pdeath-thread"),
         processes_sa_immutable => ("sa-immutable","sa-immutable"),
+        processes_vsyscall_immutable => ("vsyscall-immutable","sa-immutable"),
         processes_sigio_owner => ("sigio-owner","sigio-owner"),
         processes_cpu_itimer => ("cpu-itimer","process"),
         processes_rlimit_cpu => ("rlimit-cpu","process"),
