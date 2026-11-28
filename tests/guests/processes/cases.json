@@ -99,6 +99,7 @@
     {"name":"veth-ipv6-anycast","binary":"veth-ipv6-anycast"},
     {"name":"veth-dev-mcast","binary":"veth-dev-mcast"},
     {"name":"net-dev-counters","binary":"net-dev-counters"},
+    {"name":"net-dev-tcp","binary":"net-dev-tcp"},
     {"name":"veth-igmp-neighbours","binary":"veth-igmp-neighbours"},
     {"name":"veth-ipv6-solicited-routers","binary":"veth-ipv6-solicited-routers"},
     {"name":"veth-ipv6-accept","binary":"veth-ipv6-accept"},
