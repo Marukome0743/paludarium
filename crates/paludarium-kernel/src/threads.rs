@@ -918,7 +918,9 @@ impl ThreadGroup {
                 .unwrap_or_else(PoisonError::into_inner);
             let mut timers = self.timers.lock().unwrap_or_else(PoisonError::into_inner);
             let queued = pending.pending.len();
-            let directed = timers.expire_foreign(&mut pending, pid, cpu);
+            let directed = timers.expire_foreign(&mut pending, pid, cpu, |number, thread| {
+                self.timer_queues(number, thread, Sent::Leader)
+            });
             let fired = pending.pending.len() > queued;
             let fired: Vec<i32> = if fired {
                 pending.pending[queued..].iter().map(|s| s.number).collect()
@@ -927,20 +929,7 @@ impl ThreadGroup {
             };
             (directed, (timers.foreign_armed(pid), fired))
         };
-        for (tid, signal) in directed {
-            let inbox = self
-                .members
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .get(&tid)
-                .cloned();
-            if let Some((id, overrun)) = inbox.and_then(|inbox| inbox.send_timer(signal)) {
-                self.timers
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .set_overrun(id, overrun);
-            }
-        }
+        self.send_directed(directed);
         // A signal for the process waits in its pending set: the thread it
         // is for looks again.
         if !armed.1.is_empty() {
@@ -1075,6 +1064,94 @@ impl ThreadGroup {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner),
         )
+    }
+    /// Whether Linux's `prepare_signal` queues a timer's signal `number` for
+    /// thread `thread`, or for the process, whose signal goes to `sent`: not
+    /// one it ignores that the thread neither blocks nor is traced
+    /// (`sig_ignored`). The init of a nested PID namespace ignores one it
+    /// has no handler for, as `sig_task_ignored` does with
+    /// SIGNAL_UNKILLABLE for a signal not forced.
+    fn timer_queues(&self, number: i32, thread: Option<u32>, sent: Sent) -> bool {
+        let handler = self
+            .shared_actions()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&number)
+            .map_or(0, |action| action.handler);
+        let ignored = handler == 1
+            || handler == 0 && (matches!(number, 17 | 18 | 23 | 28) || self.targets.unkillable());
+        !ignored
+            || self
+                .targets
+                .keeps(thread.map_or(sent, Sent::Thread), number)
+    }
+    /// Sends the signals of SIGEV_THREAD_ID timers to their threads'
+    /// inboxes. A thread that has exited loses its timer's signal, as on
+    /// Linux; one Linux drops as ignored, with none of its timer's pending
+    /// there, is kept aside.
+    fn send_directed(&self, directed: Vec<crate::timers::Directed>) {
+        for crate::timers::Directed {
+            tid,
+            signal,
+            queued,
+        } in directed
+        {
+            let inbox = self
+                .members
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .get(&tid)
+                .cloned();
+            let (Some(inbox), Some(timer)) = (inbox, signal.timer) else {
+                continue;
+            };
+            let sent = inbox.send_timer(signal, queued);
+            let mut timers = self.timers.lock().unwrap_or_else(PoisonError::into_inner);
+            match sent {
+                Some((id, overrun)) => timers.set_overrun(id, overrun),
+                None if !queued => timers.set_aside(timer.id, signal.number, timer.overrun),
+                None => {}
+            }
+        }
+    }
+    /// Queues again the signals kept aside of the timers that send signal
+    /// `number`, which `sigaction` no longer ignores, as Linux's
+    /// `posixtimer_sig_unignore` does: one for the process as a timer's
+    /// expiry sends it, one for a thread to that thread, unless it has
+    /// exited.
+    pub(crate) fn unignore_timers(&self, number: i32) {
+        let (directed, queued) = {
+            let mut pending = self
+                .process_pending
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let taken = self
+                .timers
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take_aside(number);
+            let mut directed = Vec::new();
+            let mut queued = false;
+            for (thread, signal) in taken {
+                match thread {
+                    Some(tid) => directed.push(crate::timers::Directed {
+                        tid,
+                        signal,
+                        queued: true,
+                    }),
+                    None => {
+                        pending.pending.push(signal);
+                        queued = true;
+                    }
+                }
+            }
+            (directed, queued)
+        };
+        if queued {
+            self.inbox_of_process()
+                .queued_elsewhere(number, Sent::Leader);
+        }
+        self.send_directed(directed);
     }
     /// `prepare_signal` of signal `number`, sent to `sent`: a stop signal
     /// takes the pending SIGCONTs away, and SIGCONT the stop signals. Whether
@@ -1406,12 +1483,17 @@ impl ThreadGroup {
         let queued = pending.pending.len();
         signals::expire_timer(&mut pending, now);
         let mut timers = self.timers.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut directed = timers.expire(&mut pending, now);
+        let mut directed = timers.expire(&mut pending, now, |number, thread| {
+            self.timer_queues(number, thread, Sent::Leader)
+        });
         let running = pending.pending.len();
         if let Some((process, threads)) = &cpu {
-            directed.extend(
-                timers.expire_cpu(&mut pending, *process, |tid| threads.get(&tid).copied()),
-            );
+            directed.extend(timers.expire_cpu(
+                &mut pending,
+                *process,
+                |tid| threads.get(&tid).copied(),
+                |number, thread| self.timer_queues(number, thread, Sent::Running),
+            ));
             self.posix_cpu_armed
                 .store(timers.cpu_armed(), Ordering::SeqCst);
         }
@@ -1434,20 +1516,7 @@ impl ThreadGroup {
             self.inbox_of_process().queued_elsewhere(number, sent);
         }
         // A thread that has exited loses its timer's signal, as on Linux.
-        for (tid, signal) in directed {
-            let inbox = self
-                .members
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .get(&tid)
-                .cloned();
-            if let Some((id, overrun)) = inbox.and_then(|inbox| inbox.send_timer(signal)) {
-                self.timers
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .set_overrun(id, overrun);
-            }
-        }
+        self.send_directed(directed);
         timer
     }
     pub(crate) fn register(&self, tid: u32, inbox: Arc<SignalInbox>) {
@@ -2344,7 +2413,18 @@ impl ThreadGroup {
     /// ignored (Linux's `flush_sigqueue_mask`). Threads drop the ones they
     /// already took in when they next take in signals or queue one
     /// themselves; `local`, the caller's, drops them now.
+    ///
+    /// A periodic timer's signal taken away is kept aside, as Linux's
+    /// `sigqueue_free_ignored` does ([`crate::timers::Timers::set_aside`]),
+    /// except one another thread has taken in already, which that thread
+    /// drops.
     pub(crate) fn discard_pending(&self, number: i32, local: &mut ThreadState) {
+        let mut timers: Vec<signals::TimerSignal> = local
+            .pending
+            .iter()
+            .filter(|signal| signal.number == number)
+            .filter_map(|signal| signal.timer)
+            .collect();
         self.discards.mark(number);
         self.targets.forget_own(number);
         self.discards.apply(local);
@@ -2352,18 +2432,30 @@ impl ThreadGroup {
             .process_pending
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        pending.pending.retain(|signal| signal.number != number);
-        self.process_inbox
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .purge(number);
+        pending.pending.retain(|signal| {
+            let purged = signal.number == number;
+            if purged && let Some(timer) = signal.timer {
+                timers.push(timer);
+            }
+            !purged
+        });
+        timers.extend(
+            self.process_inbox
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .purge(number),
+        );
         for inbox in self
             .members
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .values()
         {
-            inbox.purge(number);
+            timers.extend(inbox.purge(number));
+        }
+        let mut table = self.timers.lock().unwrap_or_else(PoisonError::into_inner);
+        for timer in timers {
+            table.set_aside(timer.id, number, timer.overrun);
         }
     }
     /// Drops what `local` holds of signals discarded since they were sent.

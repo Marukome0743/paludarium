@@ -6052,7 +6052,11 @@ paludarium が目指すのは、実際のプログラムを本物の Linux と�
   （`SIGEV_NONE`）。`SIGEV_THREAD` は、Linux と同じく `SIGEV_SIGNAL` として扱います
   （スレッドは C ライブラリが `SIGEV_THREAD_ID` を使って作ります）。スレッドへの
   タイマーのシグナルは、そのスレッドがまだ受け取っていない間だけオーバーランに足され、
-  スレッドが終わっていれば失われます。`CLOCK_PROCESS_CPUTIME_ID` のタイマーはプロセスの
+  スレッドが終わっていれば失われます。無視されて捨てられるはずのシグナルは、送るときでも
+  `sigaction` が無視にしたときでも、周期のあるタイマーのものなら取っておき、その後の満了を
+  オーバーランとして数え、`sigaction` が無視しなくなるともう一度キューに入れます（Linux の
+  `ignored_list`）。1 回だけのタイマーのものは捨て、取っておいたものもタイマーを設定し直すか
+  消すと捨てます。`CLOCK_PROCESS_CPUTIME_ID` のタイマーはプロセスの
   CPU 時間を、`CLOCK_THREAD_CPUTIME_ID` のタイマーはそれを作ったスレッドの CPU 時間を、
   Linux の `posix_cpu_timer_*` と同じように数えます。値はその時間で表し
   （`TIMER_ABSTIME` なら絶対時刻）、`KTIME_MAX` で頭打ちにします。止めると間隔も含めて

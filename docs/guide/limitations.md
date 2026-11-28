@@ -1200,9 +1200,7 @@ verified.
   no thread to look, they send none.
 - **A POSIX timer's signal, in part**: a timer on a clock of real time
   sends to the process's leader first, where Linux's `posixtimer_get_target`
-  sends to a thread of the process that its interrupt finds running. One
-  whose signal is ignored is dropped as it is taken, where Linux keeps it
-  aside until it is no longer ignored.
+  sends to a thread of the process that its interrupt finds running.
 - **inotify, in part**: when a superblock goes, its files' watches hear
   `IN_UNMOUNT` in the order the files got their first mark of any group, as
   on Linux. `/proc/self/fdinfo` lists an epoll's files by

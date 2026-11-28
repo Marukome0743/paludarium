@@ -1099,6 +1099,7 @@ mod linux {
         processes_thread_own_counters => ("thread-own-counters", "process"),
         processes_time_calls => ("time-calls", "process"),
         processes_time_set => ("time-set", "process"),
+        processes_timer_ignored => ("timer-ignored", "process"),
         processes_timer_limits => ("timer-limits", "process"),
         processes_timer_thread => ("timer-thread", "process"),
         // Makes a fanotify group and a userfaultfd for the kernel's faults.

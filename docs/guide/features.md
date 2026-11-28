@@ -7120,7 +7120,12 @@ kernel.
   (`SIGEV_NONE`). The kernel takes `SIGEV_THREAD` as `SIGEV_SIGNAL`, as Linux
   does; the C library builds the thread on `SIGEV_THREAD_ID`. A thread's timer
   signal adds to its overrun only while the thread has not taken it yet, and
-  is lost if the thread has exited. A timer on `CLOCK_PROCESS_CPUTIME_ID`
+  is lost if the thread has exited. A periodic timer's signal that would be
+  dropped as ignored, as it is sent or as `sigaction` makes it ignored, is
+  kept aside with its later expiries counted as overruns, and is queued again
+  once `sigaction` no longer ignores it, as Linux's `ignored_list`; a one-shot
+  timer's is dropped, and so is one kept aside when its timer is set again or
+  deleted. A timer on `CLOCK_PROCESS_CPUTIME_ID`
   counts the process's CPU time, and one on `CLOCK_THREAD_CPUTIME_ID` that
   of the thread that made it, as Linux's `posix_cpu_timer_*`: its value is
   in that time (absolute with `TIMER_ABSTIME`), clamped to `KTIME_MAX`; it

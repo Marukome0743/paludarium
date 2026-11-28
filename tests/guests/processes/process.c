@@ -16567,6 +16567,118 @@ static int tl_reaches_max(int id, clockid_t clock) {
     long sec = v.it_value.tv_sec + now.tv_sec + (v.it_value.tv_nsec + now.tv_nsec) / 1000000000L;
     return sec >= 9223372035L && sec <= 9223372036L;
 }
+/* A POSIX timer's signal that would be dropped as ignored: a periodic
+ * timer's is kept aside until sigaction no longer ignores it, then queued
+ * again; a one-shot timer's, or one of a timer set again since, is dropped
+ * (Linux's ignored_list, posixtimer_sig_ignore and _unignore). The interval
+ * is long, so that no second expiry comes while the case runs. */
+static void ti_handler(int sig) { (void)sig; }
+static void ti_action(void (*handler)(int)) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = handler;
+    sigaction(SIGUSR1, &sa, NULL);
+}
+static int ti_usr1_pending(void) {
+    sigset_t set;
+    sigpending(&set);
+    return sigismember(&set, SIGUSR1);
+}
+/* Takes a pending SIGUSR1 with no wait: "signal code value overrun", or
+ * the errno. */
+static void ti_take(const char *label, int id) {
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGUSR1);
+    siginfo_t info;
+    memset(&info, 0, sizeof info);
+    struct timespec none = {0, 0};
+    int got = sigtimedwait(&set, &info, &none);
+    if (got < 0) {
+        printf("%s errno=%d\n", label, errno);
+        return;
+    }
+    printf("%s got=%d code=%d value=%d overrun=%d getoverrun=%ld\n", label, got, info.si_code,
+           info.si_value.sival_int, info.si_overrun, syscall(SYS_timer_getoverrun, (long)id));
+}
+static void ti_sleep(long ns) {
+    struct timespec t = {ns / 1000000000L, ns % 1000000000L};
+    while (nanosleep(&t, &t) && errno == EINTR) {
+    }
+}
+static int timer_ignored_worker(void) {
+    sigset_t usr1, none;
+    sigemptyset(&usr1);
+    sigaddset(&usr1, SIGUSR1);
+    sigemptyset(&none);
+    const long interval = 30000000000L, first = 10000000L;
+    /* Periodic, ignored and unblocked as it expires: kept aside. */
+    int id = ct_create(CLOCK_MONOTONIC, SIGEV_SIGNAL, SIGUSR1, 7);
+    ti_action(SIG_IGN);
+    ct_set(id, 0, interval, first, NULL);
+    ti_sleep(50000000L);
+    sigprocmask(SIG_BLOCK, &usr1, NULL);
+    printf("periodic pending-while-ignored=%d\n", ti_usr1_pending());
+    ti_action(ti_handler);
+    ti_take("periodic unignored", id);
+    ti_take("periodic again", id);
+    /* Pending, then made ignored: taken away, kept aside, queued again. */
+    ct_set(id, 0, interval, first, NULL);
+    ti_sleep(50000000L);
+    printf("pending before=%d", ti_usr1_pending());
+    ti_action(SIG_IGN);
+    printf(" ignored=%d", ti_usr1_pending());
+    ti_action(ti_handler);
+    printf(" unignored=%d\n", ti_usr1_pending());
+    ti_take("pending unignored", id);
+    /* Kept aside, then the timer is set again: dropped. */
+    sigprocmask(SIG_UNBLOCK, &usr1, NULL);
+    ti_action(SIG_IGN);
+    ct_set(id, 0, interval, first, NULL);
+    ti_sleep(50000000L);
+    ct_set(id, 0, 0, 0, NULL);
+    sigprocmask(SIG_BLOCK, &usr1, NULL);
+    ti_action(ti_handler);
+    ti_take("reset unignored", id);
+    /* Kept aside, then deleted: dropped. */
+    sigprocmask(SIG_UNBLOCK, &usr1, NULL);
+    ti_action(SIG_IGN);
+    ct_set(id, 0, interval, first, NULL);
+    ti_sleep(50000000L);
+    printf("deleted=%ld\n", syscall(SYS_timer_delete, (long)id) ? -errno : 0L);
+    sigprocmask(SIG_BLOCK, &usr1, NULL);
+    ti_action(ti_handler);
+    ti_take("deleted unignored", id);
+    /* One-shot, ignored as it expires: dropped. */
+    sigprocmask(SIG_UNBLOCK, &usr1, NULL);
+    id = ct_create(CLOCK_MONOTONIC, SIGEV_SIGNAL, SIGUSR1, 7);
+    ti_action(SIG_IGN);
+    ct_set(id, 0, 0, first, NULL);
+    ti_sleep(50000000L);
+    sigprocmask(SIG_BLOCK, &usr1, NULL);
+    ti_action(ti_handler);
+    ti_take("one-shot unignored", id);
+    /* Ignored but blocked as it expires: queued, as any blocked signal. */
+    ti_action(SIG_IGN);
+    ct_set(id, 0, interval, first, NULL);
+    ti_sleep(50000000L);
+    printf("blocked pending-while-ignored=%d\n", ti_usr1_pending());
+    ti_action(ti_handler);
+    ti_take("blocked unignored", id);
+    sigprocmask(SIG_SETMASK, &none, NULL);
+    return 0;
+}
+static int timer_ignored_case(void) {
+    fflush(stdout);
+    pid_t worker = fork();
+    if (worker == 0) {
+        int r = timer_ignored_worker();
+        fflush(stdout);
+        _exit(r);
+    }
+    printf("worker=%d\n", reaped(worker));
+    return 0;
+}
 static int timer_limits_case(void) {
     int mono = ct_create(CLOCK_MONOTONIC, SIGEV_NONE, 0, 0);
     int real = ct_create(CLOCK_REALTIME, SIGEV_NONE, 0, 0);
@@ -46617,6 +46729,7 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (!strcmp(mode, "port-access")) return port_access_case();
+    if (!strcmp(mode, "timer-ignored")) return timer_ignored_case();
     if (!strcmp(mode, "timer-limits")) return timer_limits_case();
     if (!strcmp(mode, "cpu-sleep")) return cpu_sleep_case();
     if (!strcmp(mode, "cpu-sleep-others")) return cpu_sleep_others_case();

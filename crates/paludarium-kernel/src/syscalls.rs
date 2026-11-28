@@ -1519,6 +1519,7 @@ fn set_cpu_timer(
     });
     timer.interval = if value == 0 { 0 } else { interval };
     timer.overrun = 0;
+    timer.aside = None;
     Ok(old)
 }
 
@@ -1576,6 +1577,9 @@ fn sys_timer_settime(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
             });
             timer.interval = if value == 0 { 0 } else { interval };
             timer.overrun = 0;
+            // A signal kept aside from before is not sent any more, as
+            // Linux's delivery drops one of an earlier setting.
+            timer.aside = None;
             Ok::<_, Errno>(old)
         })?;
         if a[3] != 0 {
@@ -4572,11 +4576,21 @@ fn sys_rt_sigaction(c: &mut Context<'_>, a: [u64; 6]) -> Outcome {
     old.flags &= signals::UAPI_SA_FLAGS;
     if let Some(new) = new {
         c.process.signal_actions.insert(key, new);
+        // The group's too, before the pending signals are looked at, as
+        // Linux changes both under the siglock: a timer that expires
+        // meanwhile sees the new action.
+        c.group.set_action(key, new);
         // An ignored signal's pending instances go, as in Linux's
         // do_sigaction: SIG_IGN, or SIG_DFL for one whose default is to
-        // ignore it (SIGCHLD, SIGCONT, SIGURG, SIGWINCH).
-        if new.handler == 1 || new.handler == 0 && matches!(key, 17 | 18 | 23 | 28) {
+        // ignore it (SIGCHLD, SIGCONT, SIGURG, SIGWINCH). A timer's signal
+        // kept aside while it was ignored is queued again once it is not.
+        let ignores = |action: SignalAction| {
+            action.handler == 1 || action.handler == 0 && matches!(key, 17 | 18 | 23 | 28)
+        };
+        if ignores(new) {
             c.group.discard_pending(key, c.process);
+        } else if ignores(old) {
+            c.group.unignore_timers(key);
         }
     }
     if oldact != 0

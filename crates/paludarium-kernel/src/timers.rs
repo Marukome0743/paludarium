@@ -45,6 +45,12 @@ pub(crate) struct PosixTimer {
     pub interval: u64,
     /// Expirations missed while the previous signal was still pending.
     pub overrun: i32,
+    /// Its signal, kept aside while it is ignored, with that signal's
+    /// overrun: Linux's `ignored_list`, which takes a periodic timer's
+    /// signal that would be dropped as ignored, as it is sent or as
+    /// `sigaction` makes it ignored, until `sigaction` no longer ignores it
+    /// ([`Timers::take_aside`]).
+    pub aside: Option<i32>,
 }
 
 /// The timers of one process: not inherited by `fork`, deleted by `exec`.
@@ -106,22 +112,38 @@ impl Timers {
         pending: &mut ThreadState,
         pid: u32,
         cpu: u64,
-    ) -> Vec<(u32, PendingSignal)> {
-        self.expire_by(pending, |timer| {
-            (timer.clock == TimerClock::OtherProcess(pid) && timer.signal.is_some()).then_some(cpu)
-        })
+        queues: impl Fn(i32, Option<u32>) -> bool,
+    ) -> Vec<Directed> {
+        self.expire_by(
+            pending,
+            |timer| {
+                (timer.clock == TimerClock::OtherProcess(pid) && timer.signal.is_some())
+                    .then_some(cpu)
+            },
+            queues,
+        )
     }
     /// Queues the signal of every timer due at `now` into `pending`. An
     /// expiry while the timer's last signal is still pending counts as an
     /// overrun of that signal instead, as on Linux. The signals of
     /// SIGEV_THREAD_ID timers are returned with their thread instead, for
     /// that thread's inbox.
+    ///
+    /// `queues` says, for a signal and the thread a timer sends it to (none
+    /// for the process), whether Linux's `prepare_signal` queues it: one it
+    /// would drop as ignored is kept aside if the timer is periodic, and
+    /// dropped if not, as `posixtimer_send_sigqueue` does.
     pub(crate) fn expire(
         &mut self,
         pending: &mut ThreadState,
         now: u64,
-    ) -> Vec<(u32, PendingSignal)> {
-        self.expire_by(pending, |timer| (!timer.clock.is_cpu()).then_some(now))
+        queues: impl Fn(i32, Option<u32>) -> bool,
+    ) -> Vec<Directed> {
+        self.expire_by(
+            pending,
+            |timer| (!timer.clock.is_cpu()).then_some(now),
+            queues,
+        )
     }
     /// As [`Self::expire`], for the timers on the CPU-time clocks: the
     /// process's CPU time is `process`, and `thread` gives a live thread's
@@ -133,20 +155,26 @@ impl Timers {
         pending: &mut ThreadState,
         process: u64,
         thread: impl Fn(u32) -> Option<u64>,
-    ) -> Vec<(u32, PendingSignal)> {
-        self.expire_by(pending, |timer| match timer.clock {
-            _ if timer.signal.is_none() => None,
-            TimerClock::Process => Some(process),
-            TimerClock::Thread(tid) => thread(tid),
-            TimerClock::Monotonic | TimerClock::Realtime | TimerClock::OtherProcess(_) => None,
-        })
+        queues: impl Fn(i32, Option<u32>) -> bool,
+    ) -> Vec<Directed> {
+        self.expire_by(
+            pending,
+            |timer| match timer.clock {
+                _ if timer.signal.is_none() => None,
+                TimerClock::Process => Some(process),
+                TimerClock::Thread(tid) => thread(tid),
+                TimerClock::Monotonic | TimerClock::Realtime | TimerClock::OtherProcess(_) => None,
+            },
+            queues,
+        )
     }
     /// Expires the timers for which `now` gives the time of their clock.
     fn expire_by(
         &mut self,
         pending: &mut ThreadState,
         now: impl Fn(&PosixTimer) -> Option<u64>,
-    ) -> Vec<(u32, PendingSignal)> {
+        queues: impl Fn(i32, Option<u32>) -> bool,
+    ) -> Vec<Directed> {
         let mut directed = Vec::new();
         for (&id, timer) in &mut self.table {
             let Some(now) = now(timer) else {
@@ -172,12 +200,27 @@ impl Timers {
             let Some(number) = timer.signal else {
                 continue;
             };
-            let missed = i32::try_from(expirations - 1).unwrap_or(i32::MAX);
+            let mut missed = i32::try_from(expirations - 1).unwrap_or(i32::MAX);
+            let queued = queues(number, timer.thread);
+            if let Some(aside) = timer.aside {
+                // Kept aside, the signal counts the expiry as an overrun, as
+                // a pending one does.
+                let overrun = aside.saturating_add(missed).saturating_add(1);
+                timer.overrun = overrun;
+                if !queued {
+                    timer.aside = Some(overrun);
+                    continue;
+                }
+                // Blocked since it was ignored: it is pending again, as
+                // Linux moves it back from the ignored list.
+                timer.aside = None;
+                missed = overrun;
+            }
             if let Some(tid) = timer.thread {
                 timer.overrun = missed;
-                directed.push((
+                directed.push(Directed {
                     tid,
-                    PendingSignal {
+                    signal: PendingSignal {
                         timer: Some(TimerSignal {
                             id,
                             overrun: missed,
@@ -185,7 +228,8 @@ impl Timers {
                         }),
                         ..PendingSignal::thread(number, SI_TIMER)
                     },
-                ));
+                    queued,
+                });
                 continue;
             }
             if let Some(queued) = pending
@@ -195,6 +239,13 @@ impl Timers {
             {
                 queued.overrun = queued.overrun.saturating_add(missed).saturating_add(1);
                 timer.overrun = queued.overrun;
+                continue;
+            }
+            if !queued {
+                timer.aside = (timer.interval != 0).then_some(missed);
+                if timer.aside.is_some() {
+                    timer.overrun = missed;
+                }
                 continue;
             }
             timer.overrun = missed;
@@ -215,4 +266,60 @@ impl Timers {
             timer.overrun = overrun;
         }
     }
+    /// Keeps aside the signal of timer `id`, with its overrun, which was not
+    /// queued or was taken away as ignored, if the timer still sends that
+    /// signal and is periodic (`posixtimer_sig_ignore`); it is dropped if
+    /// not.
+    pub(crate) fn set_aside(&mut self, id: i32, number: i32, overrun: i32) {
+        if let Some(timer) = self.table.get_mut(&id)
+            && timer.signal == Some(number)
+            && timer.interval != 0
+        {
+            timer.aside = Some(overrun);
+            timer.overrun = overrun;
+        }
+    }
+    /// Takes the signals kept aside of the timers that send signal `number`,
+    /// which is no longer ignored, each with the thread it is for, if any
+    /// (`posixtimer_sig_unignore`).
+    pub(crate) fn take_aside(&mut self, number: i32) -> Vec<(Option<u32>, PendingSignal)> {
+        let mut taken = Vec::new();
+        for (&id, timer) in &mut self.table {
+            if timer.signal != Some(number) {
+                continue;
+            }
+            let Some(overrun) = timer.aside.take() else {
+                continue;
+            };
+            let signal = TimerSignal {
+                id,
+                overrun,
+                value: timer.value,
+            };
+            let base = if timer.thread.is_some() {
+                PendingSignal::thread(number, SI_TIMER)
+            } else {
+                PendingSignal::user(number, SI_TIMER)
+            };
+            taken.push((
+                timer.thread,
+                PendingSignal {
+                    timer: Some(signal),
+                    ..base
+                },
+            ));
+        }
+        taken
+    }
+}
+
+/// The signal of a SIGEV_THREAD_ID timer, for thread `tid`'s inbox; `queued`
+/// is false when Linux's `prepare_signal` drops it as ignored, so that it
+/// only adds to the overrun of the timer's signal pending there, if one is,
+/// and is kept aside if not.
+#[derive(Debug)]
+pub(crate) struct Directed {
+    pub tid: u32,
+    pub signal: PendingSignal,
+    pub queued: bool,
 }

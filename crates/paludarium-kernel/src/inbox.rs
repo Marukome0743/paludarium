@@ -236,8 +236,14 @@ impl SignalInbox {
     /// Queues a timer's thread-directed signal. While the timer's previous
     /// signal still waits here, the expiry adds to its overrun instead, as
     /// Linux does with a timer's one pending signal. Returns the timer and
-    /// the overrun its signal now has.
-    pub(crate) fn send_timer(&self, signal: signals::PendingSignal) -> Option<(i32, i32)> {
+    /// the overrun its signal now has. One Linux would drop as ignored
+    /// (`queue` false) only adds to the overrun of one waiting here: with
+    /// none, it is not queued and this gives `None`.
+    pub(crate) fn send_timer(
+        &self,
+        signal: signals::PendingSignal,
+        queue_it: bool,
+    ) -> Option<(i32, i32)> {
         let timer = signal.timer?;
         let ignored = self.ignores(signal.number, signal.synchronous);
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
@@ -250,6 +256,9 @@ impl SignalInbox {
                 .saturating_add(timer.overrun)
                 .saturating_add(1);
             return Some((timer.id, queued.overrun));
+        }
+        if !queue_it {
+            return None;
         }
         let mut signal = signal;
         if signal.target == signals::PendingTarget::Thread
@@ -509,11 +518,20 @@ impl SignalInbox {
             .any(|s| fatal(s.number))
     }
     /// Drops the queued instances of signal `number`.
-    pub(crate) fn purge(&self, number: i32) {
+    /// Takes every signal `number` away; gives those of the timers.
+    pub(crate) fn purge(&self, number: i32) -> Vec<signals::TimerSignal> {
+        let mut timers = Vec::new();
         self.queue
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .retain(|signal| signal.number != number);
+            .retain(|signal| {
+                let purged = signal.number == number;
+                if purged && let Some(timer) = signal.timer {
+                    timers.push(timer);
+                }
+                !purged
+            });
+        timers
     }
     /// Takes the signals directed at this thread. One directed at the
     /// process stays for [`crate::ThreadGroup::drain_process`], even in the

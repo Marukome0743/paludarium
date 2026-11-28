@@ -2846,6 +2846,122 @@ fn posix_timers_take_times_up_to_ktime_max() {
     let left = KTIME_MAX - 5_000_000_000;
     assert_eq!(words(&f)[2..], [left / 1_000_000_000, left % 1_000_000_000]);
 }
+/// Sets signal `number`'s handler (1 for SIG_IGN) with `rt_sigaction`.
+fn set_handler(f: &mut Fixture, number: u64, handler: u64) {
+    let act = DATA + 0x400;
+    for (i, v) in [handler, 0, 0, 0].iter().enumerate() {
+        f.mem.write_u64(GuestAddr(act + 8 * i as u64), *v).unwrap();
+    }
+    assert_eq!(f.ret(nr::RT_SIGACTION, &[number, act, 0, 8]), 0);
+}
+/// Moves the clocks to `now` and runs the timers due then, the thread's
+/// mask told first, as a thread tells it before it waits.
+fn expire_at(f: &mut Fixture, now: u64) {
+    f.kernel.group.settle_mask(&mut f.thread.state);
+    f.host.set_clock(paludarium_host::ClockId::Monotonic, now);
+    f.kernel.group.expire_timer(&mut f.thread.state, now);
+}
+/// A SIGUSR1 timer on the monotonic clock, its ID 0, with value 7.
+fn usr1_timer(f: &mut Fixture) {
+    let (sev, id) = (DATA + 0x40, DATA);
+    f.host
+        .set_clock(paludarium_host::ClockId::Monotonic, 1_000_000_000);
+    f.mem.write_u64(GuestAddr(sev), 7).unwrap();
+    f.mem.write_u64(GuestAddr(sev + 8), 10).unwrap(); // SIGUSR1, SIGEV_SIGNAL
+    assert_eq!(f.ret(nr::TIMER_CREATE, &[1, sev, id]), 0);
+}
+/// Takes a pending SIGUSR1 with `rt_sigtimedwait` and no wait; its
+/// `si_overrun`, or the errno.
+fn take_usr1(f: &mut Fixture) -> Result<i32, u64> {
+    let (set, info, spec) = (DATA + 0x200, DATA + 0x300, DATA + 0x280);
+    f.mem.write_u64(GuestAddr(set), 1 << 9).unwrap();
+    f.mem.write_u64(GuestAddr(spec), 0).unwrap();
+    f.mem.write_u64(GuestAddr(spec + 8), 0).unwrap();
+    match f.ret(nr::RT_SIGTIMEDWAIT, &[set, info, spec, 8]) {
+        10 => {
+            let mut siginfo = [0u8; 32];
+            f.mem.read(GuestAddr(info), &mut siginfo).unwrap();
+            assert_eq!(i32::from_le_bytes(siginfo[8..12].try_into().unwrap()), -2);
+            assert_eq!(u64::from_le_bytes(siginfo[24..32].try_into().unwrap()), 7);
+            Ok(i32::from_le_bytes(siginfo[20..24].try_into().unwrap()))
+        }
+        other => Err(other),
+    }
+}
+/// A periodic timer's signal that would be dropped as ignored is kept
+/// aside, counting the expiries after it as overruns, and is queued again
+/// once `sigaction` no longer ignores it, as Linux's `ignored_list` does.
+#[test]
+fn posix_timer_ignored_signal_is_kept_aside_until_unignored() {
+    let mut f = fixture();
+    let spec = DATA + 0x100;
+    usr1_timer(&mut f);
+    set_handler(&mut f, 10, 1);
+    timer_spec(&mut f, spec, 10_000_000, 10_000_000);
+    assert_eq!(f.ret(nr::TIMER_SETTIME, &[0, 0, spec, 0]), 0);
+    expire_at(&mut f, 1_035_000_000);
+    expire_at(&mut f, 1_055_000_000);
+    assert!(!f.thread.state.pending.iter().any(|s| s.number == 10));
+    // Blocked, so that it stays pending once it is queued again.
+    f.thread.state.signal_mask = 1 << 9;
+    assert_eq!(take_usr1(&mut f), Err(errno(Errno::EAGAIN)));
+    set_handler(&mut f, 10, 0x1000);
+    // Expiries at 10, 20, 30, 40 and 50 ms: one signal, four overruns.
+    assert_eq!(take_usr1(&mut f), Ok(4));
+    assert_eq!(f.ret(nr::TIMER_GETOVERRUN, &[0]), 4);
+    assert_eq!(take_usr1(&mut f), Err(errno(Errno::EAGAIN)));
+}
+/// A one-shot timer's ignored signal is dropped, as is one kept aside
+/// when the timer is set again.
+#[test]
+fn posix_timer_ignored_signal_of_a_one_shot_or_reset_timer_is_dropped() {
+    let mut f = fixture();
+    let spec = DATA + 0x100;
+    usr1_timer(&mut f);
+    set_handler(&mut f, 10, 1);
+    timer_spec(&mut f, spec, 0, 10_000_000);
+    assert_eq!(f.ret(nr::TIMER_SETTIME, &[0, 0, spec, 0]), 0);
+    expire_at(&mut f, 1_020_000_000);
+    f.thread.state.signal_mask = 1 << 9;
+    set_handler(&mut f, 10, 0x1000);
+    assert_eq!(take_usr1(&mut f), Err(errno(Errno::EAGAIN)));
+    // Periodic, then disarmed while its signal is kept aside.
+    set_handler(&mut f, 10, 1);
+    f.thread.state.signal_mask = 0;
+    timer_spec(&mut f, spec, 10_000_000, 10_000_000);
+    assert_eq!(f.ret(nr::TIMER_SETTIME, &[0, 0, spec, 0]), 0);
+    expire_at(&mut f, 1_035_000_000);
+    timer_spec(&mut f, spec, 0, 0);
+    assert_eq!(f.ret(nr::TIMER_SETTIME, &[0, 0, spec, 0]), 0);
+    f.thread.state.signal_mask = 1 << 9;
+    set_handler(&mut f, 10, 0x1000);
+    assert_eq!(take_usr1(&mut f), Err(errno(Errno::EAGAIN)));
+}
+/// A pending periodic timer's signal that `sigaction` makes ignored is
+/// taken away and kept aside (`sigqueue_free_ignored`), then queued again.
+#[test]
+fn posix_timer_pending_signal_made_ignored_is_kept_aside() {
+    let mut f = fixture();
+    let spec = DATA + 0x100;
+    usr1_timer(&mut f);
+    f.thread.state.signal_mask = 1 << 9;
+    timer_spec(&mut f, spec, 10_000_000, 10_000_000);
+    assert_eq!(f.ret(nr::TIMER_SETTIME, &[0, 0, spec, 0]), 0);
+    expire_at(&mut f, 1_015_000_000);
+    set_handler(&mut f, 10, 1);
+    let pending = DATA + 0x500;
+    assert_eq!(f.ret(nr::RT_SIGPENDING, &[pending, 8]), 0);
+    assert_eq!(f.mem.read_u64(GuestAddr(pending)).unwrap() & 1 << 9, 0);
+    // Still blocked: the next expiry finds it aside and moves it back.
+    expire_at(&mut f, 1_025_000_000);
+    assert_eq!(take_usr1(&mut f), Ok(1));
+    // Ignored and unblocked, it goes aside again until the handler is set.
+    f.thread.state.signal_mask = 0;
+    expire_at(&mut f, 1_035_000_000);
+    f.thread.state.signal_mask = 1 << 9;
+    set_handler(&mut f, 10, 0x1000);
+    assert_eq!(take_usr1(&mut f), Ok(0));
+}
 #[test]
 fn sigtimedwait_takes_blocked_process_signals_and_times_out() {
     let mut f = fixture();
