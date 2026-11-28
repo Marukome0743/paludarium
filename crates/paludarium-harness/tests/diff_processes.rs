@@ -711,6 +711,7 @@ mod linux {
         processes_dev_shm => ("dev-shm", "process"),
         processes_dgram => ("dgram", "process"),
         processes_dontneed_read_only_segment => ("dontneed-read-only-segment", "process"),
+        processes_dump_min_sysctls => ("dump-min-sysctls", "process"),
         processes_dynamic => ("dynamic", "dynamic"),
         processes_dynamic_exec => ("dynamic-exec", "process", root),
         processes_dynamic_glibc => ("dynamic-glibc", "dynamic-glibc"),
